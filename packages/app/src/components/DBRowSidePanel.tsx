@@ -131,11 +131,18 @@ type NavEntry = {
   label: string;
 };
 
+type BreadcrumbItem = {
+  label: string;
+  onClick?: () => void;
+};
+
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
+  breadcrumbs?: BreadcrumbItem[];
+  initialTab?: `${Tab}`;
 };
 
 const DBRowSidePanel = ({
@@ -144,6 +151,8 @@ const DBRowSidePanel = ({
   source,
   setSubDrawerOpen,
   onClose,
+  breadcrumbs,
+  initialTab,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
@@ -195,11 +204,9 @@ const DBRowSidePanel = ({
 
   const isTraceSource = source.kind === 'trace';
 
-  const defaultTab = isTraceSource
-    ? Tab.Trace
-    : hasOverviewPanel
-      ? Tab.Overview
-      : Tab.Parsed;
+  const defaultTab =
+    (initialTab as Tab) ??
+    (isTraceSource ? Tab.Trace : hasOverviewPanel ? Tab.Overview : Tab.Parsed);
 
   const [queryTab, setQueryTab] = useQueryState(
     'sidePanelTab',
@@ -351,6 +358,33 @@ const DBRowSidePanel = ({
   return (
     <>
       <Box px="sm" pt="sm" pb="xs">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <Group gap={4} mb={6}>
+            {breadcrumbs.map((crumb, i) => (
+              <Group key={i} gap={4}>
+                {i > 0 && (
+                  <Text size="xs" c="dimmed">
+                    ›
+                  </Text>
+                )}
+                {crumb.onClick ? (
+                  <Text
+                    size="xs"
+                    c="blue"
+                    style={{ cursor: 'pointer' }}
+                    onClick={crumb.onClick}
+                  >
+                    {crumb.label}
+                  </Text>
+                ) : (
+                  <Text size="xs" c="dimmed">
+                    {crumb.label}
+                  </Text>
+                )}
+              </Group>
+            ))}
+          </Group>
+        )}
         <Flex
           align="center"
           justify="space-between"
@@ -503,7 +537,7 @@ const DBRowSidePanel = ({
             </>
           )}
         </Group>
-        {!isTraceSource && highlightedAttributeValues.length > 0 && (
+        {highlightedAttributeValues.length > 0 && (
           <Box mt="xs">
             <DBHighlightedAttributesList
               attributes={highlightedAttributeValues}
@@ -515,7 +549,7 @@ const DBRowSidePanel = ({
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
         items={[
-          ...(!isTraceSource && hasOverviewPanel
+          ...(hasOverviewPanel
             ? [
                 {
                   text: 'Overview',
@@ -759,6 +793,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
+  breadcrumbs,
+  initialTab,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -785,6 +821,13 @@ export default function DBRowSidePanelErrorBoundary({
     'sidePanelTab',
     parseAsStringEnum<Tab>(Object.values(Tab)),
   );
+
+  // Reset tab to default when opening a different row
+  useEffect(() => {
+    if (rowId != null) {
+      setSidePanelTab(null);
+    }
+  }, [rowId, setSidePanelTab]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
@@ -838,6 +881,8 @@ export default function DBRowSidePanelErrorBoundary({
               aliasWith={aliasWith}
               onClose={_onClose}
               setSubDrawerOpen={setSubDrawerOpen}
+              breadcrumbs={breadcrumbs}
+              initialTab={initialTab}
             />
           </ErrorBoundary>
         </div>

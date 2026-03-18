@@ -471,6 +471,17 @@ export default function SessionSubpanel({
               setDrawerOpen(false);
               setRowId(undefined);
             }}
+            initialTab="overview"
+            breadcrumbs={[
+              {
+                label: session.userEmail || `Session ${rumSessionId}`,
+                onClick: () => {
+                  setDrawerOpen(false);
+                  setRowId(undefined);
+                },
+              },
+              { label: 'Event' },
+            ]}
           />
         </Portal>
       )}

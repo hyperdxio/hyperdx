@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
@@ -7,9 +6,16 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Button, Drawer } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconLink, IconX } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  CopyButton,
+  Drawer,
+  Flex,
+  Group,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
 
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
@@ -81,7 +87,7 @@ export default function SessionSidePanel({
         }
       }}
       position="right"
-      size="82vw"
+      size="100vw"
       withCloseButton={false}
       zIndex={zIndex}
       styles={{
@@ -94,49 +100,86 @@ export default function SessionSidePanel({
     >
       <ZIndexContext.Provider value={zIndex}>
         <div className="d-flex flex-column h-100">
-          <div>
-            <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
-              <div style={{ width: '50%', maxWidth: 500 }}>
-                {session?.userEmail || `Anonymous Session ${sessionId}`}
-                <div className="text-muted fs-8 mt-1">
-                  <span>Last active {timeAgo} ago</span>
-                  <span className="mx-2">·</span>
-                  {Number.parseInt(session?.errorCount ?? '0') > 0 ? (
-                    <>
-                      <span className="text-danger fs-8">
-                        {session?.errorCount} Errors
-                      </span>
-                      <span className="mx-2">·</span>
-                    </>
-                  ) : null}
-                  <span>{session?.sessionCount} Events</span>
-                </div>
-              </div>
-              <div className="d-flex gap-2">
-                <CopyToClipboard
-                  text={window.location.href}
-                  onCopy={() => {
-                    notifications.show({
-                      color: 'green',
-                      message: 'Copied link to clipboard',
-                    });
-                  }}
+          <Flex
+            align="center"
+            justify="space-between"
+            gap="sm"
+            px="sm"
+            py="xs"
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              <Tooltip label="Back" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={onClose}
+                  aria-label="Back"
                 >
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftSection={<IconLink size={14} />}
-                    style={{ fontSize: '12px' }}
-                  >
-                    Share Session
-                  </Button>
-                </CopyToClipboard>
-                <ActionIcon variant="secondary" size="md" onClick={onClose}>
-                  <IconX size={14} />
+                  <IconArrowLeft size={16} />
                 </ActionIcon>
+              </Tooltip>
+              <div style={{ minWidth: 0 }}>
+                <Text size="sm" fw={600} truncate="end">
+                  {session?.userEmail || `Anonymous Session ${sessionId}`}
+                </Text>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Last active {timeAgo} ago
+                  </Text>
+                  {Number.parseInt(session?.errorCount ?? '0') > 0 && (
+                    <>
+                      <Text size="xs" c="dimmed">
+                        ·
+                      </Text>
+                      <Text size="xs" c="red">
+                        {session?.errorCount} Errors
+                      </Text>
+                    </>
+                  )}
+                  <Text size="xs" c="dimmed">
+                    ·
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {session?.sessionCount} Events
+                  </Text>
+                </Group>
               </div>
-            </div>
-          </div>
+            </Group>
+            <Group gap={8} wrap="nowrap">
+              <CopyButton
+                value={
+                  typeof window !== 'undefined' ? window.location.href : ''
+                }
+              >
+                {({ copied, copy }) => (
+                  <Tooltip
+                    label={copied ? 'Copied!' : 'Share link'}
+                    position="bottom"
+                  >
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      onClick={copy}
+                      aria-label="Share"
+                    >
+                      <IconShare size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </CopyButton>
+              <Tooltip label="Close" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={onClose}
+                  aria-label="Close"
+                >
+                  <IconX size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          </Flex>
           {sessionId != null ? (
             <SessionSubpanel
               traceSource={traceSource}
