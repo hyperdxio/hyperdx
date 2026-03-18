@@ -36,6 +36,7 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 | `variant="primary"` | Primary actions (Submit, Save, Create, Run) | `<Button variant="primary">Save</Button>` |
 | `variant="secondary"` | Secondary actions (Cancel, Clear, auxiliary actions) | `<Button variant="secondary">Cancel</Button>` |
 | `variant="danger"` | Destructive actions (Delete, Remove, Rotate API Key) | `<Button variant="danger">Delete</Button>` |
+| `variant="link"` | Link-style actions with no background or border (View Details, navigation-style CTAs) | `<Button variant="link">View Details</Button>` |
 
 ### DO NOT USE (Forbidden Patterns)
 
@@ -58,10 +59,14 @@ The following patterns are **NOT ALLOWED** for Button and ActionIcon:
 <Button variant="primary">Save</Button>
 <Button variant="secondary">Cancel</Button>
 <Button variant="danger">Delete</Button>
+<Button variant="link">View Details</Button>
 <ActionIcon variant="primary">...</ActionIcon>
 <ActionIcon variant="secondary">...</ActionIcon>
 <ActionIcon variant="danger">...</ActionIcon>
+<ActionIcon variant="link">...</ActionIcon>
 ```
+
+**Link variant details**: Renders with no background, no border, and muted text color. On hover, text brightens to full contrast. Use for link-style CTAs that should blend into surrounding content (e.g., "View Details", "View Full Trace").
 
 **Note**: `variant="filled"` is still valid for **form inputs** (Select, TextInput, etc.), just not for Button/ActionIcon.
 
