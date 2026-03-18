@@ -2311,6 +2311,7 @@ describe('External API v2 Dashboards - new format', () => {
 
     it('can round-trip all raw SQL chart config types', async () => {
       const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
       const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
 
       const lineRawSql: ExternalDashboardTile = {
@@ -2324,6 +2325,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'line',
           connectionId,
           sqlTemplate,
+          sourceId,
           compareToPreviousPeriod: true,
           fillNulls: true,
           alignDateRangeToGranularity: true,
@@ -2342,6 +2344,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'stacked_bar',
           connectionId,
           sqlTemplate,
+          sourceId,
           fillNulls: false,
           alignDateRangeToGranularity: false,
           numberFormat: { output: 'byte', decimalBytes: true },
@@ -2359,6 +2362,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'table',
           connectionId,
           sqlTemplate,
+          sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
         },
       };
@@ -2374,6 +2378,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'number',
           connectionId,
           sqlTemplate,
+          sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
         },
       };
@@ -2389,6 +2394,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'pie',
           connectionId,
           sqlTemplate,
+          sourceId,
         },
       };
 
@@ -2454,6 +2460,43 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body).toEqual({
         message: `Could not find the following connection IDs: ${otherConnectionId}`,
+      });
+    });
+
+    it('should return 400 when source connection does not match tile connection', async () => {
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Mismatched Source Connection',
+          tiles: [
+            {
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'table',
+                connectionId: otherConnection._id.toString(),
+                sourceId: traceSource._id.toString(),
+                sqlTemplate: 'SELECT count() FROM otel_logs',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `The following source IDs do not match the specified connections: ${traceSource._id.toString()}`,
       });
     });
 
@@ -3100,6 +3143,7 @@ describe('External API v2 Dashboards - new format', () => {
 
     it('can round-trip all raw SQL chart config types', async () => {
       const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
       const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
 
       const lineRawSql: ExternalDashboardTileWithId = {
@@ -3114,6 +3158,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'line',
           connectionId,
           sqlTemplate,
+          sourceId,
           compareToPreviousPeriod: true,
           fillNulls: true,
           alignDateRangeToGranularity: true,
@@ -3133,6 +3178,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'stacked_bar',
           connectionId,
           sqlTemplate,
+          sourceId,
           fillNulls: false,
           alignDateRangeToGranularity: false,
           numberFormat: { output: 'byte', decimalBytes: true },
@@ -3151,6 +3197,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'table',
           connectionId,
           sqlTemplate,
+          sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
         },
       };
@@ -3167,6 +3214,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'number',
           connectionId,
           sqlTemplate,
+          sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
         },
       };
@@ -3183,6 +3231,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'pie',
           connectionId,
           sqlTemplate,
+          sourceId,
         },
       };
 
@@ -3268,6 +3317,45 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body).toEqual({
         message: `Could not find the following connection IDs: ${otherConnectionId}`,
+      });
+    });
+
+    it('should return 400 when source connection does not match tile connection', async () => {
+      const dashboard = await createTestDashboard();
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard with Mismatched Source Connection',
+          tiles: [
+            {
+              id: new ObjectId().toString(),
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'table',
+                connectionId: otherConnection._id.toString(),
+                sourceId: traceSource._id.toString(),
+                sqlTemplate: 'SELECT count() FROM otel_logs',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `The following source IDs do not match the specified connections: ${traceSource._id.toString()}`,
       });
     });
 

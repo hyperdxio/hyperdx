@@ -18,8 +18,6 @@ import {
   MaterializedViewConfiguration,
 } from '@hyperdx/common-utils/dist/types';
 
-import { getMetadata } from '@/metadata';
-
 export const MV_AGGREGATE_FUNCTIONS = [
   'avg',
   'count',
@@ -78,16 +76,22 @@ const isAggregateFn = (
   return MV_AGGREGATE_FUNCTIONS.includes(aggFn ?? '');
 };
 
-function isMaterializedView(meta: TableMetadata) {
-  return meta.engine?.startsWith('MaterializedView') ?? false;
+function isMaterializedView(
+  meta: TableMetadata | undefined,
+): meta is TableMetadata {
+  return meta?.engine?.startsWith('MaterializedView') ?? false;
 }
 
-function isAggregatingMergeTree(meta: TableMetadata) {
-  return meta.engine?.includes('AggregatingMergeTree') ?? false;
+function isAggregatingMergeTree(
+  meta: TableMetadata | undefined,
+): meta is TableMetadata {
+  return meta?.engine?.includes('AggregatingMergeTree') ?? false;
 }
 
-function isSummingMergeTree(meta: TableMetadata) {
-  return meta.engine?.includes('SummingMergeTree') ?? false;
+function isSummingMergeTree(
+  meta: TableMetadata | undefined,
+): meta is TableMetadata {
+  return meta?.engine?.includes('SummingMergeTree') ?? false;
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   TimelineSpanEventMarker,
   type TTimelineSpanEventMarker,
 } from './TimelineSpanEventMarker';
+import { renderMs } from './utils';
 
 export type TTimelineEvent = {
   id: string;
@@ -17,6 +18,7 @@ export type TTimelineEvent = {
   minWidthPerc?: number;
   isError?: boolean;
   markers?: TTimelineSpanEventMarker[];
+  showDuration?: boolean;
 };
 
 type TimelineChartRowProps = {
@@ -57,6 +59,12 @@ export const TimelineChartRowEvents = memo(function ({
         const percMarginLeft =
           scale * (((e.start - lastEventEnd) / maxVal) * 100);
 
+        const durationMs = e.end - e.start;
+        const barCenter = (e.start + e.end) / 2;
+        const timelineMidpoint = maxVal / 2;
+        // Duration on left when majority of bar is past halfway, otherwise on right
+        const durationOnRight = barCenter <= timelineMidpoint;
+
         return (
           <Tooltip
             key={e.id}
@@ -72,32 +80,60 @@ export const TimelineChartRowEvents = memo(function ({
             }}
           >
             <div
-              onMouseEnter={() => onEventHover?.(e.id)}
-              className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
               style={{
-                userSelect: 'none',
+                position: 'relative',
                 minWidth: `${percWidth.toFixed(6)}%`,
                 width: `${percWidth.toFixed(6)}%`,
                 marginLeft: `${percMarginLeft.toFixed(6)}%`,
-                position: 'relative',
-                borderRadius: 2,
-                fontSize: height * 0.5,
-                color: e.color,
-                backgroundColor: e.backgroundColor,
+                // overflow: 'visible',
               }}
             >
-              <div style={{ margin: 'auto' }} className="px-2">
-                {e.body}
+              <div
+                onMouseEnter={() => onEventHover?.(e.id)}
+                className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
+                style={{
+                  userSelect: 'none',
+                  width: '100%',
+                  position: 'relative',
+                  borderRadius: 2,
+                  fontSize: height * 0.5,
+                  color: e.color,
+                  backgroundColor: e.backgroundColor,
+                }}
+              >
+                <div style={{ margin: 'auto' }} className="px-2">
+                  {e.body}
+                </div>
+                {e.markers?.map((marker, idx) => (
+                  <TimelineSpanEventMarker
+                    key={`${e.id}-marker-${idx}`}
+                    marker={marker}
+                    eventStart={e.start}
+                    eventEnd={e.end}
+                    height={height}
+                  />
+                ))}
               </div>
-              {e.markers?.map((marker, idx) => (
-                <TimelineSpanEventMarker
-                  key={`${e.id}-marker-${idx}`}
-                  marker={marker}
-                  eventStart={e.start}
-                  eventEnd={e.end}
-                  height={height}
-                />
-              ))}
+              {!!e.showDuration && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: height * 0.5,
+                    color: 'var(--color-text)',
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                    ...(durationOnRight
+                      ? { left: '100%', marginLeft: 4 }
+                      : { right: '100%', marginRight: 4 }),
+                  }}
+                >
+                  {renderMs(durationMs)}
+                </span>
+              )}
             </div>
           </Tooltip>
         );

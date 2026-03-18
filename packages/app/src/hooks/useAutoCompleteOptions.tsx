@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
+import { NOW } from '@/config';
 import {
   deduplicate2dArray,
   useJsonColumns,
@@ -18,9 +19,6 @@ export interface ILanguageFormatter {
   formatFieldLabel: (f: Field) => string;
   formatKeyValPair: (key: string, value: string) => string;
 }
-
-// Defined outside of the component to fix rerenders
-const NOW = Date.now();
 
 export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
@@ -118,10 +116,12 @@ export function useAutoCompleteOptions(
     // just assuming 1/2 day is okay to query over right now
     dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
   }));
+
   const { data: keyVals } = useMultipleGetKeyValues({
     chartConfigs,
     keys: searchKeys,
   });
+
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {

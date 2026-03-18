@@ -448,7 +448,7 @@ export default function useOffsetPaginatedQuery(
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: builderConfig?.source,
+    id: config.source,
   });
 
   const {

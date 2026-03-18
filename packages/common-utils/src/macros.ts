@@ -124,10 +124,10 @@ const MACROS: Macro[] = [
 ];
 
 /** Macro metadata for autocomplete suggestions */
-export const MACRO_SUGGESTIONS = MACROS.map(({ name, argCount }) => ({
-  name,
-  argCount,
-}));
+export const MACRO_SUGGESTIONS = [
+  ...MACROS.map(({ name, argCount }) => ({ name, argCount })),
+  { name: 'filters', argCount: 0 },
+];
 
 type MacroMatch = {
   full: string;
@@ -184,11 +184,26 @@ function findMacros(input: string, name: string): MacroMatch[] {
   return matches;
 }
 
-export function replaceMacros(sql: string): string {
-  const sortedMacros = [...MACROS].sort(
+const NO_FILTERS = '(1=1 /** no filters applied */)';
+
+export function replaceMacros(
+  sqlTemplate: string,
+  filtersSQL?: string,
+): string {
+  const allMacros: Macro[] = [
+    ...MACROS,
+    {
+      name: 'filters',
+      argCount: 0,
+      replace: () => filtersSQL || NO_FILTERS,
+    },
+  ];
+
+  const sortedMacros = allMacros.sort(
     (m1, m2) => m2.name.length - m1.name.length,
   );
 
+  let sql = sqlTemplate;
   for (const macro of sortedMacros) {
     const matches = findMacros(sql, macro.name);
 

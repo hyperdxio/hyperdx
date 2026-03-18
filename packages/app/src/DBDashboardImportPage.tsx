@@ -214,9 +214,9 @@ function Mapping({ input }: { input: Input }) {
 
     const sourceMappings = input.tiles.map(tile => {
       const config = tile.config as SavedChartConfig;
-      if (isRawSqlSavedChartConfig(config)) return '';
+      if (!config.source) return '';
       const match = sources.find(
-        source => source.name.toLowerCase() === config.source.toLowerCase(),
+        source => source.name.toLowerCase() === config.source!.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -253,7 +253,6 @@ function Mapping({ input }: { input: Input }) {
     if (isUpdatingRef.current) return;
     if (!sourceMappings || !input.tiles) return;
 
-    // Find which mapping changed
     const changedIdx = sourceMappings.findIndex(
       (mapping, idx) => mapping !== prevSourceMappingsRef.current?.[idx],
     );
@@ -263,21 +262,14 @@ function Mapping({ input }: { input: Input }) {
 
     const inputTile = input.tiles[changedIdx];
     const inputTileConfig = inputTile?.config;
-    if (!inputTileConfig || isRawSqlSavedChartConfig(inputTileConfig)) return;
+    if (!inputTileConfig || !inputTileConfig.source) return;
 
     const sourceId = sourceMappings[changedIdx] ?? '';
     const inputTileSource = inputTileConfig.source;
 
     const keysForTilesWithMatchingSource = input.tiles
-      .map((tile, index) => ({
-        config: tile.config,
-        index,
-      }))
-      .filter(
-        tile =>
-          !isRawSqlSavedChartConfig(tile.config) &&
-          tile.config.source === inputTileSource,
-      )
+      .map((tile, index) => ({ config: tile.config, index }))
+      .filter(tile => tile.config.source === inputTileSource)
       .map(({ index }) => `sourceMappings.${index}` as const);
 
     const keysForFiltersWithMatchingSource =
@@ -345,6 +337,10 @@ function Mapping({ input }: { input: Input }) {
     try {
       // Zip the source/connection mappings with the input tiles
       const zippedTiles = input.tiles.map((tile, idx) => {
+        const source = sources?.find(
+          source => source.id === data.sourceMappings[idx],
+        );
+
         if (isRawSqlSavedChartConfig(tile.config)) {
           const connection = connections?.find(
             conn => conn.id === data.connectionMappings[idx],
@@ -354,12 +350,10 @@ function Mapping({ input }: { input: Input }) {
             config: {
               ...tile.config,
               connection: connection!.id,
+              ...(source ? { source: source.id } : {}),
             },
           };
         }
-        const source = sources?.find(
-          source => source.id === data.sourceMappings[idx],
-        );
         return {
           ...tile,
           config: {
@@ -430,21 +424,35 @@ function Mapping({ input }: { input: Input }) {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
-              <Table.Th>Input Source Name</Table.Th>
-              <Table.Th>Mapped Source Name</Table.Th>
+              <Table.Th>Input Source</Table.Th>
+              <Table.Th>Mapped Source</Table.Th>
+              <Table.Th>Input Connection</Table.Th>
+              <Table.Th>Mapped Connection</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {input.tiles.map((tile, i) => {
               const config = tile.config;
               const isRawSql = isRawSqlSavedChartConfig(config);
-              const inputSourceName = isRawSql
-                ? `${config.connection} (Connection)`
-                : `${config.source} (Source)`;
               return (
                 <Table.Tr key={tile.id}>
                   <Table.Td>{tile.config.name}</Table.Td>
-                  <Table.Td>{inputSourceName}</Table.Td>
+
+                  <Table.Td>{config.source ?? ''}</Table.Td>
+                  <Table.Td>
+                    {config.source != null && (
+                      <SelectControlled
+                        control={control}
+                        name={`sourceMappings.${i}`}
+                        data={sources?.map(source => ({
+                          value: source.id,
+                          label: source.name,
+                        }))}
+                        placeholder="Select a source"
+                      />
+                    )}
+                  </Table.Td>
+                  <Table.Td>{isRawSql ? config.connection : ''}</Table.Td>
                   <Table.Td>
                     {isRawSql ? (
                       <SelectControlled
@@ -456,17 +464,7 @@ function Mapping({ input }: { input: Input }) {
                         }))}
                         placeholder="Select a connection"
                       />
-                    ) : (
-                      <SelectControlled
-                        control={control}
-                        name={`sourceMappings.${i}`}
-                        data={sources?.map(source => ({
-                          value: source.id,
-                          label: source.name,
-                        }))}
-                        placeholder="Select a source"
-                      />
-                    )}
+                    ) : null}
                   </Table.Td>
                 </Table.Tr>
               );
@@ -486,6 +484,8 @@ function Mapping({ input }: { input: Input }) {
                     placeholder="Select a source"
                   />
                 </Table.Td>
+                <Table.Td />
+                <Table.Td />
               </Table.Tr>
             ))}
           </Table.Tbody>
