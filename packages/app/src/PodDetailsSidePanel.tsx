@@ -19,10 +19,10 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
+import { DrawerBody, DrawerHeader } from '@/components/side-panels/DrawerUtils';
+import EventSidePanel from '@/components/side-panels/EventSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -464,7 +464,7 @@ export default function PodDetailsSidePanel({
             </Grid>
           </DrawerBody>
           {rowId && (
-            <DBRowSidePanel
+            <EventSidePanel
               source={logSource}
               rowId={rowId}
               aliasWith={aliasWith}

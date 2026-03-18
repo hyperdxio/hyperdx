@@ -1,6 +1,6 @@
 import type { Meta } from '@storybook/nextjs';
 
-import { NetworkBody } from './LogSidePanelElements';
+import { NetworkBody } from './SidePanelElements';
 
 const meta: Meta = {
   title: 'LogSidePanelElements',

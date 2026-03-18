@@ -3,10 +3,11 @@ import Link from 'next/link';
 import { Loader } from '@mantine/core';
 
 import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
-import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
 
-import { useEventsData } from './DBTraceWaterfallChart';
+import { useEventsData } from '../DBTraceWaterfallChart';
+
+import SessionContentPanel from './SessionContentPanel';
 
 export const useSessionId = ({
   sourceId,
@@ -84,7 +85,7 @@ export const useSessionId = ({
   return result;
 };
 
-export const DBSessionPanel = ({
+export const SessionReplayPanel = ({
   traceSourceId,
   rumSessionId,
   dateRange,
@@ -119,7 +120,7 @@ export const DBSessionPanel = ({
           session source.
         </div>
       ) : rumSessionId && traceSource ? (
-        <SessionSubpanel
+        <SessionContentPanel
           start={dateRange[0]}
           end={dateRange[1]}
           traceSource={traceSource}

@@ -3,9 +3,9 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Card, Drawer, Stack, Text } from '@mantine/core';
 
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
-import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
+import { DrawerBody, DrawerHeader } from '@/components/side-panels/DrawerUtils';
+import EventSidePanel from '@/components/side-panels/EventSidePanel';
 import { Pattern } from '@/hooks/usePatterns';
 import {
   PATTERN_COLUMN_ALIAS,
@@ -137,7 +137,7 @@ export default function PatternSidePanel({
             </Stack>
           </DrawerBody>
           {selectedRowWhere && (
-            <DBRowSidePanel
+            <EventSidePanel
               source={source}
               rowId={selectedRowWhere.where}
               aliasWith={selectedRowWhere.aliasWith}

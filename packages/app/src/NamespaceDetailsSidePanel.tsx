@@ -19,7 +19,7 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
+import { DrawerBody, DrawerHeader } from '@/components/side-panels/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';

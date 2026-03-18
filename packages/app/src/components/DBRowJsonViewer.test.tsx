@@ -1,8 +1,8 @@
 import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
+import { RowSidePanelContext } from './side-panels/EventSidePanel';
 import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
-import { RowSidePanelContext } from './DBRowSidePanel';
 
 // Mock Next.js router
 jest.mock('next/router', () => ({

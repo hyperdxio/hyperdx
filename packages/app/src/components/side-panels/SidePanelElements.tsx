@@ -13,16 +13,16 @@ import {
 } from '@tabler/icons-react';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
-import HyperJson from './components/HyperJson';
-import { StacktraceFrame as StacktraceFrameCmp } from './components/StacktraceFrame';
-import { TableCellButton } from './components/Table';
-import { UNDEFINED_WIDTH } from './tableUtils';
-import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
-import { FormatTime } from './useFormatTime';
-import { useSourceMappedFrame } from './useSourceMappedFrame';
-import { useLocalStorage } from './utils';
+import HyperJson from '@/components/HyperJson';
+import { StacktraceFrame as StacktraceFrameCmp } from '@/components/StacktraceFrame';
+import { TableCellButton } from '@/components/Table';
+import { UNDEFINED_WIDTH } from '@/tableUtils';
+import type { StacktraceBreadcrumb, StacktraceFrame } from '@/types';
+import { FormatTime } from '@/useFormatTime';
+import { useSourceMappedFrame } from '@/useSourceMappedFrame';
+import { useLocalStorage } from '@/utils';
 
-import styles from '../styles/LogSidePanel.module.scss';
+import styles from '@/../styles/LogSidePanel.module.scss';
 
 export const CollapsibleSection = ({
   title,

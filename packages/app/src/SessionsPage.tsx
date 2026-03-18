@@ -35,6 +35,7 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import SessionSidePanel from '@/components/side-panels/SessionSidePanel';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
@@ -45,7 +46,6 @@ import SearchWhereInput, {
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
 import { Session, useSessions } from './sessions';
-import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';

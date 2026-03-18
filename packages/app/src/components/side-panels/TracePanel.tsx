@@ -16,18 +16,19 @@ import {
 } from '@mantine/core';
 import { IconPencil } from '@tabler/icons-react';
 
-import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
-import DBInfraPanel from './DBInfraPanel';
-import { RowDataPanel, useRowData } from './DBRowDataPanel';
-import { RowOverviewPanel } from './DBRowOverviewPanel';
-import { SourceSelectControlled } from './SourceSelect';
+import { DBTraceWaterfallChartContainer } from '../DBTraceWaterfallChart';
+import { SourceSelectControlled } from '../SourceSelect';
+import { SQLInlineEditorControlled } from '../SQLEditor/SQLInlineEditor';
+
+import { RowDataPanel, useRowData } from './EventDataPanel';
+import { RowOverviewPanel } from './EventOverviewPanel';
+import InfraPanel from './InfraPanel';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -43,7 +44,7 @@ enum SpanDetailTab {
   Infrastructure = 'infrastructure',
 }
 
-export default function DBTracePanel({
+export default function TracePanel({
   childSourceId,
   traceId,
   dateRange,
@@ -350,7 +351,7 @@ export default function DBTracePanel({
             hasSelectedSpanK8sContext &&
             selectedSpanSource && (
               <Box style={{ overflowY: 'auto' }}>
-                <DBInfraPanel
+                <InfraPanel
                   source={selectedSpanSource}
                   rowData={selectedSpanNormalizedRow}
                   rowId={eventRowWhere.id}

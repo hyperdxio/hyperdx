@@ -108,9 +108,9 @@ import {
   TableSearchInput,
   TableSearchMatchIndicator,
 } from './DBTable/TableSearchInput';
+import { RowSidePanelContext } from './side-panels/EventSidePanel';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
-import { RowSidePanelContext } from './DBRowSidePanel';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,

@@ -16,16 +16,15 @@ import {
 } from '@mantine/core';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
-import { useSource } from '@/source';
-
 import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
-} from '../ChartUtils';
+} from '@/ChartUtils';
+import { useSource } from '@/source';
 
-import { DBTimeChart } from './DBTimeChart';
-import { KubeTimeline } from './KubeComponents';
+import { DBTimeChart } from '../DBTimeChart';
+import { KubeTimeline } from '../KubeComponents';
 
 const InfraSubpanelGroup = ({
   fieldPrefix,

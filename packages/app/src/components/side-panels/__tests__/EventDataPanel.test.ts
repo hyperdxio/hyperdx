@@ -1,6 +1,6 @@
-import { getJSONColumnNames } from '../DBRowDataPanel';
+import { getJSONColumnNames } from '../EventDataPanel';
 
-describe('DBRowDataPanel', () => {
+describe('EventDataPanel', () => {
   describe('getJSONColumnNames', () => {
     it('should return JSON column names', () => {
       const meta = [

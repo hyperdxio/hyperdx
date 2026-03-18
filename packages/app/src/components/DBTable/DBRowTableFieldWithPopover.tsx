@@ -4,7 +4,7 @@ import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
-import { RowSidePanelContext } from '../DBRowSidePanel';
+import { RowSidePanelContext } from '../side-panels/EventSidePanel';
 
 import DBRowTableIconButton from './DBRowTableIconButton';
 

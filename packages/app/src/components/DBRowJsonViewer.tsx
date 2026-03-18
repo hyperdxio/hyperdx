@@ -50,7 +50,7 @@ export function buildJSONExtractQuery(
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
 
-import { RowSidePanelContext } from './DBRowSidePanel';
+import { RowSidePanelContext } from './side-panels/EventSidePanel';
 
 function filterObjectRecursively(obj: any, filter: string): any {
   if (typeof obj !== 'object' || obj === null || filter === '') {

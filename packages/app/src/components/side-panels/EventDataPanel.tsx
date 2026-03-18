@@ -13,7 +13,7 @@ import {
 } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
-import { DBRowJsonViewer } from './DBRowJsonViewer';
+import { DBRowJsonViewer } from '../DBRowJsonViewer';
 
 export enum ROW_DATA_ALIASES {
   TIMESTAMP = '__hdx_timestamp',

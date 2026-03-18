@@ -17,10 +17,11 @@ import {
 } from '@mantine/core';
 import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
 
-import { Session } from './sessions';
-import SessionSubpanel from './SessionSubpanel';
-import { formatDistanceToNowStrictShort } from './utils';
-import { ZIndexContext } from './zIndex';
+import { Session } from '@/sessions';
+import { formatDistanceToNowStrictShort } from '@/utils';
+import { ZIndexContext } from '@/zIndex';
+
+import SessionContentPanel from './SessionContentPanel';
 
 export default function SessionSidePanel({
   traceSource,
@@ -181,7 +182,7 @@ export default function SessionSidePanel({
             </Group>
           </Flex>
           {sessionId != null ? (
-            <SessionSubpanel
+            <SessionContentPanel
               traceSource={traceSource}
               sessionSource={sessionSource}
               session={session}

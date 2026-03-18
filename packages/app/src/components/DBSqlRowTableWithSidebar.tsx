@@ -13,12 +13,12 @@ import TabBar from '@/TabBar';
 import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
-import { RowDataPanel } from './DBRowDataPanel';
-import { RowOverviewPanel } from './DBRowOverviewPanel';
-import DBRowSidePanel, {
+import { RowDataPanel } from './side-panels/EventDataPanel';
+import { RowOverviewPanel } from './side-panels/EventOverviewPanel';
+import EventSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
-} from './DBRowSidePanel';
+} from './side-panels/EventSidePanel';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
@@ -94,7 +94,7 @@ export default function DBSqlRowTableWithSideBar({
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
       {sourceData && (rowSource === sourceId || !rowSource) && (
-        <DBRowSidePanel
+        <EventSidePanel
           source={sourceData}
           rowId={rowId ?? undefined}
           aliasWith={aliasWith}

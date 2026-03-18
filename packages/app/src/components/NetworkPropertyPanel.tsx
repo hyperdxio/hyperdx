@@ -8,13 +8,13 @@ import { notifications } from '@mantine/notifications';
 import { IconTerminal } from '@tabler/icons-react';
 
 import HyperJson from '@/components/HyperJson';
-import { Table } from '@/components/Table';
 import {
   headerColumns,
   networkColumns,
   SectionWrapper,
-} from '@/LogSidePanelElements';
-import { CollapsibleSection } from '@/LogSidePanelElements';
+} from '@/components/side-panels/SidePanelElements';
+import { CollapsibleSection } from '@/components/side-panels/SidePanelElements';
+import { Table } from '@/components/Table';
 import { CurlGenerator } from '@/utils/curlGenerator';
 
 interface NetworkPropertyPanelProps {

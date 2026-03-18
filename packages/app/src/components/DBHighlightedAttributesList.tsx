@@ -2,7 +2,7 @@ import { useContext, useMemo, useState } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Flex } from '@mantine/core';
 
-import { RowSidePanelContext } from './DBRowSidePanel';
+import { RowSidePanelContext } from './side-panels/EventSidePanel';
 import EventTag from './EventTag';
 
 const DEFAULT_ATTRIBUTES_TO_SHOW = 12;

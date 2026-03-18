@@ -7,12 +7,12 @@ import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 
-import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
   SpanRow,
   useEventsAroundFocus,
 } from '../DBTraceWaterfallChart';
+import { RowSidePanelContext } from '../side-panels/EventSidePanel';
 
 // Mock setup
 jest.mock('@/components/TimelineChart', () => {
@@ -26,7 +26,7 @@ jest.mock('@/components/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
-jest.mock('../DBRowDataPanel', () => ({
+jest.mock('../side-panels/EventDataPanel', () => ({
   getJSONColumnNames: jest.fn().mockReturnValue([]),
 }));
 

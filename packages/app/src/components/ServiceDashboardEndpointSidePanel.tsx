@@ -11,9 +11,9 @@ import {
 } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import ServiceDashboardEndpointPerformanceChart from '@/components/ServiceDashboardEndpointPerformanceChart';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
+import { DrawerBody, DrawerHeader } from '@/components/side-panels/DrawerUtils';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { EndpointLatencyChart } from '@/ServicesDashboardPage';
 import { useSource } from '@/source';

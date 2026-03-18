@@ -32,7 +32,6 @@ import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
@@ -40,14 +39,16 @@ import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
-import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
-import ContextSubpanel from './ContextSidePanel';
-import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
-import { ROW_DATA_ALIASES, RowDataPanel, useRowData } from './DBRowDataPanel';
-import { RowOverviewPanel } from './DBRowOverviewPanel';
-import { DBSessionPanel, useSessionId } from './DBSessionPanel';
-import DBTracePanel from './DBTracePanel';
-import LogLevel from './LogLevel';
+import { DBHighlightedAttributesList } from '../DBHighlightedAttributesList';
+import LogLevel from '../LogLevel';
+import ServiceMapSidePanel from '../ServiceMap/ServiceMapSidePanel';
+
+import ContextSubpanel from './ContextPanel';
+import { ROW_DATA_ALIASES, RowDataPanel, useRowData } from './EventDataPanel';
+import { RowOverviewPanel } from './EventOverviewPanel';
+import { SessionReplayPanel, useSessionId } from './SessionReplayPanel';
+import { LogSidePanelKbdShortcuts } from './SidePanelElements';
+import TracePanel from './TracePanel';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -136,7 +137,7 @@ type BreadcrumbItem = {
   onClick?: () => void;
 };
 
-type DBRowSidePanelProps = {
+type EventSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   aliasWith?: WithClause[];
@@ -145,7 +146,7 @@ type DBRowSidePanelProps = {
   initialTab?: `${Tab}`;
 };
 
-const DBRowSidePanel = ({
+const EventSidePanel = ({
   rowId: initialRowId,
   aliasWith: initialAliasWith,
   source,
@@ -153,7 +154,7 @@ const DBRowSidePanel = ({
   onClose,
   breadcrumbs,
   initialTab,
-}: DBRowSidePanelProps & {
+}: EventSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
@@ -628,7 +629,7 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <DBTracePanel
+          <TracePanel
             data-testid="side-panel-tab-trace"
             parentSourceId={source.id}
             parentSource={source}
@@ -712,7 +713,7 @@ const DBRowSidePanel = ({
           )}
         >
           <div className="overflow-hidden flex-grow-1">
-            <DBSessionPanel
+            <SessionReplayPanel
               data-testid="side-panel-tab-replay"
               dateRange={fourHourRange}
               focusDate={focusDate}
@@ -770,7 +771,7 @@ const DBRowSidePanel = ({
               )}
             >
               <Box p="sm" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-                <DBTracePanel
+                <TracePanel
                   parentSourceId={source.id}
                   parentSource={source}
                   childSourceId={childSourceId}
@@ -788,14 +789,14 @@ const DBRowSidePanel = ({
   );
 };
 
-export default function DBRowSidePanelErrorBoundary({
+export default function EventSidePanelErrorBoundary({
   onClose,
   rowId,
   aliasWith,
   source,
   breadcrumbs,
   initialTab,
-}: DBRowSidePanelProps) {
+}: EventSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
@@ -875,7 +876,7 @@ export default function DBRowSidePanelErrorBoundary({
               </Stack>
             )}
           >
-            <DBRowSidePanel
+            <EventSidePanel
               source={source}
               rowId={rowId}
               aliasWith={aliasWith}

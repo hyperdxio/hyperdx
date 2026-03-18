@@ -18,9 +18,10 @@ import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { formatAttributeClause } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
-import { ROW_DATA_ALIASES } from './DBRowDataPanel';
-import { RowSidePanelContext } from './DBRowSidePanel';
-import { DBSqlRowTable } from './DBRowTable';
+import { DBSqlRowTable } from '../DBRowTable';
+
+import { ROW_DATA_ALIASES } from './EventDataPanel';
+import { RowSidePanelContext } from './EventSidePanel';
 
 enum ContextBy {
   All = 'all',

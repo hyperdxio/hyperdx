@@ -28,9 +28,10 @@ import { formatDistanceToNowStrictShort } from '@/utils';
 import {
   DBHighlightedAttributesList,
   HighlightedAttribute,
-} from './DBHighlightedAttributesList';
-import { RowSidePanelContext } from './DBRowSidePanel';
-import LogLevel from './LogLevel';
+} from '../DBHighlightedAttributesList';
+import LogLevel from '../LogLevel';
+
+import { RowSidePanelContext } from './EventSidePanel';
 
 const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
 
@@ -125,7 +126,7 @@ function BreadcrumbNavigation({
   );
 }
 
-export default function DBRowSidePanelHeader({
+export default function EventSidePanelHeader({
   attributes = [],
   mainContent = '',
   mainContentHeader,

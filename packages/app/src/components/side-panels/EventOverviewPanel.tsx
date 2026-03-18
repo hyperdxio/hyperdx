@@ -8,14 +8,15 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
-import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
-import { DBRowJsonViewer } from './DBRowJsonViewer';
-import { RowSidePanelContext } from './DBRowSidePanel';
-import DBRowSidePanelHeader from './DBRowSidePanelHeader';
-import EventTag from './EventTag';
-import { ExceptionSubpanel } from './ExceptionSubpanel';
-import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
-import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { DBRowJsonViewer } from '../DBRowJsonViewer';
+import EventTag from '../EventTag';
+import { ExceptionSubpanel } from '../ExceptionSubpanel';
+import { NetworkPropertySubpanel } from '../NetworkPropertyPanel';
+import { SpanEventsSubpanel } from '../SpanEventsSubpanel';
+
+import { getJSONColumnNames, useRowData } from './EventDataPanel';
+import { RowSidePanelContext } from './EventSidePanel';
+import EventSidePanelHeader from './EventSidePanelHeader';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -186,7 +187,7 @@ export function RowOverviewPanel({
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
         <Box px="sm" pt="md">
-          <DBRowSidePanelHeader
+          <EventSidePanelHeader
             attributes={highlightedAttributeValues}
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             mainContent={mainContent}

@@ -31,18 +31,18 @@ import {
   IconToggleRight,
 } from '@tabler/icons-react';
 
-import DBRowSidePanel from '@/components/DBRowSidePanel';
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import DOMPlayer from '@/DOMPlayer';
+import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import Playbar from '@/Playbar';
+import { SessionEventList } from '@/SessionEventList';
+import { FormatTime } from '@/useFormatTime';
+import { formatmmss, useLocalStorage, usePrevious } from '@/utils';
 
-import SearchWhereInput from './components/SearchInput/SearchWhereInput';
-import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
-import DOMPlayer from './DOMPlayer';
-import Playbar from './Playbar';
-import { SessionEventList } from './SessionEventList';
-import { FormatTime } from './useFormatTime';
-import { formatmmss, useLocalStorage, usePrevious } from './utils';
+import EventSidePanel from './EventSidePanel';
 
-import styles from '../styles/SessionSubpanelV2.module.scss';
+import styles from '@/../styles/SessionSubpanelV2.module.scss';
 
 const MemoPlaybar = memo(Playbar);
 
@@ -228,7 +228,7 @@ function useSessionChartConfigs({
   };
 }
 
-export default function SessionSubpanel({
+export default function SessionContentPanel({
   traceSource,
   sessionSource,
   session,
@@ -246,7 +246,7 @@ export default function SessionSubpanel({
 }: {
   traceSource: TSource;
   sessionSource: TSource;
-  session: { serviceName: string };
+  session: { serviceName: string; userEmail?: string };
   generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl?: (config: {
     aggFn: string;
@@ -463,7 +463,7 @@ export default function SessionSubpanel({
     <div className={styles.wrapper}>
       {rowId != null && traceSource && (
         <Portal>
-          <DBRowSidePanel
+          <EventSidePanel
             source={traceSource}
             rowId={rowId}
             aliasWith={aliasWith}

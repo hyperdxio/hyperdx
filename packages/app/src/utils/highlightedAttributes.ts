@@ -1,7 +1,7 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
-import { getJSONColumnNames } from '@/components/DBRowDataPanel';
+import { getJSONColumnNames } from '@/components/side-panels/EventDataPanel';
 
 export function getSelectExpressionsForHighlightedAttributes(
   expressions: TSource[
