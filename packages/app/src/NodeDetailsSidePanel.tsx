@@ -194,8 +194,6 @@ function NodeLogs({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Node Details' }]}
           config={{
             ...logSource,
             where: _where,

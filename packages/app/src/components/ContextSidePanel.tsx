@@ -15,16 +15,11 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
-import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
-import {
-  BreadcrumbNavigationCallback,
-  BreadcrumbPath,
-} from './DBRowSidePanelHeader';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
@@ -41,8 +36,11 @@ interface ContextSubpanelProps {
   dbSqlRowTableConfig: BuilderChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
-  breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  onNavigateToRow?: (
+    rowId: string,
+    aliasWith: WithClause[],
+    label: string,
+  ) => void;
 }
 
 // Custom hook to manage nested panel state
@@ -77,8 +75,7 @@ export default function ContextSubpanel({
   dbSqlRowTableConfig,
   rowData,
   rowId,
-  breadcrumbPath = [],
-  onBreadcrumbClick,
+  onNavigateToRow,
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const origTimestamp = rowData[ROW_DATA_ALIASES.TIMESTAMP];
@@ -99,36 +96,17 @@ export default function ContextSubpanel({
   const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
-  // State management for nested panels
-  const isNested = breadcrumbPath.length > 0;
-
-  const {
-    contextRowId,
-    contextRowSource,
-    setContextRowId,
-    setContextRowSource,
-  } = useNestedPanelState(isNested);
-
-  const { data: contextRowSidePanelSource } = useSource({
-    id: contextRowSource || '',
-  });
-
-  const [contextAliasWith, setContextAliasWith] = useState<WithClause[]>([]);
-
-  const handleContextSidePanelClose = useCallback(() => {
-    setContextRowId(null);
-    setContextRowSource(null);
-  }, [setContextRowId, setContextRowSource]);
-
   const { setChildModalOpen } = useContext(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
     (rowWhere: RowWhereResult) => {
-      setContextRowId(rowWhere.where);
-      setContextAliasWith(rowWhere.aliasWith);
-      setContextRowSource(source.id);
+      onNavigateToRow?.(
+        rowWhere.where,
+        rowWhere.aliasWith,
+        'Surrounding Context',
+      );
     },
-    [source.id, setContextRowId, setContextRowSource],
+    [onNavigateToRow],
   );
 
   const date = useMemo(() => new Date(origTimestamp), [origTimestamp]);
@@ -316,23 +294,6 @@ export default function ContextSubpanel({
             />
           </div>
         </Flex>
-      )}
-      {contextRowId && contextRowSidePanelSource && (
-        <DBRowSidePanel
-          source={contextRowSidePanelSource}
-          rowId={contextRowId}
-          aliasWith={contextAliasWith}
-          onClose={handleContextSidePanelClose}
-          isNestedPanel={true}
-          breadcrumbPath={[
-            ...breadcrumbPath,
-            {
-              label: `Surrounding Context`,
-              rowData,
-            },
-          ]}
-          onBreadcrumbClick={onBreadcrumbClick}
-        />
       )}
     </>
   );

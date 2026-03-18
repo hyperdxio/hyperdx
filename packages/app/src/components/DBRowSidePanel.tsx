@@ -29,10 +29,6 @@ import {
 } from '@mantine/core';
 import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
 
-import {
-  BreadcrumbNavigationCallback,
-  BreadcrumbPath,
-} from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -129,67 +125,63 @@ function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
   );
 }
 
+type NavEntry = {
+  rowId: string;
+  aliasWith: WithClause[];
+  label: string;
+};
+
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
-  isNestedPanel?: boolean;
-  breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 };
 
 const DBRowSidePanel = ({
-  rowId: rowId,
-  aliasWith,
+  rowId: initialRowId,
+  aliasWith: initialAliasWith,
   source,
-  isNestedPanel = false,
   setSubDrawerOpen,
   onClose,
-  breadcrumbPath = [],
-  onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
+  const [navStack, setNavStack] = useState<NavEntry[]>([]);
+
+  const activeRowId =
+    navStack.length > 0 ? navStack[navStack.length - 1].rowId : initialRowId;
+  const activeAliasWith =
+    navStack.length > 0
+      ? navStack[navStack.length - 1].aliasWith
+      : initialAliasWith;
+
+  const handleNavigateToRow = useCallback(
+    (rowId: string, aliasWith: WithClause[], label: string) => {
+      setNavStack(prev => [...prev, { rowId, aliasWith, label }]);
+    },
+    [],
+  );
+
+  const handleNavigateBack = useCallback(() => {
+    setNavStack(prev => prev.slice(0, -1));
+  }, []);
+
+  const handleBreadcrumbClick = useCallback((targetLevel: number) => {
+    setNavStack(prev => prev.slice(0, targetLevel));
+  }, []);
+
   const {
     data: rowData,
     isLoading: isRowLoading,
     isSuccess: isRowSuccess,
   } = useRowData({
     source,
-    rowId,
-    aliasWith,
+    rowId: activeRowId,
+    aliasWith: activeAliasWith,
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
-
-  const handleBreadcrumbClick = useCallback(
-    (targetLevel: number) => {
-      // Current panel's level in the hierarchy
-      const currentLevel = breadcrumbPath.length;
-
-      // The target panel level corresponds to the breadcrumb index:
-      // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
-      // - targetLevel 1 = first nested panel (breadcrumbPath.length = 1)
-      // - etc.
-
-      // If our current level is greater than the target panel level, close this panel
-      if (currentLevel > targetLevel) {
-        onClose();
-        onBreadcrumbClick?.(targetLevel);
-      }
-      // If our current level equals the target panel level, we're the target - don't close
-      else if (currentLevel === targetLevel) {
-        // This is the panel the user wants to navigate to - do nothing (stay open)
-        return;
-      }
-      // If our current level is less than target, propagate up (this panel should stay open)
-      else {
-        onBreadcrumbClick?.(targetLevel);
-      }
-    },
-    [breadcrumbPath.length, onBreadcrumbClick, onClose],
-  );
 
   const hasOverviewPanel = useMemo(() => {
     if (
@@ -214,13 +206,8 @@ const DBRowSidePanel = ({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
-  const [stateTab, setStateTab] = useState<Tab>(defaultTab);
-  // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
-  // We'll need to handle this properly eventually...
-  const tab = isNestedPanel ? stateTab : queryTab;
-  const setTab = isNestedPanel ? setStateTab : setQueryTab;
-
-  const displayedTab = tab;
+  const displayedTab = queryTab;
+  const setTab = setQueryTab;
 
   const [showTraceView, setShowTraceView] = useState(false);
 
@@ -305,7 +292,7 @@ const DBRowSidePanel = ({
     sourceId: traceSourceId,
     traceId,
     dateRange: oneHourRange,
-    enabled: rowId != null,
+    enabled: activeRowId != null,
   });
 
   const initialRowHighlightHint = useMemo(() => {
@@ -363,152 +350,167 @@ const DBRowSidePanel = ({
 
   return (
     <>
-      {isTraceSource ? (
-        <Box px="sm" pt="sm" pb="xs">
-          <Flex align="center" justify="space-between" gap="sm" mb={8}>
-            <Text
-              size="sm"
-              fw={600}
-              truncate="end"
-              style={{ minWidth: 0, flex: 1 }}
-            >
-              Trace: {mainContent || 'Unknown'}
-            </Text>
-            <SidePanelHeaderActions onClose={onClose} />
-          </Flex>
-          <Group gap="xs" wrap="wrap">
-            {timestampDate && !isNaN(timestampDate.getTime()) && (
-              <Text size="xs" c="dimmed">
-                <FormatTime value={timestampDate} /> ·{' '}
-                {formatDistanceToNowStrictShort(timestampDate)} ago
+      <Box px="sm" pt="sm" pb="xs">
+        <Flex
+          align="center"
+          justify="space-between"
+          gap="sm"
+          mb={navStack.length > 0 ? 4 : 8}
+        >
+          <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+            <Tooltip label="Back" position="bottom">
+              <ActionIcon
+                variant="secondary"
+                size="sm"
+                onClick={navStack.length > 0 ? handleNavigateBack : onClose}
+                aria-label="Back"
+              >
+                <IconArrowLeft size={16} />
+              </ActionIcon>
+            </Tooltip>
+            {isTraceSource ? (
+              <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
+                Trace: {mainContent || 'Unknown'}
               </Text>
-            )}
-            {serviceName && (
+            ) : (
               <>
-                <Text size="xs" c="dimmed">
-                  ·
-                </Text>
-                <Group gap={4}>
+                {severityText && <LogLevel level={severityText} fw={600} />}
+                {severityText && mainContent && (
                   <Text size="xs" c="dimmed">
-                    Service
+                    ·
                   </Text>
-                  <Text size="xs" fw={500}>
-                    {serviceName}
-                  </Text>
-                </Group>
-              </>
-            )}
-            {formattedDuration && (
-              <>
-                <Text size="xs" c="dimmed">
-                  ·
+                )}
+                <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
+                  {mainContent || '[Empty]'}
                 </Text>
-                <Group gap={4}>
-                  <Text size="xs" c="dimmed">
-                    Duration
-                  </Text>
-                  <Text size="xs" fw={500}>
-                    {formattedDuration}
-                  </Text>
-                </Group>
               </>
-            )}
-            {statusCode && (
-              <>
-                <Text size="xs" c="dimmed">
-                  ·
-                </Text>
-                <Group gap={4}>
-                  <Text size="xs" c="dimmed">
-                    Status
-                  </Text>
-                  <Text
-                    size="xs"
-                    fw={500}
-                    c={
-                      statusCode === 'Error'
-                        ? 'red'
-                        : statusCode === 'Ok'
-                          ? 'green'
-                          : undefined
-                    }
-                  >
-                    {statusCode}
-                  </Text>
-                </Group>
-              </>
-            )}
-            {spanKindLabel && (
-              <Badge size="sm" variant="light" radius="sm">
-                {spanKindLabel}
-              </Badge>
             )}
           </Group>
-        </Box>
-      ) : (
-        <Box px="sm" pt="sm" pb="xs">
-          <Flex align="center" justify="space-between" gap="sm" mb={8}>
-            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-              {severityText && <LogLevel level={severityText} fw={600} />}
-              {severityText && mainContent && (
+          <SidePanelHeaderActions onClose={onClose} />
+        </Flex>
+        {navStack.length > 0 && (
+          <Group gap={4} mb={4}>
+            <Text
+              size="xs"
+              c="blue"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setNavStack([])}
+            >
+              Original Event
+            </Text>
+            {navStack.map((entry, i) => (
+              <Group key={i} gap={4}>
                 <Text size="xs" c="dimmed">
-                  ·
+                  ›
                 </Text>
-              )}
-              <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
-                {mainContent || '[Empty]'}
-              </Text>
-            </Group>
-            <SidePanelHeaderActions onClose={onClose} />
-          </Flex>
-          <Group gap="xs" wrap="wrap">
-            {timestampDate && !isNaN(timestampDate.getTime()) && (
+                {i < navStack.length - 1 ? (
+                  <Text
+                    size="xs"
+                    c="blue"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleBreadcrumbClick(i + 1)}
+                  >
+                    {entry.label}
+                  </Text>
+                ) : (
+                  <Text size="xs">{entry.label}</Text>
+                )}
+              </Group>
+            ))}
+          </Group>
+        )}
+        <Group gap="xs" wrap="wrap">
+          {timestampDate && !isNaN(timestampDate.getTime()) && (
+            <Text size="xs" c="dimmed">
+              <FormatTime value={timestampDate} /> ·{' '}
+              {formatDistanceToNowStrictShort(timestampDate)} ago
+            </Text>
+          )}
+          {serviceName && (
+            <>
               <Text size="xs" c="dimmed">
-                <FormatTime value={timestampDate} /> ·{' '}
-                {formatDistanceToNowStrictShort(timestampDate)} ago
+                ·
               </Text>
-            )}
-            {serviceName && (
-              <>
+              <Group gap={4}>
                 <Text size="xs" c="dimmed">
-                  ·
+                  Service
                 </Text>
-                <Group gap={4}>
-                  <Text size="xs" c="dimmed">
-                    Service
-                  </Text>
-                  <Text size="xs" fw={500}>
-                    {serviceName}
-                  </Text>
-                </Group>
-              </>
-            )}
-            {traceId && traceSourceId && (
-              <>
+                <Text size="xs" fw={500}>
+                  {serviceName}
+                </Text>
+              </Group>
+            </>
+          )}
+          {isTraceSource && formattedDuration && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Group gap={4}>
                 <Text size="xs" c="dimmed">
-                  ·
+                  Duration
+                </Text>
+                <Text size="xs" fw={500}>
+                  {formattedDuration}
+                </Text>
+              </Group>
+            </>
+          )}
+          {isTraceSource && statusCode && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Status
                 </Text>
                 <Text
                   size="xs"
-                  c="blue.4"
                   fw={500}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setShowTraceView(true)}
+                  c={
+                    statusCode === 'Error'
+                      ? 'red'
+                      : statusCode === 'Ok'
+                        ? 'green'
+                        : undefined
+                  }
                 >
-                  View Trace →
+                  {statusCode}
                 </Text>
-              </>
-            )}
-          </Group>
-          {highlightedAttributeValues.length > 0 && (
-            <Box mt="xs">
-              <DBHighlightedAttributesList
-                attributes={highlightedAttributeValues}
-              />
-            </Box>
+              </Group>
+            </>
           )}
-        </Box>
-      )}
+          {isTraceSource && spanKindLabel && (
+            <Badge size="sm" variant="light" radius="sm">
+              {spanKindLabel}
+            </Badge>
+          )}
+          {!isTraceSource && traceId && traceSourceId && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Text
+                size="xs"
+                c="blue.4"
+                fw={500}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowTraceView(true)}
+              >
+                View Trace →
+              </Text>
+            </>
+          )}
+        </Group>
+        {!isTraceSource && highlightedAttributeValues.length > 0 && (
+          <Box mt="xs">
+            <DBHighlightedAttributesList
+              attributes={highlightedAttributeValues}
+            />
+          </Box>
+        )}
+      </Box>
       <TabBar
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
@@ -575,8 +577,8 @@ const DBRowSidePanel = ({
           <RowOverviewPanel
             data-testid="side-panel-tab-overview"
             source={source}
-            rowId={rowId}
-            aliasWith={aliasWith}
+            rowId={activeRowId}
+            aliasWith={activeAliasWith}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -640,8 +642,8 @@ const DBRowSidePanel = ({
           <RowDataPanel
             data-testid="side-panel-tab-parsed"
             source={source}
-            rowId={rowId}
-            aliasWith={aliasWith}
+            rowId={activeRowId}
+            aliasWith={activeAliasWith}
           />
         </ErrorBoundary>
       )}
@@ -661,9 +663,8 @@ const DBRowSidePanel = ({
             source={source}
             dbSqlRowTableConfig={dbSqlRowTableConfig}
             rowData={normalizedRow}
-            rowId={rowId}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbClick={handleBreadcrumbClick}
+            rowId={activeRowId}
+            onNavigateToRow={handleNavigateToRow}
           />
         </ErrorBoundary>
       )}
@@ -760,9 +761,6 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
-  isNestedPanel,
-  breadcrumbPath = [],
-  onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -793,12 +791,10 @@ export default function DBRowSidePanelErrorBoundary({
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
   const _onClose = useCallback(() => {
-    if (!isNestedPanel) {
-      setSidePanelTab(null);
-    }
+    setSidePanelTab(null);
     clearTraceWaterfallSearchState();
     onClose();
-  }, [setSidePanelTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
+  }, [setSidePanelTab, onClose, clearTraceWaterfallSearchState]);
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 
@@ -843,10 +839,7 @@ export default function DBRowSidePanelErrorBoundary({
               rowId={rowId}
               aliasWith={aliasWith}
               onClose={_onClose}
-              isNestedPanel={isNestedPanel}
-              breadcrumbPath={breadcrumbPath}
               setSubDrawerOpen={setSubDrawerOpen}
-              onBreadcrumbClick={onBreadcrumbClick}
             />
           </ErrorBoundary>
         </div>

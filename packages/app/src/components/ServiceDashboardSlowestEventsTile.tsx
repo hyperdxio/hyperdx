@@ -107,8 +107,6 @@ export default function SlowestEventsTile({
         expressions && (
           <>
             <DBSqlRowTableWithSideBar
-              isNestedPanel
-              breadcrumbPath={[{ label: 'Endpoint' }]}
               sourceId={source.id}
               config={{
                 source: source.id,

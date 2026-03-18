@@ -181,8 +181,6 @@ function NamespaceLogs({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Namespace Details' }]}
           config={{
             ...logSource,
             where: _where,
