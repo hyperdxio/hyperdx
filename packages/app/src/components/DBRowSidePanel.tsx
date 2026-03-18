@@ -4,6 +4,7 @@ import {
   SetStateAction,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -18,6 +19,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  CopyButton,
   Drawer,
   Flex,
   Group,
@@ -25,9 +27,9 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconArrowLeft } from '@tabler/icons-react';
+import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
 
-import DBRowSidePanelHeader, {
+import {
   BreadcrumbNavigationCallback,
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
@@ -35,18 +37,21 @@ import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
-import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
+import { FormatTime } from '@/useFormatTime';
+import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
+import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 import { ROW_DATA_ALIASES, RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
+import LogLevel from './LogLevel';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -89,6 +94,39 @@ enum Tab {
   ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',
+}
+
+function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
+  return (
+    <Group gap={4} wrap="nowrap">
+      <CopyButton
+        value={typeof window !== 'undefined' ? window.location.href : ''}
+      >
+        {({ copied, copy }) => (
+          <Tooltip label={copied ? 'Copied!' : 'Share link'} position="bottom">
+            <ActionIcon
+              variant="secondary"
+              size="sm"
+              onClick={copy}
+              aria-label="Share"
+            >
+              <IconShare size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </CopyButton>
+      <Tooltip label="Close" position="bottom">
+        <ActionIcon
+          variant="secondary"
+          size="sm"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <IconX size={16} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
 }
 
 type DBRowSidePanelProps = {
@@ -184,6 +222,8 @@ const DBRowSidePanel = ({
 
   const displayedTab = tab;
 
+  const [showTraceView, setShowTraceView] = useState(false);
+
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
 
@@ -195,7 +235,6 @@ const DBRowSidePanel = ({
     timestampDate = new Date(timestampValue);
   }
 
-  const mainContentColumn = getEventBody(source);
   const mainContent = isString(normalizedRow?.['__hdx_body'])
     ? normalizedRow['__hdx_body']
     : normalizedRow?.['__hdx_body'] !== undefined
@@ -326,73 +365,78 @@ const DBRowSidePanel = ({
     <>
       {isTraceSource ? (
         <Box px="sm" pt="sm" pb="xs">
-          <Flex align="center" justify="space-between" mb={8}>
-            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-              <Tooltip label="Close" position="bottom">
-                <ActionIcon
-                  variant="secondary"
-                  size="sm"
-                  onClick={onClose}
-                  aria-label="Back"
-                >
-                  <IconArrowLeft size={16} />
-                </ActionIcon>
-              </Tooltip>
-              <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
-                Trace: {mainContent || 'Unknown'}
-              </Text>
-            </Group>
+          <Flex align="center" justify="space-between" gap="sm" mb={8}>
+            <Text
+              size="sm"
+              fw={600}
+              truncate="end"
+              style={{ minWidth: 0, flex: 1 }}
+            >
+              Trace: {mainContent || 'Unknown'}
+            </Text>
+            <SidePanelHeaderActions onClose={onClose} />
           </Flex>
           <Group gap="xs" wrap="wrap">
-            {serviceName && (
-              <Group gap={4}>
-                <Text size="xs" c="dimmed">
-                  ServiceName
-                </Text>
-                <Text size="xs" fw={500}>
-                  {serviceName}
-                </Text>
-              </Group>
-            )}
-            {serviceName && formattedDuration && (
+            {timestampDate && !isNaN(timestampDate.getTime()) && (
               <Text size="xs" c="dimmed">
-                ·
+                <FormatTime value={timestampDate} /> ·{' '}
+                {formatDistanceToNowStrictShort(timestampDate)} ago
               </Text>
+            )}
+            {serviceName && (
+              <>
+                <Text size="xs" c="dimmed">
+                  ·
+                </Text>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Service
+                  </Text>
+                  <Text size="xs" fw={500}>
+                    {serviceName}
+                  </Text>
+                </Group>
+              </>
             )}
             {formattedDuration && (
-              <Group gap={4}>
+              <>
                 <Text size="xs" c="dimmed">
-                  Duration:
+                  ·
                 </Text>
-                <Text size="xs" fw={500}>
-                  {formattedDuration}
-                </Text>
-              </Group>
-            )}
-            {(serviceName || formattedDuration) && statusCode && (
-              <Text size="xs" c="dimmed">
-                ·
-              </Text>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Duration
+                  </Text>
+                  <Text size="xs" fw={500}>
+                    {formattedDuration}
+                  </Text>
+                </Group>
+              </>
             )}
             {statusCode && (
-              <Group gap={4}>
+              <>
                 <Text size="xs" c="dimmed">
-                  Status:
+                  ·
                 </Text>
-                <Text
-                  size="xs"
-                  fw={500}
-                  c={
-                    statusCode === 'Error'
-                      ? 'red'
-                      : statusCode === 'Ok'
-                        ? 'green'
-                        : undefined
-                  }
-                >
-                  {statusCode}
-                </Text>
-              </Group>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Status
+                  </Text>
+                  <Text
+                    size="xs"
+                    fw={500}
+                    c={
+                      statusCode === 'Error'
+                        ? 'red'
+                        : statusCode === 'Ok'
+                          ? 'green'
+                          : undefined
+                    }
+                  >
+                    {statusCode}
+                  </Text>
+                </Group>
+              </>
             )}
             {spanKindLabel && (
               <Badge size="sm" variant="light" radius="sm">
@@ -402,16 +446,67 @@ const DBRowSidePanel = ({
           </Group>
         </Box>
       ) : (
-        <Box p="sm">
-          <DBRowSidePanelHeader
-            date={timestampDate}
-            attributes={highlightedAttributeValues}
-            mainContent={mainContent}
-            mainContentHeader={mainContentColumn}
-            severityText={severityText}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbClick={handleBreadcrumbClick}
-          />
+        <Box px="sm" pt="sm" pb="xs">
+          <Flex align="center" justify="space-between" gap="sm" mb={8}>
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              {severityText && <LogLevel level={severityText} fw={600} />}
+              {severityText && mainContent && (
+                <Text size="xs" c="dimmed">
+                  ·
+                </Text>
+              )}
+              <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
+                {mainContent || '[Empty]'}
+              </Text>
+            </Group>
+            <SidePanelHeaderActions onClose={onClose} />
+          </Flex>
+          <Group gap="xs" wrap="wrap">
+            {timestampDate && !isNaN(timestampDate.getTime()) && (
+              <Text size="xs" c="dimmed">
+                <FormatTime value={timestampDate} /> ·{' '}
+                {formatDistanceToNowStrictShort(timestampDate)} ago
+              </Text>
+            )}
+            {serviceName && (
+              <>
+                <Text size="xs" c="dimmed">
+                  ·
+                </Text>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Service
+                  </Text>
+                  <Text size="xs" fw={500}>
+                    {serviceName}
+                  </Text>
+                </Group>
+              </>
+            )}
+            {traceId && traceSourceId && (
+              <>
+                <Text size="xs" c="dimmed">
+                  ·
+                </Text>
+                <Text
+                  size="xs"
+                  c="blue.4"
+                  fw={500}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setShowTraceView(true)}
+                >
+                  View Trace →
+                </Text>
+              </>
+            )}
+          </Group>
+          {highlightedAttributeValues.length > 0 && (
+            <Box mt="xs">
+              <DBHighlightedAttributesList
+                attributes={highlightedAttributeValues}
+              />
+            </Box>
+          )}
         </Box>
       )}
       <TabBar
@@ -434,10 +529,14 @@ const DBRowSidePanel = ({
                 },
               ]
             : []),
-          {
-            text: 'Trace',
-            value: Tab.Trace,
-          },
+          ...(isTraceSource
+            ? [
+                {
+                  text: 'Trace',
+                  value: Tab.Trace,
+                },
+              ]
+            : []),
           ...(enableServiceMap
             ? [
                 {
@@ -593,6 +692,65 @@ const DBRowSidePanel = ({
         </ErrorBoundary>
       )}
       <LogSidePanelKbdShortcuts />
+      {!isTraceSource && showTraceView && traceId && (
+        <Drawer
+          opened
+          withCloseButton={false}
+          withOverlay={false}
+          onClose={() => setShowTraceView(false)}
+          position="right"
+          size="100vw"
+          styles={{
+            body: {
+              padding: '0',
+              height: '100%',
+            },
+          }}
+          zIndex={410}
+        >
+          <div className={styles.panel}>
+            <Box px="sm" pt="sm" pb="xs">
+              <Group gap="xs" wrap="nowrap">
+                <Tooltip label="Back to log" position="bottom">
+                  <ActionIcon
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowTraceView(false)}
+                    aria-label="Back to log"
+                  >
+                    <IconArrowLeft size={16} />
+                  </ActionIcon>
+                </Tooltip>
+                <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
+                  Trace: {traceId}
+                </Text>
+              </Group>
+            </Box>
+            <ErrorBoundary
+              onError={err => {
+                console.error(err);
+              }}
+              fallbackRender={() => (
+                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                  An error occurred while rendering the trace.
+                </div>
+              )}
+            >
+              <Box p="sm" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                <DBTracePanel
+                  parentSourceId={source.id}
+                  parentSource={source}
+                  childSourceId={childSourceId}
+                  traceId={traceId}
+                  dateRange={oneHourRange}
+                  focusDate={focusDate}
+                  initialRowHighlightHint={initialRowHighlightHint}
+                />
+              </Box>
+            </ErrorBoundary>
+          </div>
+        </Drawer>
+      )}
     </>
   );
 };
@@ -615,31 +773,32 @@ export default function DBRowSidePanelErrorBoundary({
     : typeof window !== 'undefined'
       ? (600 / window.innerWidth) * 100
       : 35;
-  const { size, startResize } = useResizable(initialWidth);
+  const { size, setSize, startResize } = useResizable(initialWidth);
+
+  // Reset drawer width when source kind changes
+  useEffect(() => {
+    setSize(initialWidth);
+  }, [isTraceSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
   const { isChildModalOpen } = useContext(RowSidePanelContext);
 
-  const [_, setQueryTab] = useQueryState(
-    'tab',
+  const [_sidePanelTab, setSidePanelTab] = useQueryState(
+    'sidePanelTab',
     parseAsStringEnum<Tab>(Object.values(Tab)),
   );
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
   const _onClose = useCallback(() => {
-    // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
-    // (which might not be valid, ex session replay)
     if (!isNestedPanel) {
-      setQueryTab(null);
+      setSidePanelTab(null);
     }
-    // Clear waterfall search state on close, so that filters don't
-    // persist when reopening another trace.
     clearTraceWaterfallSearchState();
     onClose();
-  }, [setQueryTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
+  }, [setSidePanelTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 

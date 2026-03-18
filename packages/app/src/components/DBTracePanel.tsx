@@ -301,9 +301,6 @@ export default function DBTracePanel({
             paddingLeft: 12,
           }}
         >
-          <Text size="sm" mb="xs" fw={600}>
-            Span Details
-          </Text>
           <TabBar
             className="fs-8"
             items={[
