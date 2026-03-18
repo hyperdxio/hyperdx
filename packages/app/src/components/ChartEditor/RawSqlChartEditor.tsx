@@ -105,7 +105,7 @@ export default function RawSqlChartEditor({
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 
-        if (isMetricSource(source)) {
+        if (!isMetricSource(source)) {
           tables.push(tcFromSource(source));
         }
 
