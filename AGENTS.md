@@ -152,6 +152,27 @@ skip hooks. If the pre-commit hook fails (e.g. due to husky not being set up in
 a worktree), run `npx lint-staged` manually before committing to ensure lint and
 formatting checks pass. Fix any issues before creating the commit.
 
+## Merge Conflict Resolution
+
+1. **Never blindly pick a side.** Read both sides of every conflict to
+   understand the intent of each change before choosing a resolution.
+
+2. **Refactor/move conflicts require extra verification.** When one side
+   refactored, moved, or extracted code (e.g., inline components to separate
+   files), always diff the discarded side against the destination files before
+   declaring the conflict resolved. Code can diverge after extraction — the
+   other branch may have made fixes or additions that the extracting branch
+   never picked up. A naive "keep ours" resolution silently drops those changes.
+
+3. **Verify the result compiles.** After resolving, check for missing imports,
+   broken references, or type errors introduced by the resolution — especially
+   when discarding a side that added new dependencies or exports.
+
+4. **Ask for help when uncertain.** If you are not 100% confident about which
+   side to keep, or whether a change can be safely discarded, stop and ask for
+   manual intervention rather than guessing. A wrong guess silently breaks
+   things; asking is always cheaper than debugging later.
+
 ---
 
 _Need more details? Check the `agent_docs/` directory or ask which documentation
