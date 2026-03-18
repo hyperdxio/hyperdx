@@ -77,6 +77,7 @@ export function convertFormStateToSavedChartConfig(
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
+      source: form.source || undefined,
     };
     return rawSqlConfig;
   }
@@ -119,6 +120,7 @@ export function convertFormStateToChartConfig(
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
+      source: form.source || undefined,
     };
 
     return { ...rawSqlConfig, dateRange };

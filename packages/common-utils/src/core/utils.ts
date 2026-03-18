@@ -487,6 +487,10 @@ export function convertToDashboardTemplate(
           name: '',
         }
       ).name;
+      if (tileConfig.source) {
+        tileConfig.source =
+          sources.find(source => source.id === tileConfig.source)?.name ?? '';
+      }
     }
     return tile;
   };

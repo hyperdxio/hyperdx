@@ -815,6 +815,83 @@ describe('utils', () => {
       });
     });
 
+    it('should convert source IDs to names for RawSQL tiles with a source', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile With Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+              source: 'source1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'SQL Tile Without Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn1',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          kind: SourceKind.Log,
+          name: 'My Logs',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+          connection: 'conn1',
+        },
+      ];
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(
+        dashboard,
+        sources,
+        connections,
+      );
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+        source: 'My Logs',
+      });
+      // Tile without source should not have source set
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(
+        (template.tiles[1].config as { source?: string }).source,
+      ).toBeUndefined();
+    });
+
     it('should fall back to empty string for unknown connection IDs in RawSQL tiles', () => {
       const dashboard: z.infer<typeof DashboardSchema> = {
         id: 'dashboard1',

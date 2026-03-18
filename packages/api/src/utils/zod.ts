@@ -211,6 +211,7 @@ const externalDashboardRawSqlChartConfigBaseSchema = z.object({
   configType: z.literal('sql'),
   connectionId: objectIdSchema,
   sqlTemplate: z.string().max(100000),
+  sourceId: objectIdSchema.optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
 
