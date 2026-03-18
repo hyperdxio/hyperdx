@@ -1155,7 +1155,7 @@ export const AlertsPageItemSchema = z.object({
   scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional() }),
+  channel: z.object({ type: z.string().optional().nullable() }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
