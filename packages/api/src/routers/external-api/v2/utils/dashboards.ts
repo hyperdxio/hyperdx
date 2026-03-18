@@ -102,6 +102,7 @@ const convertToExternalTileChartConfig = (
           displayType: DisplayType.Line,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           numberFormat: config.numberFormat,
@@ -113,6 +114,7 @@ const convertToExternalTileChartConfig = (
           displayType: config.displayType,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           numberFormat: config.numberFormat,
@@ -123,6 +125,7 @@ const convertToExternalTileChartConfig = (
           displayType: DisplayType.Table,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
           numberFormat: config.numberFormat,
         };
       case DisplayType.Number:
@@ -131,6 +134,7 @@ const convertToExternalTileChartConfig = (
           displayType: DisplayType.Number,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
           numberFormat: config.numberFormat,
         };
       case DisplayType.Pie:
@@ -139,6 +143,7 @@ const convertToExternalTileChartConfig = (
           displayType: DisplayType.Pie,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
           numberFormat: config.numberFormat,
         };
       case DisplayType.Search:
@@ -342,6 +347,7 @@ export function convertToInternalTileConfig(
           name,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
+          source: externalConfig.sourceId,
         } satisfies RawSqlSavedChartConfig;
         break;
       case 'table':
@@ -358,6 +364,7 @@ export function convertToInternalTileConfig(
           name,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
+          source: externalConfig.sourceId,
           numberFormat: externalConfig.numberFormat,
         } satisfies RawSqlSavedChartConfig;
         break;

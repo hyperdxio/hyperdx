@@ -1389,6 +1389,11 @@
             "description": "SQL query template to execute. Supports HyperDX template variables.",
             "example": "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
           },
+          "sourceId": {
+            "type": "string",
+            "description": "Optional ID of the data source associated with this Raw SQL chart. Used for applying dashboard filters.",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."

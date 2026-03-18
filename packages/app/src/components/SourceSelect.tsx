@@ -47,6 +47,7 @@ function SourceSelectControlledComponent({
   size,
   onCreate,
   allowedSourceKinds,
+  connectionId,
   comboboxProps,
   sourceSchemaPreview,
   ...props
@@ -54,6 +55,7 @@ function SourceSelectControlledComponent({
   size?: string;
   onCreate?: () => void;
   allowedSourceKinds?: SourceKind[];
+  connectionId?: string;
   sourceSchemaPreview?: React.ReactNode;
 } & UseControllerProps<any> &
   SelectProps) {
@@ -66,7 +68,9 @@ function SourceSelectControlledComponent({
         data
           ?.filter(
             source =>
-              !allowedSourceKinds || allowedSourceKinds.includes(source.kind),
+              (!allowedSourceKinds ||
+                allowedSourceKinds.includes(source.kind)) &&
+              (!connectionId || source.connection === connectionId),
           )
           .map(d => ({
             value: d.id,
@@ -82,7 +86,7 @@ function SourceSelectControlledComponent({
           ]
         : []),
     ],
-    [data, onCreate, allowedSourceKinds, hasLocalDefaultSources],
+    [data, onCreate, allowedSourceKinds, connectionId, hasLocalDefaultSources],
   );
 
   const rightSectionProps = SourceSelectRightSection({ sourceSchemaPreview });
@@ -91,7 +95,6 @@ function SourceSelectControlledComponent({
     <SelectControlled
       {...props}
       data={values}
-      // disabled={isDatabasesLoading}
       comboboxProps={{ withinPortal: false, ...comboboxProps }}
       searchable
       placeholder="Data Source"
