@@ -87,7 +87,6 @@ enum Tab {
   Overview = 'overview',
   Parsed = 'parsed',
   Debug = 'debug',
-  Trace = 'trace',
   ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',
@@ -206,8 +205,7 @@ const EventSidePanel = ({
   const isTraceSource = source.kind === 'trace';
 
   const defaultTab =
-    (initialTab as Tab) ??
-    (isTraceSource ? Tab.Trace : hasOverviewPanel ? Tab.Overview : Tab.Parsed);
+    (initialTab as Tab) ?? (hasOverviewPanel ? Tab.Overview : Tab.Parsed);
 
   const [queryTab, setQueryTab] = useQueryState(
     'sidePanelTab',
@@ -521,7 +519,7 @@ const EventSidePanel = ({
               {spanKindLabel}
             </Badge>
           )}
-          {!isTraceSource && traceId && traceSourceId && (
+          {traceId && traceSourceId && (
             <>
               <Text size="xs" c="dimmed">
                 ·
@@ -566,14 +564,6 @@ const EventSidePanel = ({
                 },
               ]
             : []),
-          ...(isTraceSource
-            ? [
-                {
-                  text: 'Trace',
-                  value: Tab.Trace,
-                },
-              ]
-            : []),
           ...(enableServiceMap
             ? [
                 {
@@ -615,29 +605,6 @@ const EventSidePanel = ({
             rowId={activeRowId}
             aliasWith={activeAliasWith}
             hideHeader={true}
-          />
-        </ErrorBoundary>
-      )}
-      {displayedTab === Tab.Trace && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <TracePanel
-            data-testid="side-panel-tab-trace"
-            parentSourceId={source.id}
-            parentSource={source}
-            childSourceId={childSourceId}
-            traceId={traceId}
-            dateRange={oneHourRange}
-            focusDate={focusDate}
-            initialRowHighlightHint={initialRowHighlightHint}
           />
         </ErrorBoundary>
       )}
@@ -726,7 +693,7 @@ const EventSidePanel = ({
         </ErrorBoundary>
       )}
       <LogSidePanelKbdShortcuts />
-      {!isTraceSource && showTraceView && traceId && (
+      {showTraceView && traceId && (
         <Drawer
           opened
           withCloseButton={false}
@@ -745,12 +712,12 @@ const EventSidePanel = ({
           <div className={styles.panel}>
             <Box px="sm" pt="sm" pb="xs">
               <Group gap="xs" wrap="nowrap">
-                <Tooltip label="Back to log" position="bottom">
+                <Tooltip label="Back" position="bottom">
                   <ActionIcon
                     variant="secondary"
                     size="sm"
                     onClick={() => setShowTraceView(false)}
-                    aria-label="Back to log"
+                    aria-label="Back"
                   >
                     <IconArrowLeft size={16} />
                   </ActionIcon>
