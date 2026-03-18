@@ -45,22 +45,45 @@ yarn dev
 - **Mocking**: MSW for API mocking in frontend tests
 - **Database testing**: Isolated test databases with fixtures
 
-### CI Testing
+### CI / Integration Testing
 
-For integration testing in CI environments:
+For integration testing:
 
 ```bash
-# Start CI testing stack (ClickHouse, MongoDB, etc.)
-docker compose -p int -f ./docker-compose.ci.yml up -d
+# Build dependencies (run once before first test run)
+make dev-int-build
 
-# Run integration tests
-yarn dev:int
+# Run API integration tests (spins up Docker services, runs tests, tears down)
+make dev-int FILE=<TEST_FILE_NAME>
+
+# Run common-utils integration tests
+make dev-int-common-utils FILE=<TEST_FILE_NAME>
 ```
+
+**Multi-agent / worktree support:**
+
+The `make dev-int` command automatically assigns unique Docker ports per
+worktree directory, so multiple agents can run integration tests in parallel
+without port conflicts.
+
+- A deterministic slot (0-99) is computed from the worktree directory name
+- Each slot gets its own Docker Compose project name and port range
+- Override the slot manually: `make dev-int HDX_CI_SLOT=5 FILE=alerts`
+- The slot and assigned ports are printed when `dev-int` starts
+
+Port mapping (base + slot):
+
+| Service         | Default port (slot 0) | Variable          |
+| --------------- | --------------------- | ----------------- |
+| ClickHouse HTTP | 18123                 | HDX_CI_CH_PORT    |
+| MongoDB         | 39999                 | HDX_CI_MONGO_PORT |
+| API test server | 19000                 | HDX_CI_API_PORT   |
+| OpAMP           | 14320                 | HDX_CI_OPAMP_PORT |
 
 **CI Testing Notes:**
 
-- Uses separate Docker Compose configuration optimized for CI
-- Isolated test environment with `-p int` project name
+- Uses separate Docker Compose configuration (`docker-compose.ci.yml`)
+- Isolated test environment with unique `-p int-<slot>` project name
 - Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
 - Tests run against real database instances for accurate integration testing
 

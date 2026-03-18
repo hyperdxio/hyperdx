@@ -2,6 +2,7 @@ import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
+  makeRawSqlTile,
   makeTile,
   randomMongoId,
 } from '@/fixtures';
@@ -547,5 +548,63 @@ describe('alerts router', () => {
     const fakeId = randomMongoId();
 
     await agent.delete(`/alerts/${fakeId}/silenced`).expect(404); // Should fail
+  });
+
+  it('rejects creating an alert on a raw SQL tile', async () => {
+    const rawSqlTile = makeRawSqlTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(400);
+  });
+
+  it('rejects updating an alert to reference a raw SQL tile', async () => {
+    const regularTile = makeTile();
+    const rawSqlTile = makeRawSqlTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [regularTile, rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: regularTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      })
+      .expect(400);
   });
 });

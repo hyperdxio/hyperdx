@@ -10,6 +10,7 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
+  Filter,
   scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
@@ -37,6 +38,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
@@ -53,7 +55,6 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
 import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
@@ -75,6 +76,7 @@ const AlertForm = ({
   sourceId,
   where,
   whereLanguage,
+  filters,
   select,
   defaultValues,
   loading,
@@ -87,6 +89,7 @@ const AlertForm = ({
   sourceId?: string | null;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  filters?: Filter[] | null;
   select?: string | null;
   defaultValues?: null | AlertWithCreatedBy;
   loading?: boolean;
@@ -247,6 +250,7 @@ const AlertForm = ({
                 source={source}
                 where={where}
                 whereLanguage={whereLanguage}
+                filters={filters}
                 select={select}
                 interval={interval}
                 groupBy={groupByValue}
@@ -490,6 +494,7 @@ export const DBSearchPageAlertModal = ({
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
+          filters={searchedConfig?.filters}
           select={searchedConfig?.select}
           defaultValues={
             activeIndex === 'stage'

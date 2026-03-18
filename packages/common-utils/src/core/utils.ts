@@ -22,7 +22,7 @@ import {
   TSourceUnion,
 } from '@/types';
 
-import { SkipIndexMetadata } from './metadata';
+import { SkipIndexMetadata, TableMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
@@ -487,6 +487,10 @@ export function convertToDashboardTemplate(
           name: '',
         }
       ).name;
+      if (tileConfig.source) {
+        tileConfig.source =
+          sources.find(source => source.id === tileConfig.source)?.name ?? '';
+      }
     }
     return tile;
   };
@@ -511,6 +515,10 @@ export function convertToDashboardTemplate(
     for (const filter of input.filters ?? []) {
       output.filters.push(convertToFilterTemplate(filter, sources));
     }
+  }
+
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
   }
 
   return output;
@@ -546,6 +554,10 @@ export function convertToDashboardDocument(
     for (const filter of input.filters) {
       output.filters.push(convertToFilterDocument(filter));
     }
+  }
+
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
   }
 
   return output;
@@ -972,4 +984,25 @@ export function aliasMapToWithClauses(
     }));
 
   return withClauses.length > 0 ? withClauses : undefined;
+}
+
+/** Parses and returns the local table and database name from the given distributed table metadata */
+export function getLocalTableFromDistributedTable(
+  tableMetadata: TableMetadata,
+): { database: string; table: string } | undefined {
+  const args = tableMetadata.engine_full.match(/Distributed\((.+)\)$/)?.[1];
+  const splitArgs = splitAndTrimWithBracket(args ?? '');
+
+  if (splitArgs.length < 3) {
+    console.error(
+      `Failed to parse engine_full for Distributed table: ${tableMetadata.engine_full}`,
+    );
+    return undefined;
+  }
+
+  // Remove surrounding quotes
+  const localDatabase = splitArgs[1].replace(/^["'`]|["'`]$/g, '');
+  const localTable = splitArgs[2].replace(/^["'`]|["'`]$/g, '');
+
+  return { database: localDatabase, table: localTable };
 }

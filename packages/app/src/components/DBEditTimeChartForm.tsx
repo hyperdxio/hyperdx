@@ -3,6 +3,7 @@ import {
   Control,
   Controller,
   FieldErrors,
+  Path,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -41,6 +42,7 @@ import {
   Divider,
   Flex,
   Group,
+  List,
   Menu,
   Paper,
   SegmentedControl,
@@ -51,6 +53,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -67,6 +70,7 @@ import {
   IconPlayerPlay,
   IconTable,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -86,7 +90,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
@@ -124,9 +128,8 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
-  getSeriesFieldPath,
   isRawSqlDisplayType,
-  validateMetricNames,
+  validateChartForm,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
@@ -188,17 +191,17 @@ function ChartSeriesEditorComponent({
   errors,
   clearErrors,
 }: {
-  control: Control<any>;
+  control: Control<ChartEditorFormState>;
   databaseName: string;
   dateRange?: DateRange['dateRange'];
   connectionId?: string;
   index: number;
-  namePrefix: string;
+  namePrefix: `series.${number}.`;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
-  setValue: UseFormSetValue<any>;
+  setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
   tableName: string;
@@ -375,9 +378,7 @@ function ChartSeriesEditorComponent({
               metricSource={tableSource}
               data-testid="metric-name-selector"
               error={errors?.metricName?.message}
-              onFocus={() =>
-                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
-              }
+              onFocus={() => clearErrors(`${namePrefix}metricName`)}
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -481,7 +482,7 @@ function ChartSeriesEditorComponent({
           </div>
         )}
       </Flex>
-      {tableSource?.kind === SourceKind.Metric && metricName && (
+      {tableSource?.kind === SourceKind.Metric && metricName && metricType && (
         <MetricAttributeHelperPanel
           databaseName={databaseName}
           metricType={metricType}
@@ -499,6 +500,23 @@ function ChartSeriesEditorComponent({
   );
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
+
+export const ErrorNotificationMessage = ({
+  errors,
+}: {
+  errors: { path: Path<ChartEditorFormState>; message: string }[];
+}) => {
+  return (
+    <List
+      size="sm"
+      icon={<IconX size={14} style={{ verticalAlign: 'middle' }} />}
+    >
+      {errors.map(({ message }, index) => (
+        <List.Item key={index}>{message}</List.Item>
+      ))}
+    </List>
+  );
+};
 
 const zSavedChartConfig = z
   .object({
@@ -524,6 +542,7 @@ export default function EditTimeChartForm({
   onDirtyChange,
   'data-testid': dataTestId,
   submitRef,
+  isDashboardForm = false,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -539,6 +558,7 @@ export default function EditTimeChartForm({
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
+  isDashboardForm?: boolean;
 }) {
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
@@ -713,64 +733,71 @@ export default function EditTimeChartForm({
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
 
-  const onSubmit = useCallback(() => {
-    handleSubmit(form => {
-      const isRawSqlChart =
-        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+  const onSubmit = useCallback(
+    (suppressErrorNotification: boolean = false) => {
+      handleSubmit(form => {
+        const isRawSqlChart =
+          form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
+        const errors = validateChartForm(form, tableSource, setError);
+        if (errors.length > 0) {
+          if (!suppressErrorNotification) {
+            notifications.show({
+              id: 'chart-error',
+              title: 'Invalid Chart',
+              message: <ErrorNotificationMessage errors={errors} />,
+              color: 'red',
+            });
+          }
+          return;
+        }
+
+        const savedConfig = convertFormStateToSavedChartConfig(
+          form,
           tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
-        return;
-      }
-
-      const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
-      const queriedConfig = convertFormStateToChartConfig(
-        form,
-        dateRange,
-        tableSource,
-      );
-
-      if (savedConfig && queriedConfig) {
-        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
-          ? savedConfig
-          : {
-              ...savedConfig,
-              alert: normalizeNoOpAlertScheduleFields(
-                savedConfig.alert,
-                chartConfigAlert,
-                {
-                  preserveExplicitScheduleOffsetMinutes:
-                    dirtyFields.alert?.scheduleOffsetMinutes === true,
-                  preserveExplicitScheduleStartAt:
-                    dirtyFields.alert?.scheduleStartAt === true,
-                },
-              ),
-            };
-        setChartConfig?.(normalizedSavedConfig);
-        setQueriedConfigAndSource(
-          queriedConfig,
-          isRawSqlChart ? undefined : tableSource,
         );
-      }
-    })();
-  }, [
-    chartConfigAlert,
-    dirtyFields.alert?.scheduleOffsetMinutes,
-    dirtyFields.alert?.scheduleStartAt,
-    handleSubmit,
-    setChartConfig,
-    setQueriedConfigAndSource,
-    tableSource,
-    dateRange,
-    setError,
-  ]);
+        const queriedConfig = convertFormStateToChartConfig(
+          form,
+          dateRange,
+          tableSource,
+        );
+
+        if (savedConfig && queriedConfig) {
+          const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
+            ? savedConfig
+            : {
+                ...savedConfig,
+                alert: normalizeNoOpAlertScheduleFields(
+                  savedConfig.alert,
+                  chartConfigAlert,
+                  {
+                    preserveExplicitScheduleOffsetMinutes:
+                      dirtyFields.alert?.scheduleOffsetMinutes === true,
+                    preserveExplicitScheduleStartAt:
+                      dirtyFields.alert?.scheduleStartAt === true,
+                  },
+                ),
+              };
+          setChartConfig?.(normalizedSavedConfig);
+          setQueriedConfigAndSource(
+            queriedConfig,
+            isRawSqlChart ? undefined : tableSource,
+          );
+        }
+      })();
+    },
+    [
+      chartConfigAlert,
+      dirtyFields.alert?.scheduleOffsetMinutes,
+      dirtyFields.alert?.scheduleStartAt,
+      handleSubmit,
+      setChartConfig,
+      setQueriedConfigAndSource,
+      tableSource,
+      dateRange,
+      setError,
+    ],
+  );
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -799,19 +826,14 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (form: ChartEditorFormState) => {
-      const isRawSqlChart =
-        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
-
-      // Validate metric sources have metric names selected
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
-          tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
+      const errors = validateChartForm(form, tableSource, setError);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
         return;
       }
 
@@ -892,7 +914,8 @@ export default function EditTimeChartForm({
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
       if (displayTypeChanged) {
-        onSubmit();
+        // true = Suppress error notification (because we're auto-submitting)
+        onSubmit(true);
       }
     }
   }, [displayType, select, setValue, onSubmit, configType]);
@@ -1143,6 +1166,7 @@ export default function EditTimeChartForm({
             control={control}
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
+            isDashboardForm={isDashboardForm}
           />
         ) : (
           <>
@@ -1500,7 +1524,7 @@ export default function EditTimeChartForm({
                 data-testid="chart-run-query-button"
                 variant="primary"
                 type="submit"
-                onClick={onSubmit}
+                onClick={() => onSubmit()}
                 leftSection={<IconPlayerPlay size={16} />}
                 style={{ flexShrink: 0 }}
               >
@@ -1571,38 +1595,29 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            errorVariant="inline"
             showMVOptimizationIndicator={false}
           />
         </div>
       )}
-      {queryReady &&
-        queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'pie' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBPieChart
-              config={queriedConfig}
-              showMVOptimizationIndicator={false}
-            />
-          </div>
-        )}
-      {queryReady &&
-        queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'number' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBNumberChart
-              config={queriedConfig}
-              showMVOptimizationIndicator={false}
-            />
-          </div>
-        )}
+      {queryReady && queriedConfig != null && activeTab === 'pie' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBPieChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
+      {queryReady && queriedConfig != null && activeTab === 'number' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
@@ -1731,7 +1746,7 @@ function seriesToFilters(select: SelectList): Filter[] {
         return null;
       }
     })
-    .filter(Boolean) as Filter[];
+    .filter(f => f != null);
 
   return filters;
 }

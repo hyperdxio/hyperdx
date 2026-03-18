@@ -1,5 +1,32 @@
 # @hyperdx/api
 
+## 2.21.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- daab2cac: support saved query/filter values in external api
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- c5173ba2: fix: tile alerts with groupBy now correctly track and display group names
+- cabe4d8e: fix: add whereLanguage to tile alerts
+- 260c4299: feat: Improve validation of external alert API input
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+- Updated dependencies [1bae972e]
+- Updated dependencies [fd9f290e]
+- Updated dependencies [dda0f9a4]
+- Updated dependencies [32f1189a]
+- Updated dependencies [3bc5abbf]
+- Updated dependencies [1e6fcf1c]
+- Updated dependencies [902b8ebd]
+- Updated dependencies [a13b60d0]
+  - @hyperdx/common-utils@0.16.0
+
 ## 2.20.0
 
 ### Minor Changes

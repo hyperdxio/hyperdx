@@ -1,5 +1,5 @@
 import { omit, pick } from 'lodash';
-import { FieldPath } from 'react-hook-form';
+import { Path, UseFormSetError } from 'react-hook-form';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -17,7 +17,7 @@ import {
 
 import { getStoredLanguage } from '../SearchInput';
 
-import { ChartEditorFormState, SavedChartConfigWithSelectArray } from './types';
+import { ChartEditorFormState } from './types';
 
 function normalizeChartConfig<
   C extends Pick<
@@ -47,10 +47,14 @@ export const isRawSqlDisplayType = (
 ): displayType is
   | DisplayType.Table
   | DisplayType.Line
-  | DisplayType.StackedBar =>
+  | DisplayType.StackedBar
+  | DisplayType.Pie
+  | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar;
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Pie ||
+  displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -70,6 +74,7 @@ export function convertFormStateToSavedChartConfig(
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
+      source: form.source || undefined,
     };
     return rawSqlConfig;
   }
@@ -112,6 +117,7 @@ export function convertFormStateToChartConfig(
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
+      source: form.source || undefined,
     };
 
     return { ...rawSqlConfig, dateRange };
@@ -158,41 +164,91 @@ export function convertSavedChartConfigToFormState(
   };
 }
 
-// Helper function to safely construct field paths for series
-export const getSeriesFieldPath = (
-  namePrefix: string,
-  fieldName: string,
-): FieldPath<ChartEditorFormState> => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
-};
+export const validateChartForm = (
+  form: ChartEditorFormState,
+  source: TSource | undefined,
+  setError: UseFormSetError<ChartEditorFormState>,
+) => {
+  const errors: { path: Path<ChartEditorFormState>; message: string }[] = [];
 
-// Helper function to validate metric names for metric sources
-export const validateMetricNames = (
-  tableSource: TSource | undefined,
-  series: SavedChartConfigWithSelectArray['select'] | undefined,
-  displayType: DisplayType | undefined,
-  setError: (
-    name: FieldPath<ChartEditorFormState>,
-    error: { type: string; message: string },
-  ) => void,
-): boolean => {
+  const isRawSqlChart =
+    form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+
+  // Validate connection is selected for raw SQL charts
+  if (isRawSqlChart && !form.connection) {
+    errors.push({ path: `connection`, message: 'Connection is required' });
+  }
+
+  // Validate SQL is provided for raw SQL charts
+  if (isRawSqlChart && !form.sqlTemplate) {
+    errors.push({ path: `sqlTemplate`, message: 'SQL query is required' });
+  }
+
+  // Validate source is selected for builder charts
   if (
-    tableSource?.kind === SourceKind.Metric &&
-    Array.isArray(series) &&
-    displayType !== DisplayType.Markdown
+    !isRawSqlChart &&
+    form.displayType !== DisplayType.Markdown &&
+    !form.source
   ) {
-    let hasValidationError = false;
-    series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
-          type: 'manual',
-          message: 'Please select a metric name',
+    errors.push({ path: `source`, message: 'Source is required' });
+  }
+
+  // Validate that valueExpressions are specified for each series
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    form.displayType !== DisplayType.Markdown &&
+    form.displayType !== DisplayType.Search
+  ) {
+    form.series.forEach((s, index) => {
+      if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
+        errors.push({
+          path: `series.${index}.valueExpression`,
+          message: `Expression is required for series ${index + 1}`,
         });
-        hasValidationError = true;
       }
     });
-    return hasValidationError;
   }
-  return false;
+
+  // Validate metric names for metric sources
+  if (
+    source?.kind === SourceKind.Metric &&
+    Array.isArray(form.series) &&
+    form.displayType !== DisplayType.Markdown &&
+    form.displayType !== DisplayType.Search &&
+    !isRawSqlChart
+  ) {
+    form.series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        errors.push({
+          path: `series.${index}.metricName`,
+          message: `Metric is required`,
+        });
+      }
+    });
+  }
+
+  // Validate number and pie charts only have one series
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    (form.displayType === DisplayType.Number ||
+      form.displayType === DisplayType.Pie) &&
+    form.series.length > 1
+  ) {
+    errors.push({
+      path: `series`,
+      message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  for (const error of errors) {
+    console.warn(`Validation error in field ${error.path}: ${error.message}`);
+    setError(error.path, {
+      type: 'manual',
+      message: error.message,
+    });
+  }
+
+  return errors;
 };

@@ -19,49 +19,50 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/anthropic@npm:^2.0.23":
-  version: 2.0.23
-  resolution: "@ai-sdk/anthropic@npm:2.0.23"
+"@ai-sdk/anthropic@npm:^3.0.58":
+  version: 3.0.60
+  resolution: "@ai-sdk/anthropic@npm:3.0.60"
   dependencies:
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@ai-sdk/provider-utils": "npm:3.0.10"
+    "@ai-sdk/provider": "npm:3.0.8"
+    "@ai-sdk/provider-utils": "npm:4.0.20"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/0ed2d5ec272fb3b2eebd62a76aebbadbbda04da9fd62d08d8ff83d56fd8291a45beb2551817796beb711f7f7c8d6752f7ca8a4beef95268ec82a4c49f815c866
+  checksum: 10c0/127ccf2f4b8a8bb54ef3d448317190680e90d9f27747b96c23c5e87a5959698a877b0cbf3611c258e79036d1f867fe82687c256a1bd312714ed29e85d2230999
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:1.0.32":
-  version: 1.0.32
-  resolution: "@ai-sdk/gateway@npm:1.0.32"
+"@ai-sdk/gateway@npm:3.0.73":
+  version: 3.0.73
+  resolution: "@ai-sdk/gateway@npm:3.0.73"
   dependencies:
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@ai-sdk/provider-utils": "npm:3.0.10"
+    "@ai-sdk/provider": "npm:3.0.8"
+    "@ai-sdk/provider-utils": "npm:4.0.20"
+    "@vercel/oidc": "npm:3.1.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/82c98db6e4e8e235e1ff66410318ebe77cc1518ebf06d8d4757b4f30aaa3bf7075d3028816438551fef2f89e2d4c8c26e4efcd9913a06717aee1308dad3ddc30
+  checksum: 10c0/4b7f38dc8860863a1336068b6379111c1ede122f794e11f2ac18cdf47674cf4640ff454c2dbe5d006fe743db297435f79079abf2b871e24a2613483abea5b1f1
   languageName: node
   linkType: hard
 
-"@ai-sdk/provider-utils@npm:3.0.10":
-  version: 3.0.10
-  resolution: "@ai-sdk/provider-utils@npm:3.0.10"
+"@ai-sdk/provider-utils@npm:4.0.20":
+  version: 4.0.20
+  resolution: "@ai-sdk/provider-utils@npm:4.0.20"
   dependencies:
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@standard-schema/spec": "npm:^1.0.0"
-    eventsource-parser: "npm:^3.0.5"
+    "@ai-sdk/provider": "npm:3.0.8"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.6"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/d2c16abdb84ba4ef48c9f56190b5ffde224b9e6ae5147c5c713d2623627732d34b96aa9aef2a2ea4b0c49e1b863cc963c7d7ff964a1dc95f0f036097aaaaaa98
+  checksum: 10c0/749d9f91b2b098f716246bbb92a801d0f8a952fed4481e48b7d36a1c026cfe96b9d956f34b95270bc4628048ad57edd7b19026c167e8ded288e741aa289d4cdd
   languageName: node
   linkType: hard
 
-"@ai-sdk/provider@npm:2.0.0":
-  version: 2.0.0
-  resolution: "@ai-sdk/provider@npm:2.0.0"
+"@ai-sdk/provider@npm:3.0.8":
+  version: 3.0.8
+  resolution: "@ai-sdk/provider@npm:3.0.8"
   dependencies:
     json-schema: "npm:^0.4.0"
-  checksum: 10c0/e50e520016c9fc0a8b5009cadd47dae2f1c81ec05c1792b9e312d7d15479f024ca8039525813a33425c884e3449019fed21043b1bfabd6a2626152ca9a388199
+  checksum: 10c0/c68637c0139a6ce8af17bac1d7d539f531860026237c5c971dcecda2daa8b1e42d8c05e1e664ece60c15edb325c0253fd5b091ee54d32f870a750a493acbb0b7
   languageName: node
   linkType: hard
 
@@ -4225,9 +4226,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
-    "@ai-sdk/anthropic": "npm:^2.0.23"
+    "@ai-sdk/anthropic": "npm:^3.0.58"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.15.0"
+    "@hyperdx/common-utils": "npm:^0.16.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4249,7 +4250,7 @@ __metadata:
     "@types/supertest": "npm:^2.0.12"
     "@types/swagger-jsdoc": "npm:^6"
     "@types/uuid": "npm:^8.3.4"
-    ai: "npm:5.0.59"
+    ai: "npm:^6.0.116"
     aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"
@@ -4309,8 +4310,8 @@ __metadata:
     "@eslint/compat": "npm:^2.0.0"
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
-    "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/common-utils": "npm:^0.15.0"
+    "@hyperdx/browser": "npm:^0.22.0"
+    "@hyperdx/common-utils": "npm:^0.16.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4431,17 +4432,17 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/browser@npm:^0.21.1":
-  version: 0.21.1
-  resolution: "@hyperdx/browser@npm:0.21.1"
+"@hyperdx/browser@npm:^0.22.0":
+  version: 0.22.0
+  resolution: "@hyperdx/browser@npm:0.22.0"
   dependencies:
-    "@hyperdx/otel-web": "npm:0.16.2"
+    "@hyperdx/otel-web": "npm:0.16.3"
     "@hyperdx/otel-web-session-recorder": "npm:0.16.2"
-  checksum: 10c0/4e09a61242018f1732ca63e2c8a289fe8b1caf7bc3386f24f811d2546f27cf3a59a0b5bd2ad3583e51940fe83ae280f44a9f584732ab40791b1ca6699839123c
+  checksum: 10c0/b1ee76797344f305033802abb2a755cdcfcd1f7ea2beb58d5bb4deb192b850772b4f7cbdb0903967fbf3ab2bb95e3e700280e61606e306edfd24011cdb93490a
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@npm:^0.15.0, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.16.0, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -4594,9 +4595,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/otel-web@npm:0.16.2":
-  version: 0.16.2
-  resolution: "@hyperdx/otel-web@npm:0.16.2"
+"@hyperdx/otel-web@npm:0.16.3":
+  version: 0.16.3
+  resolution: "@hyperdx/otel-web@npm:0.16.3"
   dependencies:
     "@babel/runtime": "npm:^7.21.0"
     "@hyperdx/instrumentation-exception": "npm:^0.1.0"
@@ -4616,7 +4617,7 @@ __metadata:
     lodash: "npm:^4.17.21"
     shimmer: "npm:^1.2.1"
     web-vitals: "npm:^3.3.2"
-  checksum: 10c0/f2e43ad530162dcad0cc1f81b0836a1c6c8cd512e07c069165f3c7c67f9051f6002ce4f7a266ca8de9579345064e95af57ace4b46b35d16c85f79b15c96f3353
+  checksum: 10c0/29cc6fd0d2d2037e251846672eba0529f7a28301f45009586b99fe9e2d9235059574f1de0ed209a4cab69a9942eef42cbd1e9bc00bb29d676b9f12f33c1d29c7
   languageName: node
   linkType: hard
 
@@ -8101,10 +8102,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@standard-schema/spec@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "@standard-schema/spec@npm:1.0.0"
-  checksum: 10c0/a1ab9a8bdc09b5b47aa8365d0e0ec40cc2df6437be02853696a0e377321653b0d3ac6f079a8c67d5ddbe9821025584b1fb71d9cc041a6666a96f1fadf2ece15f
+"@standard-schema/spec@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "@standard-schema/spec@npm:1.1.0"
+  checksum: 10c0/d90f55acde4b2deb983529c87e8025fa693de1a5e8b49ecc6eb84d1fd96328add0e03d7d551442156c7432fd78165b2c26ff561b970a9a881f046abb78d6a526
   languageName: node
   linkType: hard
 
@@ -9968,6 +9969,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@vercel/oidc@npm:3.1.0":
+  version: 3.1.0
+  resolution: "@vercel/oidc@npm:3.1.0"
+  checksum: 10c0/f57278ed4b4c022c7ca85e8baa5f9bdb2623397abfa0e5dbfd75de283c8e5dc534d64dac1364b5ad8c96d00eb2d469886e6f7b640f6f195def5766950ad8ce71
+  languageName: node
+  linkType: hard
+
 "@vitest/expect@npm:3.2.4":
   version: 3.2.4
   resolution: "@vitest/expect@npm:3.2.4"
@@ -10399,17 +10407,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:5.0.59":
-  version: 5.0.59
-  resolution: "ai@npm:5.0.59"
+"ai@npm:^6.0.116":
+  version: 6.0.127
+  resolution: "ai@npm:6.0.127"
   dependencies:
-    "@ai-sdk/gateway": "npm:1.0.32"
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@ai-sdk/provider-utils": "npm:3.0.10"
+    "@ai-sdk/gateway": "npm:3.0.73"
+    "@ai-sdk/provider": "npm:3.0.8"
+    "@ai-sdk/provider-utils": "npm:4.0.20"
     "@opentelemetry/api": "npm:1.9.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/daa956e753b93fbc30afbfba5be2ebb73e3c280dae3064e13949f04d5a22c0f4ea5698cc87e24a23ed6585d9cf7febee61b915292dbbd4286dc40c449cf2b845
+  checksum: 10c0/8334afb0c62f6aaadf9a124aecea9a4b86363b1ecba1f6827091ee30c83dc0ec50ddeca6b0869eda3da03431593a2aebe55a463e71703af5f96e1a9049b45062
   languageName: node
   linkType: hard
 
@@ -14700,7 +14708,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eventsource-parser@npm:^3.0.5":
+"eventsource-parser@npm:^3.0.6":
   version: 3.0.6
   resolution: "eventsource-parser@npm:3.0.6"
   checksum: 10c0/70b8ccec7dac767ef2eca43f355e0979e70415701691382a042a2df8d6a68da6c2fca35363669821f3da876d29c02abe9b232964637c1b6635c940df05ada78a

@@ -16,8 +16,9 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
-import { renderRawSqlChartConfig } from '@/rawSqlParams';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -29,6 +30,8 @@ import {
   ChSqlSchema,
   CteChartConfig,
   DateRange,
+  DisplayType,
+  Filter,
   MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
@@ -696,7 +699,7 @@ function renderFrom({
   );
 }
 
-async function renderWhereExpression({
+async function renderWhereExpressionStr({
   condition,
   language,
   metadata,
@@ -712,7 +715,7 @@ async function renderWhereExpression({
   implicitColumnExpression?: string;
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
-}): Promise<ChSql> {
+}): Promise<string> {
   let _condition = condition;
   if (language === 'lucene') {
     const serializer = new CustomSchemaSQLSerializerV2({
@@ -755,6 +758,14 @@ async function renderWhereExpression({
       '',
     );
   }
+
+  return _condition;
+}
+
+async function renderWhereExpression(
+  args: Parameters<typeof renderWhereExpressionStr>[0],
+): Promise<ChSql> {
+  const _condition = await renderWhereExpressionStr(args);
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
@@ -1402,13 +1413,77 @@ async function translateMetricChartConfig(
   throw new Error(`no query support for metric type=${metricType}`);
 }
 
+/** Renders the config's filters into a SQL condition string */
+async function renderFiltersToSql(
+  chartConfig: RawSqlChartConfig,
+  metadata: Metadata,
+): Promise<string | undefined> {
+  if (
+    !chartConfig.filters?.length ||
+    !chartConfig.source ||
+    !chartConfig.from
+  ) {
+    return undefined;
+  }
+
+  const conditions = (
+    await Promise.all(
+      chartConfig.filters.map(async filter => {
+        if (filter.type === 'sql_ast') {
+          return `(${filter.left} ${filter.operator} ${filter.right})`;
+        } else if (
+          (filter.type === 'lucene' || filter.type === 'sql') &&
+          filter.condition.trim() &&
+          chartConfig.from &&
+          chartConfig.source
+        ) {
+          const condition = await renderWhereExpressionStr({
+            condition: filter.condition,
+            from: chartConfig.from,
+            language: filter.type,
+            implicitColumnExpression: chartConfig.implicitColumnExpression,
+            metadata,
+            connectionId: chartConfig.connection,
+          });
+          return condition ? `(${condition})` : undefined;
+        }
+      }),
+    )
+  ).filter(condition => condition !== undefined);
+
+  return conditions.length > 0 ? `(${conditions.join(' AND ')})` : undefined;
+}
+
+export async function renderRawSqlChartConfig(
+  chartConfig: RawSqlChartConfig & Partial<DateRange>,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const displayType = chartConfig.displayType ?? DisplayType.Table;
+
+  const filtersSQL = await renderFiltersToSql(chartConfig, metadata);
+  const sqlWithMacrosReplaced = replaceMacros(
+    chartConfig.sqlTemplate,
+    filtersSQL,
+  );
+
+  // eslint-disable-next-line security/detect-object-injection
+  const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
+
+  return {
+    sql: sqlWithMacrosReplaced,
+    params: Object.fromEntries(
+      queryParams.map(param => [param.name, param.get(chartConfig)]),
+    ),
+  };
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
   if (isRawSqlChartConfig(rawChartConfig)) {
-    return renderRawSqlChartConfig(rawChartConfig);
+    return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
   // metric types require more rewriting since we know more about the schema

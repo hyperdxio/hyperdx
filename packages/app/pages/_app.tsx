@@ -141,6 +141,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             consoleCapture: true,
             maskAllInputs: true,
             maskAllText: true,
+            otelResourceAttributes: {
+              'service.version': process.env.NEXT_PUBLIC_APP_VERSION,
+            },
             service: _jsonData.serviceName,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,

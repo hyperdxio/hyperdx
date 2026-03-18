@@ -74,8 +74,14 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
   ],
-  [DisplayType.Pie]: [],
-  [DisplayType.Number]: [],
+  [DisplayType.Pie]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
+  [DisplayType.Number]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
@@ -88,32 +94,25 @@ const TIME_CHART_EXAMPLE_SQL = `SELECT
 FROM otel_logs
 WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
+  AND $__filters
 GROUP BY ServiceName, ts`;
+
+export const DATE_RANGE_WHERE_EXAMPLE_SQL = `WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
+  AND TimestampTime <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
+  AND $__filters`;
 
 export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Line]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
-  [DisplayType.Table]: `WHERE Timestamp >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
-  AND Timestamp <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})`,
-  [DisplayType.Pie]: '',
-  [DisplayType.Number]: '',
+  [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Number]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
 };
 
-export function renderRawSqlChartConfig(
-  chartConfig: RawSqlChartConfig & Partial<DateRange>,
-): ChSql {
-  const displayType = chartConfig.displayType ?? DisplayType.Table;
-
+export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {
   // eslint-disable-next-line security/detect-object-injection
-  const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
-
-  return {
-    sql: chartConfig.sqlTemplate ?? '',
-    params: Object.fromEntries(
-      queryParams.map(param => [param.name, param.get(chartConfig)]),
-    ),
-  };
+  return `{${QUERY_PARAMS[name].name}:${QUERY_PARAMS[name].type}}`;
 }
