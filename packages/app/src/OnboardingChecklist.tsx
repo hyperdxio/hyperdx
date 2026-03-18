@@ -21,6 +21,7 @@ import {
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import api from './api';
+import { NOW } from './config';
 import { useConnections } from './connection';
 import { useSources } from './source';
 import { useLocalStorage } from './utils';
@@ -34,8 +35,6 @@ interface OnboardingStep {
   href?: string;
   onClick?: () => void;
 }
-
-const NOW = Date.now();
 const OnboardingChecklist = ({
   onAddDataClick,
 }: {

@@ -286,6 +286,7 @@ const Tile = forwardRef(
       let tooltip = `Has alert and is in ${alert.state} state`;
       if (alert.silenced?.at) {
         const silencedAt = new Date(alert.silenced.at);
+        // eslint-disable-next-line no-restricted-syntax
         tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
       }
       return tooltip;
