@@ -1265,12 +1265,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
+          // Find the bottom edge of existing ungrouped tiles so freed
+          // tiles are placed below them without collision.
+          const sectionIds = new Set(draft.containers?.map(c => c.id) ?? []);
+          let maxUngroupedY = 0;
+          for (const tile of draft.tiles) {
+            if (!tile.containerId || !sectionIds.has(tile.containerId)) {
+              maxUngroupedY = Math.max(maxUngroupedY, tile.y + tile.h);
+            }
+          }
+
+          for (const tile of draft.tiles) {
+            if (tile.containerId === containerId) {
+              tile.y += maxUngroupedY;
+              delete tile.containerId;
+            }
+          }
+
           draft.containers = draft.containers?.filter(
             s => s.id !== containerId,
           );
-          for (const tile of draft.tiles) {
-            if (tile.containerId === containerId) delete tile.containerId;
-          }
         }),
       );
     },
