@@ -94,14 +94,14 @@ enum Tab {
 
 function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
   return (
-    <Group gap={4} wrap="nowrap">
+    <Group gap={8} wrap="nowrap">
       <CopyButton
         value={typeof window !== 'undefined' ? window.location.href : ''}
       >
         {({ copied, copy }) => (
           <Tooltip label={copied ? 'Copied!' : 'Share link'} position="bottom">
             <ActionIcon
-              variant="secondary"
+              variant="subtle"
               size="sm"
               onClick={copy}
               aria-label="Share"
@@ -113,7 +113,7 @@ function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
       </CopyButton>
       <Tooltip label="Close" position="bottom">
         <ActionIcon
-          variant="secondary"
+          variant="subtle"
           size="sm"
           onClick={onClose}
           aria-label="Close"
@@ -360,7 +360,7 @@ const DBRowSidePanel = ({
           <Group gap="xs" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
             <Tooltip label="Back" position="bottom">
               <ActionIcon
-                variant="secondary"
+                variant="subtle"
                 size="sm"
                 onClick={navStack.length > 0 ? handleNavigateBack : onClose}
                 aria-label="Back"
