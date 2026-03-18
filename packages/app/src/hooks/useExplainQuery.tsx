@@ -21,7 +21,7 @@ export function useExplainQuery(
   const metadata = useMetadataWithSettings();
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: isBuilderChartConfig(config) ? config.source : undefined,
+    id: config.source,
   });
 
   return useQuery({

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
   IconArrowRight,
   IconCheck,
+  IconExternalLink,
   IconLoader2,
   IconPlus,
   IconTrash,
@@ -17,7 +18,7 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: 'select',
-      options: ['primary', 'secondary', 'danger'],
+      options: ['primary', 'secondary', 'danger', 'link'],
     },
     size: {
       control: 'select',
@@ -91,6 +92,21 @@ export const CustomVariants = () => (
           Delete
         </Button>
         <Button variant="danger" disabled>
+          Disabled
+        </Button>
+      </Group>
+    </div>
+
+    <div>
+      <Text size="sm" fw={600} mb="xs">
+        Link
+      </Text>
+      <Group>
+        <Button variant="link">Link</Button>
+        <Button variant="link" rightSection={<IconExternalLink size={16} />}>
+          View Details
+        </Button>
+        <Button variant="link" disabled>
           Disabled
         </Button>
       </Group>
@@ -172,6 +188,28 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
+        Link - Normal vs Disabled
+      </Text>
+      <Group>
+        <Button variant="link">Normal</Button>
+        <Button variant="link" disabled>
+          Disabled
+        </Button>
+        <Button variant="link" rightSection={<IconExternalLink size={16} />}>
+          With Icon
+        </Button>
+        <Button
+          variant="link"
+          rightSection={<IconExternalLink size={16} />}
+          disabled
+        >
+          Disabled with Icon
+        </Button>
+      </Group>
+    </div>
+
+    <div>
+      <Text size="sm" fw={600} mb="xs">
         All Sizes - Disabled
       </Text>
       <Group align="center">
@@ -214,6 +252,9 @@ export const LoadingStates = () => (
         </Button>
         <Button variant="danger" loading>
           Danger Loading
+        </Button>
+        <Button variant="link" loading>
+          Link Loading
         </Button>
       </Group>
     </div>

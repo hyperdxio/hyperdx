@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
   IconCheck,
   IconEdit,
+  IconExternalLink,
   IconLoader2,
   IconPlus,
   IconSettings,
@@ -19,7 +20,7 @@ const meta: Meta<typeof ActionIcon> = {
   argTypes: {
     variant: {
       control: 'select',
-      options: ['primary', 'secondary', 'danger'],
+      options: ['primary', 'secondary', 'danger', 'link'],
     },
     size: {
       control: 'select',
@@ -106,6 +107,26 @@ export const CustomVariants = () => (
         </ActionIcon>
         <ActionIcon variant="danger" disabled>
           <IconTrash size={18} />
+        </ActionIcon>
+      </Group>
+    </div>
+
+    <div>
+      <Text size="sm" fw={600} mb="xs">
+        Link
+      </Text>
+      <Group>
+        <ActionIcon variant="link" size="sm">
+          <IconExternalLink size={16} />
+        </ActionIcon>
+        <ActionIcon variant="link" size="md">
+          <IconExternalLink size={18} />
+        </ActionIcon>
+        <ActionIcon variant="link" size="lg">
+          <IconExternalLink size={20} />
+        </ActionIcon>
+        <ActionIcon variant="link" disabled>
+          <IconExternalLink size={18} />
         </ActionIcon>
       </Group>
     </div>
@@ -203,6 +224,26 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
+        Link - Normal vs Disabled
+      </Text>
+      <Group>
+        <ActionIcon variant="link" size="md">
+          <IconExternalLink size={18} />
+        </ActionIcon>
+        <ActionIcon variant="link" size="md" disabled>
+          <IconExternalLink size={18} />
+        </ActionIcon>
+        <ActionIcon variant="link" size="lg">
+          <IconExternalLink size={20} />
+        </ActionIcon>
+        <ActionIcon variant="link" size="lg" disabled>
+          <IconExternalLink size={20} />
+        </ActionIcon>
+      </Group>
+    </div>
+
+    <div>
+      <Text size="sm" fw={600} mb="xs">
         Subtle - Normal vs Disabled
       </Text>
       <Group>
@@ -268,6 +309,9 @@ export const LoadingStates = () => (
         </ActionIcon>
         <ActionIcon variant="danger" loading>
           <IconTrash size={18} />
+        </ActionIcon>
+        <ActionIcon variant="link" loading>
+          <IconExternalLink size={18} />
         </ActionIcon>
         <ActionIcon variant="subtle" loading>
           <IconSettings size={18} />

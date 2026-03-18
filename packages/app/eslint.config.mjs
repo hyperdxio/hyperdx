@@ -11,6 +11,76 @@ import playwrightPlugin from 'eslint-plugin-playwright';
 import reactHookFormPlugin from 'eslint-plugin-react-hook-form';
 import { fixupPluginRules } from '@eslint/compat';
 
+// Kept separate so test overrides can drop just the date rules while keeping
+// the UI style rules (bi-icons, Button/ActionIcon variants).
+const UI_SYNTAX_RESTRICTIONS = [
+  // Temporary rule to enforce use of @tabler/icons-react instead of bi bi-icons
+  // Will remove after we've updated all icons and let some PRs merge.
+  {
+    selector: 'Literal[value=/\\bbi-\\b/i]',
+    message: 'Please update to use @tabler/icons-react instead',
+  },
+  // Enforce custom Button/ActionIcon variants (see agent_docs/code_style.md)
+  // NOTE: Icon-only Buttons should use ActionIcon instead - this requires manual review
+  // as ESLint cannot detect children content patterns
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="filled"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="light"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="filled"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="outline"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+];
+
+const DATE_SYNTAX_RESTRICTIONS = [
+  {
+    selector:
+      'CallExpression[callee.object.name="Date"][callee.property.name="now"]',
+    message:
+      'Date.now() can cause unnecessary re-renders. Import NOW from @/config for a stable reference, or wrap in useMemo/useCallback for values that must be current.',
+  },
+  {
+    selector: 'NewExpression[callee.name="Date"][arguments.length=0]',
+    message:
+      'new Date() can cause unnecessary re-renders. Use new Date(NOW) for a stable reference, or wrap in useMemo/useCallback for values that must be current.',
+  },
+];
+
 export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -80,59 +150,10 @@ export default [
           ],
         },
       ],
-      // Temporary rule to enforce use of @tabler/icons-react instead of bi bi-icons
-      // Will remove after we've updated all icons and let some PRs merge.
       'no-restricted-syntax': [
         'error',
-        {
-          selector: 'Literal[value=/\\bbi-\\b/i]',
-          message: 'Please update to use @tabler/icons-react instead',
-        },
-        // Enforce custom Button/ActionIcon variants (see agent_docs/code_style.md)
-        // NOTE: Icon-only Buttons should use ActionIcon instead - this requires manual review
-        // as ESLint cannot detect children content patterns
-        {
-          selector:
-            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="filled"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="light"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="filled"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
-        },
-        {
-          selector:
-            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="outline"]',
-          message:
-            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
-        },
+        ...UI_SYNTAX_RESTRICTIONS,
+        ...DATE_SYNTAX_RESTRICTIONS,
       ],
       'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
@@ -180,6 +201,13 @@ export default [
     },
   },
   {
+    files: ['src/**/__tests__/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      // Drop date rules — new Date() / Date.now() are fine in tests
+      'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
+    },
+  },
+  {
     files: ['tests/e2e/**/*.{ts,js}'],
     ...playwrightPlugin.configs['flat/recommended'],
     rules: {
@@ -189,6 +217,8 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
       'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
+      // Drop date rules — Date.now() is fine in e2e tests for unique IDs/timestamps
+      'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
     },
   },
   ...storybook.configs['flat/recommended'],

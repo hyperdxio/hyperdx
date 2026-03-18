@@ -12,7 +12,8 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
-import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
+import { pick } from 'lodash';
+import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
@@ -21,6 +22,7 @@ import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/util
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -67,6 +69,7 @@ import {
   IconTrash,
   IconUpload,
   IconX,
+  IconZoomExclamation,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -202,14 +205,30 @@ const Tile = forwardRef(
     >(undefined);
 
     const { data: source } = useSource({
-      id: isBuilderSavedChartConfig(chart.config)
-        ? chart.config.source
-        : undefined,
+      id: chart.config.source,
     });
 
     useEffect(() => {
       if (isRawSqlSavedChartConfig(chart.config)) {
-        setQueriedConfig({ ...chart.config, dateRange, granularity });
+        // Some raw SQL charts don't have a source
+        if (!chart.config.source) {
+          setQueriedConfig({
+            ...chart.config,
+            dateRange,
+            granularity,
+            filters,
+          });
+        } else if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            // Populate these two columns from the source to support Lucene-based filters
+            ...pick(source, ['implicitColumnExpression', 'from']),
+            dateRange,
+            granularity,
+            filters,
+          });
+        }
+
         return;
       }
 
@@ -267,10 +286,40 @@ const Tile = forwardRef(
       let tooltip = `Has alert and is in ${alert.state} state`;
       if (alert.silenced?.at) {
         const silencedAt = new Date(alert.silenced.at);
+        // eslint-disable-next-line no-restricted-syntax
         tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
       }
       return tooltip;
     }, [alert]);
+
+    const filterWarning = useMemo(() => {
+      const doFiltersExist = !!filters?.filter(
+        f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
+      )?.length;
+
+      if (
+        !doFiltersExist ||
+        !queriedConfig ||
+        !isRawSqlChartConfig(queriedConfig)
+      )
+        return null;
+
+      const isMissingSourceForFiltering = !queriedConfig.source;
+      const isMissingFiltersMacro =
+        !queriedConfig.sqlTemplate.includes('$__filters');
+
+      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
+
+      const message = isMissingFiltersMacro
+        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+        : 'Filters are not applied because no Source is set for this chart';
+
+      return (
+        <Tooltip multiline maw={500} label={message} key="filter-warning">
+          <IconZoomExclamation size={16} color="var(--color-text-danger)" />
+        </Tooltip>
+      );
+    }, [filters, queriedConfig]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -369,7 +418,9 @@ const Tile = forwardRef(
     // Render chart content (used in both tile and fullscreen views)
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
-        const toolbar = hideToolbar ? [] : [hoverToolbar];
+        const toolbar = hideToolbar
+          ? [filterWarning]
+          : [hoverToolbar, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
         // Markdown charts may not have queriedConfig, if config.source is not set
@@ -390,11 +441,7 @@ const Tile = forwardRef(
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarPrefix={toolbar}
-                sourceId={
-                  isBuilderSavedChartConfig(chart.config)
-                    ? chart.config.source
-                    : undefined
-                }
+                sourceId={chart.config.source}
                 showDisplaySwitcher={true}
                 config={queriedConfig}
                 onTimeRangeSelect={onTimeRangeSelect}
@@ -504,6 +551,7 @@ const Tile = forwardRef(
         onUpdateChart,
         source,
         dateRange,
+        filterWarning,
       ],
     );
 
@@ -627,6 +675,7 @@ const EditTileModal = ({
             }}
             onClose={handleClose}
             onDirtyChange={setHasUnsavedChanges}
+            isDashboardForm
           />
         </ZIndexContext.Provider>
       )}

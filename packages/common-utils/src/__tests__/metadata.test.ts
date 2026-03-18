@@ -119,7 +119,7 @@ describe('MetadataCache', () => {
 
       try {
         await metadataCache.getOrFetch(key, queryFn);
-      } catch (e) {
+      } catch {
         // Expected to throw
       }
 
@@ -165,7 +165,7 @@ describe('Metadata', () => {
         connectionId: 'test_connection',
       });
 
-      expect(result.partition_key).toEqual('toYYYYMM(timestamp), user_id');
+      expect(result!.partition_key).toEqual('toYYYYMM(timestamp), user_id');
     });
 
     it('should not modify partition_key if it does not have parentheses', async () => {
@@ -189,7 +189,7 @@ describe('Metadata', () => {
         connectionId: 'test_connection',
       });
 
-      expect(result.partition_key).toEqual('column1');
+      expect(result!.partition_key).toEqual('column1');
     });
 
     it('should use the cache when retrieving table metadata', async () => {
