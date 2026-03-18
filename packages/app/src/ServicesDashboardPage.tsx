@@ -7,6 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import type { TSource } from '@hyperdx/common-utils/dist/types';
@@ -105,6 +106,13 @@ type AppliedConfig = AppliedConfigParams & {
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
 
+export function buildInFilterCondition(
+  columnExpression: string,
+  value: string,
+): string {
+  return SqlString.format('? IN (?)', [SqlString.raw(columnExpression), value]);
+}
+
 function getScopedFilters({
   appliedConfig,
   expressions,
@@ -127,7 +135,10 @@ function getScopedFilters({
   if (appliedConfig.service) {
     filters.push({
       type: 'sql',
-      condition: `${expressions.service} IN ('${appliedConfig.service}')`,
+      condition: buildInFilterCondition(
+        expressions.service,
+        appliedConfig.service,
+      ),
     });
   }
   if (includeNonEmptyEndpointFilter) {

@@ -57,6 +57,7 @@ const InfraSubpanelGroup = ({
     }[range];
     return [
       sub(new Date(timestamp), duration),
+      // eslint-disable-next-line no-restricted-syntax
       min([add(new Date(timestamp), duration), new Date()]),
     ];
   }, [timestamp, range]);

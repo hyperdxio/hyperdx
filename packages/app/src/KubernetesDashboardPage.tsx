@@ -57,6 +57,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
+import { NOW } from './config';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
@@ -778,8 +779,8 @@ const NamespacesTable = ({
         dateRange: [
           // We should only look at the latest values, otherwise we might
           // aggregate pod metrics from pods that have been terminated
-          sub(dateRange[1] ?? new Date(), { minutes: 5 }),
-          dateRange[1] ?? new Date(),
+          sub(dateRange[1], { minutes: 5 }),
+          dateRange[1],
         ],
         seriesReturnType: 'column',
       },

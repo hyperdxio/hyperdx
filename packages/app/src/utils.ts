@@ -11,6 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
+import { NOW } from './config';
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
@@ -39,8 +40,8 @@ export function generateSearchUrl({
   lineId?: string;
   isUTC?: boolean;
 }) {
-  const fromDate = dateRange ? dateRange[0] : new Date();
-  const toDate = dateRange ? dateRange[1] : new Date();
+  const fromDate = dateRange ? dateRange[0] : new Date(NOW);
+  const toDate = dateRange ? dateRange[1] : new Date(NOW);
   const qparams = new URLSearchParams({
     q: query ?? '',
     from: fromDate.getTime().toString(),

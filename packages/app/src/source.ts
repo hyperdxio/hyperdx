@@ -279,10 +279,10 @@ export async function inferTableSourceConfig({
       tableName,
       connectionId,
     })
-  ).primary_key;
-  const primaryKeyColumns = new Set(
-    extractColumnReferencesFromKey(primaryKeys),
-  );
+  )?.primary_key;
+  const primaryKeyColumns = primaryKeys
+    ? new Set(extractColumnReferencesFromKey(primaryKeys))
+    : new Set();
 
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>

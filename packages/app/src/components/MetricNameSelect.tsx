@@ -22,6 +22,7 @@ const chartConfigByMetricType = ({
   metricSource: TMetricSource;
   metricType: MetricsDataType;
 }) => {
+  // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
   let _dateRange: DateRange['dateRange'] = dateRange
     ? dateRange

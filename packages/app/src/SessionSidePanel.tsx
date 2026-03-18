@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -63,15 +63,12 @@ export default function SessionSidePanel({
     },
   );
 
-  // console.log({ logId: sessionId, subDrawerOpen });
-  const maxTime =
-    session != null ? new Date(session?.maxTimestamp) : new Date();
-  // const minTime =
-  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
-  const timeAgo = formatDistanceToNowStrictShort(maxTime);
-  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
-  //   .toISOString()
-  //   .slice(11, 19);
+  const timeAgo = useMemo(() => {
+    const maxTime =
+      // eslint-disable-next-line no-restricted-syntax
+      session != null ? new Date(session?.maxTimestamp) : new Date();
+    return formatDistanceToNowStrictShort(maxTime);
+  }, [session]);
 
   return (
     <Drawer
