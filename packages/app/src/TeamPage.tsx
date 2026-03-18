@@ -61,7 +61,7 @@ export default function TeamPage() {
     },
     {
       value: 'team',
-      label: 'Team',
+      label: 'Members',
       sections: [
         {
           id: 'team-name',
@@ -107,7 +107,7 @@ export default function TeamPage() {
     },
     {
       value: 'advanced',
-      label: 'Advanced',
+      label: 'Query Settings',
       sections: [
         {
           id: 'team-advanced-query-settings',
