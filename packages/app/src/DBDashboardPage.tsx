@@ -1043,6 +1043,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
   const onAddTile = (containerId?: string) => {
+    // Auto-expand collapsed section so the new tile is visible
+    if (containerId && dashboard) {
+      const section = dashboard.containers?.find(s => s.id === containerId);
+      if (section?.collapsed) {
+        setDashboard(
+          produce(dashboard, draft => {
+            const s = draft.containers?.find(c => c.id === containerId);
+            if (s) s.collapsed = false;
+          }),
+        );
+      }
+    }
     setEditedTile({
       id: makeId(),
       x: 0,

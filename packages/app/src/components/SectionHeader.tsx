@@ -135,7 +135,7 @@ export default function SectionHeader({
           </>
         )}
       </Flex>
-      {onAddTile && !editing && showControls && (
+      {onAddTile && !editing && (
         <ActionIcon
           variant="subtle"
           size="xs"
@@ -145,11 +145,15 @@ export default function SectionHeader({
           }}
           title="Add tile to section"
           data-testid={`section-add-tile-${section.id}`}
+          style={{
+            opacity: showControls ? 1 : 0,
+            pointerEvents: showControls ? 'auto' : 'none',
+          }}
         >
           <IconPlus size={14} />
         </ActionIcon>
       )}
-      {hasMenuControls && !editing && showControls && (
+      {hasMenuControls && !editing && (
         <Menu width={200} position="bottom-end" onChange={setMenuOpen}>
           <Menu.Target>
             <ActionIcon
@@ -157,6 +161,10 @@ export default function SectionHeader({
               size="xs"
               onClick={e => e.stopPropagation()}
               data-testid={`section-menu-${section.id}`}
+              style={{
+                opacity: showControls ? 1 : 0,
+                pointerEvents: showControls ? 'auto' : 'none',
+              }}
             >
               <IconDotsVertical size={14} />
             </ActionIcon>
