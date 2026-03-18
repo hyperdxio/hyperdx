@@ -1,4 +1,12 @@
 export function renderMs(ms: number) {
+  if (ms < 1) {
+    const µsRounded = Math.round(ms * 1000);
+
+    if (µsRounded !== 1000) {
+      return `${µsRounded}µs`;
+    }
+  }
+
   if (ms < 1000) {
     return `${Math.round(ms)}ms`;
   }
