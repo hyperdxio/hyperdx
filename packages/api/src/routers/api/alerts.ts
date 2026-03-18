@@ -42,6 +42,8 @@ router.get('/', async (req, res: AlertsExpRes, next) => {
           scheduleStartAt: alert.scheduleStartAt?.toISOString() ?? undefined,
           threshold: alert.threshold,
           thresholdType: alert.thresholdType,
+          conditionType: alert.conditionType,
+          changeType: alert.changeType,
           channel: { type: alert.channel.type ?? undefined },
           state: alert.state,
           source: alert.source,

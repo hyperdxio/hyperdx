@@ -1,6 +1,8 @@
 import React from 'react';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  AlertChangeType,
+  AlertConditionType,
   AlertInterval,
   Filter,
   SearchCondition,
@@ -25,6 +27,8 @@ export type AlertPreviewChartProps = {
   thresholdType: 'above' | 'below';
   threshold: number;
   select?: string | null;
+  conditionType?: AlertConditionType;
+  changeType?: AlertChangeType;
 };
 
 export const AlertPreviewChart = ({

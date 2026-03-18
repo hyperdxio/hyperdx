@@ -9,6 +9,16 @@ export enum AlertThresholdType {
   BELOW = 'below',
 }
 
+export enum AlertConditionType {
+  THRESHOLD = 'threshold',
+  RATE_OF_CHANGE = 'rate_of_change',
+}
+
+export enum AlertChangeType {
+  ABSOLUTE = 'absolute',
+  PERCENTAGE = 'percentage',
+}
+
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
@@ -44,6 +54,8 @@ export enum AlertSource {
 export interface IAlert {
   id: string;
   channel: AlertChannel;
+  conditionType?: AlertConditionType;
+  changeType?: AlertChangeType;
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: Date | null;
@@ -85,6 +97,17 @@ const AlertSchema = new Schema<IAlert>(
     thresholdType: {
       type: String,
       enum: AlertThresholdType,
+      required: false,
+    },
+    conditionType: {
+      type: String,
+      enum: AlertConditionType,
+      default: AlertConditionType.THRESHOLD,
+      required: false,
+    },
+    changeType: {
+      type: String,
+      enum: AlertChangeType,
       required: false,
     },
     interval: {

@@ -1,6 +1,8 @@
 import { Types } from 'mongoose';
 
 import {
+  AlertChangeType,
+  AlertConditionType,
   type AlertDocument,
   AlertSource,
   AlertState,
@@ -43,6 +45,29 @@ describe('utils/externalApi', () => {
       const translated = translateAlertDocumentToExternalAlert(alert);
 
       expect(translated.scheduleStartAt).toBeUndefined();
+    });
+
+    it('includes conditionType and changeType for rate-of-change alerts', () => {
+      const alert = createAlertDocument({
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.PERCENTAGE,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.conditionType).toBe(AlertConditionType.RATE_OF_CHANGE);
+      expect(translated.changeType).toBe(AlertChangeType.PERCENTAGE);
+    });
+
+    it('includes conditionType for threshold alerts', () => {
+      const alert = createAlertDocument({
+        conditionType: AlertConditionType.THRESHOLD,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.conditionType).toBe(AlertConditionType.THRESHOLD);
+      expect(translated.changeType).toBeUndefined();
     });
   });
 });

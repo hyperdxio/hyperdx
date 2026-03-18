@@ -20,7 +20,12 @@ import {
   getTestFixtureClickHouseClient,
   makeTile,
 } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, {
+  AlertChangeType,
+  AlertConditionType,
+  AlertSource,
+  AlertThresholdType,
+} from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -31,6 +36,7 @@ import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
   alertHasGroupBy,
+  computeRateOfChange,
   doesExceedThreshold,
   getPreviousAlertHistories,
   getScheduledWindowStart,
@@ -119,6 +125,62 @@ describe('checkAlerts', () => {
         false,
       );
       expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('computeRateOfChange', () => {
+    it('should compute absolute change (positive)', () => {
+      expect(computeRateOfChange(150, 100, AlertChangeType.ABSOLUTE)).toBe(50);
+    });
+
+    it('should compute absolute change (negative)', () => {
+      expect(computeRateOfChange(50, 100, AlertChangeType.ABSOLUTE)).toBe(-50);
+    });
+
+    it('should compute absolute change (zero)', () => {
+      expect(computeRateOfChange(100, 100, AlertChangeType.ABSOLUTE)).toBe(0);
+    });
+
+    it('should compute percentage change (normal)', () => {
+      expect(computeRateOfChange(150, 100, AlertChangeType.PERCENTAGE)).toBe(
+        50,
+      );
+    });
+
+    it('should compute percentage change (decrease)', () => {
+      expect(computeRateOfChange(50, 100, AlertChangeType.PERCENTAGE)).toBe(
+        -50,
+      );
+    });
+
+    it('should return Infinity when previous is 0 and current is positive', () => {
+      expect(computeRateOfChange(10, 0, AlertChangeType.PERCENTAGE)).toBe(
+        Infinity,
+      );
+    });
+
+    it('should return -Infinity when previous is 0 and current is negative', () => {
+      expect(computeRateOfChange(-10, 0, AlertChangeType.PERCENTAGE)).toBe(
+        -Infinity,
+      );
+    });
+
+    it('should return 0 when both values are 0 (percentage)', () => {
+      expect(computeRateOfChange(0, 0, AlertChangeType.PERCENTAGE)).toBe(0);
+    });
+
+    it('should return 0 when both values are 0 (absolute)', () => {
+      expect(computeRateOfChange(0, 0, AlertChangeType.ABSOLUTE)).toBe(0);
+    });
+
+    it('should work with doesExceedThreshold for rate-of-change alerting', () => {
+      const change = computeRateOfChange(150, 100, AlertChangeType.PERCENTAGE);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 25, change)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 75, change)).toBe(
         false,
       );
     });

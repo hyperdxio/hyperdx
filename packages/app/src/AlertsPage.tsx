@@ -5,6 +5,8 @@ import cx from 'classnames';
 import type { Duration } from 'date-fns';
 import { add, formatRelative } from 'date-fns';
 import {
+  AlertChangeType,
+  AlertConditionType,
   AlertHistory,
   AlertSource,
   AlertState,
@@ -37,7 +39,10 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { isAlertSilenceExpired } from './utils/alerts';
+import {
+  ALERT_CONDITION_TYPE_OPTIONS,
+  isAlertSilenceExpired,
+} from './utils/alerts';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
@@ -359,10 +364,26 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   })();
 
   const alertType = React.useMemo(() => {
+    const isRateOfChange =
+      alert.conditionType === AlertConditionType.RATE_OF_CHANGE;
+    const isPercentage =
+      isRateOfChange && alert.changeType === AlertChangeType.PERCENTAGE;
+    const suffix = isPercentage ? '%' : '';
+    const conditionLabel =
+      ALERT_CONDITION_TYPE_OPTIONS[
+        alert.conditionType ?? AlertConditionType.THRESHOLD
+      ];
+    const changeLabel = isPercentage ? '% change' : 'change';
     return (
       <>
-        If value is {alert.thresholdType === 'above' ? 'over' : 'under'}{' '}
-        <span className="fw-bold">{alert.threshold}</span>
+        {conditionLabel}
+        <span>&middot;</span>
+        If {isRateOfChange ? changeLabel : 'value'} is{' '}
+        {alert.thresholdType === 'above' ? 'over' : 'under'}{' '}
+        <span className="fw-bold">
+          {alert.threshold}
+          {suffix}
+        </span>
         <span>&middot;</span>
       </>
     );

@@ -9,7 +9,9 @@ import { z } from 'zod';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  AlertChangeType,
   AlertChannelType,
+  AlertConditionType,
   AlertInterval,
   AlertThresholdType,
   ChartAlertBaseSchema,
@@ -89,6 +91,17 @@ export const TILE_ALERT_THRESHOLD_TYPE_OPTIONS: Record<string, string> = {
   below: 'falls below (<)',
 };
 
+export const ALERT_CONDITION_TYPE_OPTIONS: Record<AlertConditionType, string> =
+  {
+    [AlertConditionType.THRESHOLD]: 'Threshold',
+    [AlertConditionType.RATE_OF_CHANGE]: 'Rate of Change',
+  };
+
+export const ALERT_CHANGE_TYPE_OPTIONS: Record<AlertChangeType, string> = {
+  [AlertChangeType.ABSOLUTE]: 'Absolute',
+  [AlertChangeType.PERCENTAGE]: 'Percentage (%)',
+};
+
 export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
   '1m': '1 minute',
   '5m': '5 minute',
@@ -118,6 +131,7 @@ export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
 export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
+  conditionType: AlertConditionType.THRESHOLD,
   interval: '5m',
   scheduleOffsetMinutes: 0,
   scheduleStartAt: null,

@@ -3,10 +3,18 @@ import {
   getServer,
   makeAlertInput,
   makeRawSqlTile,
+  makeSavedSearchAlertInput,
   makeTile,
   randomMongoId,
 } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, {
+  AlertChangeType,
+  AlertConditionType,
+  AlertSource,
+  AlertThresholdType,
+} from '@/models/alert';
+import { SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -606,5 +614,154 @@ describe('alerts router', () => {
         }),
       })
       .expect(400);
+  });
+
+  describe('rate of change alerts', () => {
+    it('creates a rate-of-change alert with absolute change type', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send({
+          name: 'RoC Dashboard',
+          tiles: MOCK_TILES,
+          tags: [],
+        })
+        .expect(200);
+
+      const resp = await agent
+        .post('/alerts')
+        .send({
+          ...makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+          conditionType: AlertConditionType.RATE_OF_CHANGE,
+          changeType: AlertChangeType.ABSOLUTE,
+        })
+        .expect(200);
+
+      expect(resp.body.data.conditionType).toBe(
+        AlertConditionType.RATE_OF_CHANGE,
+      );
+      expect(resp.body.data.changeType).toBe(AlertChangeType.ABSOLUTE);
+    });
+
+    it('creates a rate-of-change alert with percentage change type', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send({
+          name: 'RoC Dashboard',
+          tiles: MOCK_TILES,
+          tags: [],
+        })
+        .expect(200);
+
+      const resp = await agent
+        .post('/alerts')
+        .send({
+          ...makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+          conditionType: AlertConditionType.RATE_OF_CHANGE,
+          changeType: AlertChangeType.PERCENTAGE,
+        })
+        .expect(200);
+
+      expect(resp.body.data.conditionType).toBe(
+        AlertConditionType.RATE_OF_CHANGE,
+      );
+      expect(resp.body.data.changeType).toBe(AlertChangeType.PERCENTAGE);
+    });
+
+    it('rejects rate-of-change alert without changeType', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send({
+          name: 'RoC Dashboard',
+          tiles: MOCK_TILES,
+          tags: [],
+        })
+        .expect(200);
+
+      await agent
+        .post('/alerts')
+        .send({
+          ...makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+          conditionType: AlertConditionType.RATE_OF_CHANGE,
+        })
+        .expect(400);
+    });
+
+    it('creates a threshold alert without conditionType (backward compat)', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send({
+          name: 'Backward Compat Dashboard',
+          tiles: MOCK_TILES,
+          tags: [],
+        })
+        .expect(200);
+
+      const resp = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      expect(resp.body.data.conditionType).toBeUndefined();
+    });
+
+    it('updates an existing alert to rate-of-change', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send({
+          name: 'Update RoC Dashboard',
+          tiles: MOCK_TILES,
+          tags: [],
+        })
+        .expect(200);
+
+      const createResp = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const alertId = createResp.body.data._id;
+
+      const updateResp = await agent
+        .put(`/alerts/${alertId}`)
+        .send({
+          ...makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: MOCK_TILES[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+          conditionType: AlertConditionType.RATE_OF_CHANGE,
+          changeType: AlertChangeType.PERCENTAGE,
+        })
+        .expect(200);
+
+      expect(updateResp.body.data.conditionType).toBe(
+        AlertConditionType.RATE_OF_CHANGE,
+      );
+      expect(updateResp.body.data.changeType).toBe(AlertChangeType.PERCENTAGE);
+    });
   });
 });

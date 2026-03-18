@@ -31,7 +31,13 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import {
+  AlertChangeType,
+  AlertConditionType,
+  AlertState,
+  AlertThresholdType,
+  IAlert,
+} from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -119,6 +125,20 @@ export const doesExceedThreshold = (
     return true;
   }
   return false;
+};
+
+export const computeRateOfChange = (
+  currentValue: number,
+  previousValue: number,
+  changeType: AlertChangeType,
+): number => {
+  if (changeType === AlertChangeType.PERCENTAGE) {
+    if (previousValue === 0) {
+      return currentValue > 0 ? Infinity : currentValue < 0 ? -Infinity : 0;
+    }
+    return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+  }
+  return currentValue - previousValue;
 };
 
 const normalizeScheduleOffsetMinutes = ({
@@ -266,6 +286,8 @@ const fireChannelEvent = async ({
     alert: {
       id: alert.id,
       channel: alert.channel,
+      conditionType: alert.conditionType,
+      changeType: alert.changeType,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
@@ -378,6 +400,7 @@ const getAlertEvaluationDateRange = (
   nowInMinsRoundDown: Date,
   windowSizeInMins: number,
   scheduleStartAt?: Date,
+  isRateOfChange = false,
 ) => {
   // Calculate date range for the query
   // Find the latest createdAt among all histories for this alert
@@ -399,13 +422,23 @@ const getAlertEvaluationDateRange = (
     previousCreatedAt = previous?.createdAt;
   }
 
+  const defaultLookback = isRateOfChange
+    ? windowSizeInMins * 2
+    : windowSizeInMins;
   const rawStartTime = previousCreatedAt
     ? previousCreatedAt.getTime()
-    : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime();
+    : fns.subMinutes(nowInMinsRoundDown, defaultLookback).getTime();
+
+  // For rate-of-change, ensure we always have at least 2 windows
+  const minStartTime = isRateOfChange
+    ? fns.subMinutes(nowInMinsRoundDown, windowSizeInMins * 2).getTime()
+    : rawStartTime;
+  const adjustedStartTime = Math.min(rawStartTime, minStartTime);
+
   const clampedStartTime =
     scheduleStartAt == null
-      ? rawStartTime
-      : Math.max(rawStartTime, scheduleStartAt.getTime());
+      ? adjustedStartTime
+      : Math.max(adjustedStartTime, scheduleStartAt.getTime());
 
   return calcAlertDateRange(
     clampedStartTime,
@@ -608,12 +641,15 @@ export const processAlert = async (
       return;
     }
 
+    const isRateOfChange =
+      alert.conditionType === AlertConditionType.RATE_OF_CHANGE;
     const dateRange = getAlertEvaluationDateRange(
       details,
       hasGroupBy,
       nowInMinsRoundDown,
       windowSizeInMins,
       scheduleStartAt,
+      isRateOfChange,
     );
     if (dateRange[0].getTime() >= dateRange[1].getTime()) {
       logger.info(
@@ -796,8 +832,15 @@ export const processAlert = async (
       checkDataByBucket.get(bucketStart.getTime())!.push(checkData);
     }
 
-    for (const bucketStart of expectedBuckets) {
+    // For rate-of-change alerts, track the previous bucket's value per group
+    const previousBucketValues = new Map<string, number>();
+
+    for (let bucketIdx = 0; bucketIdx < expectedBuckets.length; bucketIdx++) {
+      const bucketStart = expectedBuckets[bucketIdx];
       const dataForBucket = checkDataByBucket.get(bucketStart.getTime());
+
+      // For rate-of-change, the first bucket is only used as a baseline
+      const isBaselineBucket = isRateOfChange && bucketIdx === 0;
 
       // Handle case where no data is available for this bucket
       const bucketHasData = dataForBucket && dataForBucket.length > 0;
@@ -807,7 +850,46 @@ export const processAlert = async (
           'No data returned from ClickHouse for time bucket',
         );
 
-        // Empty periods are filled with a 0 values.
+        if (isRateOfChange) {
+          // Record 0 as previous value for rate-of-change baseline
+          if (isBaselineBucket) {
+            previousBucketValues.set('', 0);
+            continue;
+          }
+          // Compute change from previous: 0 - previous
+          const previousValue = previousBucketValues.get('') ?? 0;
+          const changeValue = computeRateOfChange(
+            0,
+            previousValue,
+            alert.changeType ?? AlertChangeType.ABSOLUTE,
+          );
+          previousBucketValues.set('', 0);
+
+          if (
+            doesExceedThreshold(
+              alert.thresholdType,
+              alert.threshold,
+              changeValue,
+            )
+          ) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            history.state = AlertState.ALERT;
+            history.counts += 1;
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: '',
+              totalCount: changeValue,
+              startTime: bucketStart,
+            });
+          } else {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+          }
+          continue;
+        }
+
+        // Standard threshold: empty periods filled with 0
         const zeroValueIsAlert = doesExceedThreshold(
           alert.thresholdType,
           alert.threshold,
@@ -830,8 +912,6 @@ export const processAlert = async (
             startTime: bucketStart,
           });
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
-          // For grouped alerts, if there are alerts in the previous map,
-          // we will handle creating a history as part of auto-resolve later
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
         }
@@ -843,16 +923,61 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
         if (value == null) {
           continue;
         }
 
-        // Group key is the joined extraFields for group-by alerts, or empty string for non-grouped
         const groupKey = hasGroupBy ? extraFields.join(', ') : '';
-        const history = getOrCreateHistory(groupKey);
 
+        if (isRateOfChange) {
+          if (isBaselineBucket) {
+            previousBucketValues.set(groupKey, value);
+            continue;
+          }
+
+          const previousValue = previousBucketValues.get(groupKey);
+          previousBucketValues.set(groupKey, value);
+
+          if (previousValue == null) {
+            // No comparison data available, skip
+            logger.info(
+              { alertId: alert.id, groupKey, bucketStart },
+              'No previous bucket value for rate-of-change comparison',
+            );
+            const history = getOrCreateHistory(groupKey);
+            history.lastValues.push({ count: value, startTime: bucketStart });
+            continue;
+          }
+
+          const changeValue = computeRateOfChange(
+            value,
+            previousValue,
+            alert.changeType ?? AlertChangeType.ABSOLUTE,
+          );
+
+          const history = getOrCreateHistory(groupKey);
+          if (
+            doesExceedThreshold(
+              alert.thresholdType,
+              alert.threshold,
+              changeValue,
+            )
+          ) {
+            history.state = AlertState.ALERT;
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: changeValue,
+              startTime: bucketStart,
+            });
+            history.counts += 1;
+          }
+          history.lastValues.push({ count: value, startTime: bucketStart });
+          continue;
+        }
+
+        // Standard threshold evaluation
+        const history = getOrCreateHistory(groupKey);
         if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
           history.state = AlertState.ALERT;
           await trySendNotification({

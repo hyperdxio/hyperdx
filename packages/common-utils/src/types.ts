@@ -278,6 +278,16 @@ export enum AlertThresholdType {
   BELOW = 'below',
 }
 
+export enum AlertConditionType {
+  THRESHOLD = 'threshold',
+  RATE_OF_CHANGE = 'rate_of_change',
+}
+
+export enum AlertChangeType {
+  ABSOLUTE = 'absolute',
+  PERCENTAGE = 'percentage',
+}
+
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
@@ -400,6 +410,8 @@ export const AlertBaseObjectSchema = z.object({
   scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
+  conditionType: z.nativeEnum(AlertConditionType).optional(),
+  changeType: z.nativeEnum(AlertChangeType).optional(),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
@@ -417,17 +429,43 @@ export const AlertBaseObjectSchema = z.object({
 // external consumers that call object helpers like .extend()/.pick()/.omit().
 export const AlertBaseSchema = AlertBaseObjectSchema;
 
-const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
-  validateAlertScheduleOffsetMinutes,
-);
+export const validateAlertChangeType = (
+  alert: {
+    conditionType?: AlertConditionType;
+    changeType?: AlertChangeType;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (
+    alert.conditionType === AlertConditionType.RATE_OF_CHANGE &&
+    alert.changeType == null
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'changeType is required when conditionType is rate_of_change',
+      path: ['changeType'],
+    });
+  }
+};
+
+const validateAlertBase = (
+  alert: Parameters<typeof validateAlertScheduleOffsetMinutes>[0] &
+    Parameters<typeof validateAlertChangeType>[0],
+  ctx: z.RefinementCtx,
+) => {
+  validateAlertScheduleOffsetMinutes(alert, ctx);
+  validateAlertChangeType(alert, ctx);
+};
+
+const AlertBaseValidatedSchema =
+  AlertBaseObjectSchema.superRefine(validateAlertBase);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
 });
 
-const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
-  validateAlertScheduleOffsetMinutes,
-);
+const ChartAlertBaseValidatedSchema =
+  ChartAlertBaseSchema.superRefine(validateAlertBase);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
@@ -1165,6 +1203,8 @@ export const AlertsPageItemSchema = z.object({
   scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
+  conditionType: z.nativeEnum(AlertConditionType).optional(),
+  changeType: z.nativeEnum(AlertChangeType).optional(),
   channel: z.object({ type: z.string().optional() }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),

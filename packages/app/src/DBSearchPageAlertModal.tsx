@@ -7,6 +7,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
+  AlertChangeType,
+  AlertConditionType,
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
@@ -14,6 +16,7 @@ import {
   scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
+  validateAlertChangeType,
   validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
@@ -44,7 +47,9 @@ import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
+  ALERT_CHANGE_TYPE_OPTIONS,
   ALERT_CHANNEL_OPTIONS,
+  ALERT_CONDITION_TYPE_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
@@ -67,10 +72,15 @@ const SavedSearchAlertFormSchema = z
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
+    conditionType: z
+      .nativeEnum(AlertConditionType)
+      .default(AlertConditionType.THRESHOLD),
+    changeType: z.nativeEnum(AlertChangeType).optional(),
     channel: zAlertChannel,
   })
   .passthrough()
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertChangeType);
 
 const AlertForm = ({
   sourceId,
@@ -119,6 +129,7 @@ const AlertForm = ({
           scheduleOffsetMinutes: 0,
           scheduleStartAt: null,
           thresholdType: AlertThresholdType.ABOVE,
+          conditionType: AlertConditionType.THRESHOLD,
           source: AlertSource.SAVED_SEARCH,
           channel: {
             type: 'webhook',
@@ -132,12 +143,15 @@ const AlertForm = ({
   const thresholdType = useWatch({ control, name: 'thresholdType' });
   const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
+  const conditionType = useWatch({ control, name: 'conditionType' });
+  const changeType = useWatch({ control, name: 'changeType' });
   const scheduleOffsetMinutes = useWatch({
     control,
     name: 'scheduleOffsetMinutes',
   });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const isRateOfChange = conditionType === AlertConditionType.RATE_OF_CHANGE;
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
@@ -162,9 +176,30 @@ const AlertForm = ({
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
+          <Group gap="xs" mb={4}>
+            <Text size="sm" opacity={0.7}>
+              Condition
+            </Text>
+            <NativeSelect
+              data={optionsToSelectData(ALERT_CONDITION_TYPE_OPTIONS)}
+              size="xs"
+              name={`conditionType`}
+              control={control}
+              data-testid="condition-type-select"
+            />
+            {isRateOfChange && (
+              <NativeSelect
+                data={optionsToSelectData(ALERT_CHANGE_TYPE_OPTIONS)}
+                size="xs"
+                name={`changeType`}
+                control={control}
+                data-testid="change-type-select"
+              />
+            )}
+          </Group>
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
-              Alert when
+              Alert when {isRateOfChange ? 'change is' : ''}
             </Text>
             <NativeSelect
               data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
@@ -179,7 +214,11 @@ const AlertForm = ({
               name={`threshold`}
             />
             <Text size="sm" opacity={0.7}>
-              lines appear within
+              {isRateOfChange
+                ? changeType === AlertChangeType.PERCENTAGE
+                  ? '% compared to previous'
+                  : 'compared to previous'
+                : 'lines appear within'}
             </Text>
             <NativeSelect
               data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}

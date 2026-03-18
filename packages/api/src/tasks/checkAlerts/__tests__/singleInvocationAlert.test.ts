@@ -7,7 +7,12 @@ import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
 import { bulkInsertLogs, getServer } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, {
+  AlertChangeType,
+  AlertConditionType,
+  AlertSource,
+  AlertThresholdType,
+} from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -857,5 +862,419 @@ describe('Single Invocation Alert Test', () => {
     expect(dashboard.tiles[0].config.name).toBe('First Tile Name');
     expect(dashboard.tiles[1].config.name).toBe('Second Tile Name');
     expect(enhancedAlert.tileId).toBe('second-tile-id');
+  });
+
+  it('should trigger rate-of-change alert (absolute) when change exceeds threshold', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC Abs Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-abs',
+      name: 'RoC Abs Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 5,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.ABSOLUTE,
+        savedSearchId: savedSearch.id,
+        name: 'RoC Absolute Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window1Time = new Date('2023-11-16T22:02:00.000Z');
+    const window2Time = new Date('2023-11-16T22:07:00.000Z');
+
+    const window1Logs = Array.from({ length: 2 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window1Time,
+      SeverityText: 'error',
+      Body: 'Window 1 error',
+    }));
+    const window2Logs = Array.from({ length: 8 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window2Time,
+      SeverityText: 'error',
+      Body: 'Window 2 error',
+    }));
+    await bulkInsertLogs([...window1Logs, ...window2Logs]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    expect(histories.length).toBe(1);
+    expect(histories[0].state).toBe('ALERT');
+    expect(histories[0].counts).toBe(1);
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('should trigger rate-of-change alert (percentage) when % change exceeds threshold', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC Pct Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-pct',
+      name: 'RoC Pct Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 100,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.PERCENTAGE,
+        savedSearchId: savedSearch.id,
+        name: 'RoC Percentage Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window1Time = new Date('2023-11-16T22:02:00.000Z');
+    const window2Time = new Date('2023-11-16T22:07:00.000Z');
+
+    const window1Logs = Array.from({ length: 4 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window1Time,
+      SeverityText: 'error',
+      Body: 'Window 1 error',
+    }));
+    const window2Logs = Array.from({ length: 12 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window2Time,
+      SeverityText: 'error',
+      Body: 'Window 2 error',
+    }));
+    await bulkInsertLogs([...window1Logs, ...window2Logs]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    expect(histories.length).toBe(1);
+    expect(histories[0].state).toBe('ALERT');
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('should NOT trigger rate-of-change alert when change is below threshold', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC NoFire Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-nofire',
+      name: 'RoC NoFire Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 5,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.ABSOLUTE,
+        savedSearchId: savedSearch.id,
+        name: 'RoC NoFire Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window1Time = new Date('2023-11-16T22:02:00.000Z');
+    const window2Time = new Date('2023-11-16T22:07:00.000Z');
+
+    const window1Logs = Array.from({ length: 5 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window1Time,
+      SeverityText: 'error',
+      Body: 'Window 1 error',
+    }));
+    const window2Logs = Array.from({ length: 6 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window2Time,
+      SeverityText: 'error',
+      Body: 'Window 2 error',
+    }));
+    await bulkInsertLogs([...window1Logs, ...window2Logs]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    expect(histories.length).toBe(1);
+    expect(histories[0].state).toBe('OK');
+    expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+  });
+
+  it('should trigger rate-of-change alert with empty baseline window (0 previous logs)', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC Empty Baseline Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-empty',
+      name: 'RoC Empty Baseline Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 3,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.ABSOLUTE,
+        savedSearchId: savedSearch.id,
+        name: 'RoC Empty Baseline Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window2Time = new Date('2023-11-16T22:07:00.000Z');
+
+    const window2Logs = Array.from({ length: 5 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window2Time,
+      SeverityText: 'error',
+      Body: 'Window 2 error',
+    }));
+    await bulkInsertLogs(window2Logs);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    expect(histories.length).toBe(1);
+    expect(histories[0].state).toBe('ALERT');
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
   });
 });
