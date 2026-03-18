@@ -190,7 +190,7 @@ export function useTableMetadata(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
-  return useQuery<TableMetadata>({
+  return useQuery<TableMetadata | undefined>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
       return await metadata.getTableMetadata({
