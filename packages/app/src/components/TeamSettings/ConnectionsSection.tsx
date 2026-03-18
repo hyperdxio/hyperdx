@@ -3,7 +3,7 @@ import { Box, Button, Card, Divider, Flex, Stack, Text } from '@mantine/core';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import { useConnections } from '@/connection';
 
 export default function ConnectionsSection() {
@@ -85,7 +85,9 @@ export default function ConnectionsSection() {
               connection={{
                 id: 'new',
                 name: 'My New Connection',
-                host: 'http://localhost:8123',
+                host: IS_CLICKHOUSE_BUILD
+                  ? window.location.origin
+                  : 'http://localhost:8123',
                 username: 'default',
                 password: '',
               }}
