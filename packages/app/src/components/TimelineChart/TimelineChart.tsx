@@ -7,7 +7,6 @@ import {
   useState,
 } from 'react';
 import cx from 'classnames';
-import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useDrag } from '@/hooks/useDrag';
@@ -190,11 +189,6 @@ export const TimelineChart = memo(function ({
 
   return (
     <>
-      <Flex justify="end" mb="sm">
-        <Text>
-          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
-        </Text>
-      </Flex>
       <div
         style={{
           position: 'relative',
