@@ -474,16 +474,6 @@ export default function SessionsPage() {
           </Group>
         ) : (
           <>
-            {sessionSource && (
-              <Alert
-                icon={<IconInfoCircleFilled size={16} />}
-                color="gray"
-                py="xs"
-                mt="md"
-              >
-                Please select a valid session source
-              </Alert>
-            )}
             {!sessions.length ? (
               <SessionSetupInstructions />
             ) : (
