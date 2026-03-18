@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 
 interface CsvExportButtonProps {
   data: Record<string, any>[];
-  filename: string;
+  filename: string | (() => string);
   children: React.ReactNode;
   className?: string;
   title?: string;
@@ -46,7 +46,8 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${filename}.csv`;
+      a.download =
+        typeof filename === 'string' ? `${filename}.csv` : `${filename()}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
