@@ -1,0 +1,17 @@
+name: Vulnerability Alerts
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # Daily at 9am UTC
+  workflow_dispatch:
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kunalnagarco/action-cve@v1.14.23
+        with:
+          org: hyperdxio
+          token: ${{ secrets.DEPENDABOT_NOTIF_PAT }}
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK_VULNERABILITIES }}
+          severity: medium,high,critical
