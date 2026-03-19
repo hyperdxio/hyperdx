@@ -84,68 +84,50 @@ export async function buildEventSearchQuery(
 // ---- Full row fetch (SELECT *) -------------------------------------
 
 /**
- * Build a WHERE clause from a row's visible column values to uniquely
+ * Build a WHERE clause from all the row's column values to uniquely
  * identify it for a SELECT * point lookup.
+ *
+ * Uses every scalar (string/number) column in the row — skips objects
+ * (Maps, Arrays) since they can't be compared with simple = operators.
  */
 function buildRowWhereClause(
   row: Record<string, unknown>,
   source: SourceResponse,
 ): string {
   const clauses: string[] = [];
-  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
 
-  // Match on timestamp — use parseDateTime64BestEffort for DateTime64 columns
-  const tsValue = row[tsExpr] ?? row['Timestamp'];
-  if (tsValue != null) {
-    clauses.push(
-      SqlString.format('? = parseDateTime64BestEffort(?, 9)', [
-        SqlString.raw(tsExpr),
-        String(tsValue),
-      ]),
-    );
-  }
+  for (const [col, value] of Object.entries(row)) {
+    if (value == null) continue;
 
-  if (source.kind === 'trace') {
-    // Trace: match on traceId + spanId
-    if (source.traceIdExpression) {
-      const val = row[source.traceIdExpression];
-      if (val != null) {
-        clauses.push(
-          SqlString.format('? = ?', [
-            SqlString.raw(source.traceIdExpression),
-            String(val),
-          ]),
-        );
-      }
-    }
-    if (source.spanIdExpression) {
-      const val = row[source.spanIdExpression];
-      if (val != null) {
-        clauses.push(
-          SqlString.format('? = ?', [
-            SqlString.raw(source.spanIdExpression),
-            String(val),
-          ]),
-        );
-      }
-    }
-  } else {
-    // Log: match on SeverityText + ServiceName for additional uniqueness
-    const sevExpr = source.severityTextExpression ?? 'SeverityText';
-    const sevVal = row[sevExpr];
-    if (sevVal != null) {
+    // Skip complex types (Maps, Arrays, Objects) — can't do simple = comparison
+    if (typeof value === 'object') continue;
+
+    const strVal = String(value);
+    // Skip empty strings
+    if (strVal === '') continue;
+    // Skip very long values to avoid huge WHERE clauses
+    if (strVal.length > 512) continue;
+
+    // Detect timestamp columns — use parseDateTime64BestEffort for matching
+    if (
+      col === 'Timestamp' ||
+      col === (source.timestampValueExpression ?? 'TimestampTime')
+    ) {
       clauses.push(
-        SqlString.format('? = ?', [SqlString.raw(sevExpr), String(sevVal)]),
+        SqlString.format('? = parseDateTime64BestEffort(?, 9)', [
+          SqlString.raw(col),
+          strVal,
+        ]),
       );
-    }
-    const svcExpr = source.serviceNameExpression;
-    if (svcExpr) {
-      const svcVal = row[svcExpr];
-      if (svcVal != null) {
-        clauses.push(
-          SqlString.format('? = ?', [SqlString.raw(svcExpr), String(svcVal)]),
-        );
-      }
+    } else if (typeof value === 'number') {
+      clauses.push(
+        SqlString.format('? = ?', [
+          SqlString.raw(col),
+          SqlString.raw(String(value)),
+        ]),
+      );
+    } else {
+      clauses.push(SqlString.format('? = ?', [SqlString.raw(col), strVal]));
     }
   }
 
