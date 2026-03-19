@@ -118,8 +118,8 @@ const DashboardFilterEditForm = ({
     : undefined;
 
   const sourceIsMetric = source?.kind === SourceKind.Metric;
-  const metricTypes = Object.values(MetricsDataType).filter(
-    type => source?.metricTables?.[type],
+  const metricTypes = Object.values(MetricsDataType).filter(type =>
+    source?.kind === SourceKind.Metric ? source.metricTables?.[type] : false,
   );
 
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(

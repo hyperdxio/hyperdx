@@ -2,6 +2,7 @@ import type {
   BuilderChartConfig,
   BuilderSavedChartConfig,
   RawSqlSavedChartConfig,
+  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -38,14 +39,14 @@ const logSource: TSource = {
   implicitColumnExpression: 'Body',
 };
 
-const metricSource: TSource = {
+const metricSource: TMetricSource = {
   id: 'source-metric',
   name: 'Metric Source',
   kind: SourceKind.Metric,
   connection: 'conn-1',
   from: { databaseName: 'db', tableName: '' },
   timestampValueExpression: 'TimeUnix',
-  metricTables: { gauge: 'gauge_table' } as TSource['metricTables'],
+  metricTables: { gauge: 'gauge_table' } as TMetricSource['metricTables'],
   resourceAttributesExpression: 'ResourceAttributes',
 };
 

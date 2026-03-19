@@ -34,6 +34,7 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -932,6 +933,15 @@ export const RawLogTable = memo(
       shiftHighlightedLineId(-1);
     });
 
+    const getCsvFilename = useCallback(() => {
+      // eslint-disable-next-line no-restricted-syntax
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .slice(0, 19);
+      return `hyperdx_search_results_${timestamp}.csv`;
+    }, []);
+
     return (
       <Flex direction="column" h="100%">
         <Box pos="relative" style={{ flex: 1, minHeight: 0 }}>
@@ -1050,7 +1060,7 @@ export const RawLogTable = memo(
 
                                 <CsvExportButton
                                   data={csvData}
-                                  filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                                  filename={getCsvFilename}
                                   className="fs-6"
                                 >
                                   <MantineTooltip
@@ -1660,7 +1670,10 @@ function DBSqlRowTableComponent({
     config,
     samples: 10_000,
     bodyValueExpression: patternColumn ?? '',
-    severityTextExpression: source?.severityTextExpression ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : undefined) ?? '',
     totalCount: undefined,
     enabled: denoiseResults,
   });

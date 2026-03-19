@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   AlertState,
+  SourceKind,
   Tile,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
@@ -293,16 +294,17 @@ describe('checkAlerts', () => {
         interval: '1m',
       },
       source: {
-        id: 'fake-source-id' as any,
-        kind: 'log' as any,
-        team: 'team-123' as any,
+        id: 'fake-source-id',
+        kind: SourceKind.Log,
+        team: 'team-123',
         from: {
           databaseName: 'default',
           tableName: 'otel_logs',
         },
         timestampValueExpression: 'Timestamp',
-        connection: 'connection-123' as any,
+        connection: 'connection-123',
         name: 'Logs',
+        defaultTableSelectExpression: 'Timestamp, Body',
       },
       savedSearch: {
         _id: 'fake-saved-search-id' as any,

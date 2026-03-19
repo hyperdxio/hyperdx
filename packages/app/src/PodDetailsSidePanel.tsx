@@ -2,7 +2,7 @@ import * as React from 'react';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Card,
@@ -56,7 +56,7 @@ const PodDetails = ({
   podName,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   podName: string;
 }) => {
   const { data: logsData } = useV2LogBatch<{
@@ -134,7 +134,7 @@ function PodLogs({
   onRowClick,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
   rowId: string | null;
   onRowClick: (rowWhere: RowWhereResult) => void;
@@ -220,8 +220,8 @@ export default function PodDetailsSidePanel({
   logSource,
   metricSource,
 }: {
-  logSource: TSource;
-  metricSource: TSource;
+  logSource: TLogSource;
+  metricSource: TMetricSource;
 }) {
   const [podName, setPodName] = useQueryParam(
     'podName',

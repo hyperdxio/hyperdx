@@ -1,5 +1,5 @@
 import { pick } from 'lodash';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
@@ -18,7 +18,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   service,
   endpoint,
 }: {
-  source?: TSource;
+  source?: TTraceSource;
   dateRange: [Date, Date];
   service?: string;
   endpoint?: string;

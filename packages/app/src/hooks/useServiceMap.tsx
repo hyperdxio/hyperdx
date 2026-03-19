@@ -2,7 +2,7 @@ import SqlString from 'sqlstring';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
@@ -23,7 +23,7 @@ async function getServiceMapQuery({
   metadata,
   samplingFactor,
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   metadata: Metadata;
@@ -247,7 +247,7 @@ export default function useServiceMap({
   traceId,
   samplingFactor,
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   samplingFactor: number;

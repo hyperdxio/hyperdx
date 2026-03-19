@@ -1,7 +1,12 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -35,11 +40,20 @@ export function useRowData({
 }) {
   const eventBodyExpr = getEventBody(source);
 
-  const searchedTraceIdExpr = source.traceIdExpression;
-  const searchedSpanIdExpr = source.spanIdExpression;
+  const searchedTraceIdExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.traceIdExpression
+      : undefined;
+  const searchedSpanIdExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.spanIdExpression
+      : undefined;
 
-  const severityTextExpr =
-    source.severityTextExpression || source.statusCodeExpression;
+  const severityTextExpr = isLogSource(source)
+    ? source.severityTextExpression
+    : isTraceSource(source)
+      ? source.statusCodeExpression
+      : undefined;
 
   const selectHighlightedRowAttributes =
     source.kind === SourceKind.Trace || source.kind === SourceKind.Log
@@ -91,7 +105,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.serviceNameExpression
+        ...((isLogSource(source) || isTraceSource(source)) &&
+        source.serviceNameExpression
           ? [
               {
                 valueExpression: source.serviceNameExpression,
@@ -107,7 +122,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.eventAttributesExpression
+        ...((isLogSource(source) || isTraceSource(source)) &&
+        source.eventAttributesExpression
           ? [
               {
                 valueExpression: source.eventAttributesExpression,

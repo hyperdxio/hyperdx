@@ -30,6 +30,7 @@ import {
   MetricsDataType as MetricsDataTypeV2,
   SourceKind,
   SQLInterval,
+  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl } from '@mantine/core';
@@ -630,14 +631,14 @@ function firstGroupColumnIsLogLevel(
   source: TSource | undefined,
   groupColumns: ColumnMetaType[],
 ) {
-  return (
-    source &&
-    groupColumns.length === 1 &&
-    groupColumns[0].name ===
-      (source.kind === SourceKind.Log
-        ? source.severityTextExpression
-        : source.statusCodeExpression)
-  );
+  if (!source || groupColumns.length !== 1) return false;
+  if (source.kind === SourceKind.Log) {
+    return groupColumns[0].name === source.severityTextExpression;
+  }
+  if (source.kind === SourceKind.Trace) {
+    return groupColumns[0].name === source.statusCodeExpression;
+  }
+  return false;
 }
 
 function addResponseToFormattedData({
@@ -905,7 +906,7 @@ export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
 };
 
 export const convertV1GroupByToV2 = (
-  metricSource: TSource,
+  metricSource: TMetricSource,
   groupBy: string[],
 ): string => {
   return groupBy
@@ -932,7 +933,7 @@ export const convertV1ChartConfigToV2 = (
   },
   source: {
     log?: TSource;
-    metric?: TSource;
+    metric?: TMetricSource;
     trace?: TSource;
   },
 ): BuilderChartConfigWithDateRange => {
@@ -1020,12 +1021,18 @@ export function buildEventsSearchUrl({
   }
 
   const isMetricChart = isMetricChartConfig(config);
-  if (isMetricChart && source?.logSourceId == null) {
-    notifications.show({
-      color: 'yellow',
-      message: 'No log source is associated with the selected metric source.',
-    });
-    return null;
+  if (isMetricChart) {
+    const logSourceId =
+      source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined;
+    if (logSourceId == null) {
+      notifications.show({
+        color: 'yellow',
+        message: 'No log source is associated with the selected metric source.',
+      });
+      return null;
+    }
   }
 
   let where = config.where;
@@ -1089,7 +1096,10 @@ export function buildEventsSearchUrl({
     params.where = '';
     params.whereLanguage = 'lucene';
     params.filters = JSON.stringify([]);
-    params.source = source?.logSourceId ?? '';
+    params.source =
+      (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined) ?? '';
   }
 
   // Include the select parameter if provided to preserve custom columns

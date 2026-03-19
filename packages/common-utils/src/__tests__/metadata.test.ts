@@ -2,7 +2,7 @@ import { ClickhouseClient } from '../clickhouse/node';
 import { Metadata, MetadataCache } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
 import { isBuilderChartConfig } from '../guards';
-import { BuilderChartConfigWithDateRange, TSource } from '../types';
+import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -21,12 +21,19 @@ jest.mock('../core/renderChartConfig', () => ({
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
 }));
 
-const source = {
+const source: TSource = {
+  id: 'test-source',
+  name: 'Test',
+  kind: SourceKind.Log,
+  connection: 'conn-1',
+  from: { databaseName: 'default', tableName: 'logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: '*',
   querySettings: [
     { setting: 'optimize_read_in_order', value: '0' },
     { setting: 'cast_keep_nullable', value: '0' },
   ],
-} as TSource;
+};
 
 describe('MetadataCache', () => {
   let metadataCache: MetadataCache;

@@ -31,11 +31,13 @@ import {
   DashboardFilter,
   DisplayType,
   Filter,
+  isLogSource,
+  isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
   SourceKind,
   SQLInterval,
-  TSourceUnion,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -253,7 +255,10 @@ const Tile = forwardRef(
               databaseName: source.from?.databaseName || 'default',
               tableName: tableName || '',
             },
-            implicitColumnExpression: source.implicitColumnExpression,
+            implicitColumnExpression:
+              isLogSource(source) || isTraceSource(source)
+                ? source.implicitColumnExpression
+                : undefined,
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });
@@ -286,6 +291,7 @@ const Tile = forwardRef(
       let tooltip = `Has alert and is in ${alert.state} state`;
       if (alert.silenced?.at) {
         const silencedAt = new Date(alert.silenced.at);
+        // eslint-disable-next-line no-restricted-syntax
         tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
       }
       return tooltip;
@@ -527,7 +533,10 @@ const Tile = forwardRef(
                       dateRange,
                       select:
                         queriedConfig.select ||
-                        source?.defaultTableSelectExpression ||
+                        (source?.kind === SourceKind.Log ||
+                        source?.kind === SourceKind.Trace
+                          ? source.defaultTableSelectExpression
+                          : '') ||
                         '',
                       groupBy: undefined,
                       granularity: undefined,
@@ -1419,7 +1428,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         convertToDashboardTemplate(
                           dashboard,
                           // TODO: fix this type issue
-                          sources as TSourceUnion[],
+                          sources,
                           connections,
                         ),
                         dashboard?.name,
