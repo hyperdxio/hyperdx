@@ -36,8 +36,10 @@ import {
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
+  IconMinus,
   IconPin,
   IconPinFilled,
+  IconPlus,
   IconRefresh,
   IconSearch,
   IconShadow,
@@ -341,6 +343,8 @@ export type FilterGroupProps = {
   isPinned: (value: string | boolean) => boolean;
   onFieldPinClick?: VoidFunction;
   isFieldPinned?: boolean;
+  onColumnToggle?: VoidFunction;
+  isColumnDisplayed?: boolean;
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
@@ -349,7 +353,7 @@ export type FilterGroupProps = {
   chartConfig: BuilderChartConfigWithDateRange;
   isLive?: boolean;
   onRangeChange?: (range: { min: number; max: number }) => void;
-  distributionKey?: string; // Optional key to use for distribution queries, defaults to name
+  distributionKey?: string;
 };
 
 export const FilterGroup = ({
@@ -365,6 +369,8 @@ export const FilterGroup = ({
   onPinClick,
   onFieldPinClick,
   isFieldPinned,
+  onColumnToggle,
+  isColumnDisplayed,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
@@ -641,6 +647,29 @@ export const FilterGroup = ({
                       )}
                     </ActionIcon>
                   </Tooltip>
+                  {onColumnToggle && (
+                    <Tooltip
+                      label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
+                      position="top"
+                      withArrow
+                      fz="xxs"
+                      color="gray"
+                    >
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={onColumnToggle}
+                        data-testid={`toggle-column-button-${name}`}
+                      >
+                        {isColumnDisplayed ? (
+                          <IconMinus size={14} />
+                        ) : (
+                          <IconPlus size={14} />
+                        )}
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
                   {onFieldPinClick && (
                     <Tooltip
                       label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
@@ -844,6 +873,8 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults,
   setDenoiseResults,
   setFilterRange,
+  onColumnToggle,
+  displayedColumns,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -854,6 +885,8 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
   setFilterRange: (key: string, range: { min: number; max: number }) => void;
+  onColumnToggle?: (column: string) => void;
+  displayedColumns?: string[];
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1334,6 +1367,8 @@ const DBSearchPageFiltersComponent = ({
                     isPinned={(key, value) => isFilterPinned(key, value)}
                     onFieldPinClick={key => toggleFieldPin(key)}
                     isFieldPinned={key => isFieldPinned(key)}
+                    onColumnToggle={onColumnToggle}
+                    displayedColumns={displayedColumns}
                     onLoadMore={loadMoreFilterValuesForKey}
                     loadMoreLoading={group.children.reduce(
                       (acc, child) => {
@@ -1394,6 +1429,12 @@ const DBSearchPageFiltersComponent = ({
                     isPinned={value => isFilterPinned(facet.key, value)}
                     onFieldPinClick={() => toggleFieldPin(facet.key)}
                     isFieldPinned={isFieldPinned(facet.key)}
+                    onColumnToggle={
+                      onColumnToggle
+                        ? () => onColumnToggle(facet.key)
+                        : undefined
+                    }
+                    isColumnDisplayed={displayedColumns?.includes(facet.key)}
                     onLoadMore={loadMoreFilterValuesForKey}
                     loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
                     hasLoadedMore={Boolean(extraFacets[facet.key])}
