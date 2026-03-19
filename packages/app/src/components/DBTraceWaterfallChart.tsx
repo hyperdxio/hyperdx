@@ -20,8 +20,11 @@ import {
   Code,
   Divider,
   Group,
+  Kbd,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -400,6 +403,16 @@ export function getDescendantIds(node: {
   return ids;
 }
 
+function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
+  useEffect(() => onShown, [onShown]);
+
+  return (
+    <>
+      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
+    </>
+  );
+}
+
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableSource,
@@ -733,6 +746,9 @@ export function DBTraceWaterfallChartContainer({
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
 
+  const [collapseTooltipShown, { open: setCollapseTooltipShown }] =
+    useDisclosure(false);
+
   const timelineRows = useMemo(
     () =>
       flattenedNodes.map((result, i) => {
@@ -817,30 +833,39 @@ export function DBTraceWaterfallChartContainer({
                   ></div>
                 ))}
 
-                <Center
-                  style={{
-                    opacity: result.children.length > 0 ? 1 : 0,
-                  }}
-                  onClick={
-                    result.children.length > 0
-                      ? e => {
-                          toggleCollapse(id, e);
-                        }
-                      : undefined
+                <Tooltip
+                  disabled={!result.children.length || collapseTooltipShown}
+                  closeDelay={500}
+                  label={
+                    <CollapseTooltipLabel onShown={setCollapseTooltipShown} />
                   }
+                  withArrow
                 >
-                  {collapsedIds.has(id) ? (
-                    <IconChevronRight
-                      size={16}
-                      className="me-1 text-muted-hover"
-                    />
-                  ) : (
-                    <IconChevronDown
-                      size={16}
-                      className="me-1 text-muted-hover"
-                    />
-                  )}{' '}
-                </Center>
+                  <Center
+                    style={{
+                      opacity: result.children.length > 0 ? 1 : 0,
+                    }}
+                    onClick={
+                      result.children.length > 0
+                        ? e => {
+                            toggleCollapse(id, e);
+                          }
+                        : undefined
+                    }
+                  >
+                    {collapsedIds.has(id) ? (
+                      <IconChevronRight
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    ) : (
+                      <IconChevronDown
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    )}{' '}
+                  </Center>
+                </Tooltip>
 
                 {!isFilterActive && (
                   <Text span size="xxs" me="xs" pt="2px">
@@ -911,6 +936,8 @@ export function DBTraceWaterfallChartContainer({
       onClick,
       showSpanEvents,
       toggleCollapse,
+      collapseTooltipShown,
+      setCollapseTooltipShown,
     ],
   );
   // TODO: Highlighting support
