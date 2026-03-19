@@ -20,7 +20,7 @@ import type {
 } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
-import { getLocalTableFromDistributedTable, objectHash } from './utils';
+import { getDistributedTableArgs, objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -148,27 +148,78 @@ export class Metadata {
     table,
     cache,
     connectionId,
+    cluster,
   }: {
     database: string;
     table: string;
     cache: MetadataCache;
     connectionId: string;
+    cluster?: string;
   }): Promise<TableMetadata | undefined> {
-    return cache.getOrFetch(
-      `${connectionId}.${database}.${table}.metadata`,
-      async () => {
-        const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
-        const json = await this.clickhouseClient
-          .query<'JSON'>({
-            connectionId,
-            query: sql.sql,
-            query_params: sql.params,
-            clickhouse_settings: this.getClickHouseSettings(),
-          })
-          .then(res => res.json<TableMetadata>());
-        return json.data[0];
-      },
-    );
+    const cacheKey = `${connectionId}.${database}.${table}.${cluster}.metadata`;
+    return cache.getOrFetch(cacheKey, async () => {
+      const sql = cluster
+        ? chSql`SELECT * FROM cluster(${{ String: cluster }}, system.tables) WHERE database = ${{ String: database }} AND name = ${{ String: table }} LIMIT 1`
+        : chSql`SELECT * FROM system.tables WHERE database = ${{ String: database }} AND name = ${{ String: table }} LIMIT 1`;
+      const json = await this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query: sql.sql,
+          query_params: sql.params,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(res => res.json<TableMetadata>());
+      return json.data[0];
+    });
+  }
+
+  private async querySkipIndices({
+    database,
+    table,
+    connectionId,
+    cluster,
+  }: {
+    database: string;
+    table: string;
+    connectionId: string;
+    cluster?: string;
+  }): Promise<SkipIndexMetadata[]> {
+    const sql = cluster
+      ? chSql`
+        SELECT 
+          name,
+          type,
+          type_full as typeFull,
+          expr as expression,
+          granularity
+        FROM cluster(${{ String: cluster }}, system.data_skipping_indices)
+        WHERE database = ${{ String: database }} AND table = ${{ String: table }}`
+      : chSql`
+        SELECT
+          name,
+          type,
+          type_full as typeFull,
+          expr as expression,
+          granularity
+        FROM system.data_skipping_indices
+        WHERE database = ${{ String: database }} AND table = ${{ String: table }}`;
+
+    const data = await this.clickhouseClient
+      .query<'JSON'>({
+        connectionId,
+        query: sql.sql,
+        query_params: sql.params,
+        clickhouse_settings: this.getClickHouseSettings(),
+      })
+      .then(res => res.json<SkipIndexMetadata>())
+      .then(d => {
+        return d.data.map(row => ({
+          ...row,
+          granularity: Number(row.granularity),
+        }));
+      });
+
+    return data;
   }
 
   /** Queries and returns the list of materialized views which insert into the given target table */
@@ -619,21 +670,29 @@ export class Metadata {
     // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
     if (tableMetadata?.engine === 'Distributed') {
       try {
-        const { database, table } =
-          getLocalTableFromDistributedTable(tableMetadata) ?? {};
+        const { cluster, database, table } =
+          getDistributedTableArgs(tableMetadata) ?? {};
 
-        if (!database || !table) {
+        if (!database || !table || !cluster) {
           throw new Error(
             `Could not parse underlying local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
           );
         }
 
+        // Query local table metadata from the specified cluster
         const localTableMetadata = await this.queryTableMetadata({
           cache: this.cache,
           database,
           table,
+          cluster,
           connectionId,
         });
+
+        if (!localTableMetadata) {
+          throw new Error(
+            `Could not find underlying local table metadata for Distributed table: ${database}.${table}`,
+          );
+        }
 
         // Override Distributed table metadata with local table metadata where relevant
         tableMetadata = {
@@ -773,60 +832,33 @@ export class Metadata {
           connectionId,
         });
 
-        let localDatabase = databaseName;
-        let localTable = tableName;
+        let database = databaseName;
+        let table = tableName;
+        let cluster: string | undefined;
 
-        // For Distributed tables, fetch skip indices on the underlying local table.
+        // For Distributed tables, query skip indices on the underlying local
+        // table via the cluster() function so we reach the correct cluster.
         if (tableMetadata?.engine === 'Distributed') {
-          try {
-            const { database, table } =
-              getLocalTableFromDistributedTable(tableMetadata) ?? {};
+          const parsed = getDistributedTableArgs(tableMetadata);
 
-            if (!database || !table) {
-              throw new Error(
-                `Could not parse local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
-              );
-            }
-
-            localDatabase = database;
-            localTable = table;
-          } catch (e) {
+          if (!parsed) {
             console.error(
-              'Failed to get local table name for Distributed table, using Distributed table as fallback',
-              e,
+              `Could not parse local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
             );
+          } else {
+            database = parsed.database;
+            table = parsed.table;
+            cluster = parsed.cluster;
           }
         }
 
-        const sql = chSql`
-          SELECT
-            name,
-            type,
-            type_full as typeFull,
-            expr as expression,
-            granularity
-          FROM system.data_skipping_indices
-          WHERE database = ${{ String: localDatabase }}
-            AND table = ${{ String: localTable }}
-        `;
-
         try {
-          const data = await this.clickhouseClient
-            .query<'JSON'>({
-              connectionId,
-              query: sql.sql,
-              query_params: sql.params,
-              clickhouse_settings: this.getClickHouseSettings(),
-            })
-            .then(res => res.json<SkipIndexMetadata>())
-            .then(d => {
-              return d.data.map(row => ({
-                ...row,
-                granularity: Number(row.granularity), // granularity comes back as string, convert to number for easier usage
-              }));
-            });
-
-          return data;
+          return await this.querySkipIndices({
+            database,
+            table,
+            connectionId,
+            cluster,
+          });
         } catch (e) {
           // Don't retry permissions errors, just silently return empty array
           if (

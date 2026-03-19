@@ -192,6 +192,62 @@ describe('Metadata', () => {
       expect(result!.partition_key).toEqual('column1');
     });
 
+    it('should query via cluster() for Distributed table underlying metadata', async () => {
+      const distributedMetadata = {
+        database: 'test_db',
+        name: 'dist_table',
+        engine: 'Distributed',
+        engine_full:
+          "Distributed('my_cluster', 'test_db', 'local_table', rand())",
+        partition_key: '',
+        sorting_key: '',
+        primary_key: '',
+        sampling_key: '',
+        create_table_query: 'CREATE TABLE test_db.dist_table ...',
+      };
+
+      const localMetadata = {
+        database: 'test_db',
+        name: 'local_table',
+        engine: 'MergeTree',
+        engine_full: 'MergeTree() ORDER BY id',
+        partition_key: 'toYYYYMM(timestamp)',
+        sorting_key: 'id, timestamp',
+        primary_key: 'id',
+        sampling_key: '',
+        create_table_query: 'CREATE TABLE test_db.local_table ...',
+      };
+
+      let callCount = 0;
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({
+          json: jest.fn().mockResolvedValue({
+            data: [callCount === 1 ? distributedMetadata : localMetadata],
+          }),
+        });
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'dist_table',
+        connectionId: 'test_connection',
+      });
+
+      // Two queries: one for the distributed table, one via cluster() for the local table
+      expect(callCount).toBe(2);
+      expect(result!.engine).toBe('MergeTree');
+      expect(result!.sorting_key).toBe('id, timestamp');
+      expect(result!.create_local_table_query).toBe(
+        'CREATE TABLE test_db.local_table ...',
+      );
+      // The second query should use cluster() - verify it references system.tables via cluster
+      const secondQuery = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0].query;
+      expect(secondQuery).toContain('cluster(');
+      expect(secondQuery).toContain('system.tables');
+    });
+
     it('should use the cache when retrieving table metadata', async () => {
       // Setup the mock implementation
       mockCache.getOrFetch.mockReset();
@@ -206,7 +262,7 @@ describe('Metadata', () => {
 
       // Setup the cache to return the mock data
       mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key === 'test_connection.test_db.test_table.metadata') {
+        if (key === 'test_connection.test_db.test_table.undefined.metadata') {
           return Promise.resolve(mockTableMetadata);
         }
         return queryFn();
@@ -220,7 +276,7 @@ describe('Metadata', () => {
 
       // Verify the cache was called with the right key
       expect(mockCache.getOrFetch).toHaveBeenCalledWith(
-        'test_connection.test_db.test_table.metadata',
+        'test_connection.test_db.test_table.undefined.metadata',
         expect.any(Function),
       );
 
@@ -229,6 +285,117 @@ describe('Metadata', () => {
 
       // Verify we still get the correct result
       expect(result).toEqual(mockTableMetadata);
+    });
+  });
+
+  describe('getSkipIndices', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('should query via cluster() for Distributed table skip indices', async () => {
+      const distributedMetadata = {
+        database: 'test_db',
+        name: 'dist_table',
+        engine: 'Distributed',
+        engine_full:
+          "Distributed('my_cluster', 'test_db', 'local_table', rand())",
+        create_table_query: 'CREATE TABLE test_db.dist_table ...',
+      };
+
+      const skipIndicesData = [
+        {
+          name: 'idx_body',
+          type: 'tokenbf_v1',
+          typeFull: "tokenbf_v1(tokenizer='splitByNonAlpha')",
+          expression: 'tokens(lower(Body))',
+          granularity: '1',
+        },
+      ];
+
+      let callCount = 0;
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({
+          json: jest.fn().mockResolvedValue({
+            data: callCount === 1 ? [distributedMetadata] : skipIndicesData,
+          }),
+        });
+      });
+
+      const result = await metadata.getSkipIndices({
+        databaseName: 'test_db',
+        tableName: 'dist_table',
+        connectionId: 'test_connection',
+      });
+
+      // Two queries: one for table metadata, one via cluster() for skip indices
+      expect(callCount).toBe(2);
+      expect(result).toEqual([
+        {
+          name: 'idx_body',
+          type: 'tokenbf_v1',
+          typeFull: "tokenbf_v1(tokenizer='splitByNonAlpha')",
+          expression: 'tokens(lower(Body))',
+          granularity: 1,
+        },
+      ]);
+      // The second query should use cluster() for system.data_skipping_indices
+      const secondQuery = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0].query;
+      expect(secondQuery).toContain('cluster(');
+      expect(secondQuery).toContain('system.data_skipping_indices');
+    });
+
+    it('should query local system.data_skipping_indices for non-Distributed tables', async () => {
+      const mergeTreeMetadata = {
+        database: 'test_db',
+        name: 'local_table',
+        engine: 'MergeTree',
+        engine_full: 'MergeTree() ORDER BY id',
+      };
+
+      const skipIndicesData = [
+        {
+          name: 'idx_body',
+          type: 'tokenbf_v1',
+          typeFull: "tokenbf_v1(tokenizer='splitByNonAlpha')",
+          expression: 'tokens(lower(Body))',
+          granularity: '1',
+        },
+      ];
+
+      let callCount = 0;
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({
+          json: jest.fn().mockResolvedValue({
+            data: callCount === 1 ? [mergeTreeMetadata] : skipIndicesData,
+          }),
+        });
+      });
+
+      const result = await metadata.getSkipIndices({
+        databaseName: 'test_db',
+        tableName: 'local_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(callCount).toBe(2);
+      expect(result).toEqual([
+        {
+          name: 'idx_body',
+          type: 'tokenbf_v1',
+          typeFull: "tokenbf_v1(tokenizer='splitByNonAlpha')",
+          expression: 'tokens(lower(Body))',
+          granularity: 1,
+        },
+      ]);
+      // Should NOT use cluster() for non-Distributed tables
+      const secondQuery = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0].query;
+      expect(secondQuery).not.toContain('cluster(');
+      expect(secondQuery).toContain('system.data_skipping_indices');
     });
   });
 
