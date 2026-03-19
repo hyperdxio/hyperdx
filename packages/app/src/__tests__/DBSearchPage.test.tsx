@@ -1,3 +1,4 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
 import * as sourceModule from '@/source';
@@ -159,6 +160,7 @@ describe('useDefaultOrderBy', () => {
       for (const testCase of testCases) {
         it(`${testCase.sortingKey}`, () => {
           const mockSource = {
+            kind: SourceKind.Log,
             timestampValueExpression:
               testCase.timestampValueExpression || 'Timestamp',
             displayedTimestampValueExpression:
@@ -226,6 +228,7 @@ describe('useDefaultOrderBy', () => {
 
     it('should return orderByExpression when set on the source', () => {
       const mockSource = {
+        kind: SourceKind.Log,
         timestampValueExpression: 'Timestamp',
         orderByExpression: 'Timestamp ASC',
       };
@@ -253,6 +256,7 @@ describe('useDefaultOrderBy', () => {
 
     it('should fall back to optimized order when orderByExpression is empty', () => {
       const mockSource = {
+        kind: SourceKind.Log,
         timestampValueExpression: 'Timestamp',
         orderByExpression: '',
       };
@@ -280,6 +284,7 @@ describe('useDefaultOrderBy', () => {
 
     it('should fall back to optimized order when orderByExpression is undefined', () => {
       const mockSource = {
+        kind: SourceKind.Log,
         timestampValueExpression: 'Timestamp',
       };
 
@@ -306,6 +311,7 @@ describe('useDefaultOrderBy', () => {
 
     it('should handle complex Timestamp expressions', () => {
       const mockSource = {
+        kind: SourceKind.Log,
         timestampValueExpression: 'toDateTime(timestamp_ms / 1000)',
       };
 

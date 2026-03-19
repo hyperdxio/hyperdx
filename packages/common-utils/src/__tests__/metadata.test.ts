@@ -2,7 +2,7 @@ import { ClickhouseClient } from '../clickhouse/node';
 import { Metadata, MetadataCache } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
 import { isBuilderChartConfig } from '../guards';
-import { BuilderChartConfigWithDateRange, TSource } from '../types';
+import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -21,12 +21,19 @@ jest.mock('../core/renderChartConfig', () => ({
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
 }));
 
-const source = {
+const source: TSource = {
+  id: 'test-source',
+  name: 'Test',
+  kind: SourceKind.Log,
+  connection: 'conn-1',
+  from: { databaseName: 'default', tableName: 'logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: '*',
   querySettings: [
     { setting: 'optimize_read_in_order', value: '0' },
     { setting: 'cast_keep_nullable', value: '0' },
   ],
-} as TSource;
+};
 
 describe('MetadataCache', () => {
   let metadataCache: MetadataCache;
@@ -119,7 +126,7 @@ describe('MetadataCache', () => {
 
       try {
         await metadataCache.getOrFetch(key, queryFn);
-      } catch (e) {
+      } catch {
         // Expected to throw
       }
 
@@ -165,7 +172,7 @@ describe('Metadata', () => {
         connectionId: 'test_connection',
       });
 
-      expect(result.partition_key).toEqual('toYYYYMM(timestamp), user_id');
+      expect(result!.partition_key).toEqual('toYYYYMM(timestamp), user_id');
     });
 
     it('should not modify partition_key if it does not have parentheses', async () => {
@@ -189,7 +196,7 @@ describe('Metadata', () => {
         connectionId: 'test_connection',
       });
 
-      expect(result.partition_key).toEqual('column1');
+      expect(result!.partition_key).toEqual('column1');
     });
 
     it('should use the cache when retrieving table metadata', async () => {

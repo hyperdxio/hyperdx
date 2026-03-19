@@ -94,10 +94,12 @@ const TIME_CHART_EXAMPLE_SQL = `SELECT
 FROM otel_logs
 WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
+  AND $__filters
 GROUP BY ServiceName, ts`;
 
 export const DATE_RANGE_WHERE_EXAMPLE_SQL = `WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
-  AND TimestampTime <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})`;
+  AND TimestampTime <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
+  AND $__filters`;
 
 export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Line]: TIME_CHART_EXAMPLE_SQL,

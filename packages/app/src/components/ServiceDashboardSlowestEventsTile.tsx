@@ -1,6 +1,6 @@
 import { pick } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import type { Filter, TSource } from '@hyperdx/common-utils/dist/types';
+import type { Filter, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
@@ -19,7 +19,7 @@ export default function SlowestEventsTile({
   enabled = true,
   extraFilters = [],
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   height?: number;
   title: React.ReactNode;

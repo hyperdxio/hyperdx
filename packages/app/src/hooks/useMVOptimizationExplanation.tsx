@@ -2,7 +2,10 @@ import {
   MVOptimizationExplanation,
   tryOptimizeConfigWithMaterializedViewWithExplanations,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
-import { BuilderChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithOptDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -39,7 +42,11 @@ export function useMVOptimizationExplanation<
   return useQuery<MVOptimizationExplanationResult<C>>({
     queryKey: ['optimizationExplanation', config],
     queryFn: async ({ signal }) => {
-      if (!config || !source) {
+      if (
+        !config ||
+        !source ||
+        (source.kind !== SourceKind.Log && source.kind !== SourceKind.Trace)
+      ) {
         return {
           explanations: [],
         };

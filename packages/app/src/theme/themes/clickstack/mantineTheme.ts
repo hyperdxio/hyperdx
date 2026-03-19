@@ -12,6 +12,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import variantClasses from '../../../../styles/variants.module.scss';
+
 /**
  * ClickStack Theme
  *
@@ -218,6 +220,12 @@ export const makeTheme = ({
       defaultProps: {
         variant: 'primary',
       },
+      classNames: (_theme, props) => {
+        if (props.variant === 'link') {
+          return { root: variantClasses.buttonLink };
+        }
+        return {};
+      },
       vars: (_theme, props) => {
         const baseVars: Record<string, string> = {};
 
@@ -248,6 +256,14 @@ export const makeTheme = ({
           baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
         }
 
+        if (props.variant === 'link') {
+          baseVars['--button-bg'] = 'transparent';
+          baseVars['--button-hover'] = 'transparent';
+          baseVars['--button-color'] = 'var(--color-text-secondary)';
+          baseVars['--button-bd'] = 'none';
+          baseVars['--button-padding-x'] = '0';
+        }
+
         return { root: baseVars };
       },
     }),
@@ -272,6 +288,12 @@ export const makeTheme = ({
       defaultProps: {
         variant: 'subtle',
         color: 'gray',
+      },
+      classNames: (_theme, props) => {
+        if (props.variant === 'link') {
+          return { root: variantClasses.actionIconLink };
+        }
+        return {};
       },
       vars: (_theme, props) => {
         const baseVars: Record<string, string> = {};
@@ -306,6 +328,13 @@ export const makeTheme = ({
           baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
           baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
           baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
+        }
+
+        if (props.variant === 'link') {
+          baseVars['--ai-bg'] = 'transparent';
+          baseVars['--ai-hover'] = 'transparent';
+          baseVars['--ai-color'] = 'var(--color-text-secondary)';
+          baseVars['--ai-bd'] = 'none';
         }
 
         return { root: baseVars };
