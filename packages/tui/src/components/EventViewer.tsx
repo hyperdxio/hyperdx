@@ -17,6 +17,7 @@ import type {
   ProxyClickhouseClient,
 } from '@/api/client';
 import { buildEventSearchQuery, buildFullRowSql } from '@/api/eventQuery';
+import { openEditorForTimeRange, type TimeRange } from '@/utils/editor';
 
 interface EventViewerProps {
   clickhouseClient: ProxyClickhouseClient;
@@ -162,18 +163,27 @@ function formatTraceRow(
 
 // ---- Memoized sub-components ---------------------------------------
 
+function formatShortDate(d: Date): string {
+  return d
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, '');
+}
+
 const Header = React.memo(function Header({
   sourceName,
   dbName,
   tableName,
   isFollowing,
   loading,
+  timeRange,
 }: {
   sourceName: string;
   dbName: string;
   tableName: string;
   isFollowing: boolean;
   loading: boolean;
+  timeRange: TimeRange;
 }) {
   return (
     <Box>
@@ -185,6 +195,10 @@ const Header = React.memo(function Header({
       <Text dimColor>
         {' '}
         ({dbName}.{tableName})
+      </Text>
+      <Text dimColor>
+        {' '}
+        {formatShortDate(timeRange.start)} → {formatShortDate(timeRange.end)}
       </Text>
       {isFollowing && <Text color="yellow"> [FOLLOWING]</Text>}
       {loading && (
@@ -299,6 +313,7 @@ const HelpScreen = React.memo(function HelpScreen() {
     ['Esc', 'Blur search bar'],
     ['Tab', 'Next source / saved search'],
     ['Shift+Tab', 'Previous source / saved search'],
+    ['t', 'Edit time range in $EDITOR'],
     ['f', 'Toggle follow mode'],
     ['w', 'Toggle line wrap'],
     ['?', 'Toggle this help'],
@@ -383,6 +398,10 @@ export default function EventViewer({
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [timeRange, setTimeRange] = useState<TimeRange>(() => {
+    const now = new Date();
+    return { start: new Date(now.getTime() - 60 * 60 * 1000), end: now };
+  });
   const lastTimestampRef = useRef<string | null>(null);
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
 
@@ -517,10 +536,8 @@ export default function EventViewer({
   ]);
 
   useEffect(() => {
-    const now = new Date();
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-    fetchEvents(submittedQuery, oneHourAgo, now, 'replace');
-  }, [submittedQuery, fetchEvents]);
+    fetchEvents(submittedQuery, timeRange.start, timeRange.end, 'replace');
+  }, [submittedQuery, timeRange, fetchEvents]);
 
   useEffect(() => {
     if (!isFollowing) return;
@@ -713,6 +730,20 @@ export default function EventViewer({
     if (input === 'w') setWrapLines(w => !w);
     if (input === 'f') setIsFollowing(f => !f);
     if (input === '/') setFocusSearch(true);
+    // t = edit time range in $EDITOR
+    if (input === 't') {
+      // Use setTimeout to let Ink finish the current render cycle
+      // before we hand stdin/stdout to the editor
+      setTimeout(() => {
+        const result = openEditorForTimeRange(timeRange);
+        if (result) {
+          setTimeRange(result);
+          setScrollOffset(0);
+          setSelectedRow(0);
+        }
+      }, 50);
+      return;
+    }
     if (input === 'q') process.exit(0);
   });
 
@@ -742,6 +773,7 @@ export default function EventViewer({
         tableName={source.from.tableName}
         isFollowing={isFollowing}
         loading={loading}
+        timeRange={timeRange}
       />
       <TabBar items={switchItems} activeIdx={activeIdx} />
       <SearchBar
