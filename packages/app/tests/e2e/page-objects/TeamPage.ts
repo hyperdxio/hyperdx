@@ -125,7 +125,7 @@ export class TeamPage {
   }
 
   async openTeamTab() {
-    await this.openTab(this.teamTabButton, this.teamNameSection);
+    await this.openTab(this.teamTabButton, this.teamMembersSection);
   }
 
   async openIntegrationsTab() {

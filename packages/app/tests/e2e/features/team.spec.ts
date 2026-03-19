@@ -38,18 +38,19 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       ).toBeVisible();
     });
 
-    await test.step('Verify team tab sections are visible', async () => {
+    await test.step('Verify team name is in header', async () => {
+      await expect(teamPage.teamNameValue).toBeVisible();
+      await expect(teamPage.teamNameEditButton).toBeVisible();
+    });
+
+    await test.step('Verify members tab sections are visible', async () => {
       await teamPage.openTeamTab();
-      await expect(teamPage.teamName).toBeVisible();
       await expect(teamPage.members).toBeVisible();
     });
 
-    await test.step('Verify team tab headings exist', async () => {
+    await test.step('Verify members tab heading exists', async () => {
       await expect(
-        teamPage.teamName.getByText('Team Name', { exact: true }),
-      ).toBeVisible();
-      await expect(
-        teamPage.members.getByText('Team Members', { exact: true }),
+        teamPage.members.getByText('Team Members', { exact: true }).first(),
       ).toBeVisible();
     });
 
@@ -87,7 +88,6 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     let originalName: string;
 
     await test.step('Read current team name', async () => {
-      await teamPage.openTeamTab();
       const text = await teamPage.getTeamNameText();
       originalName = (text ?? '').trim();
     });
@@ -120,7 +120,6 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     let originalName: string;
 
     await test.step('Read current team name', async () => {
-      await teamPage.openTeamTab();
       const text = await teamPage.getTeamNameText();
       originalName = (text ?? '').trim();
     });

@@ -226,7 +226,7 @@ export default function TeamQueryConfigSection() {
           : `${value.toLocaleString()} ${unit}`;
 
   return (
-    <Box id="team_name">
+    <Box id="team_query_config">
       <Text size="md">ClickHouse Client Settings</Text>
       <Divider my="md" />
       <Card>
