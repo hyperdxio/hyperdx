@@ -220,6 +220,7 @@ describe('External API Alerts', () => {
           interval: '15m',
           source: AlertSource.TILE,
           thresholdType: AlertThresholdType.ABOVE,
+          conditionType: 'threshold',
           channel: {
             type: 'webhook',
             webhookId: expect.any(String),

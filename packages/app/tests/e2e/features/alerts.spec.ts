@@ -171,7 +171,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .filter({ hasText: savedSearchName }),
         ).toBeVisible({ timeout: 10000 });
         await expect(
-          alertsPage.pageContainer.getByText('change'),
+          alertsPage.pageContainer.getByText('Rate of Change').first(),
         ).toBeVisible();
       });
     },

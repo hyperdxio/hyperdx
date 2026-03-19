@@ -22,7 +22,6 @@ import {
 } from '@/fixtures';
 import Alert, {
   AlertChangeType,
-  AlertConditionType,
   AlertSource,
   AlertThresholdType,
 } from '@/models/alert';

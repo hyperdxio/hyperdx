@@ -3,7 +3,6 @@ import {
   getServer,
   makeAlertInput,
   makeRawSqlTile,
-  makeSavedSearchAlertInput,
   makeTile,
   randomMongoId,
 } from '@/fixtures';
@@ -13,8 +12,6 @@ import Alert, {
   AlertSource,
   AlertThresholdType,
 } from '@/models/alert';
-import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -719,7 +716,7 @@ describe('alerts router', () => {
         )
         .expect(200);
 
-      expect(resp.body.data.conditionType).toBeUndefined();
+      expect(resp.body.data.conditionType).toBe('threshold');
     });
 
     it('updates an existing alert to rate-of-change', async () => {
