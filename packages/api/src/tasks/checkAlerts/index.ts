@@ -23,6 +23,7 @@ import {
 import {
   BuilderChartConfigWithOptDateRange,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
@@ -91,7 +92,10 @@ export async function computeAliasWithClauses(
   metadata: Metadata,
 ): Promise<BuilderChartConfigWithOptDateRange['with']> {
   const resolvedSelect =
-    savedSearch.select || source.defaultTableSelectExpression || '';
+    savedSearch.select ||
+    ((source.kind === SourceKind.Log || source.kind === SourceKind.Trace) &&
+      source.defaultTableSelectExpression) ||
+    '';
   const config: BuilderChartConfigWithOptDateRange = {
     connection: '',
     displayType: DisplayType.Search,
@@ -99,7 +103,10 @@ export async function computeAliasWithClauses(
     select: resolvedSelect,
     where: savedSearch.where,
     whereLanguage: savedSearch.whereLanguage,
-    implicitColumnExpression: source.implicitColumnExpression,
+    implicitColumnExpression:
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.implicitColumnExpression
+        : undefined,
     timestampValueExpression: source.timestampValueExpression,
   };
   const query = await renderChartConfig(config, metadata, source.querySettings);
@@ -442,7 +449,10 @@ const getChartConfigFromAlert = (
       whereLanguage: savedSearch.whereLanguage,
       filters: savedSearch.filters?.map(f => ({ ...f })),
       groupBy: alert.groupBy,
-      implicitColumnExpression: source.implicitColumnExpression,
+      implicitColumnExpression:
+        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+          ? source.implicitColumnExpression
+          : undefined,
       timestampValueExpression: source.timestampValueExpression,
     };
   } else if (details.taskType === AlertTaskType.TILE) {
@@ -457,6 +467,15 @@ const getChartConfigFromAlert = (
       tile.config.displayType === DisplayType.StackedBar ||
       tile.config.displayType === DisplayType.Number
     ) {
+      // Tile alerts can use Log, Trace, or Metric sources.
+      // implicitColumnExpression exists on Log and Trace sources;
+      // metricTables exists on Metric sources.
+      const implicitColumnExpression =
+        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+          ? source.implicitColumnExpression
+          : undefined;
+      const metricTables =
+        source.kind === SourceKind.Metric ? source.metricTables : undefined;
       return {
         connection,
         dateRange,
@@ -466,8 +485,8 @@ const getChartConfigFromAlert = (
         from: source.from,
         granularity: `${windowSizeInMins} minute`,
         groupBy: tile.config.groupBy,
-        implicitColumnExpression: source.implicitColumnExpression,
-        metricTables: source.metricTables,
+        implicitColumnExpression,
+        metricTables,
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,
         where: tile.config.where,
@@ -671,14 +690,19 @@ export const processAlert = async (
       }
     }
 
-    // Optimize chart config with materialized views, if available
-    const optimizedChartConfig = source?.materializedViews?.length
+    // Optimize chart config with materialized views, if available.
+    // materializedViews exists on Log and Trace sources.
+    const mvSource =
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source
+        : undefined;
+    const optimizedChartConfig = mvSource?.materializedViews?.length
       ? await tryOptimizeConfigWithMaterializedView(
           chartConfig,
           metadata,
           clickhouseClient,
           undefined,
-          source,
+          mvSource,
         )
       : chartConfig;
 

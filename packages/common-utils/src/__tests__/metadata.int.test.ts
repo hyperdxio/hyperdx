@@ -3,18 +3,25 @@ import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
-import { ChartConfigWithDateRange, TSource } from '@/types';
+import { ChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 describe('Metadata Integration Tests', () => {
   let client: ClickHouseClient;
   let hdxClient: HdxClickhouseClient;
 
-  const source = {
+  const source: TSource = {
+    id: 'test-source',
+    name: 'Test',
+    kind: SourceKind.Log,
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: 'logs' },
+    timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: '*',
     querySettings: [
       { setting: 'optimize_read_in_order', value: '0' },
       { setting: 'cast_keep_nullable', value: '0' },
     ],
-  } as TSource;
+  };
 
   beforeAll(() => {
     const host = process.env.CLICKHOUSE_HOST || 'http://localhost:8123';

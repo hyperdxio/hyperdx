@@ -53,7 +53,10 @@ export function RowOverviewPanel({
 
   const jsonColumns = getJSONColumnNames(data?.meta);
 
-  const eventAttributesExpr = source.eventAttributesExpression;
+  const eventAttributesExpr =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+      ? source.eventAttributesExpression
+      : undefined;
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
