@@ -1120,29 +1120,33 @@ const DBSearchPageFiltersComponent = ({
     [filterState],
   );
 
+  const parentSpanIdExpr =
+    source?.kind === SourceKind.Trace
+      ? source.parentSpanIdExpression
+      : undefined;
+
   const setRootSpansOnly = useCallback(
     (rootSpansOnly: boolean) => {
-      if (!source?.parentSpanIdExpression) return;
+      if (!parentSpanIdExpr) return;
 
       if (rootSpansOnly) {
         if (columns?.some(col => col.name === IS_ROOT_SPAN_COLUMN_NAME)) {
           setFilterValue(IS_ROOT_SPAN_COLUMN_NAME, true, 'only');
         } else {
-          setFilterValue(source.parentSpanIdExpression, '', 'only');
+          setFilterValue(parentSpanIdExpr, '', 'only');
         }
       } else {
-        clearFilter(source.parentSpanIdExpression);
+        clearFilter(parentSpanIdExpr);
         clearFilter(IS_ROOT_SPAN_COLUMN_NAME);
       }
     },
-    [setFilterValue, clearFilter, source, columns],
+    [setFilterValue, clearFilter, parentSpanIdExpr, columns],
   );
 
   const isRootSpansOnly = useMemo(() => {
-    if (!source?.parentSpanIdExpression || source.kind !== SourceKind.Trace)
-      return false;
+    if (!parentSpanIdExpr || source?.kind !== SourceKind.Trace) return false;
 
-    const parentSpanIdFilter = filterState?.[source?.parentSpanIdExpression];
+    const parentSpanIdFilter = filterState?.[parentSpanIdExpr];
     const isRootSpanFilter = filterState?.[IS_ROOT_SPAN_COLUMN_NAME];
     return (
       (parentSpanIdFilter?.included.size === 1 &&
@@ -1150,7 +1154,7 @@ const DBSearchPageFiltersComponent = ({
       (isRootSpanFilter?.included.size === 1 &&
         isRootSpanFilter?.included.has(true))
     );
-  }, [filterState, source]);
+  }, [filterState, source, parentSpanIdExpr]);
 
   return (
     <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dagre from '@dagrejs/dagre';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Center, Code, Loader, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -75,7 +75,7 @@ interface ServiceMapPresentationProps {
   isLoading: boolean;
   error: Error | null;
   dateRange: [Date, Date];
-  source: TSource;
+  source: TTraceSource;
   isSingleTrace?: boolean;
 }
 
@@ -242,7 +242,7 @@ function ServiceMapPresentation({
 
 interface ServiceMapProps {
   traceId?: string;
-  traceTableSource: TSource;
+  traceTableSource: TTraceSource;
   dateRange: [Date, Date];
   samplingFactor?: number;
   isSingleTrace?: boolean;

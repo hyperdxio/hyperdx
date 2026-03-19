@@ -1,4 +1,8 @@
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   getHighlightedAttributesFromData,
@@ -8,17 +12,25 @@ import {
 describe('getHighlightedAttributesFromData', () => {
   const createBasicSource = (
     highlightedTraceAttributeExpressions: any[] = [],
-  ): TSource => ({
+  ): TTraceSource => ({
     kind: SourceKind.Trace,
     from: {
       databaseName: 'default',
       tableName: 'otel_traces',
     },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     connection: 'test-connection',
     name: 'Traces',
     highlightedTraceAttributeExpressions,
     id: 'test-source-id',
+    durationExpression: 'Duration',
+    durationPrecision: 9,
+    traceIdExpression: 'TraceId',
+    spanIdExpression: 'SpanId',
+    parentSpanIdExpression: 'ParentSpanId',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
   });
 
   const basicMeta = [
@@ -481,7 +493,7 @@ describe('getHighlightedAttributesFromData', () => {
   });
 
   it('extracts highlightedRowAttributeExpressions correctly', () => {
-    const source: TSource = {
+    const source: TTraceSource = {
       ...createBasicSource(),
       highlightedRowAttributeExpressions: [
         {

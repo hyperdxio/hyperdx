@@ -1,3 +1,4 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import { useSource } from '@/source';
@@ -27,7 +28,7 @@ export default function ServiceMapSidePanel({
           Beta
         </Badge>
       </Group>
-      {traceTableSource ? (
+      {traceTableSource && traceTableSource.kind === SourceKind.Trace ? (
         <ServiceMap
           traceTableSource={traceTableSource}
           traceId={traceId}

@@ -4,7 +4,13 @@ import {
   convertDateRangeToGranularityString,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Card,
@@ -35,7 +41,7 @@ const InfraSubpanelGroup = ({
   where,
 }: {
   fieldPrefix: string;
-  metricSource: TSource;
+  metricSource: TMetricSource;
   timestamp: any;
   title: string;
   where: string;
@@ -205,7 +211,14 @@ export default ({
   rowId: string | undefined | null;
   source: TSource;
 }) => {
-  const { data: metricSource } = useSource({ id: source.metricSourceId });
+  const metricSourceId =
+    isLogSource(source) || isTraceSource(source)
+      ? source.metricSourceId
+      : undefined;
+  const { data: metricSource } = useSource({
+    id: metricSourceId,
+    kinds: [SourceKind.Metric],
+  });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
@@ -225,7 +238,7 @@ export default ({
               metricSource={metricSource}
             />
           )}
-          {source && (
+          {source && source.kind === SourceKind.Log && (
             <Card p="md" mt="xl">
               <Card.Section p="md" py="xs">
                 Pod Timeline

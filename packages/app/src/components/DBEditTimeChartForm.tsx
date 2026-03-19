@@ -238,12 +238,15 @@ function ChartSeriesEditorComponent({
   });
   const groupBy = useWatch({ control, name: 'groupBy' });
 
+  const metricTableSource =
+    tableSource?.kind === SourceKind.Metric ? tableSource : undefined;
+
   const { data: attributeSuggestions, isLoading: isLoadingAttributes } =
     useFetchMetricResourceAttrs({
       databaseName,
       metricType,
       metricName,
-      tableSource,
+      tableSource: metricTableSource,
       isSql: aggConditionLanguage === 'sql',
     });
 
@@ -256,7 +259,7 @@ function ChartSeriesEditorComponent({
     databaseName,
     metricType,
     metricName,
-    tableSource,
+    tableSource: metricTableSource,
   });
 
   const handleAddToWhere = useCallback(
@@ -1020,7 +1023,11 @@ export default function EditTimeChartForm({
             connection: tableSource.connection,
             from: tableSource.from,
             limit: { limit: 200 },
-            select: tableSource?.defaultTableSelectExpression || '',
+            select:
+              ((tableSource?.kind === SourceKind.Log ||
+                tableSource?.kind === SourceKind.Trace) &&
+                tableSource.defaultTableSelectExpression) ||
+              '',
             filters: seriesToFilters(queriedConfig.select),
             filtersLogicalOperator: 'OR' as const,
             groupBy: undefined,
@@ -1364,10 +1371,17 @@ export default function EditTimeChartForm({
                   control={control}
                   name="select"
                   placeholder={
-                    tableSource?.defaultTableSelectExpression ||
+                    ((tableSource?.kind === SourceKind.Log ||
+                      tableSource?.kind === SourceKind.Trace) &&
+                      tableSource.defaultTableSelectExpression) ||
                     'SELECT Columns'
                   }
-                  defaultValue={tableSource?.defaultTableSelectExpression}
+                  defaultValue={
+                    tableSource?.kind === SourceKind.Log ||
+                    tableSource?.kind === SourceKind.Trace
+                      ? tableSource.defaultTableSelectExpression
+                      : undefined
+                  }
                   onSubmit={onSubmit}
                   label="SELECT"
                 />
@@ -1649,7 +1663,10 @@ export default function EditTimeChartForm({
                   typeof queriedConfig.select === 'string' &&
                   queriedConfig.select
                     ? queriedConfig.select
-                    : tableSource?.defaultTableSelectExpression || '',
+                    : ((tableSource?.kind === SourceKind.Log ||
+                        tableSource?.kind === SourceKind.Trace) &&
+                        tableSource.defaultTableSelectExpression) ||
+                      '',
                 groupBy: undefined,
                 having: undefined,
                 granularity: undefined,

@@ -4,8 +4,8 @@ import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
@@ -260,7 +260,7 @@ const buildChartConfigFromRequest = async (
       databaseName: source.from.databaseName,
       tableName: !isMetricSource ? source.from.tableName : '',
     },
-    ...(isMetricSource && {
+    ...(source.kind === SourceKind.Metric && {
       metricTables: source.metricTables,
     }),
     select: [

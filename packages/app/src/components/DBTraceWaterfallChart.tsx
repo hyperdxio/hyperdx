@@ -8,7 +8,9 @@ import {
   ChartConfigWithDateRange,
   SelectList,
   SourceKind,
+  TLogSource,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -121,24 +123,37 @@ function getTableBody(tableModel: TSource) {
 }
 
 function getConfig(
-  source: TSource,
+  source: TTraceSource | TLogSource,
   traceId: string,
   hiddenRowExpression?: string,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
-    Duration: source.durationExpression
-      ? getDurationSecondsExpression(source)
-      : '',
+    Duration:
+      source.kind === SourceKind.Trace && source.durationExpression
+        ? getDurationSecondsExpression(source)
+        : '',
     TraceId: source.traceIdExpression ?? '',
     SpanId: source.spanIdExpression ?? '',
-    ParentSpanId: source.parentSpanIdExpression ?? '',
-    StatusCode: source.statusCodeExpression ?? '',
+    ParentSpanId:
+      source.kind === SourceKind.Trace
+        ? (source.parentSpanIdExpression ?? '')
+        : '',
+    StatusCode:
+      source.kind === SourceKind.Trace
+        ? (source.statusCodeExpression ?? '')
+        : '',
     ServiceName: source.serviceNameExpression ?? '',
-    SeverityText: source.severityTextExpression ?? '',
+    SeverityText:
+      source.kind === SourceKind.Log
+        ? (source.severityTextExpression ?? '')
+        : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
-    SpanEvents: source.spanEventsValueExpression ?? '',
+    SpanEvents:
+      source.kind === SourceKind.Trace
+        ? (source.spanEventsValueExpression ?? '')
+        : '',
   };
 
   // Aliases for trace attributes must be added here to ensure
@@ -287,7 +302,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
 }: {
-  tableSource: TSource;
+  tableSource: TTraceSource | TLogSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
@@ -375,8 +390,8 @@ export function DBTraceWaterfallChartContainer({
   highlightedRowWhere,
   initialRowHighlightHint,
 }: {
-  traceTableSource: TSource;
-  logTableSource: TSource | null;
+  traceTableSource: TTraceSource;
+  logTableSource: TLogSource | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
