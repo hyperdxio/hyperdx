@@ -51,6 +51,7 @@ function isInputTimeQueryLive(inputTimeQuery: string) {
 }
 
 export function parseRelativeTimeQuery(interval: number) {
+  // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [subMilliseconds(end, interval), end];
 }
@@ -260,6 +261,7 @@ export function useTimeQuery({
     ) {
       // If we haven't set a live tail time range yet, but we're ready and should be in live tail, let's just return one right now
       // this is due to the first interval of live tail not kicking in until 2 seconds after our first render
+      // eslint-disable-next-line no-restricted-syntax
       const end = startOfSecond(new Date());
       const newLiveTailTimeRange: [Date, Date] = [
         sub(end, { minutes: 15 }),
@@ -269,6 +271,7 @@ export function useTimeQuery({
     } else {
       // We're not ready yet, safe to return anything.
       // Downstream querying components need to be disabled on isReady
+      // eslint-disable-next-line no-restricted-syntax
       return [new Date(), new Date()];
     }
   }, [
@@ -292,6 +295,7 @@ export function useTimeQuery({
     );
   }, [isReady, isLiveEnabled, timeRangeQuery, inputTimeQuery]);
   const refreshLiveTailTimeRange = () => {
+    // eslint-disable-next-line no-restricted-syntax
     const end = startOfSecond(new Date());
     setLiveTailTimeRange([sub(end, { minutes: 15 }), end]);
   };
@@ -529,6 +533,7 @@ export function useNewTimeQuery({
 }
 
 export function getLiveTailTimeRange(): [Date, Date] {
+  // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [sub(end, { minutes: 15 }), end];
 }

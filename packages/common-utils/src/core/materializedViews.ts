@@ -6,9 +6,16 @@ import {
   CteChartConfig,
   InternalAggregateFunction,
   InternalAggregateFunctionSchema,
+  isLogSource,
+  isTraceSource,
   MaterializedViewConfiguration,
+  TLogSource,
   TSource,
+  TTraceSource,
 } from '@/types';
+
+// Source types that support materialized views
+type TMVSource = TLogSource | TTraceSource;
 
 import { Metadata, TableConnection } from './metadata';
 import {
@@ -383,7 +390,7 @@ async function tryOptimizeConfig<C extends BuilderChartConfigWithOptDateRange>(
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
   mvConfig: MaterializedViewConfiguration,
-  source: Omit<TSource, 'connection'>, // for overlap with ISource type
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ) {
   const errors: string[] = [];
   // Attempt to optimize any CTEs that exist in the config
@@ -487,7 +494,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Omit<TSource, 'connection'>, // for overlap with ISource type
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ): Promise<{
   optimizedConfig?: C;
   explanations: MVOptimizationExplanation[];
@@ -541,7 +548,7 @@ export async function tryOptimizeConfigWithMaterializedView<
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Omit<TSource, 'connection'>, // for overlap with ISource type
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ) {
   const { optimizedConfig } =
     await tryOptimizeConfigWithMaterializedViewWithExplanations(
@@ -603,7 +610,10 @@ export async function optimizeGetKeyValuesCalls<
   signal?: AbortSignal;
 }): Promise<GetKeyValueCall<C>[]> {
   // Get the MVs from the source
-  const mvs = source?.materializedViews || [];
+  const mvs =
+    ((isTraceSource(source) || isLogSource(source)) &&
+      source?.materializedViews) ||
+    [];
   const mvsById = new Map(mvs.map(mv => [toMvId(mv), mv]));
 
   // Identify keys which can be queried from a materialized view

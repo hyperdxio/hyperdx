@@ -19,7 +19,7 @@ import {
   QuerySettings,
   SQLInterval,
   TileTemplateSchema,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
@@ -460,7 +460,7 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 
 export function convertToDashboardTemplate(
   input: Dashboard,
-  sources: TSourceUnion[],
+  sources: TSource[],
   connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
@@ -471,7 +471,7 @@ export function convertToDashboardTemplate(
 
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
-    sources: TSourceUnion[],
+    sources: TSource[],
     connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
@@ -497,7 +497,7 @@ export function convertToDashboardTemplate(
 
   const convertToFilterTemplate = (
     input: DashboardFilter,
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found

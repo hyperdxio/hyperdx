@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   BuilderChartConfigWithDateRange,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -43,8 +44,10 @@ export default function PatternTable({
     config,
     samples: SAMPLES,
     bodyValueExpression,
-    severityTextExpression: source?.severityTextExpression ?? '',
-    statusCodeExpression: source?.statusCodeExpression ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log && source.severityTextExpression) || '',
+    statusCodeExpression:
+      (source?.kind === SourceKind.Trace && source.statusCodeExpression) || '',
     totalCount,
   });
 

@@ -8,6 +8,9 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
+  isLogSource,
+  isMetricSource,
+  isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -135,11 +138,16 @@ export function convertFormStateToChartConfig(
       timestampValueExpression: source.timestampValueExpression,
       dateRange,
       connection: source.connection,
-      implicitColumnExpression: source.implicitColumnExpression,
-      metricTables: source.metricTables,
+      implicitColumnExpression:
+        isLogSource(source) || isTraceSource(source)
+          ? source.implicitColumnExpression
+          : undefined,
+      metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
       select: isSelectEmpty
-        ? source.defaultTableSelectExpression || ''
+        ? ((isLogSource(source) || isTraceSource(source)) &&
+            source.defaultTableSelectExpression) ||
+          ''
         : mergedSelect,
     };
 

@@ -8,7 +8,7 @@ import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TLogSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
@@ -49,7 +49,7 @@ export const useV2LogBatch = <T = any,>(
     dateRange: DateRange['dateRange'];
     extraSelects?: BuilderChartConfigWithDateRange['select'];
     limit?: number;
-    logSource: TSource;
+    logSource: TLogSource;
     order: 'asc' | 'desc';
     where: SearchCondition;
     whereLanguage: SearchConditionLanguage;
@@ -117,7 +117,7 @@ export const useV2LogBatch = <T = any,>(
   });
 };
 
-const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
+const renderKubeEvent = (source: TLogSource) => (event: KubeEvent) => {
   let href = '#';
   try {
     // FIXME: should check if it works in v2
@@ -171,15 +171,17 @@ export const KubeTimeline = ({
   dateRange,
 }: {
   q: string;
-  logSource: TSource;
+  logSource: TLogSource;
   dateRange?: [Date, Date];
   anchorEvent?: AnchorEvent;
 }) => {
   const startDate = React.useMemo(
+    // eslint-disable-next-line no-restricted-syntax
     () => dateRange?.[0] ?? sub(new Date(), { days: 1 }),
     [dateRange],
   );
   const endDate = React.useMemo(
+    // eslint-disable-next-line no-restricted-syntax
     () => dateRange?.[1] ?? new Date(),
     [dateRange],
   );

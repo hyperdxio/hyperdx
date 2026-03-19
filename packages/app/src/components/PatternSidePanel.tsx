@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Card, Drawer, Stack, Text } from '@mantine/core';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
@@ -37,7 +37,10 @@ export default function PatternSidePanel({
   const [selectedRowWhere, setSelectedRowWhere] =
     React.useState<RowWhereResult | null>(null);
 
-  const serviceNameExpression = source?.serviceNameExpression || 'Service';
+  const serviceNameExpression =
+    ((source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace) &&
+      source.serviceNameExpression) ||
+    'Service';
 
   const columnTypeMap = React.useMemo(() => {
     const map = new Map<string, { _type: JSDataType | null }>([

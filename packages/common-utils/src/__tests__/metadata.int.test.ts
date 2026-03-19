@@ -3,18 +3,25 @@ import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
-import { ChartConfigWithDateRange, TSource } from '@/types';
+import { ChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 describe('Metadata Integration Tests', () => {
   let client: ClickHouseClient;
   let hdxClient: HdxClickhouseClient;
 
-  const source = {
+  const source: TSource = {
+    id: 'test-source',
+    name: 'Test',
+    kind: SourceKind.Log,
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: 'logs' },
+    timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: '*',
     querySettings: [
       { setting: 'optimize_read_in_order', value: '0' },
       { setting: 'cast_keep_nullable', value: '0' },
     ],
-  } as TSource;
+  };
 
   beforeAll(() => {
     const host = process.env.CLICKHOUSE_HOST || 'http://localhost:8123';
@@ -574,20 +581,20 @@ describe('Metadata Integration Tests', () => {
       });
 
       // Should have the distributed table's create_table_query
-      expect(result.create_table_query).toContain(distributedTableName);
-      expect(result.create_table_query).toContain('Distributed');
+      expect(result!.create_table_query).toContain(distributedTableName);
+      expect(result!.create_table_query).toContain('Distributed');
 
       // Should have the local table's create_table_query
-      expect(result.create_local_table_query).toContain(localTableName);
-      expect(result.create_local_table_query).toContain('MergeTree');
+      expect(result!.create_local_table_query).toContain(localTableName);
+      expect(result!.create_local_table_query).toContain('MergeTree');
 
       // Keys should come from the local table
-      expect(result.primary_key).toBe('ServiceName, Timestamp');
-      expect(result.sorting_key).toBe('ServiceName, Timestamp');
-      expect(result.partition_key).toBe('toDate(Timestamp)');
+      expect(result!.primary_key).toBe('ServiceName, Timestamp');
+      expect(result!.sorting_key).toBe('ServiceName, Timestamp');
+      expect(result!.partition_key).toBe('toDate(Timestamp)');
 
       // Engine should be overridden with local table's engine
-      expect(result.engine).toBe('MergeTree');
+      expect(result!.engine).toBe('MergeTree');
     });
 
     it('should not set create_local_table_query for non-distributed tables', async () => {
@@ -597,9 +604,9 @@ describe('Metadata Integration Tests', () => {
         connectionId: 'test_connection',
       });
 
-      expect(result.create_local_table_query).toBeUndefined();
-      expect(result.engine).toBe('MergeTree');
-      expect(result.primary_key).toBe('ServiceName, Timestamp');
+      expect(result!.create_local_table_query).toBeUndefined();
+      expect(result!.engine).toBe('MergeTree');
+      expect(result!.primary_key).toBe('ServiceName, Timestamp');
     });
 
     it('should return skip indices from the local table when querying a distributed table', async () => {
