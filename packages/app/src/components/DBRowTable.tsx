@@ -34,6 +34,7 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -1669,7 +1670,10 @@ function DBSqlRowTableComponent({
     config,
     samples: 10_000,
     bodyValueExpression: patternColumn ?? '',
-    severityTextExpression: source?.severityTextExpression ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : undefined) ?? '',
     totalCount: undefined,
     enabled: denoiseResults,
   });
