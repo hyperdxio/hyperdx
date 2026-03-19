@@ -31,7 +31,6 @@ import {
   CteChartConfig,
   DateRange,
   DisplayType,
-  Filter,
   MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
@@ -577,14 +576,14 @@ export async function timeFilterExpr({
   try {
     // Not all of these will be available when selecting from a CTE
     if (databaseName && tableName && connectionId) {
-      const { primary_key } = await metadata.getTableMetadata({
+      const tableMetadata = await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
       });
       optimizedTimestampValueExpression = optimizeTimestampValueExpression(
         timestampValueExpression,
-        primary_key,
+        tableMetadata?.primary_key,
       );
     }
   } catch (e) {

@@ -153,7 +153,7 @@ export class Metadata {
     table: string;
     cache: MetadataCache;
     connectionId: string;
-  }) {
+  }): Promise<TableMetadata | undefined> {
     return cache.getOrFetch(
       `${connectionId}.${database}.${table}.metadata`,
       async () => {
@@ -241,7 +241,7 @@ export class Metadata {
       connectionId,
     });
 
-    // Build up materalized fields lookup table
+    // Build up materialized fields lookup table
     return new Map(
       columns
         .filter(
@@ -617,7 +617,7 @@ export class Metadata {
     });
 
     // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
-    if (tableMetadata.engine === 'Distributed') {
+    if (tableMetadata?.engine === 'Distributed') {
       try {
         const { database, table } =
           getLocalTableFromDistributedTable(tableMetadata) ?? {};
@@ -649,7 +649,7 @@ export class Metadata {
             'primary_key',
             'sampling_key',
           ]),
-          create_local_table_query: localTableMetadata.create_table_query,
+          create_local_table_query: localTableMetadata?.create_table_query,
         };
       } catch (e) {
         console.error(
@@ -661,7 +661,7 @@ export class Metadata {
 
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
     if (
-      tableMetadata.partition_key.startsWith('(') &&
+      tableMetadata?.partition_key.startsWith('(') &&
       tableMetadata.partition_key.endsWith(')')
     ) {
       tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
@@ -777,7 +777,7 @@ export class Metadata {
         let localTable = tableName;
 
         // For Distributed tables, fetch skip indices on the underlying local table.
-        if (tableMetadata.engine === 'Distributed') {
+        if (tableMetadata?.engine === 'Distributed') {
           try {
             const { database, table } =
               getLocalTableFromDistributedTable(tableMetadata) ?? {};

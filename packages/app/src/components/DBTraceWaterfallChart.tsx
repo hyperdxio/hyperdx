@@ -820,6 +820,7 @@ export function DBTraceWaterfallChartContainer({
           minWidthPerc: 1,
           isError,
           markers,
+          showDuration: type !== SourceKind.Log,
         },
       ],
     };
