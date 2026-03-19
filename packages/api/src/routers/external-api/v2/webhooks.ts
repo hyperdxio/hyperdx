@@ -42,27 +42,34 @@ function formatExternalWebhook(
  *         id:
  *           type: string
  *           description: Webhook ID
+ *           example: 507f1f77bcf86cd799439011
  *         name:
  *           type: string
  *           description: Webhook name
+ *           example: Production Alerts
  *         service:
  *           type: string
  *           enum: [slack]
  *           description: Webhook service type
+ *           example: slack
  *         url:
  *           type: string
  *           description: Slack incoming webhook URL
+ *           example: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI
+ *           example: Sends critical alerts to the #incidents channel
  *         updatedAt:
  *           type: string
  *           format: date-time
  *           description: Last update timestamp
+ *           example: "2025-06-15T10:30:00.000Z"
  *         createdAt:
  *           type: string
  *           format: date-time
  *           description: Creation timestamp
+ *           example: "2025-01-01T00:00:00.000Z"
  *     IncidentIOWebhook:
  *       type: object
  *       required:
@@ -75,27 +82,34 @@ function formatExternalWebhook(
  *         id:
  *           type: string
  *           description: Webhook ID
+ *           example: 507f1f77bcf86cd799439012
  *         name:
  *           type: string
  *           description: Webhook name
+ *           example: Incident Response
  *         service:
  *           type: string
  *           enum: [incidentio]
  *           description: Webhook service type
+ *           example: incidentio
  *         url:
  *           type: string
  *           description: incident.io alert event HTTP source URL
+ *           example: https://api.incident.io/v2/alert_events/http/abc123
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI
+ *           example: Routes alerts to incident.io for on-call escalation
  *         updatedAt:
  *           type: string
  *           format: date-time
  *           description: Last update timestamp
+ *           example: "2025-06-15T10:30:00.000Z"
  *         createdAt:
  *           type: string
  *           format: date-time
  *           description: Creation timestamp
+ *           example: "2025-01-01T00:00:00.000Z"
  *     GenericWebhook:
  *       type: object
  *       required:
@@ -108,30 +122,38 @@ function formatExternalWebhook(
  *         id:
  *           type: string
  *           description: Webhook ID
+ *           example: 507f1f77bcf86cd799439013
  *         name:
  *           type: string
  *           description: Webhook name
+ *           example: PagerDuty Integration
  *         service:
  *           type: string
  *           enum: [generic]
  *           description: Webhook service type
+ *           example: generic
  *         url:
  *           type: string
  *           description: Webhook destination URL
+ *           example: https://example.com/webhooks/alerts
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI
+ *           example: Forwards alert payloads to an external monitoring service
  *         body:
  *           type: string
  *           description: Optional request body template
+ *           example: '{"alert": "{{title}}", "severity": "{{level}}"}'
  *         updatedAt:
  *           type: string
  *           format: date-time
  *           description: Last update timestamp
+ *           example: "2025-06-15T10:30:00.000Z"
  *         createdAt:
  *           type: string
  *           format: date-time
  *           description: Creation timestamp
+ *           example: "2025-01-01T00:00:00.000Z"
  *     Webhook:
  *       oneOf:
  *         - $ref: '#/components/schemas/SlackWebhook'

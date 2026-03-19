@@ -53,7 +53,7 @@
     "packages/api/src/routers/external-api/**/*.ts": [
       "prettier --write --ignore-unknown",
       "eslint --flag v10_config_lookup_from_file --fix --quiet",
-      "sh -c 'cd packages/api && yarn run docgen && git add openapi.json'"
+      "sh -c 'cd packages/api && yarn run lint:openapi && git add openapi.json'"
     ],
     "**/*.{ts,tsx}": [
       "prettier --write --ignore-unknown",
