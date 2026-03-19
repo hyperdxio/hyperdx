@@ -22,6 +22,8 @@ export interface SearchQueryOptions {
   endTime: Date;
   /** Max rows */
   limit?: number;
+  /** Offset for pagination */
+  offset?: number;
 }
 
 /**
@@ -52,7 +54,14 @@ export async function buildEventSearchQuery(
   opts: SearchQueryOptions,
   metadata: Metadata,
 ): Promise<ChSql> {
-  const { source, searchQuery = '', startTime, endTime, limit = 100 } = opts;
+  const {
+    source,
+    searchQuery = '',
+    startTime,
+    endTime,
+    limit = 100,
+    offset,
+  } = opts;
 
   const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
   const firstTsExpr = getFirstTimestampValueExpression(tsExpr) ?? tsExpr;
@@ -74,7 +83,7 @@ export async function buildEventSearchQuery(
     timestampValueExpression: tsExpr,
     implicitColumnExpression: source.implicitColumnExpression,
     orderBy,
-    limit: { limit },
+    limit: { limit, offset },
     dateRange: [startTime, endTime],
   };
 

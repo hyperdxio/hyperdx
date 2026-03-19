@@ -263,17 +263,20 @@ const Footer = React.memo(function Footer({
   cursorPos,
   wrapLines,
   isFollowing,
+  loadingMore,
 }: {
   rowCount: number;
   cursorPos: number;
   wrapLines: boolean;
   isFollowing: boolean;
+  loadingMore: boolean;
 }) {
   return (
     <Box marginTop={1} justifyContent="space-between">
       <Text dimColor>
         {isFollowing ? '[FOLLOWING] ' : ''}
-        {wrapLines ? '[WRAP] ' : ''}?=help q=quit
+        {wrapLines ? '[WRAP] ' : ''}
+        {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
       </Text>
       <Text dimColor>
         {cursorPos}/{rowCount}
@@ -378,7 +381,10 @@ export default function EventViewer({
     unknown
   > | null>(null);
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const lastTimestampRef = useRef<string | null>(null);
+  const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
 
   const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
   const columns = useMemo(() => getColumns(source), [source]);
@@ -420,7 +426,7 @@ export default function EventViewer({
   }, [switchItems, source, submittedQuery]);
 
   const activeIdx = findActiveIndex();
-  const MAX_ROWS = 200;
+  const PAGE_SIZE = 200;
 
   const fetchEvents = useCallback(
     async (
@@ -433,7 +439,7 @@ export default function EventViewer({
       setError(null);
       try {
         const chSql = await buildEventSearchQuery(
-          { source, searchQuery: query, startTime, endTime, limit: MAX_ROWS },
+          { source, searchQuery: query, startTime, endTime, limit: PAGE_SIZE },
           metadata,
         );
         const resultSet = await clickhouseClient.query({
@@ -446,9 +452,11 @@ export default function EventViewer({
         const rows = (json.data ?? []) as EventRow[];
 
         if (mode === 'prepend' && rows.length > 0) {
-          setEvents(prev => [...rows, ...prev].slice(0, MAX_ROWS));
+          setEvents(prev => [...rows, ...prev]);
         } else {
-          setEvents(rows.slice(0, MAX_ROWS));
+          setEvents(rows);
+          setHasMore(rows.length >= PAGE_SIZE);
+          dateRangeRef.current = { start: startTime, end: endTime };
         }
         if (rows.length > 0) {
           const ts = rows[0][tsExpr];
@@ -462,6 +470,51 @@ export default function EventViewer({
     },
     [clickhouseClient, metadata, source, tsExpr],
   );
+
+  const fetchNextPage = useCallback(async () => {
+    if (!hasMore || loadingMore || !dateRangeRef.current) return;
+    setLoadingMore(true);
+    try {
+      const { start, end } = dateRangeRef.current;
+      const chSql = await buildEventSearchQuery(
+        {
+          source,
+          searchQuery: submittedQuery,
+          startTime: start,
+          endTime: end,
+          limit: PAGE_SIZE,
+          offset: events.length,
+        },
+        metadata,
+      );
+      const resultSet = await clickhouseClient.query({
+        query: chSql.sql,
+        query_params: chSql.params,
+        format: 'JSON',
+        connectionId: source.connection,
+      });
+      const json = await resultSet.json<EventRow>();
+      const rows = (json.data ?? []) as EventRow[];
+
+      if (rows.length > 0) {
+        setEvents(prev => [...prev, ...rows]);
+      }
+      setHasMore(rows.length >= PAGE_SIZE);
+    } catch {
+      // Non-fatal — just stop pagination
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    hasMore,
+    loadingMore,
+    events.length,
+    submittedQuery,
+    source,
+    metadata,
+    clickhouseClient,
+  ]);
 
   useEffect(() => {
     const now = new Date();
@@ -587,6 +640,12 @@ export default function EventViewer({
     }
     // j/k move selection cursor within visible rows
     if (input === 'j' || key.downArrow) {
+      const absPos = scrollOffset + selectedRow;
+      // If at the very last event and more pages available, fetch next page
+      if (absPos >= events.length - 1 && hasMore) {
+        fetchNextPage();
+        return;
+      }
       setSelectedRow(r => {
         const next = r + 1;
         if (next >= maxRows) {
@@ -620,8 +679,9 @@ export default function EventViewer({
         return;
       }
     }
-    // G = jump to last item (end of list)
+    // G = jump to last item (end of list), fetch more if available
     if (input === 'G') {
+      if (hasMore) fetchNextPage();
       const maxOffset = Math.max(0, events.length - maxRows);
       setScrollOffset(maxOffset);
       setSelectedRow(Math.min(events.length - 1, maxRows - 1));
@@ -634,9 +694,13 @@ export default function EventViewer({
     // Ctrl+D = page down, Ctrl+U = page up (half-page scroll like vim)
     if (key.ctrl && input === 'd') {
       const half = Math.floor(maxRows / 2);
-      setScrollOffset(o =>
-        Math.min(o + half, Math.max(0, events.length - maxRows)),
-      );
+      const maxOffset = Math.max(0, events.length - maxRows);
+      const newOffset = Math.min(scrollOffset + half, maxOffset);
+      // If scrolling near the end and more data available, fetch next page
+      if (newOffset >= maxOffset - half && hasMore) {
+        fetchNextPage();
+      }
+      setScrollOffset(newOffset);
     }
     if (key.ctrl && input === 'u') {
       const half = Math.floor(maxRows / 2);
@@ -816,6 +880,7 @@ export default function EventViewer({
         cursorPos={scrollOffset + selectedRow + 1}
         wrapLines={wrapLines}
         isFollowing={isFollowing}
+        loadingMore={loadingMore}
       />
     </Box>
   );
