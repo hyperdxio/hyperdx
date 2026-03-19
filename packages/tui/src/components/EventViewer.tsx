@@ -260,17 +260,66 @@ const SearchBar = React.memo(function SearchBar({
 
 const Footer = React.memo(function Footer({
   rowCount,
+  cursorPos,
   wrapLines,
+  isFollowing,
 }: {
   rowCount: number;
+  cursorPos: number;
   wrapLines: boolean;
+  isFollowing: boolean;
 }) {
   return (
-    <Box marginTop={1}>
+    <Box marginTop={1} justifyContent="space-between">
       <Text dimColor>
-        {rowCount} rows | j/k=select enter=expand esc=close /=search tab=switch
-        f=follow w=wrap q=quit G/g=top/bottom {wrapLines ? '[WRAP]' : ''}
+        {isFollowing ? '[FOLLOWING] ' : ''}
+        {wrapLines ? '[WRAP] ' : ''}?=help q=quit
       </Text>
+      <Text dimColor>
+        {cursorPos}/{rowCount}
+      </Text>
+    </Box>
+  );
+});
+
+const HelpScreen = React.memo(function HelpScreen() {
+  const keys: Array<[string, string]> = [
+    ['j / ↓', 'Move selection down'],
+    ['k / ↑', 'Move selection up'],
+    ['l / Enter', 'Expand row detail (SELECT *)'],
+    ['h / Esc', 'Close row detail'],
+    ['G', 'Jump to last item'],
+    ['g', 'Jump to first item'],
+    ['Ctrl+D', 'Page down (half page)'],
+    ['Ctrl+U', 'Page up (half page)'],
+    ['/', 'Focus search bar'],
+    ['Esc', 'Blur search bar'],
+    ['Tab', 'Next source / saved search'],
+    ['Shift+Tab', 'Previous source / saved search'],
+    ['f', 'Toggle follow mode'],
+    ['w', 'Toggle line wrap'],
+    ['?', 'Toggle this help'],
+    ['q', 'Quit'],
+  ];
+
+  return (
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Text bold color="cyan">
+        Keybindings
+      </Text>
+      <Text> </Text>
+      {keys.map(([key, desc]) => (
+        <Box key={key}>
+          <Box width={20}>
+            <Text bold color="yellow">
+              {key}
+            </Text>
+          </Box>
+          <Text>{desc}</Text>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Text dimColor>Press ? or Esc to close</Text>
     </Box>
   );
 });
@@ -320,6 +369,7 @@ export default function EventViewer({
   const [isFollowing, setIsFollowing] = useState(follow);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [focusSearch, setFocusSearch] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   const [wrapLines, setWrapLines] = useState(false);
   const [selectedRow, setSelectedRow] = useState(0);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -513,6 +563,17 @@ export default function EventViewer({
   const visibleRowCount = Math.min(events.length - scrollOffset, maxRows);
 
   useInput((input, key) => {
+    // ? toggles help from anywhere (except search input)
+    if (input === '?' && !focusSearch) {
+      setShowHelp(s => !s);
+      return;
+    }
+    // When help is showing, any key closes it
+    if (showHelp) {
+      setShowHelp(false);
+      return;
+    }
+
     if (focusSearch) {
       if (key.tab) {
         handleTabSwitch(key.shift ? -1 : 1);
@@ -528,12 +589,11 @@ export default function EventViewer({
     if (input === 'j' || key.downArrow) {
       setSelectedRow(r => {
         const next = r + 1;
-        // Auto-scroll when cursor hits the bottom edge
         if (next >= maxRows) {
           setScrollOffset(o =>
             Math.min(o + 1, Math.max(0, events.length - maxRows)),
           );
-          return r; // keep cursor at bottom
+          return r;
         }
         return Math.min(next, visibleRowCount - 1);
       });
@@ -541,7 +601,6 @@ export default function EventViewer({
     if (input === 'k' || key.upArrow) {
       setSelectedRow(r => {
         const next = r - 1;
-        // Auto-scroll when cursor hits the top edge
         if (next < 0) {
           setScrollOffset(o => Math.max(0, o - 1));
           return 0;
@@ -549,27 +608,39 @@ export default function EventViewer({
         return next;
       });
     }
-    // Enter/l opens expanded detail view for selected row
     if (key.return || input === 'l') {
       if (expandedRow === null) {
         setExpandedRow(scrollOffset + selectedRow);
       }
       return;
     }
-    // Escape/h closes expanded view
     if (key.escape || input === 'h') {
       if (expandedRow !== null) {
         setExpandedRow(null);
         return;
       }
     }
+    // G = jump to last item (end of list)
     if (input === 'G') {
+      const maxOffset = Math.max(0, events.length - maxRows);
+      setScrollOffset(maxOffset);
+      setSelectedRow(Math.min(events.length - 1, maxRows - 1));
+    }
+    // g = jump to first item (top of list)
+    if (input === 'g') {
       setScrollOffset(0);
       setSelectedRow(0);
     }
-    if (input === 'g') {
-      setScrollOffset(Math.max(0, events.length - maxRows));
-      setSelectedRow(0);
+    // Ctrl+D = page down, Ctrl+U = page up (half-page scroll like vim)
+    if (key.ctrl && input === 'd') {
+      const half = Math.floor(maxRows / 2);
+      setScrollOffset(o =>
+        Math.min(o + half, Math.max(0, events.length - maxRows)),
+      );
+    }
+    if (key.ctrl && input === 'u') {
+      const half = Math.floor(maxRows / 2);
+      setScrollOffset(o => Math.max(0, o - half));
     }
     if (key.tab) {
       handleTabSwitch(key.shift ? -1 : 1);
@@ -590,6 +661,14 @@ export default function EventViewer({
   }, [events, scrollOffset, maxRows, source]);
 
   const errorLine = error ? error.slice(0, 200) : '';
+
+  if (showHelp) {
+    return (
+      <Box flexDirection="column" paddingX={1} height={termHeight}>
+        <HelpScreen />
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" paddingX={1} height={termHeight}>
@@ -732,7 +811,12 @@ export default function EventViewer({
         </Box>
       )}
 
-      <Footer rowCount={events.length} wrapLines={wrapLines} />
+      <Footer
+        rowCount={events.length}
+        cursorPos={scrollOffset + selectedRow + 1}
+        wrapLines={wrapLines}
+        isFollowing={isFollowing}
+      />
     </Box>
   );
 }
