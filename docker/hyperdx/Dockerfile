@@ -32,20 +32,36 @@ WORKDIR /app
 
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./tsconfig.base.json ./
-COPY ./packages/common-utils ./packages/common-utils
+# Only copy package.json for workspace resolution during yarn install;
+# full source is copied in the build stages that need it.
+COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
 COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/tsconfig.build.json ./packages/api/package.json ./packages/api/
 COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 
-RUN yarn install --mode=skip-build && yarn cache clean
+# Use BuildKit cache mount to persist Yarn download cache across builds,
+# so unchanged packages aren't re-downloaded even when yarn.lock changes.
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    yarn install --mode=skip-build && yarn cache clean
+
+
+## common-utils builder ############################################################################
+# Separate stage so common-utils build is cached independently of API/App source changes.
+FROM node_base AS common-utils-builder
+
+COPY ./packages/common-utils ./packages/common-utils
+RUN yarn workspace @hyperdx/common-utils run build
 
 
 ## API/APP Builder Image ##########################################################################
 FROM node_base AS builder
 
 WORKDIR /app
+
+# Copy pre-built common-utils from its dedicated build stage
+COPY --from=common-utils-builder /app/packages/common-utils ./packages/common-utils
 
 COPY --from=api ./src ./packages/api/src
 COPY --from=api ./bin ./packages/api/bin
@@ -58,9 +74,10 @@ COPY --from=app ./types ./packages/app/types
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_STANDALONE=true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE=false
-ENV NX_DAEMON=false
-RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
+RUN yarn workspace @hyperdx/api run build && \
+    yarn workspace @hyperdx/app run build
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
 # prod ############################################################################################
