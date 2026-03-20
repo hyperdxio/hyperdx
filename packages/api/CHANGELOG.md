@@ -1,5 +1,33 @@
 # @hyperdx/api
 
+## 2.22.0
+
+### Patch Changes
+
+- f410e6dc: Bump AI SDK to v6
+- e05bd6b6: Include saved search filters in alert ClickHouse queries
+- f5ce2329: ci: Add linting for openapi specs
+- e09c8c0e: fix: query settings length validation
+- 1381782b: feat: Support raw sql number charts and pie charts
+- e2a82c6b: feat: Add Raw SQL Chart support to external dashboard APIs
+- a345b83e: perf: optimize AlertHistory aggregation queries with time-window filters and compound index
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 25a3291f: feat: Attach service version to all internal telemetry
+- a0b3361a: feat: unified hyperdx entrypoint script for API and alert task startup
+- Updated dependencies [2fab76bf]
+- Updated dependencies [e18f88c8]
+- Updated dependencies [e09c8c0e]
+- Updated dependencies [1381782b]
+- Updated dependencies [74d92594]
+- Updated dependencies [1d83bebb]
+- Updated dependencies [ce850647]
+- Updated dependencies [359b5874]
+- Updated dependencies [243e3baa]
+- Updated dependencies [4cee5d69]
+  - @hyperdx/common-utils@0.16.1
+
 ## 2.21.0
 
 ### Minor Changes
