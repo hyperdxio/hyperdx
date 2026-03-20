@@ -3,9 +3,6 @@
   "version": "2.21.0",
   "license": "MIT",
   "private": true,
-  "bin": {
-    "hyperdx": "./bin/hyperdx"
-  },
   "engines": {
     "node": ">=22.16.0"
   },
