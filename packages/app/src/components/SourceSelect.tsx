@@ -1,8 +1,13 @@
 import { memo, useCallback, useMemo } from 'react';
 import { UseControllerProps, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Group, SelectProps, UnstyledButton } from '@mantine/core';
-import { ComboboxChevron } from '@mantine/core';
+import {
+  ComboboxChevron,
+  ComboboxItem,
+  Group,
+  SelectProps,
+  UnstyledButton,
+} from '@mantine/core';
 import {
   IconConnection,
   IconLogs,
@@ -54,20 +59,9 @@ const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
   [SourceKind.Log]: <IconLogs size={16} />,
 };
 
-const ACTION_ICONS: Record<string, React.ReactNode> = {
+const OPTION_ICONS: Record<string, React.ReactNode> = {
   _create_new_value: <IconPlus size={14} />,
   _edit_sources_value: <IconSettings size={14} />,
-};
-
-const renderOption: SelectProps['renderOption'] = ({ option, checked }) => {
-  const icon = ACTION_ICONS[option.value];
-  if (!icon) return option.label;
-  return (
-    <Group gap="xs" wrap="nowrap">
-      {icon}
-      {option.label}
-    </Group>
-  );
 };
 
 function SourceSelectControlledComponent({
@@ -103,6 +97,28 @@ function SourceSelectControlledComponent({
 
   const leftIcon = SOURCE_KIND_ICONS[selectedSourceKind ?? ''] ?? (
     <IconStack size={16} />
+  );
+
+  const sourceKindMap = useMemo(() => {
+    const map = new Map<string, SourceKind>();
+    data?.forEach(s => map.set(s.id, s.kind));
+    return map;
+  }, [data]);
+
+  const renderOption = useCallback(
+    ({ option }: { option: ComboboxItem }) => {
+      const icon =
+        OPTION_ICONS[option.value] ??
+        SOURCE_KIND_ICONS[sourceKindMap.get(option.value) ?? ''];
+      if (!icon) return option.label;
+      return (
+        <Group gap="xs" wrap="nowrap">
+          {icon}
+          {option.label}
+        </Group>
+      );
+    },
+    [sourceKindMap],
   );
 
   const hasActions =
