@@ -2,6 +2,11 @@ import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select, SelectProps } from '@mantine/core';
 
+export enum SelectControlledSpecialValues {
+  CreateNewValue = '_create_new_value',
+  EditValue = '_edit_value',
+}
+
 export type SelectControlledProps = SelectProps &
   UseControllerProps<any> & {
     onCreate?: () => void;
@@ -39,9 +44,15 @@ export default function SelectControlled(props: SelectControlledProps) {
 
   const onChange = useCallback(
     (value: string | null) => {
-      if (value === '_create_new_value' && onCreate != null) {
+      if (
+        value === SelectControlledSpecialValues.CreateNewValue &&
+        onCreate != null
+      ) {
         onCreate();
-      } else if (value === '_edit_sources_value' && onEdit != null) {
+      } else if (
+        value === SelectControlledSpecialValues.EditValue &&
+        onEdit != null
+      ) {
         onEdit();
       } else if (value !== null || allowDeselect) {
         fieldOnChange(value);

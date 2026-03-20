@@ -18,7 +18,9 @@ import {
   IconStack,
 } from '@tabler/icons-react';
 
-import SelectControlled from '@/components/SelectControlled';
+import SelectControlled, {
+  SelectControlledSpecialValues,
+} from '@/components/SelectControlled';
 import { useSources } from '@/source';
 
 import styles from '../../styles/SourceSelectControlled.module.scss';
@@ -63,8 +65,8 @@ const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
 };
 
 const OPTION_ICONS: Record<string, React.ReactNode> = {
-  _create_new_value: <IconPlus size={14} />,
-  _edit_sources_value: <IconSettings size={14} />,
+  [SelectControlledSpecialValues.CreateNewValue]: <IconPlus size={14} />,
+  [SelectControlledSpecialValues.EditValue]: <IconSettings size={14} />,
 };
 
 function SourceSelectControlledComponent({
@@ -145,12 +147,15 @@ function SourceSelectControlledComponent({
     const actionItems: { value: string; label: string }[] = [];
     if (onCreate) {
       actionItems.push({
-        value: '_create_new_value',
+        value: SelectControlledSpecialValues.CreateNewValue,
         label: 'Create New Source',
       });
     }
     if (onEdit) {
-      actionItems.push({ value: '_edit_sources_value', label: 'Edit Sources' });
+      actionItems.push({
+        value: SelectControlledSpecialValues.EditValue,
+        label: 'Edit Sources',
+      });
     }
 
     return [...sourceItems, { group: 'Actions', items: actionItems }];
