@@ -129,6 +129,7 @@ import { externalQueryChartSeriesSchema } from '@/utils/zod';
  *       properties:
  *         data:
  *           type: array
+ *           description: Array of data points for the series
  *           items:
  *             $ref: '#/components/schemas/SeriesDataPoint'
  */

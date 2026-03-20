@@ -52,6 +52,7 @@
     "zod-express-middleware": "^1.4.0"
   },
   "devDependencies": {
+    "@stoplight/spectral-cli": "^6.15.0",
     "@types/aws4": "^1",
     "@types/compression": "^1.7.3",
     "@types/cors": "^2.8.14",
@@ -87,13 +88,14 @@
     "build": "rimraf ./build && tsc && tsc-alias && cp -r ./src/opamp/proto ./build/opamp/",
     "lint": "npx eslint --quiet . --ext .ts",
     "lint:fix": "npx eslint . --ext .ts --fix",
-    "ci:lint": "yarn lint && yarn tsc --noEmit",
+    "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:openapi",
     "ci:int": "DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true jest --runInBand --ci --forceExit --coverage",
     "dev:int": "DOTENV_CONFIG_PATH=.env.test DOTENV_CONFIG_OVERRIDE=true jest --runInBand --forceExit --coverage",
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
     "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts",
     "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",
     "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up",
-    "docgen": "ts-node scripts/generate-api-docs.ts"
+    "docgen": "ts-node scripts/generate-api-docs.ts",
+    "lint:openapi": "yarn docgen && spectral lint openapi.json"
   }
 }
