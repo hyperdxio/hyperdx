@@ -204,6 +204,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           enum: [sql]
  *           default: sql
  *           description: Filter type. Currently only "sql" is supported.
+ *           example: "sql"
  *         condition:
  *           type: string
  *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
@@ -559,6 +560,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         metricName:
  *           type: string
  *           description: Name of the metric to aggregate; only applicable when the source is a metrics source.
+ *           example: "http.server.duration"
  *         metricType:
  *           $ref: '#/components/schemas/MetricDataType'
  *           description: Metric type; only applicable when the source is a metrics source.
@@ -566,6 +568,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           type: string
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
+ *           example: "delta"
  *
  *     LineBuilderChartConfig:
  *       type: object
@@ -1133,21 +1136,26 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           type: string
  *           enum: [QUERY_EXPRESSION]
  *           description: Filter type. Must be "QUERY_EXPRESSION".
+ *           example: "QUERY_EXPRESSION"
  *         name:
  *           type: string
  *           minLength: 1
  *           description: Display name for the dashboard filter key
+ *           example: "Environment"
  *         expression:
  *           type: string
  *           minLength: 1
  *           description: Key expression used when applying this dashboard filter key
+ *           example: "environment"
  *         sourceId:
  *           type: string
  *           description: Source ID this dashboard filter key applies to
+ *           example: "65f5e4a3b9e77c001a111111"
  *         sourceMetricType:
  *           type: string
  *           enum: [sum, gauge, histogram, summary, exponential histogram]
  *           description: Metric type when source is metrics
+ *           example: "gauge"
  *
  *     Filter:
  *       allOf:
