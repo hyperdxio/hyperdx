@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
+  DashboardContainer,
   DashboardFilter,
-  DashboardSection,
   Filter,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -24,7 +24,7 @@ export type Tile = {
   w: number;
   h: number;
   config: SavedChartConfig;
-  sectionId?: string;
+  containerId?: string;
 };
 
 export type Dashboard = {
@@ -36,7 +36,7 @@ export type Dashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
   savedFilterValues?: Filter[];
-  sections?: DashboardSection[];
+  containers?: DashboardContainer[];
 };
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');

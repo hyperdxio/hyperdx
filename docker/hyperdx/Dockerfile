@@ -48,6 +48,7 @@ FROM node_base AS builder
 WORKDIR /app
 
 COPY --from=api ./src ./packages/api/src
+COPY --from=api ./bin ./packages/api/bin
 COPY --from=app ./src ./packages/app/src
 COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
@@ -88,6 +89,7 @@ USER node
 WORKDIR /app
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
+COPY --chown=node:node --from=builder /app/packages/api/bin ./packages/api/bin
 COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
 COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packages/app
