@@ -17,7 +17,6 @@ import {
 } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
-import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { useSources } from '@/source';
 
 import styles from '../../styles/SourceSelectControlled.module.scss';
@@ -83,8 +82,6 @@ function SourceSelectControlledComponent({
 } & UseControllerProps<any> &
   SelectProps) {
   const { data } = useSources();
-  const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
-
   const selectedSourceId = useWatch({
     control: props.control,
     name: props.name,
@@ -121,9 +118,7 @@ function SourceSelectControlledComponent({
     [sourceKindMap],
   );
 
-  const hasActions =
-    (onCreate && !hasLocalDefaultSources) ||
-    (onEdit && !hasLocalDefaultSources);
+  const hasActions = !!onCreate || !!onEdit;
 
   const values = useMemo(() => {
     const sourceItems = (
@@ -144,26 +139,18 @@ function SourceSelectControlledComponent({
     }
 
     const actionItems: { value: string; label: string }[] = [];
-    if (onCreate && !hasLocalDefaultSources) {
+    if (onCreate) {
       actionItems.push({
         value: '_create_new_value',
         label: 'Create New Source',
       });
     }
-    if (onEdit && !hasLocalDefaultSources) {
+    if (onEdit) {
       actionItems.push({ value: '_edit_sources_value', label: 'Edit Sources' });
     }
 
     return [...sourceItems, { group: 'Actions', items: actionItems }];
-  }, [
-    data,
-    onCreate,
-    onEdit,
-    allowedSourceKinds,
-    connectionId,
-    hasLocalDefaultSources,
-    hasActions,
-  ]);
+  }, [data, onCreate, onEdit, allowedSourceKinds, connectionId, hasActions]);
 
   const rightSectionProps = SourceSelectRightSection({ sourceSchemaPreview });
 
