@@ -251,7 +251,7 @@ async function globalSetup(_config: FullConfig) {
     await page.goto('/search', { timeout: PAGE_LOAD_TIMEOUT_MS });
 
     // Wait for source selector to be ready (indicates sources are loaded)
-    await page.waitForSelector('[data-testid="source-settings-menu"]', {
+    await page.waitForSelector('[data-testid="source-selector"]', {
       state: 'visible',
       timeout: SOURCE_SELECTOR_TIMEOUT_MS,
     });

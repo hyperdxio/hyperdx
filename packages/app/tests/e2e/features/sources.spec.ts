@@ -102,15 +102,13 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await searchPage.goto();
   });
 
-  test('should open source settings menu', async () => {
-    // Click source settings menu
-    await searchPage.sourceMenu.click();
+  test('should show source actions in dropdown', async () => {
+    // Open source selector dropdown
+    await searchPage.sourceDropdown.click();
 
-    // Verify create new source menu item is visible
+    // Verify action items are visible in the dropdown
     await expect(searchPage.createNewSourceItem).toBeVisible();
-
-    // Verify edit source menu items are visible
-    await expect(searchPage.editSourceMenuItem).toBeVisible();
+    await expect(searchPage.editSourcesItem).toBeVisible();
   });
 
   test(
@@ -144,7 +142,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
   );
 
   test('should show proper fields when creating a new source', async () => {
-    await searchPage.sourceMenu.click();
+    await searchPage.sourceDropdown.click();
     await searchPage.createNewSourceItem.click();
     // for each source type (log, trace, session, metric), verify the correct fields are shown
     for (const sourceData of allSourcesData) {
