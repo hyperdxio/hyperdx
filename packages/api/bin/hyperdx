@@ -4,6 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_BUILD_DIR="${SCRIPT_DIR}/../build"
 
+# shellcheck disable=SC2086
+# NODE_REQUIRE_FLAGS is intentionally unquoted for word-splitting into -r <module>
 NODE_REQUIRE_FLAGS="-r @hyperdx/node-opentelemetry/build/src/tracing"
 
 command="$1"
