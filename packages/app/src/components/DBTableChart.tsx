@@ -54,7 +54,7 @@ export default function DBTableChart({
   const [sort, setSort] = useState<SortingState>([]);
 
   const { data: source } = useSource({
-    id: isBuilderChartConfig(config) ? config.source : undefined,
+    id: config.source,
   });
 
   const effectiveSort = useMemo(

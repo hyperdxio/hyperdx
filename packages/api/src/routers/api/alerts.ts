@@ -1,5 +1,6 @@
 import type { AlertsApiResponse } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
+import { pick } from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
@@ -13,6 +14,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { sendJson } from '@/utils/serialization';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -27,93 +29,66 @@ router.get('/', async (req, res: AlertsExpRes, next) => {
 
     const alerts = await getAlertsEnhanced(teamId);
 
-    const data: AlertsApiResponse['data'] = await Promise.all(
+    const data = await Promise.all(
       alerts.map(async alert => {
         const history = await getRecentAlertHistories({
           alertId: new ObjectId(alert._id),
+          interval: alert.interval,
           limit: 20,
         });
 
         return {
-          _id: alert._id.toString(),
-          interval: alert.interval,
-          scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
-          scheduleStartAt: alert.scheduleStartAt?.toISOString() ?? undefined,
-          threshold: alert.threshold,
-          thresholdType: alert.thresholdType,
-          channel: { type: alert.channel.type ?? undefined },
-          state: alert.state,
-          source: alert.source,
-          tileId: alert.tileId,
-          name: alert.name,
-          message: alert.message,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          createdAt: (alert as any).createdAt?.toISOString?.() ?? '',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          updatedAt: (alert as any).updatedAt?.toISOString?.() ?? '',
-          history: history.map(h => ({
-            counts: h.counts,
-            createdAt: h.createdAt.toISOString(),
-            state: h.state,
-            lastValues: h.lastValues.map(lv => ({
-              startTime: lv.startTime.toISOString(),
-              count: lv.count,
-            })),
-          })),
+          history,
           silenced: alert.silenced
             ? {
-                by: alert.silenced.by?.email ?? '',
-                at: alert.silenced.at.toISOString(),
-                until: alert.silenced.until.toISOString(),
+                by: alert.silenced.by?.email,
+                at: alert.silenced.at,
+                until: alert.silenced.until,
               }
             : undefined,
           createdBy: alert.createdBy
-            ? {
-                email: alert.createdBy.email,
-                name: alert.createdBy.name,
-              }
+            ? pick(alert.createdBy, ['email', 'name'])
             : undefined,
-          dashboardId: alert.dashboard
-            ? alert.dashboard._id.toString()
-            : undefined,
-          savedSearchId: alert.savedSearch
-            ? alert.savedSearch._id.toString()
-            : undefined,
-          dashboard: alert.dashboard
-            ? {
-                _id: alert.dashboard._id.toString(),
-                name: alert.dashboard.name,
-                updatedAt:
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  (alert as any).dashboard?.updatedAt?.toISOString?.() ?? '',
-                tags: alert.dashboard.tags,
-                tiles: alert.dashboard.tiles
-                  .filter(tile => tile.id === alert.tileId)
-                  .map(tile => ({
-                    id: tile.id,
-                    config: { name: tile.config.name },
-                  })),
-              }
-            : undefined,
-          savedSearch: alert.savedSearch
-            ? {
-                _id: alert.savedSearch._id.toString(),
-                createdAt:
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  (alert as any).savedSearch?.createdAt?.toISOString?.() ?? '',
-                name: alert.savedSearch.name,
-                updatedAt:
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  (alert as any).savedSearch?.updatedAt?.toISOString?.() ?? '',
-                tags: alert.savedSearch.tags,
-              }
-            : undefined,
+          channel: pick(alert.channel, ['type']),
+          ...(alert.dashboard && {
+            dashboardId: alert.dashboard._id,
+            dashboard: {
+              tiles: alert.dashboard.tiles
+                .filter(tile => tile.id === alert.tileId)
+                .map(tile => ({
+                  id: tile.id,
+                  config: { name: tile.config.name },
+                })),
+              ...pick(alert.dashboard, ['_id', 'updatedAt', 'name', 'tags']),
+            },
+          }),
+          ...(alert.savedSearch && {
+            savedSearchId: alert.savedSearch._id,
+            savedSearch: pick(alert.savedSearch, [
+              '_id',
+              'createdAt',
+              'name',
+              'updatedAt',
+              'tags',
+            ]),
+          }),
+          ...pick(alert, [
+            '_id',
+            'interval',
+            'scheduleOffsetMinutes',
+            'scheduleStartAt',
+            'threshold',
+            'thresholdType',
+            'state',
+            'source',
+            'tileId',
+            'createdAt',
+            'updatedAt',
+          ]),
         };
       }),
     );
-    res.json({
-      data,
-    });
+    sendJson(res, { data });
   } catch (e) {
     next(e);
   }

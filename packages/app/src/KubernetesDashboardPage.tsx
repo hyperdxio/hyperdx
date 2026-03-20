@@ -7,13 +7,19 @@ import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isMetricSource,
+  SourceKind,
+  TLogSource,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
   Badge,
   Box,
-  Button,
   Card,
   Flex,
   Grid,
@@ -51,11 +57,12 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
+import { NOW } from './config';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { useSources } from './source';
+import { useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -142,7 +149,7 @@ export const InfraPodsStatusTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
@@ -531,7 +538,7 @@ const NodesTable = ({
   where,
   dateRange,
 }: {
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
@@ -735,7 +742,7 @@ const NamespacesTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const groupBy = ['k8s.namespace.name'];
@@ -772,8 +779,8 @@ const NamespacesTable = ({
         dateRange: [
           // We should only look at the latest values, otherwise we might
           // aggregate pod metrics from pods that have been terminated
-          sub(dateRange[1] ?? new Date(), { minutes: 5 }),
-          dateRange[1] ?? new Date(),
+          sub(dateRange[1], { minutes: 5 }),
+          dateRange[1],
         ],
         seriesReturnType: 'column',
       },
@@ -964,8 +971,12 @@ export const resolveSourceIds = (
 
   // Find a default metric source that matches the existing log source
   if (_logSourceId && !_metricSourceId) {
-    const { connection, metricSourceId: correlatedMetricSourceId } =
-      findSource(sources, { id: _logSourceId }) ?? {};
+    const foundSource = findSource(sources, { id: _logSourceId });
+    const connection = foundSource?.connection;
+    const correlatedMetricSourceId =
+      foundSource && isLogSource(foundSource)
+        ? foundSource.metricSourceId
+        : undefined;
     const metricSourceId =
       (correlatedMetricSourceId &&
         findSource(sources, { id: correlatedMetricSourceId })?.id) ??
@@ -976,8 +987,12 @@ export const resolveSourceIds = (
 
   // Find a default log source that matches the existing metric source
   if (!_logSourceId && _metricSourceId) {
-    const { connection, logSourceId: correlatedLogSourceId } =
-      findSource(sources, { id: _metricSourceId }) ?? {};
+    const foundSource = findSource(sources, { id: _metricSourceId });
+    const connection = foundSource?.connection;
+    const correlatedLogSourceId =
+      foundSource && isMetricSource(foundSource)
+        ? foundSource.logSourceId
+        : undefined;
     const logSourceId =
       (correlatedLogSourceId &&
         findSource(sources, { id: correlatedLogSourceId })?.id) ??
@@ -988,10 +1003,10 @@ export const resolveSourceIds = (
 
   // Find any two correlated log and metric sources
   const logSourceWithMetricSource = sources.find(
-    s =>
+    (s): s is TLogSource =>
       s.kind === SourceKind.Log &&
-      s.metricSourceId &&
-      findSource(sources, { id: s.metricSourceId }),
+      !!s.metricSourceId &&
+      !!findSource(sources, { id: s.metricSourceId }),
   );
 
   if (logSourceWithMetricSource) {
@@ -1035,8 +1050,14 @@ function KubernetesDashboardPage() {
     [_logSourceId, _metricSourceId, sources],
   );
 
-  const logSource = sources?.find(s => s.id === logSourceId);
-  const metricSource = sources?.find(s => s.id === metricSourceId);
+  const { data: logSource } = useSource({
+    id: logSourceId,
+    kinds: [SourceKind.Log],
+  });
+  const { data: metricSource } = useSource({
+    id: metricSourceId,
+    kinds: [SourceKind.Metric],
+  });
 
   const { control } = useForm({
     values: {
@@ -1076,8 +1097,12 @@ function KubernetesDashboardPage() {
     // Default to the log source's correlated metric source
     if (watchedLogSourceId && sources) {
       const logSource = findSource(sources, { id: watchedLogSourceId });
-      const correlatedMetricSource = logSource?.metricSourceId
-        ? findSource(sources, { id: logSource.metricSourceId })
+      const logSourceMetricSourceId =
+        logSource && isLogSource(logSource)
+          ? logSource.metricSourceId
+          : undefined;
+      const correlatedMetricSource = logSourceMetricSourceId
+        ? findSource(sources, { id: logSourceMetricSourceId })
         : undefined;
       if (
         correlatedMetricSource &&
@@ -1118,8 +1143,12 @@ function KubernetesDashboardPage() {
     // Default to the metric source's correlated log source
     if (watchedMetricSourceId && sources) {
       const metricSource = findSource(sources, { id: watchedMetricSourceId });
-      const correlatedLogSource = metricSource?.logSourceId
-        ? findSource(sources, { id: metricSource.logSourceId })
+      const metricSourceLogSourceId =
+        metricSource && isMetricSource(metricSource)
+          ? metricSource.logSourceId
+          : undefined;
+      const correlatedLogSource = metricSourceLogSourceId
+        ? findSource(sources, { id: metricSourceLogSourceId })
         : undefined;
       if (
         correlatedLogSource &&

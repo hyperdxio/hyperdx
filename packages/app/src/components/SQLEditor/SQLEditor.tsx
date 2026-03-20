@@ -17,6 +17,7 @@ import {
   createCodeMirrorSqlDialect,
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
+  type SQLCompletion,
 } from './utils';
 
 type SQLEditorProps = {
@@ -26,6 +27,7 @@ type SQLEditorProps = {
   height?: string;
   enableLineWrapping?: boolean;
   tableConnections?: TableConnection[];
+  additionalCompletions?: SQLCompletion[];
 };
 
 export default function SQLEditor({
@@ -35,6 +37,7 @@ export default function SQLEditor({
   height,
   enableLineWrapping = false,
   tableConnections,
+  additionalCompletions,
 }: SQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -66,13 +69,14 @@ export default function SQLEditor({
         effects: compartmentRef.current.reconfigure(
           createCodeMirrorSqlDialect({
             identifiers,
+            additionalCompletions,
             includeAggregateFunctions: true,
             includeRegularFunctions: true,
           }),
         ),
       });
     },
-    [fields, tableConnections],
+    [additionalCompletions, fields, tableConnections],
   );
 
   useEffect(() => {

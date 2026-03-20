@@ -16,8 +16,9 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
-import { renderRawSqlChartConfig } from '@/rawSqlParams';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -29,6 +30,7 @@ import {
   ChSqlSchema,
   CteChartConfig,
   DateRange,
+  DisplayType,
   MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
@@ -574,14 +576,14 @@ export async function timeFilterExpr({
   try {
     // Not all of these will be available when selecting from a CTE
     if (databaseName && tableName && connectionId) {
-      const { primary_key } = await metadata.getTableMetadata({
+      const tableMetadata = await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
       });
       optimizedTimestampValueExpression = optimizeTimestampValueExpression(
         timestampValueExpression,
-        primary_key,
+        tableMetadata?.primary_key,
       );
     }
   } catch (e) {
@@ -692,7 +694,7 @@ function renderFrom({
   );
 }
 
-async function renderWhereExpression({
+async function renderWhereExpressionStr({
   condition,
   language,
   metadata,
@@ -708,7 +710,7 @@ async function renderWhereExpression({
   implicitColumnExpression?: string;
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
-}): Promise<ChSql> {
+}): Promise<string> {
   let _condition = condition;
   if (language === 'lucene') {
     const serializer = new CustomSchemaSQLSerializerV2({
@@ -751,6 +753,14 @@ async function renderWhereExpression({
       '',
     );
   }
+
+  return _condition;
+}
+
+async function renderWhereExpression(
+  args: Parameters<typeof renderWhereExpressionStr>[0],
+): Promise<ChSql> {
+  const _condition = await renderWhereExpressionStr(args);
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
@@ -1108,7 +1118,12 @@ async function translateMetricChartConfig(
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
-  if (metricType === MetricsDataType.Gauge && metricName) {
+  if (
+    metricType === MetricsDataType.Gauge &&
+    metricName &&
+    MetricsDataType.Gauge in metricTables &&
+    metricTables[MetricsDataType.Gauge]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
@@ -1195,7 +1210,12 @@ async function translateMetricChartConfig(
       timestampValueExpression: timeBucketCol,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
-  } else if (metricType === MetricsDataType.Sum && metricName) {
+  } else if (
+    metricType === MetricsDataType.Sum &&
+    metricName &&
+    MetricsDataType.Sum in metricTables &&
+    metricTables[MetricsDataType.Sum]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const valueHighCol = '`__hdx_value_high`';
     const valueHighPrevCol = '`__hdx_value_high_prev`';
@@ -1317,7 +1337,12 @@ async function translateMetricChartConfig(
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (metricType === MetricsDataType.Histogram && metricName) {
+  } else if (
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram]
+  ) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -1344,7 +1369,7 @@ async function translateMetricChartConfig(
         Array.isArray(chartConfig.dateRange)
           ? convertDateRangeToGranularityString(chartConfig.dateRange)
           : chartConfig.granularity,
-    } as BuilderChartConfigWithOptDateRangeEx;
+    } satisfies BuilderChartConfigWithOptDateRangeEx;
 
     const timeBucketSelect = isUsingGranularity(cteChartConfig)
       ? timeBucketExpr({
@@ -1398,13 +1423,77 @@ async function translateMetricChartConfig(
   throw new Error(`no query support for metric type=${metricType}`);
 }
 
+/** Renders the config's filters into a SQL condition string */
+async function renderFiltersToSql(
+  chartConfig: RawSqlChartConfig,
+  metadata: Metadata,
+): Promise<string | undefined> {
+  if (
+    !chartConfig.filters?.length ||
+    !chartConfig.source ||
+    !chartConfig.from
+  ) {
+    return undefined;
+  }
+
+  const conditions = (
+    await Promise.all(
+      chartConfig.filters.map(async filter => {
+        if (filter.type === 'sql_ast') {
+          return `(${filter.left} ${filter.operator} ${filter.right})`;
+        } else if (
+          (filter.type === 'lucene' || filter.type === 'sql') &&
+          filter.condition.trim() &&
+          chartConfig.from &&
+          chartConfig.source
+        ) {
+          const condition = await renderWhereExpressionStr({
+            condition: filter.condition,
+            from: chartConfig.from,
+            language: filter.type,
+            implicitColumnExpression: chartConfig.implicitColumnExpression,
+            metadata,
+            connectionId: chartConfig.connection,
+          });
+          return condition ? `(${condition})` : undefined;
+        }
+      }),
+    )
+  ).filter(condition => condition !== undefined);
+
+  return conditions.length > 0 ? `(${conditions.join(' AND ')})` : undefined;
+}
+
+export async function renderRawSqlChartConfig(
+  chartConfig: RawSqlChartConfig & Partial<DateRange>,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const displayType = chartConfig.displayType ?? DisplayType.Table;
+
+  const filtersSQL = await renderFiltersToSql(chartConfig, metadata);
+  const sqlWithMacrosReplaced = replaceMacros(
+    chartConfig.sqlTemplate,
+    filtersSQL,
+  );
+
+  // eslint-disable-next-line security/detect-object-injection
+  const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
+
+  return {
+    sql: sqlWithMacrosReplaced,
+    params: Object.fromEntries(
+      queryParams.map(param => [param.name, param.get(chartConfig)]),
+    ),
+  };
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
   if (isRawSqlChartConfig(rawChartConfig)) {
-    return renderRawSqlChartConfig(rawChartConfig);
+    return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
   // metric types require more rewriting since we know more about the schema

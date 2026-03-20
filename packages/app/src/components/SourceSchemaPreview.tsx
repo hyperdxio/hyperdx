@@ -1,6 +1,19 @@
 import { useState } from 'react';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
+import {
+  MetricsDataType,
+  TLogSource,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Modal,
+  Paper,
+  Stack,
+  Tabs,
+  Text,
+  TextProps,
+  Tooltip,
+} from '@mantine/core';
 import { IconCode, IconRefresh } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
@@ -81,19 +94,46 @@ const TableSchemaPreview = ({
           <IconRefresh className="spin-animate" />
         </div>
       ) : (
-        <SQLPreview
-          data={data?.create_table_query ?? 'Schema is not available'}
-          enableCopy={!!data?.create_table_query}
-          copyButtonSize="xs"
-        />
+        <Stack gap="sm">
+          {data?.create_local_table_query && (
+            <Text size="xs" fw={600} c="dimmed">
+              Distributed Table
+            </Text>
+          )}
+          <SQLPreview
+            data={data?.create_table_query ?? 'Schema is not available'}
+            enableCopy={!!data?.create_table_query}
+            copyButtonSize="xs"
+          />
+          {data?.create_local_table_query && (
+            <>
+              <Text size="xs" fw={600} c="dimmed">
+                Local Table
+              </Text>
+              <SQLPreview
+                data={data.create_local_table_query}
+                enableCopy
+                copyButtonSize="xs"
+              />
+            </>
+          )}
+        </Stack>
       )}
     </Paper>
   );
 };
 
+export interface SourceSchemaPreviewSource {
+  connection: TSource['connection'];
+  from: TSource['from'];
+  metricTables?: TMetricSource['metricTables'];
+  kind?: TSource['kind'];
+  name?: TSource['name'];
+  materializedViews?: TLogSource['materializedViews'];
+}
+
 export interface SourceSchemaPreviewProps {
-  source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
-    Partial<Pick<TSource, 'kind' | 'name' | 'materializedViews'>>;
+  source?: SourceSchemaPreviewSource;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
   variant?: 'icon' | 'text';
 }

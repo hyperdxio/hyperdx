@@ -19,10 +19,10 @@ import {
   QuerySettings,
   SQLInterval,
   TileTemplateSchema,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
-import { SkipIndexMetadata } from './metadata';
+import { SkipIndexMetadata, TableMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
@@ -460,7 +460,7 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 
 export function convertToDashboardTemplate(
   input: Dashboard,
-  sources: TSourceUnion[],
+  sources: TSource[],
   connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
@@ -471,7 +471,7 @@ export function convertToDashboardTemplate(
 
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
-    sources: TSourceUnion[],
+    sources: TSource[],
     connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
@@ -487,13 +487,17 @@ export function convertToDashboardTemplate(
           name: '',
         }
       ).name;
+      if (tileConfig.source) {
+        tileConfig.source =
+          sources.find(source => source.id === tileConfig.source)?.name ?? '';
+      }
     }
     return tile;
   };
 
   const convertToFilterTemplate = (
     input: DashboardFilter,
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found
@@ -511,6 +515,10 @@ export function convertToDashboardTemplate(
     for (const filter of input.filters ?? []) {
       output.filters.push(convertToFilterTemplate(filter, sources));
     }
+  }
+
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
   }
 
   return output;
@@ -546,6 +554,10 @@ export function convertToDashboardDocument(
     for (const filter of input.filters) {
       output.filters.push(convertToFilterDocument(filter));
     }
+  }
+
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
   }
 
   return output;
@@ -972,4 +984,27 @@ export function aliasMapToWithClauses(
     }));
 
   return withClauses.length > 0 ? withClauses : undefined;
+}
+
+const stripQuotes = (s: string) => s.replace(/^["'`]|["'`]$/g, '');
+
+/** Parses and returns the cluster, database, and table from the given distributed table metadata */
+export function getDistributedTableArgs(
+  tableMetadata: TableMetadata,
+): { cluster: string; database: string; table: string } | undefined {
+  const args = tableMetadata.engine_full.match(/Distributed\((.+)\)$/)?.[1];
+  const splitArgs = splitAndTrimWithBracket(args ?? '');
+
+  if (splitArgs.length < 3) {
+    console.error(
+      `Failed to parse engine arguments for Distributed table: ${tableMetadata.engine_full}`,
+    );
+    return undefined;
+  }
+
+  return {
+    cluster: stripQuotes(splitArgs[0]),
+    database: stripQuotes(splitArgs[1]),
+    table: stripQuotes(splitArgs[2]),
+  };
 }

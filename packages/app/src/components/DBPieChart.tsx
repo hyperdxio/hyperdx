@@ -71,7 +71,7 @@ export const DBPieChart = ({
   errorVariant?: ChartErrorStateVariant;
 }) => {
   const { data: source } = useSource({
-    id: isBuilderChartConfig(config) ? config.source : undefined,
+    id: config.source,
   });
 
   const queriedConfig = useMemo(() => {

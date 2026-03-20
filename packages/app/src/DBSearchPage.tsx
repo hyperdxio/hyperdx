@@ -36,6 +36,8 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isLogSource,
+  isTraceSource,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -602,6 +604,7 @@ function useLiveUpdate({
   const [refreshOnVisible, setRefreshOnVisible] = useState(false);
 
   const refresh = useCallback(() => {
+    // eslint-disable-next-line no-restricted-syntax
     onTimeRangeSelect(new Date(Date.now() - interval), new Date(), null);
   }, [onTimeRangeSelect, interval]);
 
@@ -662,6 +665,7 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -672,11 +676,10 @@ function useSearchedConfigToChartConfig(
           select:
             select ||
             defaultSearchConfig?.select ||
-            sourceObj.defaultTableSelectExpression ||
-            '',
+            sourceObj.defaultTableSelectExpression,
           from: sourceObj.from,
           source: sourceObj.id,
-          ...(sourceObj.tableFilterExpression != null
+          ...(isLogSource(sourceObj) && sourceObj.tableFilterExpression != null
             ? {
                 filters: [
                   {
@@ -784,7 +787,10 @@ function optimizeDefaultOrderBy(
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
-  const { data: source } = useSource({ id: sourceID });
+  const { data: source } = useSource({
+    id: sourceID,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
   // When source changes, make sure select and orderby fields are set to default
@@ -795,7 +801,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     if (trimmedOrderBy) return trimmedOrderBy;
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
-      source?.displayedTimestampValueExpression,
+      source.displayedTimestampValueExpression,
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
@@ -834,6 +840,7 @@ function DBSearchPage() {
   );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
 
   const [analysisMode, setAnalysisMode] = useQueryState(
@@ -917,7 +924,11 @@ function DBSearchPage() {
     }
     return {
       select:
-        _savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
+        _savedSearch?.select ??
+        (searchedSource?.kind === SourceKind.Log ||
+        searchedSource?.kind === SourceKind.Trace
+          ? searchedSource.defaultTableSelectExpression
+          : undefined),
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
@@ -1806,13 +1817,17 @@ function DBSearchPage() {
                   setAnalysisMode={setAnalysisMode}
                   chartConfig={filtersChartConfig}
                   sourceId={inputSourceObj?.id}
-                  showDelta={!!searchedSource?.durationExpression}
+                  showDelta={
+                    !!(searchedSource?.kind === SourceKind.Trace
+                      ? searchedSource.durationExpression
+                      : undefined)
+                  }
                   {...searchFilters}
                 />
               </ErrorBoundary>
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px" mih="0">
+                  <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
@@ -1864,20 +1879,22 @@ function DBSearchPage() {
                     </Box>
                   </Flex>
                 )}
-              {analysisMode === 'delta' && searchedSource != null && (
-                <DBSearchHeatmapChart
-                  chartConfig={{
-                    ...chartConfig,
-                    dateRange: searchedTimeRange,
-                    with: aliasWith,
-                  }}
-                  isReady={isReady}
-                  source={searchedSource}
-                  onAddFilter={searchFilters.setFilterValue}
-                />
-              )}
+              {analysisMode === 'delta' &&
+                searchedSource != null &&
+                isTraceSource(searchedSource) && (
+                  <DBSearchHeatmapChart
+                    chartConfig={{
+                      ...chartConfig,
+                      dateRange: searchedTimeRange,
+                      with: aliasWith,
+                    }}
+                    isReady={isReady}
+                    source={searchedSource}
+                    onAddFilter={searchFilters.setFilterValue}
+                  />
+                )}
               {analysisMode === 'results' && (
-                <Flex direction="column" mih="0">
+                <Flex direction="column" mih="0" miw={0}>
                   {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>
