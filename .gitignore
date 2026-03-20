@@ -4,6 +4,7 @@
 # Override global .gitignore to track project-level AI tooling configs
 !.cursor
 !.cursor/mcp.json
+.worktrees
 
 # Playwright MCP scratch files
 seed.spec.ts
