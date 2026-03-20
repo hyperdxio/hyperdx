@@ -6,22 +6,39 @@ WORKDIR /app
 
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./tsconfig.base.json ./
-COPY ./packages/common-utils ./packages/common-utils
+# Only copy package.json for workspace resolution during yarn install;
+# full source is copied in the build stages that need it.
+COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
 COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
-RUN yarn install --mode=skip-build && yarn cache clean
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    yarn install --mode=skip-build && yarn cache clean
 
 
 ## dev #############################################################################################
 FROM base AS dev
+
+COPY ./packages/common-utils ./packages/common-utils
 
 EXPOSE 8080
 
 ENTRYPOINT ["npx", "nx", "run", "@hyperdx/app:dev"]
 
 
+## common-utils-builder ############################################################################
+# Separate stage so common-utils build is cached independently of App source changes.
+
+FROM base AS common-utils-builder
+
+COPY ./packages/common-utils ./packages/common-utils
+RUN yarn workspace @hyperdx/common-utils run build
+
+
 ## builder #########################################################################################
 # Rebuild the source code only when needed
 FROM base AS builder
+
+# Copy pre-built common-utils from its dedicated build stage
+COPY --from=common-utils-builder /app/packages/common-utils ./packages/common-utils
 
 # Expose custom env variables to the browser (needs NEXT_PUBLIC_ prefix)
 # doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
@@ -31,15 +48,15 @@ ARG IS_LOCAL_MODE
 ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_IS_LOCAL_MODE $IS_LOCAL_MODE
-ENV NX_DAEMON false
 
 COPY ./packages/app/src ./packages/app/src
 COPY ./packages/app/pages ./packages/app/pages
 COPY ./packages/app/public ./packages/app/public
 COPY ./packages/app/styles ./packages/app/styles
 COPY ./packages/app/types ./packages/app/types
-RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/app 
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
+RUN yarn workspace @hyperdx/app run build
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
 
 
 ## prod ############################################################################################
