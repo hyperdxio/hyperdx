@@ -17,10 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
       - name: Setup node
         uses: actions/setup-node@v4
         with:
@@ -43,42 +39,62 @@ jobs:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-  release:
-    name: Release
+
+  # ---------------------------------------------------------------------------
+  # Check if version already published (skip-if-exists)
+  # ---------------------------------------------------------------------------
+  check_version:
+    name: Check if version exists
     needs: check_changesets
     runs-on: ubuntu-24.04
-    concurrency:
-      group:
-        ${{ github.workflow }}-release-${{ matrix.release }}-${{ github.ref }}
-      cancel-in-progress: false
-    strategy:
-      matrix:
-        release:
-          - release-all-in-one
-          - release-app
-          - release-local
-          - release-otel-collector
+    if:
+      needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false'
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
-          tool-cache: false
-          docker-images: false
-
-          # all of these default to true, but feel free to set to
-          # "false" if necessary for your workflow
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Check if app image tag already exists
+        id: check
+        run: |
+          TAG_EXISTS=$(docker manifest inspect ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }} > /dev/null 2>&1 && echo "true" || echo "false")
+          if [ "$TAG_EXISTS" = "true" ]; then
+            echo "Tag ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }} already exists. Skipping release."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag does not exist. Proceeding with release."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ---------------------------------------------------------------------------
+  # OTel Collector – build each arch natively, then merge into multi-arch tag
+  # ---------------------------------------------------------------------------
+  build-otel-collector:
+    name: Build OTel Collector (${{ matrix.arch }})
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-latest-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -93,68 +109,362 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
-      - name: Publish Images
-        id: publish
-        if:
-          needs.check_changesets.outputs.changeset_outputs_hasChangesets ==
-          'false'
-        run: |
-          OUTPUT=$(make ${{ matrix.release }} 2>&1)
-          echo "$OUTPUT"
-
-          # Store the output in a file for the specific release target
-          echo "$OUTPUT" > /tmp/${{ matrix.release }}-output.txt
-
-          # Upload the output as an artifact if this is release-app
-          if [ "${{ matrix.release }}" = "release-app" ]; then
-            if echo "$OUTPUT" | grep -q "already exists. Skipping push."; then
-              echo "RELEASE_APP_PUSHED=false" > /tmp/release-app-status.txt
-            else
-              echo "RELEASE_APP_PUSHED=true" > /tmp/release-app-status.txt
-            fi
-          fi
-      - name: Upload release-app status
-        if: matrix.release == 'release-app'
-        uses: actions/upload-artifact@v4
+      - name: Build and Push
+        uses: docker/build-push-action@v6
         with:
-          name: release-app-status
-          path: /tmp/release-app-status.txt
-  check_release_app_pushed:
-    name: Check if release-app pushed
-    needs: [check_changesets, release]
-    runs-on: ubuntu-24.04
-    outputs:
-      app_was_pushed: ${{ steps.check.outputs.pushed }}
-    if:
-      needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false'
+          context: .
+          file: ./docker/otel-collector/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: prod
+          tags: |
+            ${{ env.OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+          push: true
+          cache-from: type=gha,scope=otel-collector-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=otel-collector-${{ matrix.arch }}
+
+  publish-otel-collector:
+    name: Publish OTel Collector Manifest
+    needs: [check_version, build-otel-collector]
+    runs-on: ubuntu-latest
     steps:
-      - name: Download release-app status
-        uses: actions/download-artifact@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          name: release-app-status
-          path: /tmp
-      - name: Check if release-app was pushed
-        id: check
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
         run: |
-          if [ -f /tmp/release-app-status.txt ]; then
-            STATUS=$(cat /tmp/release-app-status.txt)
-            echo "Release app status: $STATUS"
-            if [ "$STATUS" = "RELEASE_APP_PUSHED=true" ]; then
-              echo "pushed=true" >> $GITHUB_OUTPUT
-            else
-              echo "pushed=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "No release-app status file found, assuming not pushed"
-            echo "pushed=false" >> $GITHUB_OUTPUT
-          fi
+          VERSION="${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}"
+          MAJOR="${{ env.IMAGE_VERSION }}"
+          LATEST="${{ env.IMAGE_LATEST_TAG }}"
+          for IMAGE in "${{ env.OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${VERSION}" \
+              -t "${IMAGE}:${MAJOR}" \
+              -t "${IMAGE}:${LATEST}" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # App (fullstack prod) – build each arch natively, then merge
+  # ---------------------------------------------------------------------------
+  build-app:
+    name: Build App (${{ matrix.arch }})
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          docker-images: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: prod
+          build-contexts: |
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.CODE_VERSION }}
+          tags: |
+            ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=app-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=app-${{ matrix.arch }}
+
+  publish-app:
+    name: Publish App Manifest
+    needs: [check_version, build-app]
+    runs-on: ubuntu-latest
+    outputs:
+      app_was_pushed: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifest
+        run: |
+          VERSION="${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}"
+          MAJOR="${{ env.IMAGE_VERSION }}"
+          LATEST="${{ env.IMAGE_LATEST_TAG }}"
+          IMAGE="${{ env.IMAGE_NAME_DOCKERHUB }}"
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:${MAJOR}" \
+            -t "${IMAGE}:${LATEST}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
+
+  # ---------------------------------------------------------------------------
+  # Local (all-in-one-noauth) – build each arch natively, then merge
+  # ---------------------------------------------------------------------------
+  build-local:
+    name: Build Local (${{ matrix.arch }})
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          docker-images: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: all-in-one-noauth
+          build-contexts: |
+            clickhouse=./docker/clickhouse
+            otel-collector=./docker/otel-collector
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.CODE_VERSION }}
+          tags: |
+            ${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=local-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=local-${{ matrix.arch }}
+
+  publish-local:
+    name: Publish Local Manifest
+    needs: [check_version, build-local]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
+        run: |
+          VERSION="${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}"
+          MAJOR="${{ env.IMAGE_VERSION }}"
+          LATEST="${{ env.IMAGE_LATEST_TAG }}"
+          for IMAGE in "${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_LOCAL_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${VERSION}" \
+              -t "${IMAGE}:${MAJOR}" \
+              -t "${IMAGE}:${LATEST}" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # All-in-One (all-in-one-auth) – build each arch natively, then merge
+  # ---------------------------------------------------------------------------
+  build-all-in-one:
+    name: Build All-in-One (${{ matrix.arch }})
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          docker-images: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: all-in-one-auth
+          build-contexts: |
+            clickhouse=./docker/clickhouse
+            otel-collector=./docker/otel-collector
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.CODE_VERSION }}
+          tags: |
+            ${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=all-in-one-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=all-in-one-${{ matrix.arch }}
+
+  publish-all-in-one:
+    name: Publish All-in-One Manifest
+    needs: [check_version, build-all-in-one]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
+        run: |
+          VERSION="${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}"
+          MAJOR="${{ env.IMAGE_VERSION }}"
+          LATEST="${{ env.IMAGE_LATEST_TAG }}"
+          for IMAGE in "${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${VERSION}" \
+              -t "${IMAGE}:${MAJOR}" \
+              -t "${IMAGE}:${LATEST}" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Downstream notifications
+  # ---------------------------------------------------------------------------
   notify_helm_charts:
     name: Notify Helm-Charts Downstream
-    needs: [check_changesets, release, check_release_app_pushed]
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+      ]
     runs-on: ubuntu-24.04
     if: |
       needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
-      needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+      needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -178,15 +488,23 @@ jobs:
                 tag: TAG
               }
             });
+
   notify_ch:
     name: Notify CH Downstream
-    needs: [check_changesets, release, check_release_app_pushed]
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+      ]
     runs-on: ubuntu-24.04
     # Temporarily disabled:
     if: false
     # if: |
     #   needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
-    #   needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+    #   needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -219,8 +537,15 @@ jobs:
             });
 
   notify_clickhouse_clickstack:
-    needs: [check_changesets, release, check_release_app_pushed]
-    if: needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+      ]
+    if: needs.publish-app.outputs.app_was_pushed == 'true'
     timeout-minutes: 5
     runs-on: ubuntu-24.04
     steps:
@@ -254,8 +579,10 @@ jobs:
     needs:
       [
         check_changesets,
-        release,
-        check_release_app_pushed,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
         notify_helm_charts,
         notify_ch,
         notify_clickhouse_clickstack,
