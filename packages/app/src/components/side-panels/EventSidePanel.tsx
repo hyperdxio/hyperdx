@@ -13,6 +13,7 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import SqlString from 'sqlstring';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
@@ -38,6 +39,7 @@ import {
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
+import { useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
@@ -190,10 +192,12 @@ const EventSidePanel = ({
   initialTab,
   isFullWidth,
   onToggleFullWidth,
+  drawerSize,
 }: EventSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
   isFullWidth?: boolean;
   onToggleFullWidth?: () => void;
+  drawerSize?: number;
 }) => {
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
 
@@ -333,6 +337,16 @@ const EventSidePanel = ({
     source.kind === 'trace' ? source.id : source.traceSourceId;
 
   const enableServiceMap = traceId && traceSourceId;
+
+  const { data: traceSourceData } = useSource({ id: traceSourceId });
+
+  const spanId = normalizedRow?.['__hdx_span_id'];
+  const spanIdExpression = traceSourceData?.spanIdExpression;
+
+  const traceSpanRowId = useMemo(() => {
+    if (!spanIdExpression || !spanId) return undefined;
+    return SqlString.format('?=?', [SqlString.raw(spanIdExpression), spanId]);
+  }, [spanIdExpression, spanId]);
 
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
@@ -768,65 +782,17 @@ const EventSidePanel = ({
         </ErrorBoundary>
       )}
       <LogSidePanelKbdShortcuts />
-      {!isTraceSource && showTraceView && traceId && (
-        <Drawer
-          opened
-          withCloseButton={false}
-          withOverlay={false}
-          onClose={() => setShowTraceView(false)}
-          position="right"
-          size="100vw"
-          styles={{
-            body: {
-              padding: '0',
-              height: '100%',
-            },
-          }}
-          zIndex={410}
-        >
-          <div className={styles.panel}>
-            <Box px="sm" pt="sm" pb="xs">
-              <Group gap="xs" wrap="nowrap">
-                <Tooltip label="Back" position="bottom">
-                  <ActionIcon
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setShowTraceView(false)}
-                    aria-label="Back"
-                  >
-                    <IconArrowLeft size={16} />
-                  </ActionIcon>
-                </Tooltip>
-                <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
-                  Trace: {traceId}
-                </Text>
-              </Group>
-            </Box>
-            <ErrorBoundary
-              onError={err => {
-                console.error(err);
-              }}
-              fallbackRender={() => (
-                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                  An error occurred while rendering the trace.
-                </div>
-              )}
-            >
-              <Box p="sm" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-                <TracePanel
-                  parentSourceId={source.id}
-                  parentSource={source}
-                  childSourceId={childSourceId}
-                  traceId={traceId}
-                  dateRange={oneHourRange}
-                  focusDate={focusDate}
-                  initialRowHighlightHint={initialRowHighlightHint}
-                />
-              </Box>
-            </ErrorBoundary>
-          </div>
-        </Drawer>
-      )}
+      {!isTraceSource &&
+        showTraceView &&
+        traceId &&
+        traceSourceData &&
+        traceSpanRowId && (
+          <EventSidePanelErrorBoundary
+            source={traceSourceData}
+            rowId={traceSpanRowId}
+            onClose={() => setShowTraceView(false)}
+          />
+        )}
     </>
   );
 };
@@ -923,6 +889,7 @@ export default function EventSidePanelErrorBoundary({
               initialTab={initialTab}
               isFullWidth={isFullWidth}
               onToggleFullWidth={toggleFullWidth}
+              drawerSize={size}
             />
           </ErrorBoundary>
         </div>
