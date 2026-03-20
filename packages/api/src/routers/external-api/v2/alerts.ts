@@ -27,6 +27,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         message:
  *           type: string
  *           description: Human-readable error message.
+ *           example: "NOT_FOUND: Alert not found"
  *     AlertInterval:
  *       type: string
  *       enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
@@ -55,14 +56,17 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           type: string
  *           description: User ID who silenced the alert.
  *           nullable: true
+ *           example: "65f5e4a3b9e77c001a234567"
  *         at:
  *           type: string
  *           description: Silence start timestamp.
  *           format: date-time
+ *           example: "2026-03-19T08:00:00.000Z"
  *         until:
  *           type: string
  *           description: Silence end timestamp.
  *           format: date-time
+ *           example: "2026-03-20T08:00:00.000Z"
  *     AlertChannelWebhook:
  *       type: object
  *       required:
