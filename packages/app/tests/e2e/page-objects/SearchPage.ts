@@ -25,8 +25,6 @@ export class SearchPage {
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
-  readonly editSourceMenuItem: Locator;
-
   private readonly alertsButtonLocator: Locator;
 
   // Page-specific locators
@@ -39,8 +37,6 @@ export class SearchPage {
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
-  private readonly sourceSettingsMenu: Locator;
-  private readonly createNewSourceMenuItem: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
     this.page = page;
@@ -71,19 +67,14 @@ export class SearchPage {
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
     this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
-    this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
-    this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
-    this.createNewSourceMenuItem = page.getByTestId(
-      'create-new-source-menu-item',
-    );
-  }
-
-  get sourceMenu() {
-    return this.sourceSettingsMenu;
   }
 
   get createNewSourceItem() {
-    return this.createNewSourceMenuItem;
+    return this.page.getByRole('option', { name: 'Create New Source' });
+  }
+
+  get editSourcesItem() {
+    return this.page.getByRole('option', { name: 'Edit Sources' });
   }
 
   /**
@@ -103,8 +94,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSettingsMenu.click();
-    await this.editSourceMenuItem.click();
+    await this.sourceSelector.click();
+    await this.editSourcesItem.click();
   }
 
   async sourceModalShowOptionalFields() {
