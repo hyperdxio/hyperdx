@@ -172,16 +172,6 @@ jobs:
             runner: Large-Runner-ARM64-32
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          docker-images: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Docker Buildx
@@ -269,16 +259,6 @@ jobs:
             runner: Large-Runner-ARM64-32
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          docker-images: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Docker Buildx
@@ -368,16 +348,6 @@ jobs:
             runner: Large-Runner-ARM64-32
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          docker-images: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Docker Buildx
