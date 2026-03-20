@@ -10,3 +10,9 @@
     cursor: pointer;
   }
 }
+
+.groupLabel {
+  &::after {
+    border-color: var(--color-border);
+  }
+}
