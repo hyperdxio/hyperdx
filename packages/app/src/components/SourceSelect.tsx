@@ -9,7 +9,9 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
+  IconChartLine,
   IconConnection,
+  IconDeviceLaptop,
   IconLogs,
   IconPlus,
   IconSettings,
@@ -54,8 +56,10 @@ export const SourceSelectRightSection = ({
 };
 
 const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
-  [SourceKind.Trace]: <IconConnection size={16} />,
   [SourceKind.Log]: <IconLogs size={16} />,
+  [SourceKind.Trace]: <IconConnection size={16} />,
+  [SourceKind.Session]: <IconDeviceLaptop size={16} />,
+  [SourceKind.Metric]: <IconChartLine size={16} />,
 };
 
 const OPTION_ICONS: Record<string, React.ReactNode> = {
