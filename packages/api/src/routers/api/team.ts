@@ -27,6 +27,7 @@ import {
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
+import { sendJson } from '@/utils/serialization';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -44,31 +45,19 @@ router.get('/', async (req, res: TeamApiExpRes, next) => {
       throw new Error(`User has no id`);
     }
 
-    const team = await getTeam(teamId, [
+    const fields = [
       '_id',
       'allowedAuthMethods',
       'apiKey',
       'name',
       'createdAt',
-    ]);
+    ] as const;
+    const team = await getTeam(teamId, fields);
     if (team == null) {
       throw new Error(`Team ${teamId} not found for user ${userId}`);
     }
 
-    // createdAt comes from Mongoose timestamps but is not on the ITeam interface
-    const createdAt =
-      'createdAt' in team && team.createdAt instanceof Date
-        ? team.createdAt.toISOString()
-        : '';
-
-    res.json({
-      _id: team._id.toString(),
-      allowedAuthMethods:
-        'allowedAuthMethods' in team ? team.allowedAuthMethods : undefined,
-      apiKey: team.apiKey,
-      name: team.name,
-      createdAt,
-    });
+    sendJson(res, team);
   } catch (e) {
     next(e);
   }

@@ -555,6 +555,9 @@ export abstract class BaseClickhouseClient {
     // If value is 0, then skip indicies only used on AND queries
     applySettingIfAvailable('use_skip_indexes_for_disjunctions', '1');
 
+    // Enables full-text (inverted index) search.
+    applySettingIfAvailable('enable_full_text_index', '1');
+
     return {
       ...defaultSettings,
       ...clickhouse_settings,
@@ -814,6 +817,7 @@ export function chSqlToAliasMap(
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
       replaceJsonExpressions(sqlWithoutSettingsClause);
     const parser = new SQLParser.Parser();
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
     const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',

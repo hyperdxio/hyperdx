@@ -1,12 +1,10 @@
-import {
-  type MeApiResponse,
-  MeApiResponseSchema,
-} from '@hyperdx/common-utils/dist/types';
+import type { MeApiResponse } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 
 import { AI_API_KEY, ANTHROPIC_API_KEY, USAGE_STATS_ENABLED } from '@/config';
 import { getTeam } from '@/controllers/team';
 import { Api404Error } from '@/utils/errors';
+import { sendJson } from '@/utils/serialization';
 
 const router = express.Router();
 
@@ -30,13 +28,13 @@ router.get('/', async (req, res: express.Response<MeApiResponse>, next) => {
       throw new Api404Error(`Team not found for user ${id}`);
     }
 
-    return res.json({
+    return sendJson(res, {
       accessKey,
-      createdAt: createdAt.toISOString(),
+      createdAt,
       email,
-      id: id.toString(),
+      id,
       name,
-      team: MeApiResponseSchema.shape.team.parse(team.toJSON()),
+      team,
       usageStatsEnabled: USAGE_STATS_ENABLED,
       aiAssistantEnabled: !!(AI_API_KEY || ANTHROPIC_API_KEY),
     });
