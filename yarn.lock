@@ -4306,6 +4306,8 @@ __metadata:
     uuid: "npm:^8.3.2"
     zod: "npm:3.25"
     zod-express-middleware: "npm:^1.4.0"
+  bin:
+    hyperdx: ./bin/hyperdx
   languageName: unknown
   linkType: soft
 
