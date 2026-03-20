@@ -6,6 +6,8 @@ import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
+  isLogSource,
+  isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
@@ -228,7 +230,10 @@ export default function ContextSubpanel({
         connection: source.connection,
         from: source.from,
         timestampValueExpression: source.timestampValueExpression,
-        select: source.defaultTableSelectExpression || '',
+        select:
+          ((isLogSource(source) || isTraceSource(source)) &&
+            source.defaultTableSelectExpression) ||
+          '',
         limit: { limit: 200 },
         orderBy: `${source.timestampValueExpression} DESC`,
         where: whereClause,
@@ -249,10 +254,7 @@ export default function ContextSubpanel({
     originalLanguage,
     newDateRange,
     contextBy,
-    source.connection,
-    source.defaultTableSelectExpression,
-    source.from,
-    source.timestampValueExpression,
+    source,
   ]);
 
   return (

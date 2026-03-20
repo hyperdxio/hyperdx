@@ -1188,6 +1188,39 @@ describe('renderChartConfig', () => {
           '-toInt64(toStartOfInterval(timestamp, toIntervalMinute(15))), service_id, timestamp',
         expected: `(timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000))`,
       },
+      {
+        description:
+          'with toStartOfHour and dateRangeEndInclusive=false (must stay inclusive on coarse filter)',
+        timestampValueExpression: 'toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'with compound expression and dateRangeEndInclusive=false (raw col exclusive, toStartOf inclusive)',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))AND(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'with toStartOfHour and dateRangeStartInclusive=false (must stay inclusive on coarse filter)',
+        timestampValueExpression: 'toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
     ];
 
     beforeEach(() => {
@@ -1515,6 +1548,295 @@ describe('renderChartConfig', () => {
     expect(result.params).toEqual({
       startDateMilliseconds: start.getTime(),
       endDateMilliseconds: end.getTime(),
+    });
+  });
+
+  describe('raw sql macro replacement', () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    const end = new Date('2024-01-02T00:00:00.000Z');
+
+    it('replaces $__dateFilter macro in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__dateFilter(d)',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE d >= toDate(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND d <= toDate(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))',
+      );
+      expect(result.params.startDateMilliseconds).toBe(start.getTime());
+      expect(result.params.endDateMilliseconds).toBe(end.getTime());
+    });
+
+    it('replaces $__timeFilter macro in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__timeFilter(ts)',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ts <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))',
+      );
+    });
+
+    it('replaces $__timeFilter_ms macro in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__timeFilter_ms(ts)',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE ts >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND ts <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+      );
+    });
+
+    it('replaces $__fromTime and $__toTime macros in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate:
+            'SELECT * FROM logs WHERE ts >= $__fromTime AND ts <= $__toTime',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ts <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))',
+      );
+    });
+
+    it('replaces $__fromTime_ms and $__toTime_ms macros in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate:
+            'SELECT * FROM logs WHERE ts >= $__fromTime_ms AND ts <= $__toTime_ms',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE ts >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND ts <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+      );
+    });
+
+    it('replaces $__dateTimeFilter macro in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__dateTimeFilter(d, ts)',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (d >= toDate(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND d <= toDate(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))) AND (ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ts <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64})))',
+      );
+    });
+
+    it('replaces $__timeInterval macro in raw sql Line config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate:
+            'SELECT $__timeInterval(ts) AS t, count() FROM logs WHERE $__timeFilter(ts) GROUP BY t',
+          connection: 'conn-1',
+          displayType: DisplayType.Line,
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toContain(
+        'toStartOfInterval(toDateTime(ts), INTERVAL {intervalSeconds:Int64} second)',
+      );
+      expect(result.sql).toContain(
+        'ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64}))',
+      );
+      expect(result.params.intervalSeconds).toBeGreaterThan(0);
+    });
+
+    it('replaces $__interval_s macro in raw sql config', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate:
+            'SELECT toStartOfInterval(ts, INTERVAL $__interval_s second) FROM logs',
+          connection: 'conn-1',
+          displayType: DisplayType.Line,
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT toStartOfInterval(ts, INTERVAL {intervalSeconds:Int64} second) FROM logs',
+      );
+      expect(result.params.intervalSeconds).toBeGreaterThan(0);
+    });
+
+    it('passes through raw sql with no macros unchanged', async () => {
+      const sql =
+        'SELECT count() FROM logs WHERE ts >= {startDateMilliseconds:Int64}';
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: sql,
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(sql);
+    });
+
+    it('replaces $__filters macro with rendered filter conditions', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate:
+            'SELECT * FROM logs WHERE $__timeFilter(ts) AND $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql_ast', operator: '>', left: 'duration', right: '100' },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toContain(
+        "AND ((ServiceName = 'api') AND (duration > 100))",
+      );
+    });
+
+    it('replaces $__filters with 1 = 1 when no filters provided', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
+    it('replaces $__filters with 1 = 1 when source and from are defined but filters is empty', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          filters: [],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
+    it('renders lucene filters to SQL in $__filters when source is specified', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          implicitColumnExpression: 'Body',
+          filters: [{ type: 'lucene', condition: 'ServiceName:api' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')))",
+      );
+    });
+
+    it('renders mixed lucene and sql filters in $__filters', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          implicitColumnExpression: 'Body',
+          filters: [
+            { type: 'lucene', condition: 'ServiceName:api' },
+            { type: 'sql', condition: 'duration > 100' },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')) AND (duration > 100))",
+      );
+    });
+
+    it('skips filters without source metadata (no from)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          filters: [
+            { type: 'lucene', condition: 'ServiceName:api' },
+            { type: 'sql', condition: 'duration > 100' },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
     });
   });
 });

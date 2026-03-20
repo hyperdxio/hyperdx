@@ -32,6 +32,10 @@ export const IS_LOCAL_MODE = //true;
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
 
+/** Time captured at module load, use this a stable fallback/default time value instead of Date.now() defined in each React component file */
+// eslint-disable-next-line no-restricted-syntax
+export const NOW = Date.now();
+
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;
 export const IS_METRICS_ENABLED = true;

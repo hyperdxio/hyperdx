@@ -249,10 +249,12 @@ export default function SessionsPage() {
   const sourceId = useWatch({ control, name: 'source' });
   const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
     id: sourceId,
+    kinds: [SourceKind.Session],
   });
 
   const { data: traceTrace } = useSource({
     id: sessionSource?.traceSourceId,
+    kinds: [SourceKind.Trace],
   });
 
   // Get all sources and select the first session type source by default
@@ -376,7 +378,7 @@ export default function SessionsPage() {
 
   const { data: tableData, isLoading: isSessionsLoading } = useSessions({
     dateRange: searchedTimeRange,
-    sessionSource: sessionSource,
+    sessionSource,
     traceSource: traceTrace,
     // TODO: if selectedSession is not null, we should filter by that session id
     where: appliedConfig.where as SearchCondition,
@@ -472,16 +474,6 @@ export default function SessionsPage() {
           </Group>
         ) : (
           <>
-            {sessionSource && sessionSource.kind !== SourceKind.Session && (
-              <Alert
-                icon={<IconInfoCircleFilled size={16} />}
-                color="gray"
-                py="xs"
-                mt="md"
-              >
-                Please select a valid session source
-              </Alert>
-            )}
             {!sessions.length ? (
               <SessionSetupInstructions />
             ) : (

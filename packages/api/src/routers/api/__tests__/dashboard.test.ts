@@ -3,7 +3,7 @@ import {
   MetricsDataType,
   PresetDashboard,
   SourceKind,
-  TSourceUnion,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import mongoose, { Types } from 'mongoose';
@@ -418,7 +418,7 @@ describe('dashboard router', () => {
   });
 
   describe('preset dashboards', () => {
-    const MOCK_SOURCE: Omit<Extract<TSourceUnion, { kind: 'log' }>, 'id'> = {
+    const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
       kind: SourceKind.Log,
       name: 'Test Source',
       connection: new Types.ObjectId().toString(),

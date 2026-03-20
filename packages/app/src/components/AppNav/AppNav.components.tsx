@@ -65,6 +65,16 @@ type AppNavUserMenuProps = {
   onClickUserPreferences?: () => void;
 };
 
+const getUserInitials = (userName: string) => {
+  const nameParts = userName.trim().split(/\s+/).filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return 'U';
+  }
+
+  return nameParts.map(name => name.charAt(0).toUpperCase()).join('');
+};
+
 export const AppNavUserMenu = ({
   userName = 'User',
   teamName,
@@ -72,13 +82,11 @@ export const AppNavUserMenu = ({
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
   const { isCollapsed } = React.useContext(AppNavContext);
+  const resolvedUserName = userName.trim() || 'User';
 
-  const initials = userName
-    .split(' ')
-    .map(name => name[0].toUpperCase())
-    .join('');
+  const initials = getUserInitials(resolvedUserName);
 
-  const displayName = IS_LOCAL_MODE ? 'Local mode' : userName;
+  const displayName = IS_LOCAL_MODE ? 'Local mode' : resolvedUserName;
 
   return (
     <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>

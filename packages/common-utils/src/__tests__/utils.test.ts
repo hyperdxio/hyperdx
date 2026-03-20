@@ -7,7 +7,7 @@ import {
   DashboardSchema,
   MetricsDataType,
   SourceKind,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 import {
@@ -17,6 +17,7 @@ import {
   findJsonExpressions,
   formatDate,
   getAlignedDateRange,
+  getDistributedTableArgs,
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isJsonExpression,
@@ -29,7 +30,6 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
-  TextIndexTokenizer,
 } from '../core/utils';
 
 describe('utils', () => {
@@ -506,7 +506,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -627,7 +627,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -726,7 +726,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -812,6 +812,83 @@ describe('utils', () => {
         configType: 'sql',
         connection: 'Staging DB',
       });
+    });
+
+    it('should convert source IDs to names for RawSQL tiles with a source', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile With Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+              source: 'source1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'SQL Tile Without Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn1',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          kind: SourceKind.Log,
+          name: 'My Logs',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+          connection: 'conn1',
+        },
+      ];
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(
+        dashboard,
+        sources,
+        connections,
+      );
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+        source: 'My Logs',
+      });
+      // Tile without source should not have source set
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(
+        (template.tiles[1].config as { source?: string }).source,
+      ).toBeUndefined();
     });
 
     it('should fall back to empty string for unknown connection IDs in RawSQL tiles', () => {
@@ -1910,6 +1987,93 @@ describe('utils', () => {
       expect(result).toHaveLength(2);
       expect(result![0].name).toBe('body');
       expect(result![1].name).toBe('service');
+    });
+  });
+
+  describe('getLocalTableFromDistributedTable', () => {
+    const makeMetadata = (engineFull: string) =>
+      ({ engine_full: engineFull }) as any;
+
+    it('parses a simple Distributed engine_full', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('default', 'mydb', 'local_table', rand())"),
+      );
+      expect(result).toEqual({
+        cluster: 'default',
+        database: 'mydb',
+        table: 'local_table',
+      });
+    });
+
+    it('parses without a sharding key', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', 'db', 'tbl')"),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'db',
+        table: 'tbl',
+      });
+    });
+
+    it('handles double-quoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('Distributed("cluster", "my_database", "my_table")'),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'my_database',
+        table: 'my_table',
+      });
+    });
+
+    it('handles backtick-quoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', `mydb`, `local_tbl`, rand())"),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'mydb',
+        table: 'local_tbl',
+      });
+    });
+
+    it('handles unquoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('Distributed(cluster, mydb, local_tbl, rand())'),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'mydb',
+        table: 'local_tbl',
+      });
+    });
+
+    it('returns undefined when engine_full has fewer than 3 args', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', 'db')"),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined when engine_full does not match Distributed pattern', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('MergeTree() ORDER BY id'),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('handles a complex sharding expression with nested parentheses', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata(
+          "Distributed('cluster', 'db', 'tbl', sipHash64(UserID, EventDate))",
+        ),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'db',
+        table: 'tbl',
+      });
     });
   });
 });

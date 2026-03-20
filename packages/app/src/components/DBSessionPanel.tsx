@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
@@ -19,8 +20,10 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
-  // trace source
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
 
   const { getFieldExpression } = useFieldExpressionGenerator(source);
 
@@ -99,9 +102,16 @@ export const DBSessionPanel = ({
   serviceName: string;
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
-  const { data: traceSource } = useSource({ id: traceSourceId });
+  const { data: traceSource } = useSource({
+    id: traceSourceId,
+    kinds: [SourceKind.Trace],
+  });
   const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
-    id: traceSource?.sessionSourceId,
+    id:
+      traceSource && isTraceSource(traceSource)
+        ? traceSource.sessionSourceId
+        : undefined,
+    kinds: [SourceKind.Session],
   });
 
   if (!traceSource || (!sessionSource && isSessionSourceLoading)) {

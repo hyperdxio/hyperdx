@@ -1,6 +1,6 @@
 import {
   SourceSchema,
-  sourceSchemaWithout,
+  SourceSchemaNoId,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
@@ -23,13 +23,16 @@ router.get('/', async (req, res, next) => {
 
     const sources = await getSources(teamId.toString());
 
-    return res.json(sources.map(s => s.toJSON({ getters: true })));
+    return res.json(
+      sources.map(
+        // @ts-expect-error source.toJSON has incompatible type signatures but is actually a safe operation
+        source => source.toJSON({ getters: true }),
+      ),
+    );
   } catch (e) {
     next(e);
   }
 });
-
-const SourceSchemaNoId = sourceSchemaWithout({ id: true });
 
 router.post(
   '/',
@@ -40,11 +43,10 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await createSource(teamId.toString(), {
         ...req.body,
-        team: teamId,
-      } as any);
+        team: teamId.toJSON(),
+      });
 
       res.json(source);
     } catch (e) {
@@ -65,11 +67,10 @@ router.put(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
-        team: teamId,
-      } as any);
+        team: teamId.toJSON(),
+      });
 
       if (!source) {
         res.status(404).send('Source not found');

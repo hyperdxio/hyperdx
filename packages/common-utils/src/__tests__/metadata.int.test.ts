@@ -3,18 +3,25 @@ import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
-import { ChartConfigWithDateRange, TSource } from '@/types';
+import { ChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 describe('Metadata Integration Tests', () => {
   let client: ClickHouseClient;
   let hdxClient: HdxClickhouseClient;
 
-  const source = {
+  const source: TSource = {
+    id: 'test-source',
+    name: 'Test',
+    kind: SourceKind.Log,
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: 'logs' },
+    timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: '*',
     querySettings: [
       { setting: 'optimize_read_in_order', value: '0' },
       { setting: 'cast_keep_nullable', value: '0' },
     ],
-  } as TSource;
+  };
 
   beforeAll(() => {
     const host = process.env.CLICKHOUSE_HOST || 'http://localhost:8123';
@@ -520,6 +527,119 @@ describe('Metadata Integration Tests', () => {
       const statusCodeResult = result.find(r => r.key === 'status_code');
       expect(statusCodeResult?.value).toEqual(
         expect.arrayContaining(['200', '404', '500']),
+      );
+    });
+  });
+
+  describe('Distributed tables support', () => {
+    let metadata: Metadata;
+    const localTableName = 'test_dist_local';
+    const distributedTableName = 'test_dist';
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${localTableName} (
+            Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+            ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+            Body String CODEC(ZSTD(1)),
+            ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+            INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8,
+            INDEX idx_ts Timestamp TYPE minmax GRANULARITY 1
+          )
+          ENGINE = MergeTree()
+          PARTITION BY toDate(Timestamp)
+          ORDER BY (ServiceName, Timestamp)
+        `,
+      });
+
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${distributedTableName}
+          AS default.${localTableName}
+          ENGINE = Distributed('hdx_cluster', 'default', '${localTableName}', rand())
+        `,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${distributedTableName}`,
+      });
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${localTableName}`,
+      });
+    });
+
+    it('should return local table keys for a distributed table', async () => {
+      const result = await metadata.getTableMetadata({
+        databaseName: 'default',
+        tableName: distributedTableName,
+        connectionId: 'test_connection',
+      });
+
+      // Should have the distributed table's create_table_query
+      expect(result!.create_table_query).toContain(distributedTableName);
+      expect(result!.create_table_query).toContain('Distributed');
+
+      // Should have the local table's create_table_query
+      expect(result!.create_local_table_query).toContain(localTableName);
+      expect(result!.create_local_table_query).toContain('MergeTree');
+
+      // Keys should come from the local table
+      expect(result!.primary_key).toBe('ServiceName, Timestamp');
+      expect(result!.sorting_key).toBe('ServiceName, Timestamp');
+      expect(result!.partition_key).toBe('toDate(Timestamp)');
+
+      // Engine should be overridden with local table's engine
+      expect(result!.engine).toBe('MergeTree');
+    });
+
+    it('should not set create_local_table_query for non-distributed tables', async () => {
+      const result = await metadata.getTableMetadata({
+        databaseName: 'default',
+        tableName: localTableName,
+        connectionId: 'test_connection',
+      });
+
+      expect(result!.create_local_table_query).toBeUndefined();
+      expect(result!.engine).toBe('MergeTree');
+      expect(result!.primary_key).toBe('ServiceName, Timestamp');
+    });
+
+    it('should return skip indices from the local table when querying a distributed table', async () => {
+      const result = await metadata.getSkipIndices({
+        databaseName: 'default',
+        tableName: distributedTableName,
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toHaveLength(2);
+
+      const bodyIndex = result.find(idx => idx.name === 'idx_body');
+      expect(bodyIndex).toBeDefined();
+      expect(bodyIndex!.type).toBe('tokenbf_v1');
+      expect(bodyIndex!.expression).toBe('Body');
+      expect(bodyIndex!.granularity).toBe(8);
+
+      const tsIndex = result.find(idx => idx.name === 'idx_ts');
+      expect(tsIndex).toBeDefined();
+      expect(tsIndex!.type).toBe('minmax');
+      expect(tsIndex!.granularity).toBe(1);
+    });
+
+    it('should return skip indices directly for a non-distributed table', async () => {
+      const result = await metadata.getSkipIndices({
+        databaseName: 'default',
+        tableName: localTableName,
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result.map(idx => idx.name)).toEqual(
+        expect.arrayContaining(['idx_body', 'idx_ts']),
       );
     });
   });

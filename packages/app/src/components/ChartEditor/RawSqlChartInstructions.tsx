@@ -6,6 +6,7 @@ import {
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Code,
   Collapse,
   Group,
@@ -58,8 +59,10 @@ function ParamSnippet({
 
 export function RawSqlChartInstructions({
   displayType,
+  isDashboardForm,
 }: {
   displayType: DisplayType;
+  isDashboardForm: boolean;
 }) {
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
@@ -95,9 +98,9 @@ export function RawSqlChartInstructions({
             {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
             <Text size="xs" fw="bold">
-              The following parameters can be referenced in this chart's SQL:
+              The following parameters and macros can be used in this chart:
             </Text>
-            <List size="xs" withPadding spacing={3} mb="xs">
+            <List size="xs" withPadding spacing={3}>
               {availableParams.map(({ name, type, description }) => (
                 <List.Item key={name}>
                   <ParamSnippet
@@ -106,6 +109,23 @@ export function RawSqlChartInstructions({
                   />
                 </List.Item>
               ))}
+              <List.Item>
+                <ParamSnippet
+                  value={`$__filters`}
+                  description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
+                />
+              </List.Item>
+              <List.Item>
+                <Text size="xs">
+                  Macros from the{' '}
+                  <Anchor
+                    href="https://github.com/grafana/clickhouse-datasource?tab=readme-ov-file#macros"
+                    target="_blank"
+                  >
+                    ClickHouse Datasource Grafana Plugin
+                  </Anchor>
+                </Text>
+              </List.Item>
             </List>
 
             <Text size="xs" fw="bold">

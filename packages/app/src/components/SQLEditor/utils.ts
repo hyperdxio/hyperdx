@@ -11,20 +11,29 @@ import {
   ALL_KEYWORDS,
   REGULAR_FUNCTIONS,
 } from './constants';
+
+export type SQLCompletion = {
+  label: string;
+  apply?: string;
+  detail?: string;
+  type?: string;
+};
+
 /**
  * Creates a custom CodeMirror completion source for SQL identifiers (column names, table
  * names, functions, etc.) that inserts them verbatim, without quoting.
  */
 function createIdentifierCompletionSource(completions: Completion[]) {
   return (context: CompletionContext) => {
-    // Match word characters, dots, single quotes, and brackets to support
-    // identifiers like `ResourceAttributes['service.name']`
-    const prefix = context.matchBefore(/[\w.'[\]]+/);
+    // Match word characters, dots, single quotes, brackets, $, {, }, and :
+    // to support identifiers like `ResourceAttributes['service.name']`,
+    // macros like `$__dateFilter`, and query params like `{name:Type}`
+    const prefix = context.matchBefore(/[\w.'[\]${}:]+/);
     if (!prefix && !context.explicit) return null;
     return {
       from: prefix?.from ?? context.pos,
       options: completions,
-      validFor: /^[\w.'[\]]*$/,
+      validFor: /^[\w.'[\]${}:]*$/,
     };
   };
 }
@@ -32,11 +41,13 @@ function createIdentifierCompletionSource(completions: Completion[]) {
 export const createCodeMirrorSqlDialect = ({
   identifiers,
   keywords = ALL_KEYWORDS,
+  additionalCompletions = [],
   includeRegularFunctions = false,
   includeAggregateFunctions = false,
 }: {
   identifiers: string[];
   keywords?: string[];
+  additionalCompletions?: SQLCompletion[];
   includeRegularFunctions?: boolean;
   includeAggregateFunctions?: boolean;
 }) => {
@@ -60,6 +71,7 @@ export const createCodeMirrorSqlDialect = ({
           apply: `${fn}(`,
         }))
       : []),
+    ...additionalCompletions,
   ];
 
   return [
