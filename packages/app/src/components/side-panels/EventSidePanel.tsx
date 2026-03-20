@@ -27,7 +27,13 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconArrowsMaximize,
+  IconArrowsMinimize,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -44,6 +50,7 @@ import LogLevel from '../LogLevel';
 import ServiceMapSidePanel from '../ServiceMap/ServiceMapSidePanel';
 
 import ContextSubpanel from './ContextPanel';
+import { getInitialDrawerWidthPercent } from './DrawerUtils';
 import { ROW_DATA_ALIASES, RowDataPanel, useRowData } from './EventDataPanel';
 import { RowOverviewPanel } from './EventOverviewPanel';
 import { SessionReplayPanel, useSessionId } from './SessionReplayPanel';
@@ -92,7 +99,15 @@ enum Tab {
   Replay = 'replay',
 }
 
-function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
+function SidePanelHeaderActions({
+  onClose,
+  isFullWidth,
+  onToggleFullWidth,
+}: {
+  onClose: () => void;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
+}) {
   return (
     <Group gap={8} wrap="nowrap">
       <CopyButton
@@ -111,6 +126,25 @@ function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
           </Tooltip>
         )}
       </CopyButton>
+      {onToggleFullWidth && (
+        <Tooltip
+          label={isFullWidth ? 'Exit full width' : 'Full width'}
+          position="bottom"
+        >
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={onToggleFullWidth}
+            aria-label={isFullWidth ? 'Exit full width' : 'Full width'}
+          >
+            {isFullWidth ? (
+              <IconArrowsMinimize size={16} />
+            ) : (
+              <IconArrowsMaximize size={16} />
+            )}
+          </ActionIcon>
+        </Tooltip>
+      )}
       <Tooltip label="Close" position="bottom">
         <ActionIcon
           variant="subtle"
@@ -153,8 +187,12 @@ const EventSidePanel = ({
   onClose,
   breadcrumbs,
   initialTab,
+  isFullWidth,
+  onToggleFullWidth,
 }: EventSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
 }) => {
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
 
@@ -215,7 +253,7 @@ const EventSidePanel = ({
   const displayedTab = queryTab;
   const setTab = setQueryTab;
 
-  const [showTraceView, setShowTraceView] = useState(false);
+  const [showTraceView, setShowTraceView] = useState(isTraceSource);
 
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
@@ -419,7 +457,11 @@ const EventSidePanel = ({
               </>
             )}
           </Group>
-          <SidePanelHeaderActions onClose={onClose} />
+          <SidePanelHeaderActions
+            onClose={onClose}
+            isFullWidth={isFullWidth}
+            onToggleFullWidth={onToggleFullWidth}
+          />
         </Flex>
         {navStack.length > 0 && (
           <Group gap={4} mb={4}>
@@ -767,18 +809,13 @@ export default function EventSidePanelErrorBoundary({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const isTraceSource = source.kind === 'trace';
-  const initialWidth = isTraceSource
-    ? 100
-    : typeof window !== 'undefined'
-      ? (600 / window.innerWidth) * 100
-      : 35;
+  const initialWidth = getInitialDrawerWidthPercent();
   const { size, setSize, startResize } = useResizable(initialWidth);
 
-  // Reset drawer width when source kind changes
-  useEffect(() => {
-    setSize(initialWidth);
-  }, [isTraceSource]); // eslint-disable-line react-hooks/exhaustive-deps
+  const isFullWidth = size >= 99;
+  const toggleFullWidth = useCallback(() => {
+    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+  }, [isFullWidth, setSize]);
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
@@ -851,6 +888,8 @@ export default function EventSidePanelErrorBoundary({
               setSubDrawerOpen={setSubDrawerOpen}
               breadcrumbs={breadcrumbs}
               initialTab={initialTab}
+              isFullWidth={isFullWidth}
+              onToggleFullWidth={toggleFullWidth}
             />
           </ErrorBoundary>
         </div>

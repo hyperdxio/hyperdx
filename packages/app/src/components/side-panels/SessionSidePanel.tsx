@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Box,
   CopyButton,
   Drawer,
   Flex,
@@ -15,13 +16,23 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconArrowLeft, IconShare, IconX } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconArrowsMaximize,
+  IconArrowsMinimize,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
+import useResizable from '@/hooks/useResizable';
 import { Session } from '@/sessions';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { ZIndexContext } from '@/zIndex';
 
+import { getInitialDrawerWidthPercent } from './DrawerUtils';
 import SessionContentPanel from './SessionContentPanel';
+
+import styles from '@/../styles/LogSidePanel.module.scss';
 
 export default function SessionSidePanel({
   traceSource,
@@ -56,8 +67,15 @@ export default function SessionSidePanel({
   }) => string;
   zIndex?: number;
 }) {
-  // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+
+  const initialWidth = getInitialDrawerWidthPercent();
+  const { size, setSize, startResize } = useResizable(initialWidth);
+
+  const isFullWidth = size >= 99;
+  const toggleFullWidth = useCallback(() => {
+    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+  }, [isFullWidth, setSize]);
 
   useHotkeys(
     ['esc'],
@@ -69,15 +87,9 @@ export default function SessionSidePanel({
     },
   );
 
-  // console.log({ logId: sessionId, subDrawerOpen });
   const maxTime =
     session != null ? new Date(session?.maxTimestamp) : new Date();
-  // const minTime =
-  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
-  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
-  //   .toISOString()
-  //   .slice(11, 19);
 
   return (
     <Drawer
@@ -88,7 +100,7 @@ export default function SessionSidePanel({
         }
       }}
       position="right"
-      size="100vw"
+      size={`${size}vw`}
       withCloseButton={false}
       zIndex={zIndex}
       styles={{
@@ -97,10 +109,10 @@ export default function SessionSidePanel({
           height: '100vh',
         },
       }}
-      className="border-start"
     >
       <ZIndexContext.Provider value={zIndex}>
-        <div className="d-flex flex-column h-100">
+        <div className={styles.panel}>
+          <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <Flex
             align="center"
             justify="space-between"
@@ -169,6 +181,23 @@ export default function SessionSidePanel({
                   </Tooltip>
                 )}
               </CopyButton>
+              <Tooltip
+                label={isFullWidth ? 'Exit full width' : 'Full width'}
+                position="bottom"
+              >
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={toggleFullWidth}
+                  aria-label={isFullWidth ? 'Exit full width' : 'Full width'}
+                >
+                  {isFullWidth ? (
+                    <IconArrowsMinimize size={16} />
+                  ) : (
+                    <IconArrowsMaximize size={16} />
+                  )}
+                </ActionIcon>
+              </Tooltip>
               <Tooltip label="Close" position="bottom">
                 <ActionIcon
                   variant="subtle"
