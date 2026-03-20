@@ -1,0 +1,141 @@
+name: Knip - Unused Code Analysis
+on:
+  pull_request:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  knip:
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Run Knip on PR branch
+        run: yarn knip --reporter json > /tmp/knip-pr.json 2>&1 || true
+
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          clean: false
+
+      - name: Install dependencies (main)
+        run: yarn install
+
+      - name: Run Knip on main branch
+        run: yarn knip --reporter json > /tmp/knip-main.json 2>&1 || true
+
+      - name: Compare results and comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function countIssues(filePath) {
+              try {
+                const raw = fs.readFileSync(filePath, 'utf8');
+                const data = JSON.parse(raw);
+                const counts = {};
+                const issueCategories = [
+                  'files', 'dependencies', 'devDependencies', 'unlisted',
+                  'unresolved', 'binaries', 'exports', 'types',
+                  'enumMembers', 'duplicates', 'namespaceMembers'
+                ];
+                for (const issue of data.issues || []) {
+                  for (const cat of issueCategories) {
+                    if (Array.isArray(issue[cat]) && issue[cat].length > 0) {
+                      counts[cat] = (counts[cat] || 0) + issue[cat].length;
+                    }
+                  }
+                }
+                let total = 0;
+                for (const v of Object.values(counts)) total += v;
+                return { counts, total };
+              } catch (e) {
+                console.log(`Failed to parse ${filePath}: ${e.message}`);
+                return { counts: {}, total: 0 };
+              }
+            }
+
+            const pr = countIssues('/tmp/knip-pr.json');
+            const main = countIssues('/tmp/knip-main.json');
+
+            const categories = [
+              ['files', 'Unused files'],
+              ['dependencies', 'Unused dependencies'],
+              ['devDependencies', 'Unused devDependencies'],
+              ['unlisted', 'Unlisted dependencies'],
+              ['unresolved', 'Unresolved imports'],
+              ['binaries', 'Unlisted binaries'],
+              ['exports', 'Unused exports'],
+              ['types', 'Unused exported types'],
+              ['enumMembers', 'Unused enum members'],
+              ['duplicates', 'Duplicate exports'],
+            ];
+
+            const diff = pr.total - main.total;
+            const emoji = diff > 0 ? '🔴' : diff < 0 ? '🟢' : '⚪';
+            const sign = diff > 0 ? '+' : '';
+
+            let body = `## Knip - Unused Code Analysis\n\n`;
+            body += `${emoji} **${sign}${diff}** change in total issues (${main.total} on main → ${pr.total} on PR)\n\n`;
+            body += `| Category | main | PR | Diff |\n`;
+            body += `|----------|-----:|---:|-----:|\n`;
+
+            for (const [key, label] of categories) {
+              const mainCount = main.counts[key] || 0;
+              const prCount = pr.counts[key] || 0;
+              const catDiff = prCount - mainCount;
+              if (mainCount === 0 && prCount === 0) continue;
+              const catSign = catDiff > 0 ? '+' : '';
+              const catEmoji = catDiff > 0 ? ' 🔴' : catDiff < 0 ? ' 🟢' : '';
+              body += `| ${label} | ${mainCount} | ${prCount} | ${catSign}${catDiff}${catEmoji} |\n`;
+            }
+
+            body += `\n<details><summary>What is this?</summary>\n\n`;
+            body += `[Knip](https://knip.dev) finds unused files, dependencies, and exports in your codebase.\n`;
+            body += `This comment compares the PR branch against \`main\` to detect regressions.\n\n`;
+            body += `Run \`yarn knip\` locally to see full details.\n`;
+            body += `</details>\n`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
