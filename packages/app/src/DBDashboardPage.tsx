@@ -1793,7 +1793,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       <Menu position="top" width={200}>
         <Menu.Target>
           <Button
-            data-testid="add-new-tile-button"
+            data-testid="add-dropdown-button"
             variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
             mt="sm"
             fw={400}
@@ -1807,12 +1807,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Menu.Item
             data-testid="add-new-tile-menu-item"
             leftSection={<IconChartBar size={16} />}
-            onClick={() => onAddTile()}
+            onClick={onAddTile}
           >
             New Tile
           </Menu.Item>
           <Menu.Item
-            data-testid="add-new-section-button"
+            data-testid="add-new-section-menu-item"
             leftSection={<IconLayoutList size={16} />}
             onClick={handleAddSection}
           >
