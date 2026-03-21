@@ -110,10 +110,15 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
         return res.json(chartConfig);
       } catch (err) {
         if (err instanceof APICallError) {
+          const truncatedBody =
+            typeof err.responseBody === 'string' &&
+            err.responseBody.length > 500
+              ? err.responseBody.slice(0, 500) + '...[truncated]'
+              : err.responseBody;
           logger.error(
             {
               statusCode: err.statusCode,
-              responseBody: err.responseBody,
+              responseBody: truncatedBody,
               url: err.url,
               isRetryable: err.isRetryable,
               cause: err.cause instanceof Error ? err.cause.message : undefined,

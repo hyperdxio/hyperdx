@@ -380,18 +380,31 @@ function getOpenAIModel(): LanguageModel {
     );
   }
 
-  const headers: Record<string, string> = {};
-  if (process.env.AI_CLIENT_ID) {
-    headers['X-Client-Id'] = process.env.AI_CLIENT_ID;
-  }
-  if (process.env.AI_USERNAME) {
-    headers['X-Username'] = process.env.AI_USERNAME;
+  if (!config.AI_MODEL_NAME) {
+    throw new Error(
+      'No model name configured for OpenAI provider. Set AI_MODEL_NAME ' +
+        '(e.g. "gpt-4o", "claude-sonnet-4-5-20250929" for LiteLLM proxies).',
+    );
   }
 
-  const extraBodyJson = process.env.AI_EXTRA_BODY;
+  const headers: Record<string, string> = {};
+  if (config.AI_CLIENT_ID) {
+    headers['X-Client-Id'] = config.AI_CLIENT_ID;
+  }
+  if (config.AI_USERNAME) {
+    headers['X-Username'] = config.AI_USERNAME;
+  }
+
   let customFetch: typeof globalThis.fetch | undefined;
-  if (extraBodyJson) {
-    const extraFields = JSON.parse(extraBodyJson);
+  if (config.AI_EXTRA_BODY) {
+    let extraFields: Record<string, unknown>;
+    try {
+      extraFields = JSON.parse(config.AI_EXTRA_BODY);
+    } catch (e) {
+      throw new Error(
+        `AI_EXTRA_BODY is not valid JSON: ${(e as Error).message}`,
+      );
+    }
     customFetch = async (url, init) => {
       if (init?.body && typeof init.body === 'string') {
         try {
@@ -413,8 +426,5 @@ function getOpenAIModel(): LanguageModel {
     ...(Object.keys(headers).length > 0 && { headers }),
   });
 
-  const modelName =
-    config.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';
-
-  return openai.chat(modelName);
+  return openai.chat(config.AI_MODEL_NAME);
 }
