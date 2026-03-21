@@ -1791,6 +1791,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Item
+            data-testid="add-new-tile-menu-item"
             leftSection={<IconChartBar size={16} />}
             onClick={() => onAddTile()}
           >

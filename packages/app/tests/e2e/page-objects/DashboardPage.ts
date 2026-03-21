@@ -63,6 +63,7 @@ export class DashboardPage {
 
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
+  private readonly addTileMenuItem: Locator;
   private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
@@ -94,6 +95,9 @@ export class DashboardPage {
       '[data-testid="create-dashboard-button"]',
     );
     this.addTileButton = page.locator('[data-testid="add-new-tile-button"]');
+    this.addTileMenuItem = page.locator(
+      '[data-testid="add-new-tile-menu-item"]',
+    );
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchSubmitButton = page.locator(
       '[data-testid="search-submit-button"]',
@@ -194,6 +198,7 @@ export class DashboardPage {
    */
   async addTile() {
     await this.addTileButton.click();
+    await this.addTileMenuItem.click();
   }
 
   /**
@@ -211,6 +216,7 @@ export class DashboardPage {
     await this.createDashboardButton.click();
     await this.page.waitForURL('**/dashboards**');
     await this.addTileButton.click();
+    await this.addTileMenuItem.click();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
   }
