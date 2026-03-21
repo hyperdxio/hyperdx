@@ -22,12 +22,12 @@ import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
+import { SQLInlineEditorControlled } from './SQLEditor/SQLInlineEditor';
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBTraceWaterfallChartContainer } from './DBTraceWaterfallChart';
 import { SourceSelectControlled } from './SourceSelect';
-import { SQLInlineEditorControlled } from './SQLEditor/SQLInlineEditor';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -203,8 +203,7 @@ export default function DBTracePanel({
         <Flex align="center" justify="space-between" mb="sm">
           <Flex align="center">
             <Text size="xs" me="xs">
-              {parentTraceIdExpr}:{' '}
-              {traceId || 'No trace id found for event'}
+              {parentTraceIdExpr}: {traceId || 'No trace id found for event'}
             </Text>
             {traceId != null && (
               <Button
