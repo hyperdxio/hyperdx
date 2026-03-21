@@ -37,7 +37,7 @@ export type NestedFilterGroupProps = {
   hasLoadedMore: Record<string, boolean>;
   isDefaultExpanded?: boolean;
   'data-testid'?: string;
-  chartConfig: any;
+  chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
   isLive?: boolean;
 };
 
