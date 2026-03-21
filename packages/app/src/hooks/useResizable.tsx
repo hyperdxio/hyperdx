@@ -76,6 +76,7 @@ function useResizable(
 
   return {
     size: sizePercentage,
+    setSize: setSizePercentage,
     startResize,
   };
 }
