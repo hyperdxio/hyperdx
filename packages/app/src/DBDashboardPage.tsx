@@ -1577,6 +1577,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     Export Dashboard
                   </Menu.Item>
                 )}
+                <Menu.Item
+                  leftSection={<IconUpload size={16} />}
+                  onClick={() => {
+                    if (dashboard && !dashboard.tiles.length) {
+                      router.push(
+                        `/dashboards/import?dashboardId=${dashboard.id}`,
+                      );
+                    } else {
+                      router.push('/dashboards/import');
+                    }
+                  }}
+                >
+                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
+                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item
                   data-testid="save-default-query-filters-menu-item"
@@ -1803,19 +1817,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={handleAddSection}
           >
             New Section
-          </Menu.Item>
-          <Menu.Divider />
-          <Menu.Item
-            leftSection={<IconUpload size={16} />}
-            onClick={() => {
-              if (dashboard && !dashboard.tiles.length) {
-                router.push(`/dashboards/import?dashboardId=${dashboard.id}`);
-              } else {
-                router.push('/dashboards/import');
-              }
-            }}
-          >
-            Import Dashboard
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
