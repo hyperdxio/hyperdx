@@ -513,6 +513,10 @@ export const LogSidePanelKbdShortcuts = () => {
           <div>
             <Kbd>ESC</Kbd> to close
           </div>
+          <div className={styles.kbdDivider} />
+          <div>
+            <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
+          </div>
         </div>
         <CloseButton aria-label="Hide" onClick={handleDismiss} />
       </div>
