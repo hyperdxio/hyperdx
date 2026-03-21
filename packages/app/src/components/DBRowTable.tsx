@@ -1479,7 +1479,10 @@ function DBSqlRowTableComponent({
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
+  onRowDetailsClick?: (
+    rowWhere: RowWhereResult,
+    row: Record<string, any>,
+  ) => void;
   highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
@@ -1653,7 +1656,7 @@ function DBSqlRowTableComponent({
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowDetailsClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row), row);
     },
     [onRowDetailsClick, getRowWhere],
   );
