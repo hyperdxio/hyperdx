@@ -18,7 +18,6 @@ import {
   Center,
   Checkbox,
   Code,
-  Divider,
   Group,
   Text,
 } from '@mantine/core';
@@ -32,7 +31,6 @@ import { ContactSupportText } from '@/components/ContactSupportText';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import useResizable from '@/hooks/useResizable';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -58,7 +56,6 @@ import {
 import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
-import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 export type SpanRow = {
   Body: string;
@@ -407,7 +404,6 @@ export function DBTraceWaterfallChartContainer({
     body: string;
   };
 }) {
-  const { size, startResize } = useResizable(30, 'bottom');
   const formatTime = useFormatTime();
 
   const {
@@ -845,8 +841,6 @@ export function DBTraceWaterfallChartContainer({
     return v.id === highlightedRowWhere;
   });
 
-  const heightPx = (size / 100) * window.innerHeight;
-
   return (
     <>
       {isFilterExpanded && (
@@ -936,7 +930,8 @@ export function DBTraceWaterfallChartContainer({
         style={{
           position: 'relative',
           overflow: 'hidden',
-          maxHeight: `${heightPx}px`,
+          flex: 1,
+          minHeight: 0,
         }}
       >
         {isFetching ? (
@@ -966,7 +961,7 @@ export function DBTraceWaterfallChartContainer({
             <TimelineChart
               style={{
                 overflowY: 'auto',
-                maxHeight: `${heightPx}px`,
+                height: '100%',
               }}
               rowHeight={22}
               labelWidth={300}
@@ -988,12 +983,6 @@ export function DBTraceWaterfallChartContainer({
           </>
         )}
       </div>
-      <Divider
-        mt="md"
-        className={resizeStyles.resizeYHandle}
-        onMouseDown={startResize}
-        style={{ position: 'relative', bottom: 0 }}
-      />
     </>
   );
 }
