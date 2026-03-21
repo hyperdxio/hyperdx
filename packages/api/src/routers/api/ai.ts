@@ -110,6 +110,16 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
         return res.json(chartConfig);
       } catch (err) {
         if (err instanceof APICallError) {
+          logger.error(
+            {
+              statusCode: err.statusCode,
+              responseBody: err.responseBody,
+              url: err.url,
+              isRetryable: err.isRetryable,
+              cause: err.cause instanceof Error ? err.cause.message : undefined,
+            },
+            'AI API call failed',
+          );
           throw new Api500Error(`AI Provider Error: ${err.message}`);
         }
         throw err;

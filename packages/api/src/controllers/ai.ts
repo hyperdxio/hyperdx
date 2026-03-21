@@ -1,4 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
@@ -60,14 +61,11 @@ export function getAIModel(): LanguageModel {
       return getAnthropicModel();
 
     case 'openai':
-      throw new Error(
-        `Provider '${provider}' is not yet supported. Currently only 'anthropic' is available. ` +
-          'Support for additional providers can be added in the future.',
-      );
+      return getOpenAIModel();
 
     default:
       throw new Error(
-        `Unknown AI provider: ${provider}. Currently supported: anthropic`,
+        `Unknown AI provider: ${provider}. Currently supported: anthropic, openai`,
       );
   }
 }
@@ -366,4 +364,57 @@ function getAnthropicModel(): LanguageModel {
   const modelName = config.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';
 
   return anthropic(modelName);
+}
+
+/**
+ * Configure OpenAI-compatible model.
+ * Works with any OpenAI Chat Completions-compatible endpoint
+ * (e.g. Azure OpenAI, OpenRouter, LiteLLM proxies).
+ */
+function getOpenAIModel(): LanguageModel {
+  const apiKey = config.AI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      'No API key defined for OpenAI provider. Set AI_API_KEY.',
+    );
+  }
+
+  const headers: Record<string, string> = {};
+  if (process.env.AI_CLIENT_ID) {
+    headers['X-Client-Id'] = process.env.AI_CLIENT_ID;
+  }
+  if (process.env.AI_USERNAME) {
+    headers['X-Username'] = process.env.AI_USERNAME;
+  }
+
+  const extraBodyJson = process.env.AI_EXTRA_BODY;
+  let customFetch: typeof globalThis.fetch | undefined;
+  if (extraBodyJson) {
+    const extraFields = JSON.parse(extraBodyJson);
+    customFetch = async (url, init) => {
+      if (init?.body && typeof init.body === 'string') {
+        try {
+          const body = JSON.parse(init.body);
+          Object.assign(body, extraFields);
+          init = { ...init, body: JSON.stringify(body) };
+        } catch {
+          // not JSON, send as-is
+        }
+      }
+      return globalThis.fetch(url, init);
+    };
+  }
+
+  const openai = createOpenAI({
+    apiKey,
+    ...(customFetch && { fetch: customFetch }),
+    ...(config.AI_BASE_URL && { baseURL: config.AI_BASE_URL }),
+    ...(Object.keys(headers).length > 0 && { headers }),
+  });
+
+  const modelName =
+    config.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';
+
+  return openai.chat(modelName);
 }
