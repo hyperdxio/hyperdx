@@ -5,8 +5,6 @@ import {
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  isLogSource,
-  isTraceSource,
   SourceKind,
   TMetricSource,
   TSource,
@@ -212,13 +210,14 @@ export default ({
   source: TSource;
 }) => {
   const metricSourceId =
-    isLogSource(source) || isTraceSource(source)
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
       ? source.metricSourceId
       : undefined;
-  const { data: metricSource } = useSource({
-    id: metricSourceId,
-    kinds: [SourceKind.Metric],
-  });
+  const { data: metricSourceData } = useSource({ id: metricSourceId });
+  const metricSource =
+    metricSourceData?.kind === SourceKind.Metric ? metricSourceData : undefined;
+
+  const logSource = source.kind === SourceKind.Log ? source : undefined;
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
@@ -238,7 +237,7 @@ export default ({
               metricSource={metricSource}
             />
           )}
-          {source && source.kind === SourceKind.Log && (
+          {logSource && (
             <Card p="md" mt="xl">
               <Card.Section p="md" py="xs">
                 Pod Timeline
@@ -251,7 +250,7 @@ export default ({
                 >
                   <Box p="md" py="sm">
                     <KubeTimeline
-                      logSource={source}
+                      logSource={logSource}
                       q={`\`k8s.pod.uid\`:"${podUid}"`}
                       dateRange={[
                         sub(new Date(timestamp), { days: 1 }),
