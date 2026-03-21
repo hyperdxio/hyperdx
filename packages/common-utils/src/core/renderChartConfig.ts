@@ -421,13 +421,15 @@ async function renderSelectList(
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
+  const hasSubqueryCte = chartConfig.with?.some(w => w.isSubquery !== false);
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when chartConfig.from.databaseName is not set.
     materializedFields =
-      chartConfig.with?.length || !chartConfig.from.databaseName
+      hasSubqueryCte || !chartConfig.from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId: chartConfig.connection,
@@ -726,14 +728,15 @@ async function renderWhereExpressionStr({
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
-
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
+  const hasSubqueryCte = withClauses?.some(w => w.isSubquery !== false);
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when from.databaseName is not set.
     materializedFields =
-      withClauses?.length || !from.databaseName
+      hasSubqueryCte || !from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId,

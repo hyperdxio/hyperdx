@@ -590,6 +590,72 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('materialized column optimization with expression alias CTEs', () => {
+    it('should still use materialized columns when with clauses are expression aliases (isSubquery: false)', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['pipe_id']", 'pipe_id']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        with: [
+          {
+            name: 'body',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: "LogAttributes['pipe_id'] = 'test'",
+        whereLanguage: 'sql',
+        granularity: '1 minute',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      };
+
+      await renderChartConfig(config, mockMetadata, querySettings);
+      expect(
+        mockMetadata.getMaterializedColumnsLookupTable,
+      ).toHaveBeenCalled();
+    });
+
+    it('should skip materialized columns when with clauses are subquery CTEs', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['pipe_id']", 'pipe_id']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: '',
+          tableName: 'TestCte',
+        },
+        with: [
+          {
+            name: 'TestCte',
+            sql: chSql`SELECT * FROM otel_logs`,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await renderChartConfig(config, mockMetadata, querySettings);
+      expect(
+        mockMetadata.getMaterializedColumnsLookupTable,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('k8s semantic convention migrations', () => {
     it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
       const config: ChartConfigWithOptDateRange = {
