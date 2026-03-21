@@ -554,6 +554,33 @@ const DBRowSidePanel = ({
               {spanKindLabel}
             </Badge>
           )}
+          {isTraceSource && traceId && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <CopyButton value={traceId}>
+                {({ copied, copy }) => (
+                  <Tooltip
+                    label={copied ? 'Copied!' : 'Copy Trace ID'}
+                    position="bottom"
+                  >
+                    <Group
+                      gap={4}
+                      wrap="nowrap"
+                      style={{ cursor: 'pointer' }}
+                      onClick={copy}
+                    >
+                      <IconCopy size={12} color="var(--mantine-color-dimmed)" />
+                      <Text size="xs" c="dimmed">
+                        Trace ID
+                      </Text>
+                    </Group>
+                  </Tooltip>
+                )}
+              </CopyButton>
+            </>
+          )}
           {!isTraceSource && traceId && traceSourceId && (
             <>
               <Text size="xs" c="dimmed">
