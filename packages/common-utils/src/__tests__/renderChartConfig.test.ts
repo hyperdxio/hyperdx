@@ -591,11 +591,11 @@ describe('renderChartConfig', () => {
   });
 
   describe('materialized column optimization with expression alias CTEs', () => {
-    it('should still use materialized columns when with clauses are expression aliases (isSubquery: false)', async () => {
+    it('should rewrite WHERE to use materialized column when with clauses are expression aliases (isSubquery: false)', async () => {
       mockMetadata.getMaterializedColumnsLookupTable = jest
         .fn()
         .mockResolvedValue(
-          new Map([["LogAttributes['pipe_id']", 'pipe_id']]),
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
         );
 
       const config: ChartConfigWithOptDateRange = {
@@ -612,24 +612,32 @@ describe('renderChartConfig', () => {
           },
         ],
         select: [{ aggFn: 'count', valueExpression: '' }],
-        where: "LogAttributes['pipe_id'] = 'test'",
+        where: "LogAttributes['attr_key'] = 'attr_val'",
         whereLanguage: 'sql',
         granularity: '1 minute',
         timestampValueExpression: 'Timestamp',
         dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
       };
 
-      await renderChartConfig(config, mockMetadata, querySettings);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
       expect(
         mockMetadata.getMaterializedColumnsLookupTable,
       ).toHaveBeenCalled();
+      expect(sql).toContain("attr_key = 'attr_val'");
+      expect(sql).not.toContain("LogAttributes['attr_key']");
     });
 
     it('should skip materialized columns when with clauses are subquery CTEs', async () => {
       mockMetadata.getMaterializedColumnsLookupTable = jest
         .fn()
         .mockResolvedValue(
-          new Map([["LogAttributes['pipe_id']", 'pipe_id']]),
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
         );
 
       const config: ChartConfigWithOptDateRange = {
