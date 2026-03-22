@@ -375,9 +375,7 @@ function getOpenAIModel(): LanguageModel {
   const apiKey = config.AI_API_KEY;
 
   if (!apiKey) {
-    throw new Error(
-      'No API key defined for OpenAI provider. Set AI_API_KEY.',
-    );
+    throw new Error('No API key defined for OpenAI provider. Set AI_API_KEY.');
   }
 
   if (!config.AI_MODEL_NAME) {
