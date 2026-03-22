@@ -18,6 +18,7 @@ import type {
 } from '@/api/client';
 import { buildEventSearchQuery, buildFullRowSql } from '@/api/eventQuery';
 import { openEditorForTimeRange, type TimeRange } from '@/utils/editor';
+import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
 
 interface EventViewerProps {
@@ -399,7 +400,9 @@ export default function EventViewer({
   > | null>(null);
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
-  const [detailTab, setDetailTab] = useState<'columns' | 'trace'>('columns');
+  const [detailTab, setDetailTab] = useState<'overview' | 'columns' | 'trace'>(
+    'overview',
+  );
   const [detailSearchQuery, setDetailSearchQuery] = useState('');
   const [focusDetailSearch, setFocusDetailSearch] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -716,7 +719,7 @@ export default function EventViewer({
     if (key.return || input === 'l') {
       if (expandedRow === null) {
         setExpandedRow(scrollOffset + selectedRow);
-        setDetailTab('columns');
+        setDetailTab('overview');
         setDetailSearchQuery('');
         setFocusDetailSearch(false);
       }
@@ -761,13 +764,19 @@ export default function EventViewer({
       setScrollOffset(o => Math.max(0, o - half));
     }
     if (key.tab) {
-      // When detail panel is open on a trace/log source, Tab switches detail tabs
-      if (
-        expandedRow !== null &&
-        (source.kind === 'trace' ||
-          (source.kind === 'log' && source.traceSourceId))
-      ) {
-        setDetailTab(prev => (prev === 'columns' ? 'trace' : 'columns'));
+      // When detail panel is open, Tab cycles through detail tabs
+      if (expandedRow !== null) {
+        const hasTrace =
+          source.kind === 'trace' ||
+          (source.kind === 'log' && source.traceSourceId);
+        const tabs: Array<'overview' | 'columns' | 'trace'> = hasTrace
+          ? ['overview', 'columns', 'trace']
+          : ['overview', 'columns'];
+        setDetailTab(prev => {
+          const idx = tabs.indexOf(prev);
+          const dir = key.shift ? -1 : 1;
+          return tabs[(idx + dir + tabs.length) % tabs.length];
+        });
         return;
       }
       handleTabSwitch(key.shift ? -1 : 1);
@@ -865,31 +874,37 @@ export default function EventViewer({
               })()}
             </Text>
           </Box>
-          {/* Detail tab bar (for trace/log sources with correlated source) */}
-          {(source.kind === 'trace' ||
-            (source.kind === 'log' && source.traceSourceId)) && (
-            <Box marginBottom={1}>
-              <Box marginRight={2}>
-                <Text
-                  color={detailTab === 'columns' ? 'cyan' : undefined}
-                  bold={detailTab === 'columns'}
-                  dimColor={detailTab !== 'columns'}
-                >
-                  {detailTab === 'columns' ? '▸ ' : '  '}Column Values
-                </Text>
+          {/* Detail tab bar */}
+          {(() => {
+            const hasTrace =
+              source.kind === 'trace' ||
+              (source.kind === 'log' && source.traceSourceId);
+            const tabs: Array<{
+              key: 'overview' | 'columns' | 'trace';
+              label: string;
+            }> = [
+              { key: 'overview', label: 'Overview' },
+              { key: 'columns', label: 'Column Values' },
+              ...(hasTrace ? [{ key: 'trace' as const, label: 'Trace' }] : []),
+            ];
+            return (
+              <Box marginBottom={1}>
+                {tabs.map(tab => (
+                  <Box key={tab.key} marginRight={2}>
+                    <Text
+                      color={detailTab === tab.key ? 'cyan' : undefined}
+                      bold={detailTab === tab.key}
+                      dimColor={detailTab !== tab.key}
+                    >
+                      {detailTab === tab.key ? '▸ ' : '  '}
+                      {tab.label}
+                    </Text>
+                  </Box>
+                ))}
+                <Text dimColor>(tab to switch)</Text>
               </Box>
-              <Box marginRight={2}>
-                <Text
-                  color={detailTab === 'trace' ? 'cyan' : undefined}
-                  bold={detailTab === 'trace'}
-                  dimColor={detailTab !== 'trace'}
-                >
-                  {detailTab === 'trace' ? '▸ ' : '  '}Trace
-                </Text>
-              </Box>
-              <Text dimColor>(tab to switch)</Text>
-            </Box>
-          )}
+            );
+          })()}
           {/* Detail search bar */}
           <SearchBar
             focused={focusDetailSearch}
@@ -900,9 +915,25 @@ export default function EventViewer({
           <Text dimColor>{'─'.repeat(80)}</Text>
 
           {/* Tab content */}
+          {detailTab === 'overview' && (
+            /* ---- Overview tab ---- */
+            <>
+              {expandedRowLoading ? (
+                <Text>
+                  <Spinner type="dots" /> Loading…
+                </Text>
+              ) : expandedRowData ? (
+                <RowOverview
+                  source={source}
+                  rowData={expandedRowData}
+                  searchQuery={detailSearchQuery}
+                  wrapLines={wrapLines}
+                />
+              ) : null}
+            </>
+          )}
+
           {detailTab === 'trace' &&
-          (source.kind === 'trace' ||
-            (source.kind === 'log' && source.traceSourceId)) ? (
             /* ---- Trace waterfall tab ---- */
             (() => {
               if (!expandedTraceId) {
@@ -915,10 +946,6 @@ export default function EventViewer({
                 );
               }
 
-              // Resolve trace source and log source based on current
-              // source kind, mirroring DBTracePanel / DBRowSidePanel:
-              //   trace source → traceSource=self, logSource=correlated log
-              //   log source   → traceSource=correlated trace, logSource=self
               const findSource = (id: string | undefined) =>
                 id
                   ? (sources.find(s => s.id === id || s._id === id) ?? null)
@@ -944,8 +971,9 @@ export default function EventViewer({
                   searchQuery={detailSearchQuery}
                 />
               );
-            })()
-          ) : (
+            })()}
+
+          {detailTab === 'columns' && (
             /* ---- Column Values tab ---- */
             <>
               {expandedRowLoading ? (
