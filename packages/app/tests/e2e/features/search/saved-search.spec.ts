@@ -431,6 +431,7 @@ test.describe('Saved Search Functionality', () => {
 
       let savedSearchUrl: string;
       let appliedFilterValue: string;
+
       await test.step('Apply filters in the sidebar', async () => {
         const [picked] = await searchPage.filters.pickVisibleFilterValues(
           'SeverityText',

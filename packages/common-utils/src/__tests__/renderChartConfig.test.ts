@@ -626,9 +626,7 @@ describe('renderChartConfig', () => {
       );
       const sql = parameterizedQueryToSql(generatedSql);
 
-      expect(
-        mockMetadata.getMaterializedColumnsLookupTable,
-      ).toHaveBeenCalled();
+      expect(mockMetadata.getMaterializedColumnsLookupTable).toHaveBeenCalled();
       expect(sql).toContain("attr_key = 'attr_val'");
       expect(sql).not.toContain("LogAttributes['attr_key']");
     });
