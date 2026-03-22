@@ -27,7 +27,7 @@ interface EventViewerProps {
   savedSearches: SavedSearchResponse[];
   onSavedSearchSelect: (search: SavedSearchResponse) => void;
   initialQuery?: string;
-  follow?: boolean;
+  autoScroll?: boolean;
 }
 
 interface EventRow {
@@ -174,14 +174,14 @@ const Header = React.memo(function Header({
   sourceName,
   dbName,
   tableName,
-  isFollowing,
+  isAutoScroll,
   loading,
   timeRange,
 }: {
   sourceName: string;
   dbName: string;
   tableName: string;
-  isFollowing: boolean;
+  isAutoScroll: boolean;
   loading: boolean;
   timeRange: TimeRange;
 }) {
@@ -200,7 +200,7 @@ const Header = React.memo(function Header({
         {' '}
         {formatShortDate(timeRange.start)} → {formatShortDate(timeRange.end)}
       </Text>
-      {isFollowing && <Text color="yellow"> [FOLLOWING]</Text>}
+      {isAutoScroll && <Text color="yellow"> [AUTOSCROLL]</Text>}
       {loading && (
         <Text>
           {' '}
@@ -276,19 +276,19 @@ const Footer = React.memo(function Footer({
   rowCount,
   cursorPos,
   wrapLines,
-  isFollowing,
+  isAutoScroll,
   loadingMore,
 }: {
   rowCount: number;
   cursorPos: number;
   wrapLines: boolean;
-  isFollowing: boolean;
+  isAutoScroll: boolean;
   loadingMore: boolean;
 }) {
   return (
     <Box marginTop={1} justifyContent="space-between">
       <Text dimColor>
-        {isFollowing ? '[FOLLOWING] ' : ''}
+        {isAutoScroll ? '[AUTOSCROLL] ' : ''}
         {wrapLines ? '[WRAP] ' : ''}
         {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
       </Text>
@@ -314,7 +314,7 @@ const HelpScreen = React.memo(function HelpScreen() {
     ['Tab', 'Next source / saved search'],
     ['Shift+Tab', 'Previous source / saved search'],
     ['t', 'Edit time range in $EDITOR'],
-    ['f', 'Toggle follow mode'],
+    ['s', 'Toggle autoscroll (live tail)'],
     ['w', 'Toggle line wrap'],
     ['?', 'Toggle this help'],
     ['q', 'Quit'],
@@ -372,7 +372,7 @@ export default function EventViewer({
   savedSearches,
   onSavedSearchSelect,
   initialQuery = '',
-  follow = false,
+  autoScroll = false,
 }: EventViewerProps) {
   const { stdout } = useStdout();
   const termHeight = stdout?.rows ?? 24;
@@ -384,7 +384,7 @@ export default function EventViewer({
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFollowing, setIsFollowing] = useState(follow);
+  const [isAutoScroll, setIsAutoScroll] = useState(autoScroll);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [focusSearch, setFocusSearch] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
@@ -540,16 +540,22 @@ export default function EventViewer({
   }, [submittedQuery, timeRange, fetchEvents]);
 
   useEffect(() => {
-    if (!isFollowing) return;
-    const interval = setInterval(() => {
-      const now = new Date();
-      const since = lastTimestampRef.current
-        ? new Date(lastTimestampRef.current)
-        : new Date(now.getTime() - 10_000);
-      fetchEvents(submittedQuery, since, now, 'prepend');
-    }, TAIL_INTERVAL_MS);
+    if (!isAutoScroll) return;
+
+    const tick = () => {
+      // Slide the time range forward — the replace-fetch effect picks it up
+      setTimeRange(prev => {
+        const now = new Date();
+        const duration = prev.end.getTime() - prev.start.getTime();
+        return { start: new Date(now.getTime() - duration), end: now };
+      });
+    };
+
+    // Fire immediately on activation, then repeat on interval
+    tick();
+    const interval = setInterval(tick, TAIL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isFollowing, submittedQuery, fetchEvents]);
+  }, [isAutoScroll]);
 
   // Fetch full row data when a row is expanded (SELECT *)
   useEffect(() => {
@@ -728,7 +734,7 @@ export default function EventViewer({
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
-    if (input === 'f') setIsFollowing(f => !f);
+    if (input === 's') setIsAutoScroll(prev => !prev);
     if (input === '/') setFocusSearch(true);
     // t = edit time range in $EDITOR
     if (input === 't') {
@@ -771,7 +777,7 @@ export default function EventViewer({
         sourceName={source.name}
         dbName={source.from.databaseName}
         tableName={source.from.tableName}
-        isFollowing={isFollowing}
+        isAutoScroll={isAutoScroll}
         loading={loading}
         timeRange={timeRange}
       />
@@ -911,7 +917,7 @@ export default function EventViewer({
         rowCount={events.length}
         cursorPos={scrollOffset + selectedRow + 1}
         wrapLines={wrapLines}
-        isFollowing={isFollowing}
+        isAutoScroll={isAutoScroll}
         loadingMore={loadingMore}
       />
     </Box>

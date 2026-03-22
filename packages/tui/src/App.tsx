@@ -21,11 +21,16 @@ interface AppProps {
   query?: string;
   /** Pre-set source name from CLI flags */
   sourceName?: string;
-  /** Start in follow/tail mode */
-  follow?: boolean;
+  /** Start in autoscroll/live tail mode */
+  autoScroll?: boolean;
 }
 
-export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
+export default function App({
+  apiUrl,
+  query,
+  sourceName,
+  autoScroll,
+}: AppProps) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [client] = useState(() => new ApiClient({ apiUrl }));
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
@@ -158,7 +163,7 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
           savedSearches={savedSearches}
           onSavedSearchSelect={handleSavedSearchSelect}
           initialQuery={activeQuery}
-          follow={follow}
+          autoScroll={autoScroll}
         />
       );
   }

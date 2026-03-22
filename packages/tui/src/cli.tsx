@@ -40,14 +40,14 @@ program
   .option('-s, --server <url>', 'HyperDX API server URL', DEFAULT_API_URL)
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
-  .option('-f, --follow', 'Start in follow/tail mode')
+  .option('-f, --follow', 'Start in autoscroll/live tail mode')
   .action(opts => {
     render(
       <App
         apiUrl={opts.server}
         query={opts.query}
         sourceName={opts.source}
-        follow={opts.follow}
+        autoScroll={opts.follow}
       />,
     );
   });
