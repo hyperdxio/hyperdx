@@ -275,6 +275,21 @@ describe('asTaskArgs', () => {
     });
   });
 
+  describe('provision-dashboards task', () => {
+    it('should accept provision-dashboards task', () => {
+      const validArgs = {
+        _: ['provision-dashboards'],
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'provision-dashboards',
+      });
+      expect(result.taskName).toBe('provision-dashboards');
+    });
+  });
+
   describe('ping-pong task', () => {
     it('should accept ping-pong task without provider', () => {
       const validArgs = {

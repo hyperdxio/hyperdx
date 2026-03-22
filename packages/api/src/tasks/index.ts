@@ -11,6 +11,7 @@ import {
   timeExec,
 } from '@/tasks/metrics';
 import PingPongTask from '@/tasks/pingPongTask';
+import ProvisionDashboardsTask from '@/tasks/provisionDashboards';
 import { asTaskArgs, HdxTask, TaskArgs, TaskName } from '@/tasks/types';
 import logger from '@/utils/logger';
 
@@ -23,6 +24,8 @@ function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
       return new CheckAlertTask(argv);
     case TaskName.PING_PONG:
       return new PingPongTask(argv);
+    case TaskName.PROVISION_DASHBOARDS:
+      return new ProvisionDashboardsTask(argv);
     default:
       throw new Error(`Unknown task name ${taskName}`);
   }
