@@ -12,12 +12,14 @@
  *   [indent] ServiceName > SpanName  [===bar===]  12.3ms
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
+import SqlString from 'sqlstring';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
 import { buildTraceSpansSql, buildTraceLogsSql } from '@/api/eventQuery';
+import ColumnValues from '@/components/ColumnValues';
 
 // ---- Types ---------------------------------------------------------
 
@@ -50,6 +52,17 @@ interface TraceWaterfallProps {
   traceId: string;
   /** Fuzzy filter query for span/log names */
   searchQuery?: string;
+  /** Hint to identify the initial row to highlight in the waterfall */
+  highlightHint?: {
+    spanId: string;
+    kind: 'span' | 'log';
+  };
+  /** Currently selected row index (controlled by parent via j/k) */
+  selectedIndex?: number | null;
+  /** Callback when the selected index should change (e.g. clamping) */
+  onSelectedIndexChange?: (index: number | null) => void;
+  /** Toggle line wrap in Event Details */
+  wrapLines?: boolean;
   /** Available width for the chart (characters) */
   width?: number;
   /** Max visible rows before truncation */
@@ -257,6 +270,10 @@ export default function TraceWaterfall({
   logSource,
   traceId,
   searchQuery,
+  highlightHint,
+  selectedIndex,
+  onSelectedIndexChange,
+  wrapLines,
   width: propWidth,
   maxRows: propMaxRows,
 }: TraceWaterfallProps) {
@@ -364,6 +381,129 @@ export default function TraceWaterfall({
 
   const totalDurationMs = maxMs - minMs;
 
+  const visibleNodesForIndex = useMemo(
+    () => filteredNodes.slice(0, propMaxRows ?? 50),
+    [filteredNodes, propMaxRows],
+  );
+
+  // Determine the effective highlighted index:
+  // - If selectedIndex is set (j/k navigation), use it (clamped)
+  // - Otherwise, find the highlightHint row
+  const effectiveIndex = useMemo(() => {
+    if (selectedIndex != null) {
+      return Math.max(
+        0,
+        Math.min(selectedIndex, visibleNodesForIndex.length - 1),
+      );
+    }
+    if (highlightHint) {
+      const idx = visibleNodesForIndex.findIndex(
+        n => n.SpanId === highlightHint.spanId && n.kind === highlightHint.kind,
+      );
+      return idx >= 0 ? idx : null;
+    }
+    return null;
+  }, [selectedIndex, highlightHint, visibleNodesForIndex]);
+
+  // Clamp selectedIndex if it exceeds bounds
+  useEffect(() => {
+    if (
+      selectedIndex != null &&
+      visibleNodesForIndex.length > 0 &&
+      selectedIndex >= visibleNodesForIndex.length
+    ) {
+      onSelectedIndexChange?.(visibleNodesForIndex.length - 1);
+    }
+  }, [selectedIndex, visibleNodesForIndex.length, onSelectedIndexChange]);
+
+  // Fetch SELECT * for the selected span/log.
+  // Use stable scalar deps (SpanId, Timestamp, kind) instead of the
+  // visibleNodesForIndex array ref to avoid infinite re-fetch loops.
+  const [selectedRowData, setSelectedRowData] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [selectedRowLoading, setSelectedRowLoading] = useState(false);
+
+  const selectedNode =
+    effectiveIndex != null ? visibleNodesForIndex[effectiveIndex] : null;
+  const selectedNodeSpanId = selectedNode?.SpanId ?? null;
+  const selectedNodeTimestamp = selectedNode?.Timestamp ?? null;
+  const selectedNodeKind = selectedNode?.kind ?? null;
+
+  const fetchIdRef = React.useRef(0);
+
+  useEffect(() => {
+    if (!selectedNodeTimestamp || !selectedNodeKind) {
+      setSelectedRowData(null);
+      setSelectedRowLoading(false);
+      return;
+    }
+
+    const isLog = selectedNodeKind === 'log';
+    const rowSource = isLog && logSource ? logSource : source;
+
+    const db = rowSource.from.databaseName;
+    const table = rowSource.from.tableName;
+    const spanIdExpr = rowSource.spanIdExpression ?? 'SpanId';
+    const tsExpr =
+      rowSource.displayedTimestampValueExpression ??
+      rowSource.timestampValueExpression ??
+      'TimestampTime';
+
+    const traceIdExpr = rowSource.traceIdExpression ?? 'TraceId';
+    const escapedTs = SqlString.escape(selectedNodeTimestamp);
+    const escapedTraceId = SqlString.escape(traceId);
+
+    // Build WHERE: always use TraceId + Timestamp; add SpanId if available
+    const clauses = [
+      `${traceIdExpr} = ${escapedTraceId}`,
+      `${tsExpr} = parseDateTime64BestEffort(${escapedTs}, 9)`,
+    ];
+    if (selectedNodeSpanId) {
+      clauses.push(`${spanIdExpr} = ${SqlString.escape(selectedNodeSpanId)}`);
+    }
+    const where = clauses.join(' AND ');
+    const sql = `SELECT * FROM ${db}.${table} WHERE ${where} LIMIT 1`;
+
+    const fetchId = ++fetchIdRef.current;
+    // Don't clear existing data or set loading — keep old data visible
+    // while fetching to avoid flashing
+
+    (async () => {
+      try {
+        const resultSet = await clickhouseClient.query({
+          query: sql,
+          format: 'JSON',
+          connectionId: rowSource.connection,
+        });
+        const json = await resultSet.json<Record<string, unknown>>();
+        const row = (json.data as Record<string, unknown>[])?.[0];
+        if (fetchId === fetchIdRef.current) {
+          setSelectedRowData(row ?? null);
+          setSelectedRowLoading(false);
+        }
+      } catch {
+        if (fetchId === fetchIdRef.current) {
+          setSelectedRowData(null);
+          setSelectedRowLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      // Stale fetch — don't update state (fetchId check handles this)
+    };
+  }, [
+    selectedNodeSpanId,
+    selectedNodeTimestamp,
+    selectedNodeKind,
+    source,
+    logSource,
+    clickhouseClient,
+    traceId,
+  ]);
+
   if (loading) {
     return (
       <Text>
@@ -465,13 +605,16 @@ export default function TraceWaterfall({
         const statusColor = getStatusColor(node);
         const barClr = getBarColor(node);
 
+        const isHighlighted = effectiveIndex === i;
+
         return (
           <Box key={`${node.SpanId}-${node.kind}-${i}`}>
             <Box width={labelWidth}>
               <Text
                 wrap="truncate"
-                color={isLog ? 'green' : statusColor}
+                color={isHighlighted ? 'white' : isLog ? 'green' : statusColor}
                 bold={!!statusColor}
+                inverse={isHighlighted}
               >
                 {displayLabel}
               </Text>
@@ -482,9 +625,19 @@ export default function TraceWaterfall({
               </Text>
             </Box>
             <Box width={durationColWidth}>
-              <Text dimColor>{durStr}</Text>
+              <Text
+                dimColor={!isHighlighted}
+                color={isHighlighted ? 'white' : undefined}
+                inverse={isHighlighted}
+              >
+                {durStr}
+              </Text>
               {statusLabel ? (
-                <Text color={statusColor} bold>
+                <Text
+                  color={isHighlighted ? 'white' : statusColor}
+                  bold
+                  inverse={isHighlighted}
+                >
                   {' '}
                   {statusLabel}
                 </Text>
@@ -499,6 +652,27 @@ export default function TraceWaterfall({
           … and {filteredNodes.length - maxRows} more (showing first {maxRows})
         </Text>
       )}
+
+      {/* Event Details for selected span/log */}
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold>Event Details</Text>
+        <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
+        {selectedRowLoading ? (
+          <Text>
+            <Spinner type="dots" /> Loading event details…
+          </Text>
+        ) : selectedRowData ? (
+          <ColumnValues
+            data={selectedRowData}
+            searchQuery={searchQuery}
+            wrapLines={wrapLines}
+          />
+        ) : effectiveIndex == null ? (
+          <Text dimColor>Use j/k to select a span or log event.</Text>
+        ) : (
+          <Text dimColor>No details available.</Text>
+        )}
+      </Box>
     </Box>
   );
 }
