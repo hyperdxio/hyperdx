@@ -188,6 +188,7 @@ function useSessionChartConfigs({
       where,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
+      sampleWeightExpression: traceSource.sampleRateExpression,
       connection: traceSource.connection,
       orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {

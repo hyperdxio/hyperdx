@@ -33,6 +33,7 @@ export default function SlowestEventsTile({
     {
       source: source.id,
       ...pick(source, ['timestampValueExpression', 'connection', 'from']),
+      sampleWeightExpression: source.sampleRateExpression,
       where: '',
       whereLanguage: 'sql',
       select: [
@@ -117,6 +118,7 @@ export default function SlowestEventsTile({
                   'connection',
                   'from',
                 ]),
+                sampleWeightExpression: source.sampleRateExpression,
                 where: '',
                 whereLanguage: 'sql',
                 select: [

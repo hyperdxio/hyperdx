@@ -598,6 +598,11 @@ ${targetTemplate}`;
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
+      ...(source.kind === SourceKind.Trace &&
+        'sampleRateExpression' in source &&
+        source.sampleRateExpression && {
+          sampleWeightExpression: source.sampleRateExpression,
+        }),
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {

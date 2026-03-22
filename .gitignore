@@ -53,6 +53,9 @@ packages/app/next-env.d.ts
 **/.npm
 package-lock.json
 
+# npm lockfile (project uses yarn)
+package-lock.json
+
 # dependency directories
 **/node_modules
 

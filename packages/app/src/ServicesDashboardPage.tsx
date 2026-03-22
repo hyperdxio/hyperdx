@@ -34,6 +34,9 @@ function pickSourceConfigFields(source: TSource) {
     ...(isLogSource(source) || isTraceSource(source)
       ? { implicitColumnExpression: source.implicitColumnExpression }
       : {}),
+    ...(isTraceSource(source) && source.sampleRateExpression
+      ? { sampleWeightExpression: source.sampleRateExpression }
+      : {}),
   };
 }
 import {

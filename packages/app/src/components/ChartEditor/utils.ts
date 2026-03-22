@@ -142,6 +142,9 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
+      sampleWeightExpression: isTraceSource(source)
+        ? source.sampleRateExpression
+        : undefined,
       metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
       select: isSelectEmpty

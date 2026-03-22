@@ -108,6 +108,11 @@ export async function computeAliasWithClauses(
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.implicitColumnExpression
         : undefined,
+    ...(source.kind === SourceKind.Trace &&
+      'sampleRateExpression' in source &&
+      source.sampleRateExpression && {
+        sampleWeightExpression: source.sampleRateExpression,
+      }),
     timestampValueExpression: source.timestampValueExpression,
   };
   const query = await renderChartConfig(config, metadata, source.querySettings);
@@ -454,6 +459,11 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined,
+      ...(source.kind === SourceKind.Trace &&
+        'sampleRateExpression' in source &&
+        source.sampleRateExpression && {
+          sampleWeightExpression: source.sampleRateExpression,
+        }),
       timestampValueExpression: source.timestampValueExpression,
     };
   } else if (details.taskType === AlertTaskType.TILE) {
@@ -475,6 +485,12 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined;
+      const sampleWeightExpression =
+        source.kind === SourceKind.Trace &&
+        'sampleRateExpression' in source &&
+        source.sampleRateExpression
+          ? source.sampleRateExpression
+          : undefined;
       const metricTables =
         source.kind === SourceKind.Metric ? source.metricTables : undefined;
       return {
@@ -487,6 +503,7 @@ const getChartConfigFromAlert = (
         granularity: `${windowSizeInMins} minute`,
         groupBy: tile.config.groupBy,
         implicitColumnExpression,
+        sampleWeightExpression,
         metricTables,
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,

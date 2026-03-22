@@ -162,6 +162,9 @@ export function useSessions(
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
+            ...(traceSource.sampleRateExpression && {
+              sampleWeightExpression: traceSource.sampleRateExpression,
+            }),
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
           },

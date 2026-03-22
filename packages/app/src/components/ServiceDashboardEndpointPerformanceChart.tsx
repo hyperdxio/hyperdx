@@ -95,6 +95,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
           config={{
             source: source.id,
             ...pick(source, ['timestampValueExpression', 'connection', 'from']),
+            sampleWeightExpression: source.sampleRateExpression,
             where: '',
             whereLanguage: 'sql',
             select: [

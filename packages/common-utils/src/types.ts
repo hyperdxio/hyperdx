@@ -520,6 +520,7 @@ const SharedChartDisplaySettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
@@ -929,6 +930,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
 
   // Optional fields for traces
+  sampleRateExpression: z.string().optional(),
   logSourceId: z.string().optional().nullable(),
   sessionSourceId: z.string().optional(),
   metricSourceId: z.string().optional(),

@@ -1546,6 +1546,21 @@ function TraceTableModelForm(props: TableModelProps) {
         />
       </FormRow>
       <FormRow
+        label={'Sample Rate Expression'}
+        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Leave empty if spans are not sampled."
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="sampleRateExpression"
+          placeholder="SampleRate"
+        />
+      </FormRow>
+      <FormRow
         label={'Span Events Expression'}
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >

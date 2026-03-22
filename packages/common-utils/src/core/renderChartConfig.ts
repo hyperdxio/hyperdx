@@ -325,11 +325,13 @@ const aggFnExpr = ({
   expr,
   level,
   where,
+  sampleWeightExpression,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
   level?: number;
   where?: string;
+  sampleWeightExpression?: string;
 }) => {
   const isAny = fn === 'any';
   const isNone = fn === 'none';
@@ -369,6 +371,79 @@ const aggFnExpr = ({
     return chSql`${fn}(${unsafeExpr}${
       isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''
     })`;
+  }
+
+  // Sample-weighted aggregations: when sampleWeightExpression is set,
+  // each row carries a weight (defaults to 1 for unsampled spans).
+  // Corrected formulas account for upstream sampling (1-in-N).
+  // The greatest(..., 1) ensures unsampled rows (missing/empty/zero)
+  // are counted at weight 1 rather than dropped.
+  if (
+    sampleWeightExpression &&
+    !fn.endsWith('Merge') &&
+    !fn.endsWith('State')
+  ) {
+    const sampleWeightExpr = `greatest(toUInt64OrZero(toString(${sampleWeightExpression})), 1)`;
+    const w = { UNSAFE_RAW_SQL: sampleWeightExpr };
+
+    if (fn === 'count') {
+      return isWhereUsed
+        ? chSql`sumIf(${w}, ${{ UNSAFE_RAW_SQL: where }})`
+        : chSql`sum(${w})`;
+    }
+
+    if (fn === 'none') {
+      return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
+    }
+
+    if (expr != null) {
+      if (fn === 'count_distinct' || fn === 'min' || fn === 'max') {
+        // These cannot be corrected for sampling; pass through unchanged
+        if (fn === 'count_distinct') {
+          return chSql`count${isWhereUsed ? 'If' : ''}(DISTINCT ${{
+            UNSAFE_RAW_SQL: expr,
+          }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
+        }
+        return chSql`${{ UNSAFE_RAW_SQL: fn }}${isWhereUsed ? 'If' : ''}(
+          ${unsafeExpr}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''}
+        )`;
+      }
+
+      if (fn === 'avg') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        const nullCheck = `${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
+        if (isWhereUsed) {
+          const cond = { UNSAFE_RAW_SQL: `${where} AND ${nullCheck}` };
+          return chSql`sumIf(${weightedVal}, ${cond}) / sumIf(${w}, ${cond})`;
+        }
+        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }})`;
+      }
+
+      if (fn === 'sum') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        if (isWhereUsed) {
+          return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`sum(${weightedVal})`;
+      }
+
+      if (level != null && fn.startsWith('quantile')) {
+        const levelStr = Number.isFinite(level) ? `${level}` : '0';
+        const weightArg = {
+          UNSAFE_RAW_SQL: `toUInt32(${sampleWeightExpr})`,
+        };
+        if (isWhereUsed) {
+          return chSql`quantileTDigestWeightedIf(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`quantileTDigestWeighted(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg})`;
+      }
+
+      // For any other fn (last_value, any, etc.), fall through to default
+    }
   }
 
   if (fn === 'count') {
@@ -484,12 +559,14 @@ async function renderSelectList(
           // @ts-expect-error (TS doesn't know that we've already checked for quantile)
           level: select.level,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       } else {
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       }
 

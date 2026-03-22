@@ -235,6 +235,9 @@ const Tile = forwardRef(
             ...chart.config,
             // Populate these two columns from the source to support Lucene-based filters
             ...pick(source, ['implicitColumnExpression', 'from']),
+            sampleWeightExpression: isTraceSource(source)
+              ? source.sampleRateExpression
+              : undefined,
             dateRange,
             granularity,
             filters,
@@ -269,6 +272,9 @@ const Tile = forwardRef(
               isLogSource(source) || isTraceSource(source)
                 ? source.implicitColumnExpression
                 : undefined,
+            sampleWeightExpression: isTraceSource(source)
+              ? source.sampleRateExpression
+              : undefined,
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });

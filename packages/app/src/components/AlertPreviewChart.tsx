@@ -74,6 +74,9 @@ export const AlertPreviewChart = ({
             isLogSource(source) || isTraceSource(source)
               ? source.implicitColumnExpression
               : undefined,
+          sampleWeightExpression: isTraceSource(source)
+            ? source.sampleRateExpression
+            : undefined,
           groupBy,
           with: aliasWith,
           select: [

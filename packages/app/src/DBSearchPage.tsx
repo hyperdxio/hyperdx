@@ -687,6 +687,9 @@ function useSearchedConfigToChartConfig(
           whereLanguage: whereLanguage ?? 'sql',
           timestampValueExpression: sourceObj.timestampValueExpression,
           implicitColumnExpression: sourceObj.implicitColumnExpression,
+          ...(isTraceSource(sourceObj) && sourceObj.sampleRateExpression
+            ? { sampleWeightExpression: sourceObj.sampleRateExpression }
+            : {}),
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
           orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,

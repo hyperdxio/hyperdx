@@ -280,6 +280,11 @@ const buildChartConfigFromRequest = async (
     ],
     where: '',
     timestampValueExpression: source.timestampValueExpression,
+    ...(source.kind === SourceKind.Trace &&
+      'sampleRateExpression' in source &&
+      source.sampleRateExpression && {
+        sampleWeightExpression: source.sampleRateExpression,
+      }),
     dateRange: [new Date(params.startTime), new Date(params.endTime)] as [
       Date,
       Date,
