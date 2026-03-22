@@ -412,7 +412,9 @@ function getOpenAIModel(): LanguageModel {
           Object.assign(body, extraFields);
           init = { ...init, body: JSON.stringify(body) };
         } catch {
-          // not JSON, send as-is
+          logger.warn(
+            'AI_EXTRA_BODY: request body is not JSON, sending unmodified',
+          );
         }
       }
       return globalThis.fetch(url, init);
