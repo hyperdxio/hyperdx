@@ -275,6 +275,7 @@ export interface SourceResponse {
     tableName: string;
   };
   timestampValueExpression?: string;
+  displayedTimestampValueExpression?: string;
   defaultTableSelectExpression?: string;
   implicitColumnExpression?: string;
   orderByExpression?: string;
@@ -297,6 +298,12 @@ export interface SourceResponse {
   statusMessageExpression?: string;
   eventAttributesExpression?: string;
   resourceAttributesExpression?: string;
+
+  // Correlated source IDs
+  logSourceId?: string;
+  traceSourceId?: string;
+  metricSourceId?: string;
+  sessionSourceId?: string;
 }
 
 export interface ConnectionResponse {

@@ -143,6 +143,114 @@ function buildRowWhereClause(
   return clauses.join(' AND ');
 }
 
+// ---- Trace waterfall query (all spans for a traceId) ----------------
+
+export interface TraceSpansQueryOptions {
+  source: SourceResponse;
+  traceId: string;
+}
+
+/**
+ * Build a raw SQL query to fetch all spans for a given traceId.
+ * Returns columns needed for the waterfall chart.
+ */
+export function buildTraceSpansSql(opts: TraceSpansQueryOptions): {
+  sql: string;
+  connectionId: string;
+} {
+  const { source, traceId } = opts;
+
+  const db = source.from.databaseName;
+  const table = source.from.tableName;
+  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
+  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
+  const parentSpanIdExpr = source.parentSpanIdExpression ?? 'ParentSpanId';
+  const spanNameExpr = source.spanNameExpression ?? 'SpanName';
+  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
+  const durationExpr = source.durationExpression ?? 'Duration';
+  const statusCodeExpr = source.statusCodeExpression ?? 'StatusCode';
+
+  // Use displayedTimestampValueExpression for the Timestamp column,
+  // matching getConfig() in DBTraceWaterfallChart which calls
+  // getDisplayedTimestampValueExpression(source).
+  // This ensures both trace and log queries produce timestamps with
+  // the same high precision so they interleave correctly when sorted.
+  const tsExpr =
+    source.displayedTimestampValueExpression ??
+    getFirstTimestampValueExpression(
+      source.timestampValueExpression ?? 'TimestampTime',
+    ) ??
+    source.timestampValueExpression ??
+    'TimestampTime';
+
+  const cols = [
+    `${tsExpr} AS Timestamp`,
+    `${traceIdExpr} AS TraceId`,
+    `${spanIdExpr} AS SpanId`,
+    `${parentSpanIdExpr} AS ParentSpanId`,
+    `${spanNameExpr} AS SpanName`,
+    `${serviceNameExpr} AS ServiceName`,
+    `${durationExpr} AS Duration`,
+    `${statusCodeExpr} AS StatusCode`,
+  ];
+
+  const escapedTraceId = SqlString.escape(traceId);
+  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
+
+  return {
+    sql,
+    connectionId: source.connection,
+  };
+}
+
+/**
+ * Build a raw SQL query to fetch correlated log events for a given traceId.
+ * Returns columns matching the SpanRow shape used by the waterfall chart.
+ * Logs are linked to spans via their SpanId.
+ */
+export function buildTraceLogsSql(opts: TraceSpansQueryOptions): {
+  sql: string;
+  connectionId: string;
+} {
+  const { source, traceId } = opts;
+
+  const db = source.from.databaseName;
+  const table = source.from.tableName;
+  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
+  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
+  const bodyExpr = source.bodyExpression ?? 'Body';
+  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
+  const sevExpr = source.severityTextExpression ?? 'SeverityText';
+
+  // Same displayedTimestampValueExpression logic as buildTraceSpansSql
+  const tsExpr =
+    source.displayedTimestampValueExpression ??
+    getFirstTimestampValueExpression(
+      source.timestampValueExpression ?? 'TimestampTime',
+    ) ??
+    source.timestampValueExpression ??
+    'TimestampTime';
+
+  const cols = [
+    `${tsExpr} AS Timestamp`,
+    `${traceIdExpr} AS TraceId`,
+    `${spanIdExpr} AS SpanId`,
+    `'' AS ParentSpanId`,
+    `${bodyExpr} AS SpanName`,
+    `${serviceNameExpr} AS ServiceName`,
+    `0 AS Duration`,
+    `${sevExpr} AS StatusCode`,
+  ];
+
+  const escapedTraceId = SqlString.escape(traceId);
+  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
+
+  return {
+    sql,
+    connectionId: source.connection,
+  };
+}
+
 export interface FullRowQueryOptions {
   source: SourceResponse;
   /** The partial row data from the table (used to build the WHERE clause) */

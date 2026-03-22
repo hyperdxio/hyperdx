@@ -18,6 +18,7 @@ import type {
 } from '@/api/client';
 import { buildEventSearchQuery, buildFullRowSql } from '@/api/eventQuery';
 import { openEditorForTimeRange, type TimeRange } from '@/utils/editor';
+import TraceWaterfall from '@/components/TraceWaterfall';
 
 interface EventViewerProps {
   clickhouseClient: ProxyClickhouseClient;
@@ -305,11 +306,12 @@ const HelpScreen = React.memo(function HelpScreen() {
     ['k / ↑', 'Move selection up'],
     ['l / Enter', 'Expand row detail (SELECT *)'],
     ['h / Esc', 'Close row detail'],
+    ['Tab (detail)', 'Switch Column Values / Trace'],
     ['G', 'Jump to last item'],
     ['g', 'Jump to first item'],
     ['Ctrl+D', 'Page down (half page)'],
     ['Ctrl+U', 'Page up (half page)'],
-    ['/', 'Focus search bar'],
+    ['/', 'Search (global or detail filter)'],
     ['Esc', 'Blur search bar'],
     ['Tab', 'Next source / saved search'],
     ['Shift+Tab', 'Previous source / saved search'],
@@ -396,6 +398,10 @@ export default function EventViewer({
     unknown
   > | null>(null);
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
+  const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
+  const [detailTab, setDetailTab] = useState<'columns' | 'trace'>('columns');
+  const [detailSearchQuery, setDetailSearchQuery] = useState('');
+  const [focusDetailSearch, setFocusDetailSearch] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
@@ -561,6 +567,7 @@ export default function EventViewer({
   useEffect(() => {
     if (expandedRow === null) {
       setExpandedRowData(null);
+      setExpandedTraceId(null);
       return;
     }
     const row = events[expandedRow];
@@ -583,8 +590,16 @@ export default function EventViewer({
         const json = await resultSet.json<Record<string, unknown>>();
         const fullRow = (json.data as Record<string, unknown>[])?.[0];
         if (!cancelled) {
-          // Use full row if found, otherwise fall back to partial
-          setExpandedRowData(fullRow ?? (row as Record<string, unknown>));
+          const data = fullRow ?? (row as Record<string, unknown>);
+          setExpandedRowData(data);
+
+          // Extract trace ID from the full row using the source expressions
+          // (both trace and log sources can have traceIdExpression)
+          if (source.kind === 'trace' || source.kind === 'log') {
+            const traceIdExpr = source.traceIdExpression ?? 'TraceId';
+            const val = String(data[traceIdExpr] ?? '');
+            setExpandedTraceId(val || null);
+          }
         }
       } catch (err) {
         // Non-fatal — fall back to partial row data, but include error
@@ -650,6 +665,14 @@ export default function EventViewer({
       return;
     }
 
+    if (focusDetailSearch) {
+      if (key.escape || key.return) {
+        setFocusDetailSearch(false);
+        return;
+      }
+      return;
+    }
+
     if (focusSearch) {
       if (key.tab) {
         handleTabSwitch(key.shift ? -1 : 1);
@@ -693,12 +716,20 @@ export default function EventViewer({
     if (key.return || input === 'l') {
       if (expandedRow === null) {
         setExpandedRow(scrollOffset + selectedRow);
+        setDetailTab('columns');
+        setDetailSearchQuery('');
+        setFocusDetailSearch(false);
       }
       return;
     }
     if (key.escape || input === 'h') {
+      if (focusDetailSearch) {
+        setFocusDetailSearch(false);
+        return;
+      }
       if (expandedRow !== null) {
         setExpandedRow(null);
+        setDetailTab('columns');
         return;
       }
     }
@@ -730,12 +761,27 @@ export default function EventViewer({
       setScrollOffset(o => Math.max(0, o - half));
     }
     if (key.tab) {
+      // When detail panel is open on a trace/log source, Tab switches detail tabs
+      if (
+        expandedRow !== null &&
+        (source.kind === 'trace' ||
+          (source.kind === 'log' && source.traceSourceId))
+      ) {
+        setDetailTab(prev => (prev === 'columns' ? 'trace' : 'columns'));
+        return;
+      }
       handleTabSwitch(key.shift ? -1 : 1);
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
     if (input === 's') setIsAutoScroll(prev => !prev);
-    if (input === '/') setFocusSearch(true);
+    if (input === '/') {
+      if (expandedRow !== null) {
+        setFocusDetailSearch(true);
+      } else {
+        setFocusSearch(true);
+      }
+    }
     // t = edit time range in $EDITOR
     if (input === 't') {
       // Use setTimeout to let Ink finish the current render cycle
@@ -781,13 +827,17 @@ export default function EventViewer({
         loading={loading}
         timeRange={timeRange}
       />
-      <TabBar items={switchItems} activeIdx={activeIdx} />
-      <SearchBar
-        focused={focusSearch}
-        query={searchQuery}
-        onChange={setSearchQuery}
-        onSubmit={handleSubmitSearch}
-      />
+      {expandedRow === null && (
+        <>
+          <TabBar items={switchItems} activeIdx={activeIdx} />
+          <SearchBar
+            focused={focusSearch}
+            query={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={handleSubmitSearch}
+          />
+        </>
+      )}
 
       {expandedRow !== null ? (
         /* ---- Detail panel (replaces table when a row is expanded) ---- */
@@ -815,48 +865,148 @@ export default function EventViewer({
               })()}
             </Text>
           </Box>
-          <Text dimColor>{'─'.repeat(80)}</Text>
-          {/* Column values — from full row fetch (SELECT *) */}
-          {expandedRowLoading ? (
-            <Text>
-              <Spinner type="dots" /> Loading all fields…
-            </Text>
-          ) : (
-            <Box flexDirection="column">
-              {Object.entries(expandedRowData ?? {}).map(([key, value]) => {
-                // Handle objects/arrays that ClickHouse returns as parsed JSON
-                let strVal: string;
-                if (value != null && typeof value === 'object') {
-                  strVal = JSON.stringify(value, null, 2);
-                } else {
-                  strVal = String(value ?? '');
-                }
-                let displayVal: string;
-                if (strVal.startsWith('{') || strVal.startsWith('[')) {
-                  try {
-                    displayVal = JSON.stringify(JSON.parse(strVal), null, 2);
-                  } catch {
-                    displayVal = strVal;
-                  }
-                } else {
-                  displayVal = strVal;
-                }
-                return (
-                  <Box key={key}>
-                    <Box width={35} flexShrink={0}>
-                      <Text color="cyan" wrap="truncate">
-                        {key}
-                      </Text>
-                    </Box>
-                    <Box flexGrow={1}>
-                      <Text wrap={wrapLines ? 'wrap' : 'truncate'}>
-                        {wrapLines ? displayVal : flatten(displayVal)}
-                      </Text>
-                    </Box>
-                  </Box>
-                );
-              })}
+          {/* Detail tab bar (for trace/log sources with correlated source) */}
+          {(source.kind === 'trace' ||
+            (source.kind === 'log' && source.traceSourceId)) && (
+            <Box marginBottom={1}>
+              <Box marginRight={2}>
+                <Text
+                  color={detailTab === 'columns' ? 'cyan' : undefined}
+                  bold={detailTab === 'columns'}
+                  dimColor={detailTab !== 'columns'}
+                >
+                  {detailTab === 'columns' ? '▸ ' : '  '}Column Values
+                </Text>
+              </Box>
+              <Box marginRight={2}>
+                <Text
+                  color={detailTab === 'trace' ? 'cyan' : undefined}
+                  bold={detailTab === 'trace'}
+                  dimColor={detailTab !== 'trace'}
+                >
+                  {detailTab === 'trace' ? '▸ ' : '  '}Trace
+                </Text>
+              </Box>
+              <Text dimColor>(tab to switch)</Text>
             </Box>
+          )}
+          {/* Detail search bar */}
+          <SearchBar
+            focused={focusDetailSearch}
+            query={detailSearchQuery}
+            onChange={setDetailSearchQuery}
+            onSubmit={() => setFocusDetailSearch(false)}
+          />
+          <Text dimColor>{'─'.repeat(80)}</Text>
+
+          {/* Tab content */}
+          {detailTab === 'trace' &&
+          (source.kind === 'trace' ||
+            (source.kind === 'log' && source.traceSourceId)) ? (
+            /* ---- Trace waterfall tab ---- */
+            (() => {
+              if (!expandedTraceId) {
+                return expandedRowLoading ? (
+                  <Text>
+                    <Spinner type="dots" /> Loading trace ID…
+                  </Text>
+                ) : (
+                  <Text dimColor>No trace ID found for this row.</Text>
+                );
+              }
+
+              // Resolve trace source and log source based on current
+              // source kind, mirroring DBTracePanel / DBRowSidePanel:
+              //   trace source → traceSource=self, logSource=correlated log
+              //   log source   → traceSource=correlated trace, logSource=self
+              const findSource = (id: string | undefined) =>
+                id
+                  ? (sources.find(s => s.id === id || s._id === id) ?? null)
+                  : null;
+
+              const traceSource =
+                source.kind === 'trace'
+                  ? source
+                  : findSource(source.traceSourceId);
+              const logSource =
+                source.kind === 'log' ? source : findSource(source.logSourceId);
+
+              if (!traceSource) {
+                return <Text dimColor>No correlated trace source found.</Text>;
+              }
+
+              return (
+                <TraceWaterfall
+                  clickhouseClient={clickhouseClient}
+                  source={traceSource}
+                  logSource={logSource}
+                  traceId={expandedTraceId}
+                  searchQuery={detailSearchQuery}
+                />
+              );
+            })()
+          ) : (
+            /* ---- Column Values tab ---- */
+            <>
+              {expandedRowLoading ? (
+                <Text>
+                  <Spinner type="dots" /> Loading all fields…
+                </Text>
+              ) : (
+                <Box flexDirection="column">
+                  {Object.entries(expandedRowData ?? {})
+                    .filter(([key, value]) => {
+                      if (!detailSearchQuery) return true;
+                      const q = detailSearchQuery.toLowerCase();
+                      const strVal =
+                        value != null && typeof value === 'object'
+                          ? JSON.stringify(value)
+                          : String(value ?? '');
+                      return (
+                        key.toLowerCase().includes(q) ||
+                        strVal.toLowerCase().includes(q)
+                      );
+                    })
+                    .map(([key, value]) => {
+                      // Handle objects/arrays that ClickHouse returns as parsed JSON
+                      let strVal: string;
+                      if (value != null && typeof value === 'object') {
+                        strVal = JSON.stringify(value, null, 2);
+                      } else {
+                        strVal = String(value ?? '');
+                      }
+                      let displayVal: string;
+                      if (strVal.startsWith('{') || strVal.startsWith('[')) {
+                        try {
+                          displayVal = JSON.stringify(
+                            JSON.parse(strVal),
+                            null,
+                            2,
+                          );
+                        } catch {
+                          displayVal = strVal;
+                        }
+                      } else {
+                        displayVal = strVal;
+                      }
+                      return (
+                        <Box key={key}>
+                          <Box width={35} flexShrink={0}>
+                            <Text color="cyan" wrap="truncate">
+                              {key}
+                            </Text>
+                          </Box>
+                          <Box flexGrow={1}>
+                            <Text wrap={wrapLines ? 'wrap' : 'truncate'}>
+                              {wrapLines ? displayVal : flatten(displayVal)}
+                            </Text>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                </Box>
+              )}
+            </>
           )}
         </Box>
       ) : (
