@@ -65,6 +65,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
+  IconChartDots,
   IconPlayerPlay,
   IconPlus,
   IconTags,
@@ -74,6 +75,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -1313,6 +1315,27 @@ function DBSearchPage() {
     ],
   );
 
+  const chartExplorerUrl = useMemo(() => {
+    if (!searchedSource) return null;
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      source: searchedSource.id,
+      where: searchedConfig.where || '',
+      whereLanguage: searchedConfig.whereLanguage || 'lucene',
+    };
+    const qParams = new URLSearchParams({
+      config: JSON.stringify(config),
+      from: searchedTimeRange[0].getTime().toString(),
+      to: searchedTimeRange[1].getTime().toString(),
+    });
+    return `/chart?${qParams.toString()}`;
+  }, [
+    searchedSource,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
+    searchedTimeRange,
+  ]);
+
   const handleTableError = useCallback(
     (error: Error | ClickHouseQueryError) => {
       setIsLive(false);
@@ -1630,6 +1653,20 @@ function DBSearchPage() {
               >
                 Alerts
               </Button>
+            )}
+            {chartExplorerUrl && (
+              <Tooltip label="Open in Chart Explorer" withinPortal>
+                <ActionIcon
+                  component="a"
+                  href={chartExplorerUrl}
+                  data-testid="open-in-chart-explorer-button"
+                  variant="secondary"
+                  size="input-xs"
+                  style={{ flexShrink: 0 }}
+                >
+                  <IconChartDots size={14} />
+                </ActionIcon>
+              </Tooltip>
             )}
             {!!savedSearch && (
               <>
