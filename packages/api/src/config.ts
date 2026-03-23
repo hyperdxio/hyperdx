@@ -55,7 +55,6 @@ export const AI_BASE_URL = env.AI_BASE_URL as string;
 export const AI_MODEL_NAME = env.AI_MODEL_NAME as string;
 export const AI_CLIENT_ID = env.AI_CLIENT_ID as string;
 export const AI_USERNAME = env.AI_USERNAME as string;
-export const AI_EXTRA_BODY = env.AI_EXTRA_BODY as string;
 
 // Legacy Anthropic-specific configuration (backward compatibility)
 export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;

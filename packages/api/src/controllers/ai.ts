@@ -393,35 +393,8 @@ function getOpenAIModel(): LanguageModel {
     headers['X-Username'] = config.AI_USERNAME;
   }
 
-  let customFetch: typeof globalThis.fetch | undefined;
-  if (config.AI_EXTRA_BODY) {
-    let extraFields: Record<string, unknown>;
-    try {
-      extraFields = JSON.parse(config.AI_EXTRA_BODY);
-    } catch (e) {
-      throw new Error(
-        `AI_EXTRA_BODY is not valid JSON: ${(e as Error).message}`,
-      );
-    }
-    customFetch = async (url, init) => {
-      if (init?.body && typeof init.body === 'string') {
-        try {
-          const body = JSON.parse(init.body);
-          Object.assign(body, extraFields);
-          init = { ...init, body: JSON.stringify(body) };
-        } catch {
-          logger.warn(
-            'AI_EXTRA_BODY: request body is not JSON, sending unmodified',
-          );
-        }
-      }
-      return globalThis.fetch(url, init);
-    };
-  }
-
   const openai = createOpenAI({
     apiKey,
-    ...(customFetch && { fetch: customFetch }),
     ...(config.AI_BASE_URL && { baseURL: config.AI_BASE_URL }),
     ...(Object.keys(headers).length > 0 && { headers }),
   });
