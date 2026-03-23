@@ -847,7 +847,10 @@ function Heatmap({
     setSelectingInfo(undefined);
     if (uplotRef.current != null) {
       // Clear persisted uPlot drag rectangle when parent resets selection.
-      uplotRef.current.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+      uplotRef.current.setSelect(
+        { left: 0, top: 0, width: 0, height: 0 },
+        false,
+      );
     }
   }, [clearSelectionVersion]);
 
