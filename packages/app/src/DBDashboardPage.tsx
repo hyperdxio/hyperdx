@@ -60,6 +60,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
   IconBell,
+  IconChartBar,
   IconCopy,
   IconDeviceFloppy,
   IconDotsVertical,
@@ -68,6 +69,7 @@ import {
   IconLayoutList,
   IconPencil,
   IconPlayerPlay,
+  IconPlus,
   IconRefresh,
   IconTags,
   IconTrash,
@@ -1661,13 +1663,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
-                <Menu.Item
-                  data-testid="add-new-section-button"
-                  leftSection={<IconLayoutList size={16} />}
-                  onClick={handleAddSection}
-                >
-                  Add Section
-                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item
                   data-testid="save-default-query-filters-menu-item"
@@ -1873,16 +1868,36 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </ErrorBoundary>
         ) : null}
       </Box>
-      <Button
-        data-testid="add-new-tile-button"
-        variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-        mt="sm"
-        fw={400}
-        onClick={() => onAddTile()}
-        w="100%"
-      >
-        + Add New Tile
-      </Button>
+      <Menu position="top" width={200}>
+        <Menu.Target>
+          <Button
+            data-testid="add-dropdown-button"
+            variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
+            mt="sm"
+            fw={400}
+            w="100%"
+            leftSection={<IconPlus size={16} />}
+          >
+            Add
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item
+            data-testid="add-new-tile-menu-item"
+            leftSection={<IconChartBar size={16} />}
+            onClick={() => onAddTile()}
+          >
+            New Tile
+          </Menu.Item>
+          <Menu.Item
+            data-testid="add-new-section-menu-item"
+            leftSection={<IconLayoutList size={16} />}
+            onClick={handleAddSection}
+          >
+            New Section
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
