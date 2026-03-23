@@ -17,6 +17,7 @@ import z from 'zod';
 
 import * as config from '@/config';
 import { ISource } from '@/models/source';
+import { parseJSON } from '@/utils/common';
 import { Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 
@@ -385,13 +386,12 @@ function getOpenAIModel(): LanguageModel {
     );
   }
 
-  const headers: Record<string, string> = {};
-  if (config.AI_CLIENT_ID) {
-    headers['X-Client-Id'] = config.AI_CLIENT_ID;
-  }
-  if (config.AI_USERNAME) {
-    headers['X-Username'] = config.AI_USERNAME;
-  }
+  const headers: Record<string, string> = config.AI_REQUEST_HEADERS
+    ? parseJSON<Record<string, string>>(
+        config.AI_REQUEST_HEADERS,
+        'AI_REQUEST_HEADERS',
+      )
+    : {};
 
   const openai = createOpenAI({
     apiKey,

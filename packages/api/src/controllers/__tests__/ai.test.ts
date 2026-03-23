@@ -8,20 +8,22 @@ const mockOpenAIModel = {
   modelId: 'gpt-4o',
 } as unknown as LanguageModel;
 
-const mockAnthropicFactory = jest.fn(() => mockAnthropicModel);
-const mockCreateAnthropic = jest.fn(() => mockAnthropicFactory);
+const mockAnthropicFactory = jest.fn((_model?: string) => mockAnthropicModel);
+const mockCreateAnthropic = jest.fn(
+  (_opts?: Record<string, unknown>) => mockAnthropicFactory,
+);
 
-const mockOpenAIChatFactory = jest.fn(() => mockOpenAIModel);
-const mockCreateOpenAI = jest.fn(() => ({
+const mockOpenAIChatFactory = jest.fn((_model?: string) => mockOpenAIModel);
+const mockCreateOpenAI = jest.fn((_opts?: Record<string, unknown>) => ({
   chat: mockOpenAIChatFactory,
 }));
 
 jest.mock('@ai-sdk/anthropic', () => ({
-  createAnthropic: (...args: unknown[]) => mockCreateAnthropic(...args),
+  createAnthropic: (opts: Record<string, unknown>) => mockCreateAnthropic(opts),
 }));
 
 jest.mock('@ai-sdk/openai', () => ({
-  createOpenAI: (...args: unknown[]) => mockCreateOpenAI(...args),
+  createOpenAI: (opts: Record<string, unknown>) => mockCreateOpenAI(opts),
 }));
 
 jest.mock('@/utils/logger', () => ({
@@ -208,69 +210,43 @@ describe('openai provider', () => {
     );
   });
 
-  describe('custom headers', () => {
-    it('adds X-Client-Id header when AI_CLIENT_ID is set', () => {
+  describe('AI_REQUEST_HEADERS', () => {
+    it('passes parsed headers to createOpenAI', () => {
       setConfig({
         AI_PROVIDER: 'openai',
         AI_API_KEY: 'sk-test',
         AI_MODEL_NAME: 'gpt-4o',
-        AI_CLIENT_ID: 'MyApp',
+        AI_REQUEST_HEADERS: '{"X-Custom":"val1","X-Other":"val2"}',
       });
       getAIModel();
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({
-          headers: expect.objectContaining({
-            'X-Client-Id': 'MyApp',
-          }),
+          headers: { 'X-Custom': 'val1', 'X-Other': 'val2' },
         }),
       );
     });
 
-    it('adds X-Username header when AI_USERNAME is set', () => {
+    it('throws when AI_REQUEST_HEADERS is invalid JSON', () => {
       setConfig({
         AI_PROVIDER: 'openai',
         AI_API_KEY: 'sk-test',
         AI_MODEL_NAME: 'gpt-4o',
-        AI_USERNAME: 'testuser',
+        AI_REQUEST_HEADERS: '{bad',
       });
-      getAIModel();
-      expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'X-Username': 'testuser',
-          }),
-        }),
+      expect(() => getAIModel()).toThrow(
+        'AI_REQUEST_HEADERS is not valid JSON',
       );
     });
 
-    it('adds both headers when both are set', () => {
-      setConfig({
-        AI_PROVIDER: 'openai',
-        AI_API_KEY: 'sk-test',
-        AI_MODEL_NAME: 'gpt-4o',
-        AI_CLIENT_ID: 'MyApp',
-        AI_USERNAME: 'testuser',
-      });
-      getAIModel();
-      expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({
-          headers: {
-            'X-Client-Id': 'MyApp',
-            'X-Username': 'testuser',
-          },
-        }),
-      );
-    });
-
-    it('omits headers object when neither is set', () => {
+    it('omits headers when AI_REQUEST_HEADERS is not set', () => {
       setConfig({
         AI_PROVIDER: 'openai',
         AI_API_KEY: 'sk-test',
         AI_MODEL_NAME: 'gpt-4o',
       });
       getAIModel();
-      const call = mockCreateOpenAI.mock.calls[0][0];
-      expect(call.headers).toBeUndefined();
+      const call = mockCreateOpenAI.mock.calls[0]?.[0];
+      expect(call?.headers).toBeUndefined();
     });
   });
 });
