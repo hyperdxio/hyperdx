@@ -929,7 +929,8 @@ export function DBTraceWaterfallChartContainer({
       <div
         style={{
           position: 'relative',
-          overflow: 'hidden',
+          overflowX: 'auto',
+          overflowY: 'hidden',
           flex: 1,
           minHeight: 0,
         }}
@@ -962,6 +963,7 @@ export function DBTraceWaterfallChartContainer({
               style={{
                 overflowY: 'auto',
                 height: '100%',
+                minWidth: 740,
               }}
               rowHeight={22}
               labelWidth={300}
