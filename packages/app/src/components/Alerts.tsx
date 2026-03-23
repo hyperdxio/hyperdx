@@ -18,6 +18,10 @@ type Webhook = {
   name: string;
 };
 
+export function UnusedComponent() {
+  return <div>Unused component</div>;
+}
+
 const WebhookChannelForm = <T extends object>(
   props: Partial<SelectProps<T>>,
 ) => {
