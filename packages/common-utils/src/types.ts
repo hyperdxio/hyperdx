@@ -717,6 +717,8 @@ export const DashboardFilterSchema = z.object({
   expression: z.string().min(1),
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+  where: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;

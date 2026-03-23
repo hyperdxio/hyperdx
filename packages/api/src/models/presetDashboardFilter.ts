@@ -42,6 +42,12 @@ const PresetDashboardFilterSchema = new Schema<IPresetDashboardFilter>(
     },
     type: { type: String, required: true },
     expression: { type: String, required: true },
+    where: { type: String, required: false },
+    whereLanguage: {
+      type: String,
+      required: false,
+      enum: ['sql', 'lucene'],
+    },
   },
   {
     timestamps: true,

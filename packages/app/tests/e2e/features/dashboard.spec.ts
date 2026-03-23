@@ -535,7 +535,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Verify the filter is applied
       const filterSelect = dashboardPage.getFilterSelectByName('Service');
-      await expect(filterSelect).toHaveValue('accounting');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
     });
 
     await test.step('Enter query in search bar', async () => {
@@ -584,7 +586,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Verify the saved filter value is populated
       const filterSelect = dashboardPage.getFilterSelectByName('Service');
-      await expect(filterSelect).toHaveValue('accounting');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
     });
   });
 

@@ -14,14 +14,14 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   );
 
   const setFilterValue = useCallback(
-    (expression: string, value: string | null) => {
+    (expression: string, values: string[]) => {
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
-        if (value === undefined || value === null) {
+        if (values.length === 0) {
           delete filterValues[expression];
         } else {
           filterValues[expression] = {
-            included: new Set([value]),
+            included: new Set(values),
             excluded: new Set(),
           };
         }
