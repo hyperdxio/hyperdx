@@ -69,6 +69,7 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  const [clearSelectionVersion, setClearSelectionVersion] = useState(0);
   const scaleType = (fields.scaleType ?? 'log') as HeatmapScaleType;
   const setScaleType = useCallback(
     (v: HeatmapScaleType) => {
@@ -81,6 +82,11 @@ export function DBSearchHeatmapChart({
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
   const clearSelection = useCallback(() => {
     setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+  }, [setFields]);
+
+  const clearSelection = useCallback(() => {
+    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+    setClearSelectionVersion(version => version + 1);
   }, [setFields]);
 
   // After applying a filter, clear the heatmap selection so the delta chart
@@ -128,6 +134,7 @@ export function DBSearchHeatmapChart({
                 : undefined,
           }}
           enabled={isReady}
+          clearSelectionVersion={clearSelectionVersion}
           scaleType={scaleType}
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({ xMin, xMax, yMin, yMax });
