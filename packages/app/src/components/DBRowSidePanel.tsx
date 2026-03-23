@@ -302,13 +302,18 @@ export const DBRowSidePanelInner = ({
   );
 
   const prevSourceStackLengthRef = useRef(sourceStack.length);
+  const prevNavStackLengthRef = useRef(navStack.length);
   useEffect(() => {
-    if (sourceStack.length > 0) {
+    const sourceChanged =
+      sourceStack.length !== prevSourceStackLengthRef.current;
+    const navPushed = navStack.length > prevNavStackLengthRef.current;
+
+    if (sourceChanged && sourceStack.length > 0) {
       const newSource = sourceStack[sourceStack.length - 1].source;
       const newIsTrace = newSource.kind === 'trace';
       const newDefault = newIsTrace ? Tab.Trace : Tab.Overview;
       setQueryTab(newDefault);
-    } else if (prevSourceStackLengthRef.current > 0) {
+    } else if (sourceChanged && prevSourceStackLengthRef.current > 0) {
       const rootIsTrace = rootSource.kind === 'trace';
       const rootDefault = rootIsTrace
         ? Tab.Trace
@@ -316,9 +321,26 @@ export const DBRowSidePanelInner = ({
           ? Tab.Overview
           : Tab.Parsed;
       setQueryTab(rootDefault);
+    } else if (navPushed) {
+      const currentIsTrace = source.kind === 'trace';
+      const navDefault = currentIsTrace
+        ? Tab.Trace
+        : hasOverviewPanel
+          ? Tab.Overview
+          : Tab.Parsed;
+      setQueryTab(navDefault);
     }
+
     prevSourceStackLengthRef.current = sourceStack.length;
-  }, [sourceStack, setQueryTab, rootSource.kind, hasOverviewPanel]);
+    prevNavStackLengthRef.current = navStack.length;
+  }, [
+    sourceStack,
+    navStack,
+    setQueryTab,
+    rootSource.kind,
+    source.kind,
+    hasOverviewPanel,
+  ]);
 
   const displayedTab = queryTab;
   const setTab = setQueryTab;
