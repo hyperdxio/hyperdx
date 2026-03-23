@@ -169,40 +169,54 @@ type NavEntry = {
   sourceKind?: SourceKind;
 };
 
+type SourceStackEntry = {
+  source: TSource;
+  rowId: string;
+  aliasWith?: WithClause[];
+  label: string;
+  sourceKind?: SourceKind;
+};
+
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
-  breadcrumbs?: BreadcrumbItem[];
   initialTab?: `${Tab}`;
 };
 
 const DBRowSidePanel = ({
   rowId: initialRowId,
   aliasWith: initialAliasWith,
-  source,
+  source: rootSource,
   setSubDrawerOpen,
   onClose,
-  breadcrumbs,
   initialTab,
   isFullWidth,
   onToggleFullWidth,
-  drawerSize,
+  drawerSize: _drawerSize,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
   isFullWidth?: boolean;
   onToggleFullWidth?: () => void;
   drawerSize?: number;
 }) => {
+  const [sourceStack, setSourceStack] = useState<SourceStackEntry[]>([]);
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
 
+  const activeSourceEntry =
+    sourceStack.length > 0 ? sourceStack[sourceStack.length - 1] : null;
+  const source = activeSourceEntry?.source ?? rootSource;
+
+  const baseRowId = activeSourceEntry?.rowId ?? initialRowId;
+  const baseAliasWith = activeSourceEntry?.aliasWith ?? initialAliasWith;
+
   const activeRowId =
-    navStack.length > 0 ? navStack[navStack.length - 1].rowId : initialRowId;
+    navStack.length > 0 ? navStack[navStack.length - 1].rowId : baseRowId;
   const activeAliasWith =
     navStack.length > 0
       ? navStack[navStack.length - 1].aliasWith
-      : initialAliasWith;
+      : baseAliasWith;
 
   const handleNavigateToRow = useCallback(
     (
@@ -217,12 +231,28 @@ const DBRowSidePanel = ({
   );
 
   const handleNavigateBack = useCallback(() => {
-    setNavStack(prev => prev.slice(0, -1));
+    if (navStack.length > 0) {
+      setNavStack(prev => prev.slice(0, -1));
+    } else if (sourceStack.length > 0) {
+      setSourceStack(prev => prev.slice(0, -1));
+      setNavStack([]);
+    } else {
+      onClose();
+    }
+  }, [navStack.length, sourceStack.length, onClose]);
+
+  const handleSourceStackPush = useCallback((entry: SourceStackEntry) => {
+    setSourceStack(prev => [...prev, entry]);
+    setNavStack([]);
   }, []);
 
-  const handleBreadcrumbClick = useCallback((targetLevel: number) => {
-    setNavStack(prev => prev.slice(0, targetLevel));
-  }, []);
+  const handleBreadcrumbNavigation = useCallback(
+    (sourceLevel: number, navLevel: number) => {
+      setSourceStack(prev => prev.slice(0, sourceLevel));
+      setNavStack(prev => prev.slice(0, navLevel));
+    },
+    [],
+  );
 
   const {
     data: rowData,
@@ -234,7 +264,9 @@ const DBRowSidePanel = ({
     aliasWith: activeAliasWith,
   });
 
-  const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
+  const parentContext = useContext(RowSidePanelContext);
+  const dbSqlRowTableConfig =
+    sourceStack.length > 0 ? undefined : parentContext.dbSqlRowTableConfig;
 
   const hasOverviewPanel = useMemo(() => {
     if (source.resourceAttributesExpression) {
@@ -252,7 +284,7 @@ const DBRowSidePanel = ({
   const isTraceSource = source.kind === 'trace';
 
   const defaultTab =
-    (initialTab as Tab) ??
+    (sourceStack.length === 0 ? (initialTab as Tab) : undefined) ??
     (isTraceSource ? Tab.Trace : hasOverviewPanel ? Tab.Overview : Tab.Parsed);
 
   const [queryTab, setQueryTab] = useQueryState(
@@ -260,10 +292,17 @@ const DBRowSidePanel = ({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
+  useEffect(() => {
+    if (sourceStack.length > 0) {
+      const newSource = sourceStack[sourceStack.length - 1].source;
+      const newIsTrace = newSource.kind === 'trace';
+      const newDefault = newIsTrace ? Tab.Trace : Tab.Overview;
+      setQueryTab(newDefault);
+    }
+  }, [sourceStack, setQueryTab]);
+
   const displayedTab = queryTab;
   const setTab = setQueryTab;
-
-  const [showTraceView, setShowTraceView] = useState(false);
 
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
@@ -285,10 +324,15 @@ const DBRowSidePanel = ({
     string | undefined
   >(undefined);
   useEffect(() => {
-    if (mainContent != null && initialMainContent == null) {
+    if (
+      mainContent != null &&
+      initialMainContent == null &&
+      sourceStack.length === 0 &&
+      navStack.length === 0
+    ) {
       setInitialMainContent(mainContent);
     }
-  }, [mainContent, initialMainContent]);
+  }, [mainContent, initialMainContent, sourceStack.length, navStack.length]);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: Array<{
@@ -415,24 +459,40 @@ const DBRowSidePanel = ({
   const allBreadcrumbs = useMemo((): BreadcrumbItem[] => {
     const items: BreadcrumbItem[] = [];
 
-    if (breadcrumbs) {
-      items.push(...breadcrumbs);
-    }
-
-    if (navStack.length > 0) {
-      const rootLabel = initialMainContent || (isTraceSource ? 'Trace' : 'Log');
+    const rootLabel =
+      initialMainContent || (rootSource.kind === 'trace' ? 'Trace' : 'Log');
+    if (sourceStack.length > 0 || navStack.length > 0) {
       items.push({
         label: rootLabel,
-        sourceKind: source.kind as SourceKind,
-        onClick: () => setNavStack([]),
+        sourceKind: rootSource.kind as SourceKind,
+        onClick: () => handleBreadcrumbNavigation(0, 0),
       });
+    }
 
+    sourceStack.forEach((entry, i) => {
+      const isLastSource = i === sourceStack.length - 1;
+      if (isLastSource && navStack.length === 0) {
+        items.push({
+          label: mainContent || entry.label,
+          sourceKind: entry.source.kind as SourceKind,
+        });
+      } else {
+        items.push({
+          label: entry.label,
+          sourceKind: entry.source.kind as SourceKind,
+          onClick: () => handleBreadcrumbNavigation(i + 1, 0),
+        });
+      }
+    });
+
+    if (navStack.length > 0) {
       navStack.forEach((entry, i) => {
         if (i < navStack.length - 1) {
           items.push({
             label: entry.label,
             sourceKind: entry.sourceKind,
-            onClick: () => handleBreadcrumbClick(i + 1),
+            onClick: () =>
+              handleBreadcrumbNavigation(sourceStack.length, i + 1),
           });
         } else {
           items.push({
@@ -441,7 +501,9 @@ const DBRowSidePanel = ({
           });
         }
       });
-    } else {
+    }
+
+    if (sourceStack.length === 0 && navStack.length === 0) {
       items.push({
         label: mainContent || (isTraceSource ? 'Trace' : 'Log'),
         sourceKind: source.kind as SourceKind,
@@ -450,13 +512,14 @@ const DBRowSidePanel = ({
 
     return items;
   }, [
-    breadcrumbs,
+    sourceStack,
     navStack,
+    rootSource.kind,
     isTraceSource,
     mainContent,
     initialMainContent,
     source.kind,
-    handleBreadcrumbClick,
+    handleBreadcrumbNavigation,
   ]);
 
   if (isRowLoading) {
@@ -474,11 +537,9 @@ const DBRowSidePanel = ({
           <SidePanelBreadcrumbs
             items={allBreadcrumbs}
             onBack={
-              navStack.length > 0
+              navStack.length > 0 || sourceStack.length > 0
                 ? handleNavigateBack
-                : breadcrumbs && breadcrumbs.length > 0
-                  ? breadcrumbs[breadcrumbs.length - 1].onClick
-                  : onClose
+                : onClose
             }
           />
           <SidePanelHeaderActions
@@ -609,7 +670,17 @@ const DBRowSidePanel = ({
               <Button
                 variant="secondary"
                 size="compact-xs"
-                onClick={() => setShowTraceView(true)}
+                onClick={() => {
+                  if (traceSourceData && traceSpanRowId) {
+                    handleSourceStackPush({
+                      source: traceSourceData,
+                      rowId: traceSpanRowId,
+                      label: mainContent || 'Log',
+                      sourceKind: source.kind as SourceKind,
+                    });
+                  }
+                }}
+                disabled={!traceSourceData || !traceSpanRowId}
               >
                 View Trace →
               </Button>
@@ -804,25 +875,6 @@ const DBRowSidePanel = ({
         </ErrorBoundary>
       )}
       <LogSidePanelKbdShortcuts />
-      {!isTraceSource &&
-        showTraceView &&
-        traceId &&
-        traceSourceData &&
-        traceSpanRowId && (
-          <DBRowSidePanelErrorBoundary
-            source={traceSourceData}
-            rowId={traceSpanRowId}
-            onClose={() => setShowTraceView(false)}
-            breadcrumbs={[
-              ...(breadcrumbs ?? []),
-              {
-                label: mainContent || 'Log',
-                sourceKind: source.kind as SourceKind,
-                onClick: () => setShowTraceView(false),
-              },
-            ]}
-          />
-        )}
     </>
   );
 };
@@ -832,7 +884,6 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
-  breadcrumbs,
   initialTab,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
@@ -848,7 +899,8 @@ export default function DBRowSidePanelErrorBoundary({
 
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
-  const { isChildModalOpen } = useContext(RowSidePanelContext);
+  const { isChildModalOpen: _isChildModalOpen } =
+    useContext(RowSidePanelContext);
 
   const [_sidePanelTab, setSidePanelTab] = useQueryState(
     'sidePanelTab',
@@ -884,6 +936,10 @@ export default function DBRowSidePanelErrorBoundary({
       position="right"
       size={`${size}vw`}
       styles={{
+        content: {
+          border: 'none',
+          boxShadow: 'none',
+        },
         body: {
           padding: '0',
           height: '100%',
@@ -919,7 +975,6 @@ export default function DBRowSidePanelErrorBoundary({
                 aliasWith={aliasWith}
                 onClose={_onClose}
                 setSubDrawerOpen={setSubDrawerOpen}
-                breadcrumbs={breadcrumbs}
                 initialTab={initialTab}
                 isFullWidth={isFullWidth}
                 onToggleFullWidth={toggleFullWidth}
