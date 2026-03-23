@@ -1101,28 +1101,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
-  const onAddTile = (containerId?: string) => {
-    // Auto-expand collapsed section via URL state so the new tile is visible
-    if (containerId) {
-      const section = dashboard?.containers?.find(s => s.id === containerId);
-      if (section && isSectionCollapsed(section)) {
-        handleToggleSection(containerId);
-      }
-    }
-    setEditedTile({
-      id: makeId(),
-      x: 0,
-      y: 0,
-      w: 8,
-      h: 10,
-      config: {
-        ...DEFAULT_CHART_CONFIG,
-        source: sources?.[0]?.id ?? '',
-      },
-      ...(containerId ? { containerId } : {}),
-    });
-  };
-
   const sections = useMemo(
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
@@ -1313,48 +1291,48 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  // Helpers for updating URL-based collapse sets via immer.
+  const addToUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev =>
+        produce(prev ?? [], draft => {
+          if (!draft.includes(containerId)) draft.push(containerId);
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeFromUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev => {
+        const next = (prev ?? []).filter(id => id !== containerId);
+        return next.length > 0 ? next : null;
+      });
+    },
+    [],
+  );
+
   // Toggle collapse in URL state only (per-viewer, shareable via link).
   // Does NOT persist to DB — the DB `collapsed` field is the default.
   const handleToggleSection = useCallback(
     (containerId: string) => {
-      // Determine current effective state from URL params + DB default
-      const dbDefault =
-        dashboard?.containers?.find(s => s.id === containerId)?.collapsed ??
-        false;
-      const currentlyCollapsed = collapsedIdSet.has(containerId)
-        ? true
-        : expandedIdSet.has(containerId)
-          ? false
-          : dbDefault;
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      const currentlyCollapsed = section ? isSectionCollapsed(section) : false;
 
       if (currentlyCollapsed) {
-        // Expanding: add to expanded list, remove from collapsed list
-        setUrlExpandedIds(prev => {
-          const next = [...(prev ?? [])];
-          if (!next.includes(containerId)) next.push(containerId);
-          return next.length > 0 ? next : null;
-        });
-        setUrlCollapsedIds(prev => {
-          const next = (prev ?? []).filter(id => id !== containerId);
-          return next.length > 0 ? next : null;
-        });
+        addToUrlSet(setUrlExpandedIds, containerId);
+        removeFromUrlSet(setUrlCollapsedIds, containerId);
       } else {
-        // Collapsing: add to collapsed list, remove from expanded list
-        setUrlCollapsedIds(prev => {
-          const next = [...(prev ?? [])];
-          if (!next.includes(containerId)) next.push(containerId);
-          return next.length > 0 ? next : null;
-        });
-        setUrlExpandedIds(prev => {
-          const next = (prev ?? []).filter(id => id !== containerId);
-          return next.length > 0 ? next : null;
-        });
+        addToUrlSet(setUrlCollapsedIds, containerId);
+        removeFromUrlSet(setUrlExpandedIds, containerId);
       }
     },
     [
       dashboard?.containers,
-      collapsedIdSet,
-      expandedIdSet,
+      isSectionCollapsed,
+      addToUrlSet,
+      removeFromUrlSet,
       setUrlCollapsedIds,
       setUrlExpandedIds,
     ],
@@ -1374,6 +1352,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [dashboard, setDashboard],
   );
+
+  const onAddTile = (containerId?: string) => {
+    // Auto-expand collapsed section via URL state so the new tile is visible
+    if (containerId) {
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      if (section && isSectionCollapsed(section)) {
+        handleToggleSection(containerId);
+      }
+    }
+    setEditedTile({
+      id: makeId(),
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 10,
+      config: {
+        ...DEFAULT_CHART_CONFIG,
+        source: sources?.[0]?.id ?? '',
+      },
+      ...(containerId ? { containerId } : {}),
+    });
+  };
 
   const handleAddSection = useCallback(() => {
     if (!dashboard) return;
