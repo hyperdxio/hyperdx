@@ -285,7 +285,13 @@ export default function ContextSubpanel({
               </Badge>
             </div>
           </Group>
-          <div style={{ height: '100%', overflow: 'auto' }}>
+          <div
+            style={{
+              height: '100%',
+              overflow: 'auto',
+              padding: 'var(--mantine-spacing-sm)',
+            }}
+          >
             <DBSqlRowTable
               sourceId={source.id}
               highlightedLineId={rowId}
