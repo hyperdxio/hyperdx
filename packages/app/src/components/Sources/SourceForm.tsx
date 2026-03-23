@@ -1547,7 +1547,7 @@ function TraceTableModelForm(props: TableModelProps) {
       </FormRow>
       <FormRow
         label={'Sample Rate Expression'}
-        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Leave empty if spans are not sampled."
+        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation -- exact values may differ slightly. Leave empty if spans are not sampled."
       >
         <SQLInlineEditorControlled
           tableConnection={{

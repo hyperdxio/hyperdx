@@ -116,7 +116,9 @@ export default function ServiceDashboardEndpointSidePanel({
                           'connection',
                           'from',
                         ]),
-                        sampleWeightExpression: source.sampleRateExpression,
+                        ...(source.sampleRateExpression && {
+                          sampleWeightExpression: source.sampleRateExpression,
+                        }),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
@@ -160,7 +162,9 @@ export default function ServiceDashboardEndpointSidePanel({
                           'connection',
                           'from',
                         ]),
-                        sampleWeightExpression: source.sampleRateExpression,
+                        ...(source.sampleRateExpression && {
+                          sampleWeightExpression: source.sampleRateExpression,
+                        }),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
