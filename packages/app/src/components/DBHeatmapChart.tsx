@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
@@ -341,6 +341,7 @@ function HeatmapContainer({
   config,
   enabled = true,
   onFilter,
+  clearSelectionVersion = 0,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -349,6 +350,7 @@ function HeatmapContainer({
   config: HeatmapChartConfig;
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  clearSelectionVersion?: number;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
@@ -661,6 +663,7 @@ function HeatmapContainer({
           key={JSON.stringify(config)}
           data={[time, bucket, count]}
           numberFormat={config.numberFormat}
+          clearSelectionVersion={clearSelectionVersion}
           onFilter={
             onFilter
               ? (xMin, xMax, yMin, yMax) => {
@@ -791,12 +794,14 @@ function Heatmap({
   data,
   numberFormat,
   onFilter,
+  clearSelectionVersion = 0,
   scaleType = 'linear',
   palette,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  clearSelectionVersion?: number;
   scaleType?: HeatmapScaleType;
   palette: string[];
 }) {
@@ -834,8 +839,17 @@ function Heatmap({
   // Gate tooltip display on actual mouse interaction. uPlot fires setCursor
   // on init (before user hovers), which would show the tooltip on page load.
   const mouseInsideRef = useRef(false);
+  const uplotRef = useRef<uPlot | null>(null);
 
   const { ref, width, height } = useElementSize();
+
+  useEffect(() => {
+    setSelectingInfo(undefined);
+    if (uplotRef.current != null) {
+      // Clear persisted uPlot drag rectangle when parent resets selection.
+      uplotRef.current.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+    }
+  }, [clearSelectionVersion]);
 
   const tickFormatter = useCallback(
     (value: number) => {
@@ -1048,6 +1062,12 @@ function Heatmap({
         // @ts-expect-error TODO: uPlot types are wrong for mode 2 data
         data={[[], data]}
         resetScales={true}
+        onCreate={chart => {
+          uplotRef.current = chart;
+        }}
+        onDelete={() => {
+          uplotRef.current = null;
+        }}
       />
       {highlightedPoint != null && (
         <>

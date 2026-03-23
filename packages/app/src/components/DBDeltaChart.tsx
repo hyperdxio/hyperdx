@@ -5,6 +5,7 @@ import {
   Filter,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Code,
   Container,
@@ -12,8 +13,10 @@ import {
   Flex,
   Pagination,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
+import { IconX } from '@tabler/icons-react';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -52,6 +55,7 @@ export default function DBDeltaChart({
   yMin: rawYMin,
   yMax: rawYMax,
   onAddFilter,
+  onClearSelection,
   spanIdExpression,
   legendPrefix,
 }: {
@@ -62,6 +66,7 @@ export default function DBDeltaChart({
   yMin?: number | null;
   yMax?: number | null;
   onAddFilter?: AddFilterFn;
+  onClearSelection?: () => void;
   spanIdExpression?: string;
   legendPrefix?: React.ReactNode;
 }) {
@@ -516,6 +521,19 @@ export default function DBDeltaChart({
                 Background
               </Text>
             </Flex>
+            {onClearSelection && (
+              <Tooltip label="Clear selection">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  onClick={onClearSelection}
+                  aria-label="Clear selection"
+                >
+                  <IconX size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </>
         ) : (
           <>
