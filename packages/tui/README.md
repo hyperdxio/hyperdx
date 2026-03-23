@@ -46,7 +46,7 @@ hdx events                              # Interactive mode
 hdx events -s http://localhost:8000     # Custom API server
 hdx events -q "level:error"            # Start with a Lucene query
 hdx events --source "Logs"             # Skip source picker
-hdx events -f                          # Start in autoscroll/live tail mode
+hdx events -f                          # Start in follow/live tail mode
 ```
 
 ### `hdx stream`
@@ -78,7 +78,7 @@ Clear the saved session.
 | `Esc`         | Blur search bar                        |
 | `Tab`         | Cycle through sources / saved searches |
 | `Shift+Tab`   | Cycle backwards                        |
-| `s`           | Toggle autoscroll (live tail)          |
+| `f`           | Toggle follow mode (live tail)         |
 | `w`           | Toggle line wrap                       |
 | `q`           | Quit                                   |
 
@@ -137,7 +137,7 @@ yarn compile:linux        # Linux x64
 | `-s, --server <url>`   | HyperDX API server URL                      | `http://localhost:8000` |
 | `-q, --query <query>`  | Lucene search query                         |                         |
 | `--source <name>`      | Source name (skips picker)                  |                         |
-| `-f, --follow`         | Start in autoscroll/live tail mode          |                         |
+| `-f, --follow`         | Start in follow/live tail mode              |                         |
 | `--verbose`            | Enable debug output from internal libraries |                         |
 | `--since <duration>`   | How far back to look (stream mode)          | `1h`                    |
 | `-n, --limit <number>` | Max rows per fetch (stream mode)            | `100`                   |

@@ -30,7 +30,7 @@ interface EventViewerProps {
   savedSearches: SavedSearchResponse[];
   onSavedSearchSelect: (search: SavedSearchResponse) => void;
   initialQuery?: string;
-  autoScroll?: boolean;
+  follow?: boolean;
 }
 
 interface EventRow {
@@ -177,14 +177,14 @@ const Header = React.memo(function Header({
   sourceName,
   dbName,
   tableName,
-  isAutoScroll,
+  isFollowing,
   loading,
   timeRange,
 }: {
   sourceName: string;
   dbName: string;
   tableName: string;
-  isAutoScroll: boolean;
+  isFollowing: boolean;
   loading: boolean;
   timeRange: TimeRange;
 }) {
@@ -203,7 +203,7 @@ const Header = React.memo(function Header({
         {' '}
         {formatShortDate(timeRange.start)} → {formatShortDate(timeRange.end)}
       </Text>
-      {isAutoScroll && <Text color="yellow"> [AUTOSCROLL]</Text>}
+      {isFollowing && <Text color="yellow"> [FOLLOWING]</Text>}
       {loading && (
         <Text>
           {' '}
@@ -279,19 +279,19 @@ const Footer = React.memo(function Footer({
   rowCount,
   cursorPos,
   wrapLines,
-  isAutoScroll,
+  isFollowing,
   loadingMore,
 }: {
   rowCount: number;
   cursorPos: number;
   wrapLines: boolean;
-  isAutoScroll: boolean;
+  isFollowing: boolean;
   loadingMore: boolean;
 }) {
   return (
     <Box marginTop={1} justifyContent="space-between">
       <Text dimColor>
-        {isAutoScroll ? '[AUTOSCROLL] ' : ''}
+        {isFollowing ? '[FOLLOWING] ' : ''}
         {wrapLines ? '[WRAP] ' : ''}
         {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
       </Text>
@@ -318,7 +318,7 @@ const HelpScreen = React.memo(function HelpScreen() {
     ['Tab', 'Next source / saved search'],
     ['Shift+Tab', 'Previous source / saved search'],
     ['t', 'Edit time range in $EDITOR'],
-    ['s', 'Toggle autoscroll (live tail)'],
+    ['f', 'Toggle follow mode (live tail)'],
     ['w', 'Toggle line wrap'],
     ['?', 'Toggle this help'],
     ['q', 'Quit'],
@@ -376,7 +376,7 @@ export default function EventViewer({
   savedSearches,
   onSavedSearchSelect,
   initialQuery = '',
-  autoScroll = false,
+  follow = true,
 }: EventViewerProps) {
   const { stdout } = useStdout();
   const termHeight = stdout?.rows ?? 24;
@@ -388,7 +388,8 @@ export default function EventViewer({
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isAutoScroll, setIsAutoScroll] = useState(autoScroll);
+  const [isFollowing, setIsFollowing] = useState(follow);
+  const wasFollowingRef = React.useRef(false);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [focusSearch, setFocusSearch] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
@@ -554,7 +555,7 @@ export default function EventViewer({
   }, [submittedQuery, timeRange, fetchEvents]);
 
   useEffect(() => {
-    if (!isAutoScroll) return;
+    if (!isFollowing) return;
 
     const tick = () => {
       // Slide the time range forward — the replace-fetch effect picks it up
@@ -569,7 +570,7 @@ export default function EventViewer({
     tick();
     const interval = setInterval(tick, TAIL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isAutoScroll]);
+  }, [isFollowing]);
 
   // Fetch full row data when a row is expanded (SELECT *)
   useEffect(() => {
@@ -745,6 +746,9 @@ export default function EventViewer({
         setDetailTab('overview');
         setDetailSearchQuery('');
         setFocusDetailSearch(false);
+        // Pause follow mode while detail panel is open
+        wasFollowingRef.current = isFollowing;
+        setIsFollowing(false);
       }
       return;
     }
@@ -756,6 +760,10 @@ export default function EventViewer({
       if (expandedRow !== null) {
         setExpandedRow(null);
         setDetailTab('columns');
+        // Restore follow mode if it was active before expanding
+        if (wasFollowingRef.current) {
+          setIsFollowing(true);
+        }
         return;
       }
     }
@@ -807,7 +815,7 @@ export default function EventViewer({
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
-    if (input === 's') setIsAutoScroll(prev => !prev);
+    if (input === 'f') setIsFollowing(prev => !prev);
     if (input === '/') {
       if (expandedRow !== null) {
         setFocusDetailSearch(true);
@@ -856,7 +864,7 @@ export default function EventViewer({
         sourceName={source.name}
         dbName={source.from.databaseName}
         tableName={source.from.tableName}
-        isAutoScroll={isAutoScroll}
+        isFollowing={isFollowing}
         loading={loading}
         timeRange={timeRange}
       />
@@ -1083,7 +1091,7 @@ export default function EventViewer({
         rowCount={events.length}
         cursorPos={scrollOffset + selectedRow + 1}
         wrapLines={wrapLines}
-        isAutoScroll={isAutoScroll}
+        isFollowing={isFollowing}
         loadingMore={loadingMore}
       />
     </Box>
