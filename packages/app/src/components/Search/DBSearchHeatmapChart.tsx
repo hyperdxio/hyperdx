@@ -82,10 +82,6 @@ export function DBSearchHeatmapChart({
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
   const clearSelection = useCallback(() => {
     setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
-  }, [setFields]);
-
-  const clearSelection = useCallback(() => {
-    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
     setClearSelectionVersion(version => version + 1);
   }, [setFields]);
 
