@@ -27,6 +27,14 @@ export const tryJSONStringify = (json: Json) => {
   return result;
 };
 
+export function parseJSON<T = unknown>(raw: string, label: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch (e) {
+    throw new Error(`${label} is not valid JSON: ${(e as Error).message}`);
+  }
+}
+
 export const truncateString = (str: string, length: number) => {
   if (str.length > length) {
     return str.substring(0, length) + '...';
