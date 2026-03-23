@@ -88,6 +88,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       });
     },
   );
+
   test('should open user menu', async ({ page }) => {
     await test.step('Navigate to and click user menu trigger', async () => {
       // Wait for page to be fully loaded first

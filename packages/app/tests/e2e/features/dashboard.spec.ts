@@ -69,6 +69,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     let dashboardUrl: string;
+
     await test.step('Save dashboard URL', async () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);
@@ -113,8 +114,10 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardTiles).toHaveCount(1);
     });
   });
+
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async () => {
     test.setTimeout(60000);
+
     await test.step('Create new dashboard', async () => {
       await expect(dashboardPage.createButton).toBeVisible();
       await dashboardPage.createNewDashboard();
@@ -347,6 +350,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     let dashboardUrl: string;
+
     await test.step('Save dashboard URL', async () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);

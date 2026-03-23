@@ -51,6 +51,7 @@ packages/app/next-env.d.ts
 
 # optional npm cache directory
 **/.npm
+package-lock.json
 
 # dependency directories
 **/node_modules
