@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { add } from 'date-fns';
@@ -296,14 +297,24 @@ export const DBRowSidePanelInner = ({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
+  const prevSourceStackLengthRef = useRef(sourceStack.length);
   useEffect(() => {
     if (sourceStack.length > 0) {
       const newSource = sourceStack[sourceStack.length - 1].source;
       const newIsTrace = newSource.kind === 'trace';
       const newDefault = newIsTrace ? Tab.Trace : Tab.Overview;
       setQueryTab(newDefault);
+    } else if (prevSourceStackLengthRef.current > 0) {
+      const rootIsTrace = rootSource.kind === 'trace';
+      const rootDefault = rootIsTrace
+        ? Tab.Trace
+        : hasOverviewPanel
+          ? Tab.Overview
+          : Tab.Parsed;
+      setQueryTab(rootDefault);
     }
-  }, [sourceStack, setQueryTab]);
+    prevSourceStackLengthRef.current = sourceStack.length;
+  }, [sourceStack, setQueryTab, rootSource.kind, hasOverviewPanel]);
 
   const displayedTab = queryTab;
   const setTab = setQueryTab;
