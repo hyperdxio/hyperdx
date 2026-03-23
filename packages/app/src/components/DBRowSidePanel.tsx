@@ -192,6 +192,7 @@ export type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
   onToggleFullWidth?: () => void;
   drawerSize?: number;
   parentBreadcrumbs?: BreadcrumbItem[];
+  onNavigateToParent?: () => void;
 };
 
 export const DBRowSidePanelInner = ({
@@ -205,6 +206,7 @@ export const DBRowSidePanelInner = ({
   onToggleFullWidth,
   drawerSize: _drawerSize,
   parentBreadcrumbs,
+  onNavigateToParent,
 }: DBRowSidePanelInnerProps) => {
   const [sourceStack, setSourceStack] = useState<SourceStackEntry[]>([]);
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
@@ -241,10 +243,12 @@ export const DBRowSidePanelInner = ({
     } else if (sourceStack.length > 0) {
       setSourceStack(prev => prev.slice(0, -1));
       setNavStack([]);
+    } else if (onNavigateToParent) {
+      onNavigateToParent();
     } else {
       onClose();
     }
-  }, [navStack.length, sourceStack.length, onClose]);
+  }, [navStack.length, sourceStack.length, onClose, onNavigateToParent]);
 
   const handleSourceStackPush = useCallback((entry: SourceStackEntry) => {
     setSourceStack(prev => [...prev, entry]);

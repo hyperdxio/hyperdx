@@ -199,7 +199,8 @@ export default function SessionSidePanel({
                   source={activeSourceEntry.source}
                   rowId={activeSourceEntry.rowId}
                   aliasWith={activeSourceEntry.aliasWith}
-                  onClose={() => setSourceStack(prev => prev.slice(0, -1))}
+                  onClose={handleClose}
+                  onNavigateToParent={() => setSourceStack([])}
                   setSubDrawerOpen={setSubDrawerOpen}
                   isFullWidth={isFullWidth}
                   onToggleFullWidth={toggleFullWidth}
