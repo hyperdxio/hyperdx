@@ -50,7 +50,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Add a tile to the dashboard', async () => {
       // Open add tile modal
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       // Create chart using chart editor component
@@ -69,6 +69,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     let dashboardUrl: string;
+
     await test.step('Save dashboard URL', async () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);
@@ -113,15 +114,17 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardTiles).toHaveCount(1);
     });
   });
+
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async () => {
     test.setTimeout(60000);
+
     await test.step('Create new dashboard', async () => {
       await expect(dashboardPage.createButton).toBeVisible();
       await dashboardPage.createNewDashboard();
     });
 
     await test.step('Add first tile to dashboard', async () => {
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       // Create basic chart
@@ -134,7 +137,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Add second tile with Demo Metrics', async () => {
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       // Select source and create chart with specific metric
@@ -294,7 +297,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('create a Number type chart with alert', async () => {
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       await expect(dashboardPage.chartEditor.source).toBeVisible();
@@ -347,6 +350,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     let dashboardUrl: string;
+
     await test.step('Save dashboard URL', async () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);

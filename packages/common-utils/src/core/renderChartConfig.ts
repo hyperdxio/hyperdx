@@ -180,6 +180,12 @@ export function isNonEmptyWhereExpr(where?: string): where is string {
   return where != null && where.trim() != '';
 }
 
+function hasSubqueryCte(
+  withClauses: BuilderChartConfigWithDateRange['with'],
+): boolean {
+  return withClauses?.some(w => w.isSubquery !== false) ?? false;
+}
+
 const fastifySQL = ({
   materializedFields,
   rawSQL,
@@ -421,13 +427,14 @@ async function renderSelectList(
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when chartConfig.from.databaseName is not set.
     materializedFields =
-      chartConfig.with?.length || !chartConfig.from.databaseName
+      hasSubqueryCte(chartConfig.with) || !chartConfig.from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId: chartConfig.connection,
@@ -634,19 +641,15 @@ export async function timeFilterExpr({
           ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
+      // toStartOf* filters must stay inclusive — strict < on a rounded value drops a whole interval
+      const startOp = dateRangeStartInclusive || toStartOf ? '>=' : '>';
+      const endOp = dateRangeEndInclusive || toStartOf ? '<=' : '<';
+
       // If it's a date type
       if (columnMeta?.type === 'Date') {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } toDate(${endTimeCond}))`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
       } else {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } ${startTimeCond} AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } ${endTimeCond})`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
       }
     }),
   );
@@ -730,14 +733,14 @@ async function renderWhereExpressionStr({
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
-
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when from.databaseName is not set.
     materializedFields =
-      withClauses?.length || !from.databaseName
+      hasSubqueryCte(withClauses) || !from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId,

@@ -63,7 +63,7 @@ export const getWebhookServiceIcon = (
  * Get webhook channel icon for alert tabs/smaller displays
  */
 export const getWebhookChannelIcon = (
-  serviceType: string | undefined,
+  serviceType: string | null | undefined,
 ): React.ReactElement => {
   if (!serviceType) return CHANNEL_ICONS[WebhookService.Generic];
   return (

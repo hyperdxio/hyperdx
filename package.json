@@ -28,6 +28,7 @@
     "eslint-plugin-security": "^3.0.1",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "husky": "^8.0.3",
+    "knip": "^6.0.1",
     "lint-staged": "^13.1.2",
     "nx": "21.3.11",
     "prettier": "3.3.3"
@@ -45,6 +46,8 @@
     "dev:local": "IS_LOCAL_APP_MODE='DANGEROUSLY_is_local_app_mode💀' yarn dev",
     "dev:down": "docker compose -f docker-compose.dev.yml down",
     "dev:compose": "docker compose -f docker-compose.dev.yml",
+    "knip": "knip",
+    "knip:ci": "knip --reporter json",
     "lint": "npx nx run-many -t ci:lint",
     "version": "make version",
     "release": "npx changeset tag && npx changeset publish"
@@ -53,7 +56,7 @@
     "packages/api/src/routers/external-api/**/*.ts": [
       "prettier --write --ignore-unknown",
       "eslint --flag v10_config_lookup_from_file --fix --quiet",
-      "sh -c 'cd packages/api && yarn run docgen && git add openapi.json'"
+      "sh -c 'cd packages/api && yarn run lint:openapi && git add openapi.json'"
     ],
     "**/*.{ts,tsx}": [
       "prettier --write --ignore-unknown",

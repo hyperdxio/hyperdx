@@ -11,7 +11,6 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
@@ -51,7 +50,6 @@ import {
   Flex,
   Grid,
   Group,
-  Menu,
   Modal,
   Paper,
   Select,
@@ -67,10 +65,8 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
-  IconCirclePlus,
   IconPlayerPlay,
   IconPlus,
-  IconSettings,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -189,59 +185,6 @@ export function getDefaultSourceId(
     return lastSelectedSourceId;
   }
   return sources[0].id;
-}
-
-function SourceEditMenu({
-  setModalOpen,
-  setModelFormExpanded,
-}: {
-  setModalOpen: (val: SetStateAction<boolean>) => void;
-  setModelFormExpanded: (val: SetStateAction<boolean>) => void;
-}) {
-  return (
-    <Menu withArrow position="bottom-start">
-      <Menu.Target>
-        <ActionIcon
-          data-testid="source-settings-menu"
-          variant="subtle"
-          size="sm"
-          title="Edit Source"
-        >
-          <Text size="xs">
-            <IconSettings size={14} />
-          </Text>
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>Sources</Menu.Label>
-        <Menu.Item
-          data-testid="create-new-source-menu-item"
-          leftSection={<IconCirclePlus size={14} />}
-          onClick={() => setModalOpen(true)}
-        >
-          Create New Source
-        </Menu.Item>
-        {IS_LOCAL_MODE ? (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            onClick={() => setModelFormExpanded(v => !v)}
-          >
-            Edit Source
-          </Menu.Item>
-        ) : (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            component={Link}
-            href="/team"
-          >
-            Edit Sources
-          </Menu.Item>
-        )}
-      </Menu.Dropdown>
-    </Menu>
-  );
 }
 
 function SourceEditModal({
@@ -1568,6 +1511,14 @@ function DBSearchPage() {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
 
+  const onEditSources = useCallback(() => {
+    if (IS_LOCAL_MODE) {
+      setModelFormExpanded(v => !v);
+    } else {
+      router.push('/team');
+    }
+  }, [setModelFormExpanded]);
+
   const setNewSourceModalClosed = useCallback(
     () => setNewSourceModalOpened(false),
     [setNewSourceModalOpened],
@@ -1609,22 +1560,18 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
-            <SourceSelectControlled
-              key={`${savedSearchId}`}
-              size="xs"
-              control={control}
-              name="source"
-              onCreate={openNewSourceModal}
-              allowedSourceKinds={ALLOWED_SOURCE_KINDS}
-              data-testid="source-selector"
-              sourceSchemaPreview={sourceSchemaPreview}
-            />
-            <SourceEditMenu
-              setModalOpen={setNewSourceModalOpened}
-              setModelFormExpanded={setModelFormExpanded}
-            />
-          </Group>
+          <SourceSelectControlled
+            key={`${savedSearchId}`}
+            size="xs"
+            control={control}
+            name="source"
+            onCreate={openNewSourceModal}
+            onEdit={onEditSources}
+            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+            data-testid="source-selector"
+            sourceSchemaPreview={sourceSchemaPreview}
+            style={{ minWidth: 150 }}
+          />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
