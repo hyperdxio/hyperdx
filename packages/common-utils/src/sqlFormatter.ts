@@ -438,7 +438,7 @@ const clickhouse: DialectOptions = {
     ],
     reservedSetOperations,
     reservedJoins,
-    reservedKeywordPhrases: reservedPhrases,
+    reservedPhrases,
     reservedKeywords: keywords,
     reservedDataTypes: dataTypes,
     reservedFunctionNames: functions,
