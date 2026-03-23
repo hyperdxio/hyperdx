@@ -30,6 +30,8 @@ export type NestedFilterGroupProps = {
   isPinned: (key: string, value: string | boolean) => boolean;
   onFieldPinClick?: (key: string) => void;
   isFieldPinned?: (key: string) => boolean;
+  onColumnToggle?: (column: string) => void;
+  displayedColumns?: string[];
   onLoadMore: (key: string) => void;
   loadMoreLoading: Record<string, boolean>;
   hasLoadedMore: Record<string, boolean>;
@@ -51,6 +53,8 @@ export const NestedFilterGroup = ({
   isPinned,
   onFieldPinClick,
   isFieldPinned,
+  onColumnToggle,
+  displayedColumns,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
@@ -153,6 +157,12 @@ export const NestedFilterGroup = ({
                       isPinned={value => isPinned(child.key, value)}
                       onFieldPinClick={() => onFieldPinClick?.(child.key)}
                       isFieldPinned={isFieldPinned?.(child.key)}
+                      onColumnToggle={
+                        onColumnToggle
+                          ? () => onColumnToggle(child.key)
+                          : undefined
+                      }
+                      isColumnDisplayed={displayedColumns?.includes(child.key)}
                       onLoadMore={() => onLoadMore(child.key)}
                       loadMoreLoading={loadMoreLoading[child.key] || false}
                       hasLoadedMore={hasLoadedMore[child.key] || false}
