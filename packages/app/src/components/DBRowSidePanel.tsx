@@ -102,7 +102,7 @@ enum Tab {
   Replay = 'replay',
 }
 
-function SidePanelHeaderActions({
+export function SidePanelHeaderActions({
   onClose,
   isFullWidth,
   onToggleFullWidth,
@@ -185,7 +185,15 @@ type DBRowSidePanelProps = {
   initialTab?: `${Tab}`;
 };
 
-const DBRowSidePanel = ({
+export type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
+  setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
+  drawerSize?: number;
+  parentBreadcrumbs?: BreadcrumbItem[];
+};
+
+export const DBRowSidePanelInner = ({
   rowId: initialRowId,
   aliasWith: initialAliasWith,
   source: rootSource,
@@ -195,12 +203,8 @@ const DBRowSidePanel = ({
   isFullWidth,
   onToggleFullWidth,
   drawerSize: _drawerSize,
-}: DBRowSidePanelProps & {
-  setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
-  isFullWidth?: boolean;
-  onToggleFullWidth?: () => void;
-  drawerSize?: number;
-}) => {
+  parentBreadcrumbs,
+}: DBRowSidePanelInnerProps) => {
   const [sourceStack, setSourceStack] = useState<SourceStackEntry[]>([]);
   const [navStack, setNavStack] = useState<NavEntry[]>([]);
 
@@ -404,6 +408,21 @@ const DBRowSidePanel = ({
     return SqlString.format('?=?', [SqlString.raw(spanIdExpression), spanId]);
   }, [spanIdExpression, spanId]);
 
+  const handleSessionEventNavigate = useCallback(
+    (rowId: string, aliasWith: WithClause[]) => {
+      if (traceSourceData) {
+        handleSourceStackPush({
+          source: traceSourceData,
+          rowId,
+          aliasWith,
+          label: mainContent || 'Session Replay',
+          sourceKind: source.kind as SourceKind,
+        });
+      }
+    },
+    [traceSourceData, handleSourceStackPush, mainContent, source.kind],
+  );
+
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
@@ -458,6 +477,10 @@ const DBRowSidePanel = ({
 
   const allBreadcrumbs = useMemo((): BreadcrumbItem[] => {
     const items: BreadcrumbItem[] = [];
+
+    if (parentBreadcrumbs) {
+      items.push(...parentBreadcrumbs);
+    }
 
     const rootLabel =
       initialMainContent || (rootSource.kind === 'trace' ? 'Trace' : 'Log');
@@ -520,6 +543,7 @@ const DBRowSidePanel = ({
     initialMainContent,
     source.kind,
     handleBreadcrumbNavigation,
+    parentBreadcrumbs,
   ]);
 
   if (isRowLoading) {
@@ -537,7 +561,7 @@ const DBRowSidePanel = ({
           <SidePanelBreadcrumbs
             items={allBreadcrumbs}
             onBack={
-              navStack.length > 0 || sourceStack.length > 0
+              navStack.length > 0 || sourceStack.length > 0 || parentBreadcrumbs
                 ? handleNavigateBack
                 : onClose
             }
@@ -867,6 +891,7 @@ const DBRowSidePanel = ({
               dateRange={fourHourRange}
               focusDate={focusDate}
               setSubDrawerOpen={setSubDrawerOpen}
+              onEventNavigate={handleSessionEventNavigate}
               traceSourceId={traceSourceId}
               serviceName={rumServiceName}
               rumSessionId={rumSessionId}
@@ -969,7 +994,7 @@ export default function DBRowSidePanelErrorBoundary({
                 </Stack>
               )}
             >
-              <DBRowSidePanel
+              <DBRowSidePanelInner
                 source={source}
                 rowId={rowId}
                 aliasWith={aliasWith}

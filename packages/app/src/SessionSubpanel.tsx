@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -18,7 +17,6 @@ import {
   Button,
   Divider,
   Group,
-  Portal,
   SegmentedControl,
   Tooltip,
 } from '@mantine/core';
@@ -32,7 +30,6 @@ import {
   IconToggleRight,
 } from '@tabler/icons-react';
 
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
@@ -237,6 +234,7 @@ export default function SessionSubpanel({
   generateChartUrl,
   generateSearchUrl,
   setDrawerOpen,
+  onEventNavigate,
   rumSessionId,
   start,
   end,
@@ -257,6 +255,7 @@ export default function SessionSubpanel({
 
   onPropertyAddClick?: (name: string, value: string) => void;
   setDrawerOpen: (open: boolean) => void;
+  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
   rumSessionId: string;
   start: Date;
   end: Date;
@@ -265,9 +264,6 @@ export default function SessionSubpanel({
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
 }) {
-  const [rowId, setRowId] = useState<string | undefined>(undefined);
-  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
-
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
@@ -439,11 +435,13 @@ export default function SessionSubpanel({
   );
   const onSessionEventClick = useCallback(
     (rowWhere: RowWhereResult) => {
-      setDrawerOpen(true);
-      setRowId(rowWhere.where);
-      setAliasWith(rowWhere.aliasWith);
+      if (onEventNavigate) {
+        onEventNavigate(rowWhere.where, rowWhere.aliasWith);
+      } else {
+        setDrawerOpen(true);
+      }
     },
-    [setDrawerOpen, setRowId, setAliasWith],
+    [onEventNavigate, setDrawerOpen],
   );
   const onSessionEventTimeClick = useCallback(
     (ts: number) => {
@@ -462,19 +460,6 @@ export default function SessionSubpanel({
 
   return (
     <div className={styles.wrapper}>
-      {rowId != null && traceSource && (
-        <Portal>
-          <DBRowSidePanel
-            source={traceSource}
-            rowId={rowId}
-            aliasWith={aliasWith}
-            onClose={() => {
-              setDrawerOpen(false);
-              setRowId(undefined);
-            }}
-          />
-        </Portal>
-      )}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form

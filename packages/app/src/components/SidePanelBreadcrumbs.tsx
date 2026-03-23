@@ -8,7 +8,12 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconArrowLeft, IconConnection, IconLogs } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconConnection,
+  IconDeviceLaptop,
+  IconLogs,
+} from '@tabler/icons-react';
 
 const MAX_LABEL_LENGTH_SINGLE = 120;
 const MAX_LABEL_LENGTH_CURRENT = 40;
@@ -26,6 +31,9 @@ function SourceIcon({ kind }: { kind?: SourceKind }) {
   }
   if (kind === SourceKind.Log) {
     return <IconLogs size={14} style={{ flexShrink: 0 }} />;
+  }
+  if (kind === SourceKind.Session) {
+    return <IconDeviceLaptop size={14} style={{ flexShrink: 0 }} />;
   }
   return null;
 }
