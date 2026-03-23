@@ -79,6 +79,9 @@ export function DBSearchHeatmapChart({
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
+  const clearSelection = useCallback(() => {
+    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+  }, [setFields]);
 
   // After applying a filter, clear the heatmap selection so the delta chart
   // resets instead of staying in comparison mode.
@@ -86,10 +89,10 @@ export function DBSearchHeatmapChart({
     NonNullable<AddFilterFn>
   >(
     (property, value, action) => {
-      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+      clearSelection();
       onAddFilter?.(property, value, action);
     },
-    [onAddFilter, setFields],
+    [clearSelection, onAddFilter],
   );
 
   return (
@@ -180,6 +183,7 @@ export function DBSearchHeatmapChart({
           onAddFilter={
             onAddFilter ? handleAddFilterAndClearSelection : undefined
           }
+          onClearSelection={clearSelection}
           spanIdExpression={source.spanIdExpression}
           legendPrefix={<ColorLegend colors={palette} />}
         />
