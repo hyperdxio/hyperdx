@@ -503,15 +503,26 @@ export const LogSidePanelKbdShortcuts = () => {
   return (
     <div className={styles.kbdShortcuts}>
       <div className="d-flex justify-content-between align-items-center ">
-        <div className="d-flex align-items-center gap-3">
+        <div className="d-flex align-items-center gap-2">
           <div>
-            Use <Kbd className="me-1">←</Kbd>
-            <Kbd>→</Kbd> arrow keys or <Kbd className="me-1">k</Kbd>
-            <Kbd>j</Kbd> to move through events
+            Use{' '}
+            <Kbd size="xs" className="me-1">
+              ←
+            </Kbd>
+            <Kbd size="xs">→</Kbd> arrow keys or{' '}
+            <Kbd size="xs" className="me-1">
+              k
+            </Kbd>
+            <Kbd size="xs">j</Kbd> to move through events
           </div>
           <div className={styles.kbdDivider} />
           <div>
-            <Kbd>ESC</Kbd> to close
+            <Kbd size="xs">ESC</Kbd> to close
+          </div>
+          <div className={styles.kbdDivider} />
+          <div>
+            <Kbd size="xs">⌘/Ctrl</Kbd> + <Kbd size="xs">scroll</Kbd> to zoom
+            trace timeline
           </div>
         </div>
         <CloseButton aria-label="Hide" onClick={handleDismiss} />
