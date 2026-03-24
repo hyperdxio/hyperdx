@@ -13,9 +13,11 @@ const mockCreateAnthropic = jest.fn(
   (_opts?: Record<string, unknown>) => mockAnthropicFactory,
 );
 
-const mockOpenAIChatFactory = jest.fn((_model?: string) => mockOpenAIModel);
+const mockOpenAIResponsesFactory = jest.fn(
+  (_model?: string) => mockOpenAIModel,
+);
 const mockCreateOpenAI = jest.fn((_opts?: Record<string, unknown>) => ({
-  chat: mockOpenAIChatFactory,
+  responses: mockOpenAIResponsesFactory,
 }));
 
 jest.mock('@ai-sdk/anthropic', () => ({
@@ -191,7 +193,7 @@ describe('openai provider', () => {
     expect(mockCreateOpenAI).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: 'sk-test' }),
     );
-    expect(mockOpenAIChatFactory).toHaveBeenCalledWith('gpt-4o');
+    expect(mockOpenAIResponsesFactory).toHaveBeenCalledWith('gpt-4o');
   });
 
   it('passes baseURL when AI_BASE_URL is set', () => {
