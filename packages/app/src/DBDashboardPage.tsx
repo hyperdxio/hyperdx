@@ -13,7 +13,7 @@ import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
@@ -1101,38 +1101,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
-  const onAddTile = (containerId?: string) => {
-    // Auto-expand collapsed section so the new tile is visible
-    if (containerId && dashboard) {
-      const section = dashboard.containers?.find(s => s.id === containerId);
-      if (section?.collapsed) {
-        setDashboard(
-          produce(dashboard, draft => {
-            const s = draft.containers?.find(c => c.id === containerId);
-            if (s) s.collapsed = false;
-          }),
-        );
-      }
-    }
-    setEditedTile({
-      id: makeId(),
-      x: 0,
-      y: 0,
-      w: 8,
-      h: 10,
-      config: {
-        ...DEFAULT_CHART_CONFIG,
-        source: sources?.[0]?.id ?? '',
-      },
-      ...(containerId ? { containerId } : {}),
-    });
-  };
-
   const sections = useMemo(
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
   const hasSections = sections.length > 0;
+
+  // URL-based collapse state: tracks which sections the current viewer has
+  // explicitly collapsed/expanded. Falls back to the DB-stored default.
+  const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
+    'collapsed',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+  const [urlExpandedIds, setUrlExpandedIds] = useQueryState(
+    'expanded',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+
+  const collapsedIdSet = useMemo(
+    () => new Set(urlCollapsedIds ?? []),
+    [urlCollapsedIds],
+  );
+  const expandedIdSet = useMemo(
+    () => new Set(urlExpandedIds ?? []),
+    [urlExpandedIds],
+  );
+
+  const isSectionCollapsed = useCallback(
+    (section: DashboardContainer): boolean => {
+      // URL state takes precedence over DB default
+      if (collapsedIdSet.has(section.id)) return true;
+      if (expandedIdSet.has(section.id)) return false;
+      return section.collapsed ?? false;
+    },
+    [collapsedIdSet, expandedIdSet],
+  );
+
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
   const handleMoveTileToSection = useCallback(
@@ -1287,10 +1291,56 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
-  // Intentionally persists collapsed state to the server via setDashboard
-  // (same pattern as tile drag/resize). This matches Grafana and Kibana
-  // behavior where collapsed state is saved with the dashboard for all viewers.
+  // Helpers for updating URL-based collapse sets via immer.
+  const addToUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev =>
+        produce(prev ?? [], draft => {
+          if (!draft.includes(containerId)) draft.push(containerId);
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeFromUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev => {
+        const next = (prev ?? []).filter(id => id !== containerId);
+        return next.length > 0 ? next : null;
+      });
+    },
+    [],
+  );
+
+  // Toggle collapse in URL state only (per-viewer, shareable via link).
+  // Does NOT persist to DB — the DB `collapsed` field is the default.
   const handleToggleSection = useCallback(
+    (containerId: string) => {
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      const currentlyCollapsed = section ? isSectionCollapsed(section) : false;
+
+      if (currentlyCollapsed) {
+        addToUrlSet(setUrlExpandedIds, containerId);
+        removeFromUrlSet(setUrlCollapsedIds, containerId);
+      } else {
+        addToUrlSet(setUrlCollapsedIds, containerId);
+        removeFromUrlSet(setUrlExpandedIds, containerId);
+      }
+    },
+    [
+      dashboard?.containers,
+      isSectionCollapsed,
+      addToUrlSet,
+      removeFromUrlSet,
+      setUrlCollapsedIds,
+      setUrlExpandedIds,
+    ],
+  );
+
+  // Toggle the DB-stored default collapsed state (menu action).
+  // This changes what all viewers see by default when opening the dashboard.
+  const handleToggleDefaultCollapsed = useCallback(
     (containerId: string) => {
       if (!dashboard) return;
       setDashboard(
@@ -1302,6 +1352,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [dashboard, setDashboard],
   );
+
+  const onAddTile = (containerId?: string) => {
+    // Auto-expand collapsed section via URL state so the new tile is visible
+    if (containerId) {
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      if (section && isSectionCollapsed(section)) {
+        handleToggleSection(containerId);
+      }
+    }
+    setEditedTile({
+      id: makeId(),
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 10,
+      config: {
+        ...DEFAULT_CHART_CONFIG,
+        source: sources?.[0]?.id ?? '',
+      },
+      ...(containerId ? { containerId } : {}),
+    });
+  };
 
   const handleAddSection = useCallback(() => {
     if (!dashboard) return;
@@ -1752,26 +1824,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       <SectionHeader
                         section={section}
                         tileCount={sectionTiles.length}
+                        collapsed={isSectionCollapsed(section)}
+                        defaultCollapsed={section.collapsed ?? false}
                         onToggle={() => handleToggleSection(section.id)}
+                        onToggleDefaultCollapsed={() =>
+                          handleToggleDefaultCollapsed(section.id)
+                        }
                         onRename={newTitle =>
                           handleRenameSection(section.id, newTitle)
                         }
                         onDelete={() => handleDeleteSection(section.id)}
                         onAddTile={() => onAddTile(section.id)}
                       />
-                      {!section.collapsed && sectionTiles.length > 0 && (
-                        <ReactGridLayout
-                          layout={sectionTiles.map(tileToLayoutItem)}
-                          containerPadding={[0, 0]}
-                          onLayoutChange={sectionLayoutChangeHandlers.get(
-                            section.id,
-                          )}
-                          cols={24}
-                          rowHeight={32}
-                        >
-                          {sectionTiles.map(renderTileComponent)}
-                        </ReactGridLayout>
-                      )}
+                      {!isSectionCollapsed(section) &&
+                        sectionTiles.length > 0 && (
+                          <ReactGridLayout
+                            layout={sectionTiles.map(tileToLayoutItem)}
+                            containerPadding={[0, 0]}
+                            onLayoutChange={sectionLayoutChangeHandlers.get(
+                              section.id,
+                            )}
+                            cols={24}
+                            rowHeight={32}
+                          >
+                            {sectionTiles.map(renderTileComponent)}
+                          </ReactGridLayout>
+                        )}
                     </div>
                   );
                 })}
