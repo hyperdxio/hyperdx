@@ -65,6 +65,8 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
   IconTags,
@@ -805,6 +807,9 @@ function DBSearchPage() {
       setIsLive(false);
     }
   }, [analysisMode, setIsLive]);
+
+  const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
+    useState(false);
 
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
@@ -1755,34 +1760,61 @@ function DBSearchPage() {
                 height: '100%',
               }}
             >
-              <ErrorBoundary message="Unable to render search filters">
-                <DBSearchPageFilters
-                  denoiseResults={denoiseResults}
-                  setDenoiseResults={setDenoiseResults}
-                  isLive={isLive}
-                  analysisMode={analysisMode}
-                  setAnalysisMode={setAnalysisMode}
-                  chartConfig={filtersChartConfig}
-                  sourceId={inputSourceObj?.id}
-                  showDelta={
-                    !!(searchedSource?.kind === SourceKind.Trace
-                      ? searchedSource.durationExpression
-                      : undefined)
-                  }
-                  onColumnToggle={toggleColumn}
-                  displayedColumns={displayedColumns}
-                  {...searchFilters}
-                />
-              </ErrorBoundary>
+              {!isFilterSidebarCollapsed && (
+                <ErrorBoundary message="Unable to render search filters">
+                  <DBSearchPageFilters
+                    denoiseResults={denoiseResults}
+                    setDenoiseResults={setDenoiseResults}
+                    isLive={isLive}
+                    analysisMode={analysisMode}
+                    setAnalysisMode={setAnalysisMode}
+                    chartConfig={filtersChartConfig}
+                    sourceId={inputSourceObj?.id}
+                    showDelta={
+                      !!(searchedSource?.kind === SourceKind.Trace
+                        ? searchedSource.durationExpression
+                        : undefined)
+                    }
+                    onColumnToggle={toggleColumn}
+                    displayedColumns={displayedColumns}
+                    {...searchFilters}
+                  />
+                </ErrorBoundary>
+              )}
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
-                        <SearchTotalCountChart
-                          config={histogramTimeChartConfig}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                        />
+                        <Group gap={4} align="center">
+                          <Tooltip
+                            label={
+                              isFilterSidebarCollapsed
+                                ? 'Show filters'
+                                : 'Hide filters'
+                            }
+                            position="bottom"
+                          >
+                            <ActionIcon
+                              variant="subtle"
+                              size="xs"
+                              onClick={() =>
+                                setIsFilterSidebarCollapsed(prev => !prev)
+                              }
+                              aria-label="Toggle filter sidebar"
+                            >
+                              {isFilterSidebarCollapsed ? (
+                                <IconLayoutSidebarLeftExpand size={14} />
+                              ) : (
+                                <IconLayoutSidebarLeftCollapse size={14} />
+                              )}
+                            </ActionIcon>
+                          </Tooltip>
+                          <SearchTotalCountChart
+                            config={histogramTimeChartConfig}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          />
+                        </Group>
                         <SearchNumRows
                           config={{
                             ...chartConfig,
@@ -1851,11 +1883,36 @@ function DBSearchPage() {
                           justify="space-between"
                           style={{ width: '100%' }}
                         >
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            enableParallelQueries
-                          />
+                          <Group gap={4} align="center">
+                            <Tooltip
+                              label={
+                                isFilterSidebarCollapsed
+                                  ? 'Show filters'
+                                  : 'Hide filters'
+                              }
+                              position="bottom"
+                            >
+                              <ActionIcon
+                                variant="subtle"
+                                size="xs"
+                                onClick={() =>
+                                  setIsFilterSidebarCollapsed(prev => !prev)
+                                }
+                                aria-label="Toggle filter sidebar"
+                              >
+                                {isFilterSidebarCollapsed ? (
+                                  <IconLayoutSidebarLeftExpand size={14} />
+                                ) : (
+                                  <IconLayoutSidebarLeftCollapse size={14} />
+                                )}
+                              </ActionIcon>
+                            </Tooltip>
+                            <SearchTotalCountChart
+                              config={histogramTimeChartConfig}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              enableParallelQueries
+                            />
+                          </Group>
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
