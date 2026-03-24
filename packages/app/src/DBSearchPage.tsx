@@ -281,7 +281,7 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" mb={4}>
+    <Text size="xs">
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
@@ -1785,7 +1785,11 @@ function DBSearchPage() {
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
-                      <Group justify="space-between" style={{ width: '100%' }}>
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        style={{ width: '100%' }}
+                      >
                         <Group gap={4} align="center">
                           <Tooltip
                             label={
@@ -1881,6 +1885,7 @@ function DBSearchPage() {
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
+                          align="center"
                           style={{ width: '100%' }}
                         >
                           <Group gap={4} align="center">
