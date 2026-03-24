@@ -53,6 +53,7 @@ export const AI_PROVIDER = env.AI_PROVIDER as string; // 'anthropic' | 'openai'
 export const AI_API_KEY = env.AI_API_KEY as string;
 export const AI_BASE_URL = env.AI_BASE_URL as string;
 export const AI_MODEL_NAME = env.AI_MODEL_NAME as string;
+export const AI_REQUEST_HEADERS = env.AI_REQUEST_HEADERS as string;
 
 // Legacy Anthropic-specific configuration (backward compatibility)
 export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;

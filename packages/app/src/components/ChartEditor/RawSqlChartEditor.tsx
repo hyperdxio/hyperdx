@@ -159,10 +159,7 @@ export default function RawSqlChartEditor({
           placeholder="None"
         />
       </Group>
-      <RawSqlChartInstructions
-        displayType={displayType ?? DisplayType.Table}
-        isDashboardForm={isDashboardForm}
-      />
+      <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
       <Box style={{ position: 'relative' }}>
         <SQLEditorControlled
           control={control}

@@ -47,29 +47,44 @@ jobs:
           script: |
             const fs = require('fs');
 
+            const issueCategories = [
+              'files', 'dependencies', 'devDependencies', 'unlisted',
+              'unresolved', 'binaries', 'exports', 'types',
+              'enumMembers', 'duplicates'
+            ];
+
             function countIssues(filePath) {
               try {
                 const raw = fs.readFileSync(filePath, 'utf8');
                 const data = JSON.parse(raw);
                 const counts = {};
-                const issueCategories = [
-                  'files', 'dependencies', 'devDependencies', 'unlisted',
-                  'unresolved', 'binaries', 'exports', 'types',
-                  'enumMembers', 'duplicates'
-                ];
+                // items maps category -> Set of "file:name" identifiers
+                const items = {};
+                for (const cat of issueCategories) items[cat] = new Set();
+                // Top-level "files" are unused files (just strings)
+                for (const f of data.files || []) {
+                  counts.files = (counts.files || 0) + 1;
+                  items.files.add(f);
+                }
                 for (const issue of data.issues || []) {
                   for (const cat of issueCategories) {
+                    if (cat === 'files') continue;
                     if (Array.isArray(issue[cat]) && issue[cat].length > 0) {
                       counts[cat] = (counts[cat] || 0) + issue[cat].length;
+                      for (const item of issue[cat]) {
+                        items[cat].add(`${issue.file}:${item.name}`);
+                      }
                     }
                   }
                 }
                 let total = 0;
                 for (const v of Object.values(counts)) total += v;
-                return { counts, total };
+                return { counts, total, items };
               } catch (e) {
                 console.log(`Failed to parse ${filePath}: ${e.message}`);
-                return { counts: {}, total: 0 };
+                const items = {};
+                for (const cat of issueCategories) items[cat] = new Set();
+                return { counts: {}, total: 0, items };
               }
             }
 
@@ -94,18 +109,40 @@ jobs:
             const sign = diff > 0 ? '+' : '';
 
             let body = `## Knip - Unused Code Analysis\n\n`;
-            body += `${emoji} **${sign}${diff}** change in total issues (${main.total} on main → ${pr.total} on PR)\n\n`;
-            body += `| Category | main | PR | Diff |\n`;
-            body += `|----------|-----:|---:|-----:|\n`;
 
-            for (const [key, label] of categories) {
-              const mainCount = main.counts[key] || 0;
-              const prCount = pr.counts[key] || 0;
-              const catDiff = prCount - mainCount;
-              if (mainCount === 0 && prCount === 0) continue;
-              const catSign = catDiff > 0 ? '+' : '';
-              const catEmoji = catDiff > 0 ? ' 🔴' : catDiff < 0 ? ' 🟢' : '';
-              body += `| ${label} | ${mainCount} | ${prCount} | ${catSign}${catDiff}${catEmoji} |\n`;
+            if (diff === 0) {
+              body += `${emoji} No changes detected (${main.total} issues on both main and PR)\n`;
+            } else {
+              body += `${emoji} **${sign}${diff}** change in total issues (${main.total} on main → ${pr.total} on PR)\n\n`;
+              body += `| Category | main | PR | Diff |\n`;
+              body += `|----------|-----:|---:|-----:|\n`;
+
+              const detailLines = [];
+              for (const [key, label] of categories) {
+                const mainCount = main.counts[key] || 0;
+                const prCount = pr.counts[key] || 0;
+                const catDiff = prCount - mainCount;
+                if (mainCount === 0 && prCount === 0) continue;
+                const catSign = catDiff > 0 ? '+' : '';
+                const catEmoji = catDiff > 0 ? ' 🔴' : catDiff < 0 ? ' 🟢' : '';
+                body += `| ${label} | ${mainCount} | ${prCount} | ${catSign}${catDiff}${catEmoji} |\n`;
+
+                if (catDiff !== 0) {
+                  const added = [...pr.items[key]].filter(x => !main.items[key].has(x));
+                  const removed = [...main.items[key]].filter(x => !pr.items[key].has(x));
+                  if (added.length || removed.length) {
+                    detailLines.push(`**${label}**`);
+                    for (const a of added) detailLines.push(`- 🔴 \`${a}\``);
+                    for (const r of removed) detailLines.push(`- 🟢 ~\`${r}\`~`);
+                  }
+                }
+              }
+
+              if (detailLines.length) {
+                body += `\n<details><summary>Details</summary>\n\n`;
+                body += detailLines.join('\n') + '\n';
+                body += `</details>\n`;
+              }
             }
 
             body += `\n<details><summary>What is this?</summary>\n\n`;
