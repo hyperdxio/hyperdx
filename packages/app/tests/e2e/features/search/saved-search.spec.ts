@@ -280,8 +280,8 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Navigate to dashboards page', async () => {
-        await page.goto('/dashboards');
-        await expect(page.getByTestId('dashboard-page')).toBeVisible();
+        await page.goto('/dashboards/list');
+        await expect(page.getByTestId('dashboards-list-page')).toBeVisible();
       });
 
       await test.step('Navigate back to saved search', async () => {

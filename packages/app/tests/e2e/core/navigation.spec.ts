@@ -39,24 +39,9 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           contentTestId: 'service-map-page',
         },
         {
-          testId: 'nav-link-dashboards',
-          href: '/dashboards',
-          contentTestId: 'dashboard-page',
-        },
-        {
-          testId: 'nav-link-clickhouse-dashboard',
-          href: '/clickhouse',
-          contentTestId: 'clickhouse-dashboard-page',
-        },
-        {
-          testId: 'nav-link-services-dashboard',
-          href: '/services',
-          contentTestId: 'services-dashboard-page',
-        },
-        {
-          testId: 'nav-link-k8s-dashboard',
-          href: '/kubernetes',
-          contentTestId: 'kubernetes-dashboard-page',
+          testId: 'nav-link-dashboards-list',
+          href: '/dashboards/list',
+          contentTestId: 'dashboards-list-page',
         },
       ];
 
