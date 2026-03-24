@@ -47,8 +47,9 @@ were modified:
 2. Commit the changes using conventional commit format (e.g. `feat:`, `fix:`,
    `chore:`) and reference the ticket ID
 3. Push the branch to the remote
-4. Open a pull request with:
-   - Title: `[$ARGUMENTS] <description>`
+4. Open a draft pull request with:
+   - Title: `[$ARGUMENTS] <description>`. If multiple tickets are being
+     addressed, omit the arguments from the title.
    - Body: Use `.github/pull_request_template.md` as the template and fill it in
      with the relevant summary, testing notes, and Linear ticket link
    - Label: Attach the `ai-generated` label
