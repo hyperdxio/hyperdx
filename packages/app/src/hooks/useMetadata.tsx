@@ -243,7 +243,7 @@ export function useMultipleGetKeyValues(
               : undefined;
             return metadata.getKeyValuesWithMVs({
               chartConfig,
-              keys: keys.slice(0, 200), // Limit to 20 keys for now, otherwise request fails (max header size)
+              keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
               limit,
               disableRowLimit,
               source,
