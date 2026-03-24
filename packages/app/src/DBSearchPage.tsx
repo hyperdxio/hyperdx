@@ -1537,6 +1537,26 @@ function DBSearchPage() {
     [setValue, setNewSourceModalClosed],
   );
 
+  const filterToggleButton = (
+    <Tooltip
+      label={isFilterSidebarCollapsed ? 'Show filters' : 'Hide filters'}
+      position="bottom"
+    >
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        onClick={() => setIsFilterSidebarCollapsed(prev => !prev)}
+        aria-label="Toggle filter sidebar"
+      >
+        {isFilterSidebarCollapsed ? (
+          <IconLayoutSidebarLeftExpand size={14} />
+        ) : (
+          <IconLayoutSidebarLeftCollapse size={14} />
+        )}
+      </ActionIcon>
+    </Tooltip>
+  );
+
   return (
     <Flex
       direction="column"
@@ -1791,29 +1811,7 @@ function DBSearchPage() {
                         style={{ width: '100%' }}
                       >
                         <Group gap={4} align="center">
-                          <Tooltip
-                            label={
-                              isFilterSidebarCollapsed
-                                ? 'Show filters'
-                                : 'Hide filters'
-                            }
-                            position="bottom"
-                          >
-                            <ActionIcon
-                              variant="subtle"
-                              size="xs"
-                              onClick={() =>
-                                setIsFilterSidebarCollapsed(prev => !prev)
-                              }
-                              aria-label="Toggle filter sidebar"
-                            >
-                              {isFilterSidebarCollapsed ? (
-                                <IconLayoutSidebarLeftExpand size={14} />
-                              ) : (
-                                <IconLayoutSidebarLeftCollapse size={14} />
-                              )}
-                            </ActionIcon>
-                          </Tooltip>
+                          {filterToggleButton}
                           <SearchTotalCountChart
                             config={histogramTimeChartConfig}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
@@ -1889,29 +1887,7 @@ function DBSearchPage() {
                           style={{ width: '100%' }}
                         >
                           <Group gap={4} align="center">
-                            <Tooltip
-                              label={
-                                isFilterSidebarCollapsed
-                                  ? 'Show filters'
-                                  : 'Hide filters'
-                              }
-                              position="bottom"
-                            >
-                              <ActionIcon
-                                variant="subtle"
-                                size="xs"
-                                onClick={() =>
-                                  setIsFilterSidebarCollapsed(prev => !prev)
-                                }
-                                aria-label="Toggle filter sidebar"
-                              >
-                                {isFilterSidebarCollapsed ? (
-                                  <IconLayoutSidebarLeftExpand size={14} />
-                                ) : (
-                                  <IconLayoutSidebarLeftCollapse size={14} />
-                                )}
-                              </ActionIcon>
-                            </Tooltip>
+                            {filterToggleButton}
                             <SearchTotalCountChart
                               config={histogramTimeChartConfig}
                               queryKeyPrefix={QUERY_KEY_PREFIX}
