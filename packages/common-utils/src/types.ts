@@ -688,6 +688,8 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
   containerId: z.string().optional(),
+  // For tiles inside a tab container: which tab this tile belongs to
+  tabId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -699,11 +701,24 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+export const DashboardContainerTabSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+});
+
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['section']),
+  // 'section': collapsible row with chevron toggle
+  // 'group': bordered container, optionally with tabs (2+ tabs → tab bar shows)
+  type: z.enum(['section', 'group']),
   title: z.string().min(1),
   collapsed: z.boolean(),
+  // For groups with tabs: the list of tabs and which is active.
+  // Tiles reference a specific tab via tabId. When tabs has 2+ entries,
+  // the tab bar renders. When 0-1 entries, it's a plain group.
+  // Persisted to server like collapsed state (Grafana/Kibana pattern).
+  tabs: z.array(DashboardContainerTabSchema).optional(),
+  activeTabId: z.string().optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
