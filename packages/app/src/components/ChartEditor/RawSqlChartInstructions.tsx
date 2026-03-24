@@ -59,10 +59,8 @@ function ParamSnippet({
 
 export function RawSqlChartInstructions({
   displayType,
-  isDashboardForm,
 }: {
   displayType: DisplayType;
-  isDashboardForm: boolean;
 }) {
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
@@ -117,12 +115,12 @@ export function RawSqlChartInstructions({
               </List.Item>
               <List.Item>
                 <Text size="xs">
-                  Macros from the{' '}
+                  Other available macros are described in the{' '}
                   <Anchor
-                    href="https://github.com/grafana/clickhouse-datasource?tab=readme-ov-file#macros"
+                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
                     target="_blank"
                   >
-                    ClickHouse Datasource Grafana Plugin
+                    ClickStack documentation.
                   </Anchor>
                 </Text>
               </List.Item>
