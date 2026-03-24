@@ -7,7 +7,7 @@ import DBRowTableIconButton from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 
-export interface DBRowTableRowButtonsProps {
+interface DBRowTableRowButtonsProps {
   row: Record<string, any>;
   getRowWhere: (row: Record<string, any>) => RowWhereResult;
   sourceId?: string;
@@ -15,7 +15,7 @@ export interface DBRowTableRowButtonsProps {
   onToggleWrap: () => void;
 }
 
-export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
+const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   row,
   getRowWhere,
   sourceId,
