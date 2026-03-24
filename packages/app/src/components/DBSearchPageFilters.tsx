@@ -403,10 +403,13 @@ const FilterGroupBody = ({
   onDistributionError: () => void;
 }) => {
   const [search, setSearch] = useState('');
+  // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
+  // Track recently moved items for highlight animation
   const [recentlyMoved, setRecentlyMoved] = useState<Set<string | boolean>>(
     new Set(),
   );
+  // For live searches, don't refresh percentages when date range changes
   const [dateRange, setDateRange] = useState<[Date, Date]>(
     chartConfig.dateRange,
   );
@@ -435,7 +438,7 @@ const FilterGroupBody = ({
     {
       chartConfig: { ...chartConfig, dateRange },
       key: distributionKey || name,
-      limit: 100,
+      limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
     },
     {
       enabled: showDistributions,
@@ -459,6 +462,7 @@ const FilterGroupBody = ({
     selectedValues.excluded.size +
     (selectedValues.range != null ? 1 : 0);
 
+  // Loaded options + any selected options that aren't in the loaded list
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
       ...selectedValues.included,
@@ -476,7 +480,9 @@ const FilterGroupBody = ({
     ? SHOW_MORE_MAX_VALUES_DISPLAYED
     : INITIAL_MAX_VALUES_DISPLAYED;
 
+  // Options matching search, sorted appropriately
   const sortedMatchingOptions = useMemo(() => {
+    // When searching, sort alphabetically
     if (search) {
       return augmentedOptions
         .filter(option => {
@@ -490,6 +496,7 @@ const FilterGroupBody = ({
         );
     }
 
+    // When not searching, sort by pinned, selected, distribution, then alphabetically
     return augmentedOptions.toSorted((a, b) => {
       const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
@@ -498,19 +505,26 @@ const FilterGroupBody = ({
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
 
+      // First sort by pinned status
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Then sort by included status
       if (aIncluded && !bIncluded) return -1;
       if (!aIncluded && bIncluded) return 1;
+
+      // Then sort by excluded status
       if (aExcluded && !bExcluded) return -1;
       if (!aExcluded && bExcluded) return 1;
 
+      // Then sort by estimated percentage of rows with this value, if available
       const aPercentage = distributionData?.get(a.value.toString()) ?? 0;
       const bPercentage = distributionData?.get(b.value.toString()) ?? 0;
       if (aPercentage !== bPercentage) {
         return bPercentage - aPercentage;
       }
 
+      // Finally sort alphabetically/numerically
       return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
   }, [
@@ -522,14 +536,17 @@ const FilterGroupBody = ({
     distributionData,
   ]);
 
+  // The subset of options to be displayed
   const displayedOptions = useMemo(() => {
     return sortedMatchingOptions.length <= displayedItemLimit
       ? sortedMatchingOptions
       : sortedMatchingOptions.slice(0, displayedItemLimit);
   }, [sortedMatchingOptions, displayedItemLimit]);
 
+  // Simple highlight animation when checkbox is checked
   const handleChange = useCallback(
     (value: string | boolean) => {
+      // If checking (not unchecking), trigger highlight animation
       const wasIncluded = selectedValues.included.has(value);
       if (!wasIncluded) {
         setRecentlyMoved(prev => new Set(prev).add(value));
@@ -644,6 +661,7 @@ const FilterGroupBody = ({
               )
             }
             onClick={() => {
+              // When show more is clicked, immediately show all and also fetch more from server.
               setShowMore(!shouldShowMore);
               if (!shouldShowMore) {
                 onLoadMore?.(name);
@@ -675,6 +693,7 @@ const FilterGroupBody = ({
 };
 
 type FilterGroupActionsProps = {
+  name: string;
   hasRange: boolean;
   showDistributions: boolean;
   isColumnDisplayed: boolean;
@@ -686,6 +705,7 @@ type FilterGroupActionsProps = {
   onClearClick: VoidFunction;
 };
 function FilterGroupActions({
+  name,
   hasRange,
   showDistributions,
   isColumnDisplayed,
@@ -890,6 +910,7 @@ export const FilterGroup = ({
               </Tooltip>
             </Accordion.Control>
             <FilterGroupActions
+              name={name}
               hasRange={hasRange}
               showDistributions={showDistributions}
               isColumnDisplayed={isColumnDisplayed ?? false}
