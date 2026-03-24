@@ -1769,6 +1769,8 @@ function DBSearchPage() {
                       ? searchedSource.durationExpression
                       : undefined)
                   }
+                  onColumnToggle={toggleColumn}
+                  displayedColumns={displayedColumns}
                   {...searchFilters}
                 />
               </ErrorBoundary>
