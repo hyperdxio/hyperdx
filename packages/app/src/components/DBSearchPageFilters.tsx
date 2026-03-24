@@ -751,35 +751,36 @@ export const FilterGroup = ({
                     />
                   </div>
                 )}
-                {displayedOptions.map(option => (
-                  <FilterCheckbox
-                    key={option.value.toString()}
-                    label={option.label}
-                    pinned={isPinned(option.value)}
-                    className={
-                      recentlyMoved.has(option.value)
-                        ? classes.recentlyMoved
-                        : ''
-                    }
-                    value={
-                      selectedValues.included.has(option.value)
-                        ? 'included'
-                        : selectedValues.excluded.has(option.value)
-                          ? 'excluded'
-                          : false
-                    }
-                    onChange={() => handleChange(option.value)}
-                    onClickOnly={() => onOnlyClick(option.value)}
-                    onClickExclude={() => onExcludeClick(option.value)}
-                    onClickPin={() => onPinClick(option.value)}
-                    isPercentageLoading={isFetchingDistribution}
-                    percentage={
-                      showDistributions && distributionData
-                        ? (distributionData.get(option.value.toString()) ?? 0)
-                        : undefined
-                    }
-                  />
-                ))}
+                {isExpanded &&
+                  displayedOptions.map(option => (
+                    <FilterCheckbox
+                      key={option.value.toString()}
+                      label={option.label}
+                      pinned={isPinned(option.value)}
+                      className={
+                        recentlyMoved.has(option.value)
+                          ? classes.recentlyMoved
+                          : ''
+                      }
+                      value={
+                        selectedValues.included.has(option.value)
+                          ? 'included'
+                          : selectedValues.excluded.has(option.value)
+                            ? 'excluded'
+                            : false
+                      }
+                      onChange={() => handleChange(option.value)}
+                      onClickOnly={() => onOnlyClick(option.value)}
+                      onClickExclude={() => onExcludeClick(option.value)}
+                      onClickPin={() => onPinClick(option.value)}
+                      isPercentageLoading={isFetchingDistribution}
+                      percentage={
+                        showDistributions && distributionData
+                          ? (distributionData.get(option.value.toString()) ?? 0)
+                          : undefined
+                      }
+                    />
+                  ))}
                 {optionsLoading ? (
                   <Group m={6} gap="xs">
                     <Loader size={12} color="gray" />
