@@ -2,70 +2,86 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { Tile } from '@/dashboard';
 
+const GRID_COLS = 24;
+
 /**
  * Generate a unique ID for a tile
  * @returns A random string ID in base 36
  */
-export const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
+export const makeId = () =>
+  Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
 /**
- * Calculate the next available position for a new tile at the bottom of the dashboard
- * @param tiles - Array of existing tiles on the dashboard
- * @returns Position object with x and y coordinates
+ * Calculate the next available position for a new tile, filling right
+ * then wrapping to the next row (like text in a book).
+ *
+ * Scans each row from top to bottom. For each row, checks if there's
+ * enough horizontal space to fit the new tile. If so, returns that
+ * position. If no row has space, places at the bottom-left.
  */
-export function calculateNextTilePosition(tiles: Tile[]): {
-  x: number;
-  y: number;
-} {
+export function calculateNextTilePosition(
+  tiles: Tile[],
+  newW: number = 12,
+  newH: number = 10,
+): { x: number; y: number } {
   if (tiles.length === 0) {
     return { x: 0, y: 0 };
   }
 
-  // Find the maximum bottom position (y + height) across all tiles
-  const maxBottom = Math.max(...tiles.map(tile => tile.y + tile.h));
+  // Build a set of occupied rows and find the max bottom
+  const rows = new Set<number>();
+  let maxBottom = 0;
+  for (const tile of tiles) {
+    rows.add(tile.y);
+    maxBottom = Math.max(maxBottom, tile.y + tile.h);
+  }
 
-  return {
-    x: 0, // Always start at left edge
-    y: maxBottom, // Place at bottom of dashboard
-  };
+  // Check each existing row for horizontal space
+  const sortedRows = Array.from(rows).sort((a, b) => a - b);
+  for (const rowY of sortedRows) {
+    // Find tiles on this row
+    const rowTiles = tiles.filter(t => t.y <= rowY && t.y + t.h > rowY);
+    // Calculate rightmost occupied x on this row
+    let rightEdge = 0;
+    for (const t of rowTiles) {
+      rightEdge = Math.max(rightEdge, t.x + t.w);
+    }
+    // Check if new tile fits to the right
+    if (rightEdge + newW <= GRID_COLS) {
+      return { x: rightEdge, y: rowY };
+    }
+  }
+
+  // No row has space — place at bottom-left
+  return { x: 0, y: maxBottom };
 }
 
 /**
  * Get default tile dimensions based on chart display type
- * @param displayType - The type of chart visualization
- * @returns Dimensions object with width (w) and height (h) in grid units
  */
 export function getDefaultTileSize(displayType?: DisplayType): {
   w: number;
   h: number;
 } {
-  const GRID_COLS = 24; // Full width of dashboard grid
-
   switch (displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
-      // Half-width time series charts
       return { w: 12, h: 10 };
 
     case DisplayType.Table:
     case DisplayType.Search:
-      // Full-width data views
       return { w: GRID_COLS, h: 12 };
 
     case DisplayType.Number:
-      // Small metric cards
       return { w: 6, h: 6 };
 
     case DisplayType.Markdown:
-      // Medium-sized documentation blocks
       return { w: 12, h: 8 };
 
     case DisplayType.Heatmap:
-      // Half-width heatmap
       return { w: 12, h: 10 };
 
     default:
-      // Default to half-width time series size
       return { w: 12, h: 10 };
   }
 }
