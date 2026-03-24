@@ -454,11 +454,11 @@ function HeatmapContainer({
   // For linear scale: bucket by raw value (original behavior)
   const bucketExprAgg =
     scaleType === 'log'
-      ? `widthBucket(log(greatest(value_calc, ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      ? `widthBucket(log(greatest(toFloat64(value_calc), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
       : `widthBucket(value_calc, ${effectiveMin}, ${max}, ${nBuckets})`;
   const bucketExprDirect =
     scaleType === 'log'
-      ? `widthBucket(log(greatest(${valueExpression}, ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      ? `widthBucket(log(greatest(toFloat64(${valueExpression}), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
       : `widthBucket(${valueExpression}, ${effectiveMin}, ${max}, ${nBuckets})`;
 
   const bucketConfig: BuilderChartConfigWithDateRange = isAggregateExpression
