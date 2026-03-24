@@ -6,9 +6,12 @@ import {
   IconDotsVertical,
   IconEye,
   IconEyeOff,
+  IconGripVertical,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
+
+import { type DragHandleProps } from '@/components/DashboardDndContext';
 
 export default function SectionHeader({
   section,
@@ -20,6 +23,7 @@ export default function SectionHeader({
   onRename,
   onDelete,
   onAddTile,
+  dragHandleProps,
 }: {
   section: DashboardContainer;
   tileCount: number;
@@ -34,6 +38,7 @@ export default function SectionHeader({
   onRename?: (newTitle: string) => void;
   onDelete?: () => void;
   onAddTile?: () => void;
+  dragHandleProps?: DragHandleProps;
 }) {
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(section.title);
@@ -69,11 +74,32 @@ export default function SectionHeader({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        borderBottom: '1px solid var(--mantine-color-dark-4)',
+        borderBottom: '1px solid var(--mantine-color-default-border)',
         userSelect: 'none',
       }}
       data-testid={`section-header-${section.id}`}
     >
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          style={{
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            padding: 2,
+            flexShrink: 0,
+            opacity: showControls ? 1 : 0,
+            transition: 'opacity 150ms',
+          }}
+          title="Drag to reorder sections"
+          data-testid={`section-drag-handle-${section.id}`}
+        >
+          <IconGripVertical
+            size={14}
+            style={{ color: 'var(--mantine-color-dimmed)' }}
+          />
+        </div>
+      )}
       <Flex
         align="center"
         gap="xs"
@@ -117,6 +143,7 @@ export default function SectionHeader({
               onChange={e => setEditedTitle(e.currentTarget.value)}
               onBlur={handleSaveRename}
               onKeyDown={e => {
+                e.stopPropagation();
                 if (e.key === 'Escape') {
                   setEditedTitle(section.title);
                   setEditing(false);
