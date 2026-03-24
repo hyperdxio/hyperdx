@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/app": {
+      "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
+      "ignore": [".storybook/public/**"],
+      "ignoreDependencies": [
+        "eslint-config-next",
+        "@chromatic-com/storybook",
+        "@storybook/addon-themes"
+      ]
+    },
+    "packages/api": {
+      "entry": ["src/index.ts", "src/tasks/index.ts", "scripts/*.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["pino-pretty", "aws4"]
+    },
+    "packages/common-utils": {
+      "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
+      "project": ["src/**/*.ts"]
+    }
+  },
+  "ignoreBinaries": ["make", "migrate", "playwright"],
+  "ignoreDependencies": [
+    "concurrently",
+    "dotenv",
+    "babel-plugin-react-compiler"
+  ]
+}
