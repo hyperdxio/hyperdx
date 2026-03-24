@@ -991,6 +991,7 @@ export default function DBRowSidePanelErrorBoundary({
       opened={rowId != null}
       withCloseButton={false}
       withOverlay={false}
+      lockScroll={false}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();

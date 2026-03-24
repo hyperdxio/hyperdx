@@ -160,6 +160,7 @@ export default function SessionSidePanel({
       position="right"
       size={`${size}vw`}
       withCloseButton={false}
+      lockScroll={false}
       zIndex={drawerZIndex}
       styles={{
         content: {
