@@ -2054,18 +2054,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                               tileCount={containerTiles.length}
                               collapsed={isSectionCollapsed(container)}
                               defaultCollapsed={container.collapsed ?? false}
-                              onToggle={() =>
-                                handleToggleSection(container.id)
-                              }
+                              onToggle={() => handleToggleSection(container.id)}
                               onToggleDefaultCollapsed={() =>
                                 handleToggleDefaultCollapsed(container.id)
                               }
                               onRename={newTitle =>
                                 handleRenameSection(container.id, newTitle)
                               }
-                              onDelete={() =>
-                                handleDeleteSection(container.id)
-                              }
+                              onDelete={() => handleDeleteSection(container.id)}
                               onAddTile={() => onAddTile(container.id)}
                               dragHandleProps={dragHandleProps}
                             />
