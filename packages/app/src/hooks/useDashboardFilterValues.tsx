@@ -7,6 +7,8 @@ import {
 import {
   BuilderChartConfigWithDateRange,
   DashboardFilter,
+  isLogSource,
+  isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQueries,
@@ -20,17 +22,27 @@ import { getMetricTableName, mapKeyBy } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
 
-const filterToKey = (filter: DashboardFilter) =>
-  filter.sourceMetricType
-    ? `${filter.source}~${filter.sourceMetricType}`
-    : `${filter.source}`;
+type FilterSourceKey = {
+  sourceId: string;
+  metricType?: string;
+  where: string;
+  whereLanguage: 'sql' | 'lucene';
+};
 
-const filterFromKey = (key: string) => {
-  const [sourceId, metricType] = key.split('~');
-  return {
-    sourceId,
-    metricType,
-  };
+const filterToKey = (filter: DashboardFilter): string =>
+  JSON.stringify({
+    sourceId: filter.source,
+    metricType: filter.sourceMetricType,
+    where: filter.where ?? '',
+    whereLanguage: filter.whereLanguage ?? 'sql',
+  } satisfies FilterSourceKey);
+
+const filterFromKey = (key: string): FilterSourceKey =>
+  JSON.parse(key) as FilterSourceKey;
+
+type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
+  /** filterIds[i] = array of filter IDs whose values come from keys[i] */
+  filterIds: string[][];
 };
 
 function useOptimizedKeyValuesCalls({
@@ -44,30 +56,30 @@ function useOptimizedKeyValuesCalls({
   const metadata = useMetadataWithSettings();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
-  const filtersBySourceIdAndMetric = useMemo(() => {
-    const filtersBySourceIdAndMetric = new Map<string, DashboardFilter[]>();
+  // Group filters by (source, metricType, where, whereLanguage) so that we can test each group for MV compatibility separately.
+  const filtersByGroupKey = useMemo(() => {
+    const filtersByGroupKey = new Map<string, DashboardFilter[]>();
     for (const filter of filters) {
       const key = filterToKey(filter);
-      if (!filtersBySourceIdAndMetric.has(key)) {
-        filtersBySourceIdAndMetric.set(key, [filter]);
+      if (!filtersByGroupKey.has(key)) {
+        filtersByGroupKey.set(key, [filter]);
       } else {
-        filtersBySourceIdAndMetric.get(key)!.push(filter);
+        filtersByGroupKey.get(key)!.push(filter);
       }
     }
-    return filtersBySourceIdAndMetric;
+    return filtersByGroupKey;
   }, [filters]);
 
-  const results: UseQueryResult<
-    GetKeyValueCall<BuilderChartConfigWithDateRange>[]
-  >[] = useQueries({
-    queries: Array.from(filtersBySourceIdAndMetric.entries())
+  const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
+    queries: Array.from(filtersByGroupKey.entries())
       .filter(([key]) =>
         sources?.some(s => s.id === filterFromKey(key).sourceId),
       )
-      .map(([key, filters]) => {
-        const { sourceId, metricType } = filterFromKey(key);
+      .map(([key, filtersInGroup]) => {
+        const { sourceId, metricType, where, whereLanguage } =
+          filterFromKey(key);
         const source = sources!.find(s => s.id === sourceId)!;
-        const keys = filters.map(f => f.expression);
+        const keyExpressions = filtersInGroup.map(f => f.expression);
         const tableName = getMetricTableName(source, metricType) ?? '';
 
         const chartConfig: BuilderChartConfigWithDateRange = {
@@ -76,10 +88,14 @@ function useOptimizedKeyValuesCalls({
             databaseName: source.from.databaseName,
             tableName,
           },
+          implicitColumnExpression:
+            isTraceSource(source) || isLogSource(source)
+              ? source.implicitColumnExpression
+              : undefined,
           dateRange,
           source: source.id,
-          where: '',
-          whereLanguage: 'sql',
+          where,
+          whereLanguage,
           select: '',
         };
 
@@ -89,19 +105,31 @@ function useOptimizedKeyValuesCalls({
             sourceId,
             metricType,
             dateRange,
-            keys,
+            keyExpressions,
+            where,
+            whereLanguage,
           ],
           enabled: !isLoadingSources,
           staleTime: 1000 * 60 * 5, // Cache every 5 min
-          queryFn: async ({ signal }) =>
-            await optimizeGetKeyValuesCalls({
+          queryFn: async ({ signal }) => {
+            const calls = await optimizeGetKeyValuesCalls({
               chartConfig,
               source,
               clickhouseClient,
               metadata,
-              keys,
+              keys: keyExpressions,
               signal,
-            }),
+            });
+            // Enrich each call with the filter IDs that correspond to each key expression
+            return calls.map(call => ({
+              ...call,
+              filterIds: call.keys.map(expression =>
+                filtersInGroup
+                  .filter(f => f.expression === expression)
+                  .map(f => f.id),
+              ),
+            }));
+          },
         };
       }),
   });
@@ -179,20 +207,27 @@ export function useDashboardFilterValues({
     }),
   });
 
+  // Map results by filter ID instead of expression so that two filters with
+  // the same expression but different sources/WHERE clauses get distinct values.
   const flattenedData = useMemo(
     () =>
       new Map(
-        results.flatMap(({ isLoading, data = [] }) => {
-          return data.map(({ key, value }) => [
-            key,
-            {
+        results.flatMap(({ isLoading, data = [] }, resultIndex) => {
+          const call = calls[resultIndex];
+          return data.flatMap(({ key: expression, value }) => {
+            const keyIndex = call.keys.indexOf(expression);
+            const filterIds = call.filterIds?.[keyIndex] ?? [];
+            const entry = {
               values: value.map(v => v.toString()),
               isLoading,
-            },
-          ]);
+            };
+            return filterIds.map(
+              filterId => [filterId, entry] as [string, typeof entry],
+            );
+          });
         }),
       ),
-    [results],
+    [results, calls],
   );
 
   return {
