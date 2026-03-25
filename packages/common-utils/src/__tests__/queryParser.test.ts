@@ -855,6 +855,34 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
     expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
   });
 
+  it('should use hasAllTokens when text index exists on multi-column expression', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_text',
+        type: 'text',
+        typeFull:
+          "text(tokenizer='splitByNonAlpha', preprocessor=lower(concatWithSeparator(';', Body, OtherColumn)))",
+        expression: "concatWithSeparator(';', Body, OtherColumn)",
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: "concatWithSeparator(';', Body, OtherColumn)",
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe(
+      "((hasAllTokens(concatWithSeparator(';', Body, OtherColumn), 'foo')))",
+    );
+  });
+
   it('should use hasAllTokens for multi-token terms with single call', async () => {
     metadata.getSkipIndices = jest.fn().mockResolvedValue([
       {
