@@ -14,6 +14,7 @@ import {
 
 import focusClasses from '../../../../styles/focus.module.scss';
 import variantClasses from '../../../../styles/variants.module.scss';
+import componentClasses from './components.module.scss';
 
 export const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
@@ -120,13 +121,14 @@ export const makeTheme = ({
       },
     }),
     Slider: Slider.extend({
-      styles: {
-        bar: {
-          backgroundColor: 'var(--color-bg-brand)',
+      vars: () => ({
+        root: {
+          '--slider-color': 'var(--color-slider-bar)',
         },
-        thumb: {
-          borderColor: 'var(--color-bg-brand)',
-        },
+      }),
+      classNames: {
+        thumb: componentClasses.sliderThumb,
+        mark: componentClasses.sliderMark,
       },
     }),
     Input: {
@@ -270,6 +272,13 @@ export const makeTheme = ({
           baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
           baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
           baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
+        }
+
+        if (props.variant === 'subtle') {
+          baseVars['--button-bg'] = 'transparent';
+          baseVars['--button-hover'] = 'var(--color-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-text)';
+          baseVars['--button-bd'] = 'none';
         }
 
         if (props.variant === 'link') {
