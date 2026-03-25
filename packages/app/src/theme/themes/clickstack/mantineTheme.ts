@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 
 import variantClasses from '../../../../styles/variants.module.scss';
-import componentClasses from './components.module.scss';
+import componentClasses from '../components.module.scss';
 
 /**
  * ClickStack Theme
