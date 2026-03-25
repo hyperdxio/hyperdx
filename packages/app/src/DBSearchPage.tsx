@@ -2,7 +2,6 @@ import {
   FormEvent,
   FormEventHandler,
   memo,
-  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -346,6 +345,13 @@ function SaveSearchModalComponent({
   const createSavedSearch = useCreateSavedSearch();
   const updateSavedSearch = useUpdateSavedSearch();
 
+  const { data: sourceObj } = useSource({
+    id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
+  const effectiveSelect =
+    searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
+
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -359,7 +365,7 @@ function SaveSearchModalComponent({
           {
             id: savedSearchId,
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
@@ -378,7 +384,7 @@ function SaveSearchModalComponent({
         createSavedSearch.mutate(
           {
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
