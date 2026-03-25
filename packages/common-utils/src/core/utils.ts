@@ -816,7 +816,10 @@ export function parseTokenizerFromTextIndex({
     return { key, value };
   });
 
-  const tokenizerArg = args.find(arg => arg.key === 'tokenizer')?.value;
+  const tokenizerArgRaw = args.find(arg => arg.key === 'tokenizer')?.value;
+
+  // Strip surrounding quotes if present (e.g., 'splitByNonAlpha' -> splitByNonAlpha)
+  const tokenizerArg = stripQuotes(tokenizerArgRaw ?? '');
   if (!tokenizerArg) {
     console.error(
       `Invalid tokenizer argument in index type ${typeFull}: ${tokenizerArg}`,
