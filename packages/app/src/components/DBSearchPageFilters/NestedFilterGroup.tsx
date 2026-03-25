@@ -35,7 +35,7 @@ export type NestedFilterGroupProps = {
   isLive?: boolean;
 };
 
-const VIRTUAL_ITEM_HEIGHT_ESTIMATE = 30;
+const VIRTUAL_ITEM_HEIGHT_ESTIMATE = 26;
 const MAX_VIRTUAL_LIST_HEIGHT = 350;
 
 export const NestedFilterGroup = ({
@@ -177,8 +177,9 @@ export const NestedFilterGroup = ({
                               top: 0,
                               left: 0,
                               width: '100%',
-                              height: `${virtualRow.size}px`,
                               transform: `translateY(${virtualRow.start}px)`,
+                              paddingTop: 4,
+                              paddingBottom: 4,
                             }}
                           >
                             <FilterGroup
