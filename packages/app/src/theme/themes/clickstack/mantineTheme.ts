@@ -1,8 +1,10 @@
 import {
   ActionIcon,
   Button,
+  Checkbox,
   MantineTheme,
   MantineThemeOverride,
+  Radio,
   rem,
   SegmentedControl,
   Select,
@@ -13,6 +15,7 @@ import {
 } from '@mantine/core';
 
 import variantClasses from '../../../../styles/variants.module.scss';
+import componentClasses from './components.module.scss';
 
 /**
  * ClickStack Theme
@@ -104,13 +107,14 @@ export const makeTheme = ({
       },
     }),
     Slider: Slider.extend({
-      styles: {
-        bar: {
-          backgroundColor: 'var(--color-bg-brand)',
+      vars: () => ({
+        root: {
+          '--slider-color': 'var(--color-slider-bar)',
         },
-        thumb: {
-          borderColor: 'var(--color-bg-brand)',
-        },
+      }),
+      classNames: {
+        thumb: componentClasses.sliderThumb,
+        mark: componentClasses.sliderMark,
       },
     }),
     Input: {
@@ -256,6 +260,13 @@ export const makeTheme = ({
           baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
         }
 
+        if (props.variant === 'subtle') {
+          baseVars['--button-bg'] = 'transparent';
+          baseVars['--button-hover'] = 'var(--color-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-text)';
+          baseVars['--button-bd'] = 'none';
+        }
+
         if (props.variant === 'link') {
           baseVars['--button-bg'] = 'transparent';
           baseVars['--button-hover'] = 'transparent';
@@ -281,6 +292,23 @@ export const makeTheme = ({
       vars: () => ({
         root: {
           '--tabs-color': 'var(--color-text-brand)',
+        },
+      }),
+    }),
+    Checkbox: Checkbox.extend({
+      vars: () => ({
+        root: {
+          '--checkbox-color': 'var(--click-global-color-accent-default)',
+          '--checkbox-icon-color':
+            'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Radio: Radio.extend({
+      vars: () => ({
+        root: {
+          '--radio-color': 'var(--click-global-color-accent-default)',
+          '--radio-icon-color': 'var(--click-global-color-background-default)',
         },
       }),
     }),
