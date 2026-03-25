@@ -65,7 +65,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
-  IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
@@ -264,29 +263,16 @@ function SearchSubmitButton({
   );
 }
 
-function FilterToggleButton({
-  isCollapsed,
-  onToggle,
-}: {
-  isCollapsed: boolean;
-  onToggle: () => void;
-}) {
+function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
   return (
-    <Tooltip
-      label={isCollapsed ? 'Show filters' : 'Hide filters'}
-      position="bottom"
-    >
+    <Tooltip label="Show filters" position="bottom">
       <ActionIcon
         variant="subtle"
         size="xs"
-        onClick={onToggle}
-        aria-label="Toggle filter sidebar"
+        onClick={onExpand}
+        aria-label="Show filters"
       >
-        {isCollapsed ? (
-          <IconLayoutSidebarLeftExpand size={14} />
-        ) : (
-          <IconLayoutSidebarLeftCollapse size={14} />
-        )}
+        <IconLayoutSidebarLeftExpand size={14} />
       </ActionIcon>
     </Tooltip>
   );
@@ -837,7 +823,7 @@ function DBSearchPage() {
   }, [analysisMode, setIsLive]);
 
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
-    useState(false);
+    useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
 
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
@@ -1805,6 +1791,7 @@ function DBSearchPage() {
                     }
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
+                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
                     {...searchFilters}
                   />
                 </ErrorBoundary>
@@ -1819,12 +1806,13 @@ function DBSearchPage() {
                         style={{ width: '100%' }}
                       >
                         <Group gap={4} align="center">
-                          <FilterToggleButton
-                            isCollapsed={isFilterSidebarCollapsed}
-                            onToggle={() =>
-                              setIsFilterSidebarCollapsed(prev => !prev)
-                            }
-                          />
+                          {isFilterSidebarCollapsed && (
+                            <ExpandFiltersButton
+                              onExpand={() =>
+                                setIsFilterSidebarCollapsed(false)
+                              }
+                            />
+                          )}
                           <SearchTotalCountChart
                             config={histogramTimeChartConfig}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
@@ -1900,12 +1888,13 @@ function DBSearchPage() {
                           style={{ width: '100%' }}
                         >
                           <Group gap={4} align="center">
-                            <FilterToggleButton
-                              isCollapsed={isFilterSidebarCollapsed}
-                              onToggle={() =>
-                                setIsFilterSidebarCollapsed(prev => !prev)
-                              }
-                            />
+                            {isFilterSidebarCollapsed && (
+                              <ExpandFiltersButton
+                                onExpand={() =>
+                                  setIsFilterSidebarCollapsed(false)
+                                }
+                              />
+                            )}
                             <SearchTotalCountChart
                               config={histogramTimeChartConfig}
                               queryKeyPrefix={QUERY_KEY_PREFIX}

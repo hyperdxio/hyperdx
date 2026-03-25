@@ -36,6 +36,7 @@ import {
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
+  IconLayoutSidebarLeftCollapse,
   IconMinus,
   IconPin,
   IconPinFilled,
@@ -875,6 +876,7 @@ const DBSearchPageFiltersComponent = ({
   setFilterRange,
   onColumnToggle,
   displayedColumns,
+  onCollapse,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -887,6 +889,7 @@ const DBSearchPageFiltersComponent = ({
   setFilterRange: (key: string, range: { min: number; max: number }) => void;
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
+  onCollapse?: () => void;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1203,9 +1206,23 @@ const DBSearchPageFiltersComponent = ({
         }}
       >
         <Stack gap="sm" p="xs">
-          <Text size="xxs" c="dimmed" fw="bold">
-            Analysis Mode
-          </Text>
+          <Flex align="center" justify="space-between">
+            <Text size="xxs" c="dimmed" fw="bold">
+              Analysis Mode
+            </Text>
+            {onCollapse && (
+              <Tooltip label="Hide filters" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  onClick={onCollapse}
+                  aria-label="Hide filters"
+                >
+                  <IconLayoutSidebarLeftCollapse size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </Flex>
           <Tabs
             value={analysisMode}
             onChange={value =>
