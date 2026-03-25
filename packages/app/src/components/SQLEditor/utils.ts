@@ -23,13 +23,20 @@ export type SQLCompletion = {
  * Creates a custom CodeMirror completion source for SQL identifiers (column names, table
  * names, functions, etc.) that inserts them verbatim, without quoting.
  */
-function createIdentifierCompletionSource(completions: Completion[]) {
+export function createIdentifierCompletionSource(completions: Completion[]) {
   return (context: CompletionContext) => {
     // Match word characters, dots, single quotes, brackets, $, {, }, and :
     // to support identifiers like `ResourceAttributes['service.name']`,
     // macros like `$__dateFilter`, and query params like `{name:Type}`
     const prefix = context.matchBefore(/[\w.'[\]${}:]+/);
     if (!prefix && !context.explicit) return null;
+
+    // Suppress suggestions after AS keyword since the user is typing a custom alias
+    const textBefore = context.state.doc
+      .sliceString(0, prefix?.from ?? context.pos)
+      .trimEnd();
+    if (/\bAS$/i.test(textBefore)) return null;
+
     return {
       from: prefix?.from ?? context.pos,
       options: completions,
