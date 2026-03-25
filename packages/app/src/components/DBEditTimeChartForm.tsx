@@ -833,7 +833,7 @@ export default function EditTimeChartForm({
   useEffect(() => {
     if (autoRun && !autoRunFired.current && tableSource) {
       autoRunFired.current = true;
-      onSubmit();
+      onSubmit(true);
     }
   }, [autoRun, tableSource, onSubmit]);
 

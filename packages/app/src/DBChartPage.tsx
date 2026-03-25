@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { parseAsBoolean, parseAsJson, useQueryState } from 'nuqs';
+import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -230,8 +230,6 @@ function DBChartExplorerPage() {
     }),
   );
 
-  const [autoRun] = useQueryState('run', parseAsBoolean.withDefault(false));
-
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
@@ -255,7 +253,7 @@ function DBChartExplorerPage() {
         onTimeRangeSearch={onSearch}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
-        autoRun={autoRun}
+        autoRun
       />
     </Box>
   );

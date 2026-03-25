@@ -2,4 +2,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: support `?run=true` query param on Chart Explorer to auto-execute the chart on load. Enables deeplinks that render results without requiring a manual click.
+feat: Chart Explorer now auto-executes the chart on load when a valid source is configured. Deeplinks render results without requiring a manual click.
