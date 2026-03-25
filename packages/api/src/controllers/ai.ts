@@ -368,9 +368,7 @@ function getAnthropicModel(): LanguageModel {
 }
 
 /**
- * Configure OpenAI-compatible model.
- * Works with any OpenAI Chat Completions-compatible endpoint
- * (e.g. Azure OpenAI, OpenRouter, LiteLLM proxies).
+ * Configure OpenAI-compatible model using the Responses API (/v1/responses).
  */
 function getOpenAIModel(): LanguageModel {
   const apiKey = config.AI_API_KEY;
@@ -399,5 +397,5 @@ function getOpenAIModel(): LanguageModel {
     ...(Object.keys(headers).length > 0 && { headers }),
   });
 
-  return openai.chat(config.AI_MODEL_NAME);
+  return openai.responses(config.AI_MODEL_NAME);
 }

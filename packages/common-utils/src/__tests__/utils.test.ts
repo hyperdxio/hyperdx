@@ -1832,6 +1832,14 @@ describe('utils', () => {
         expected: { type: 'splitByNonAlpha' },
       },
       {
+        type: "text(tokenizer = 'splitByNonAlpha')",
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text(tokenizer = "splitByNonAlpha")',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
         type: 'text(tokenizer = splitByString())',
         expected: { type: 'splitByString', separators: [' '] },
       },

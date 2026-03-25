@@ -848,6 +848,14 @@ describe('External API v2 Dashboards - old format', () => {
             sourceId: traceSource._id.toString(),
             sourceMetricType: undefined,
           },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (Filtered)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            where: "environment = 'production'",
+            whereLanguage: 'sql' as const,
+          },
         ],
       };
 
@@ -855,7 +863,7 @@ describe('External API v2 Dashboards - old format', () => {
         .send(dashboardPayload)
         .expect(200);
 
-      expect(response.body.data.filters).toHaveLength(2);
+      expect(response.body.data.filters).toHaveLength(3);
       response.body.data.filters.forEach(
         (f: {
           id: string;
@@ -879,12 +887,18 @@ describe('External API v2 Dashboards - old format', () => {
       expect(response.body.data.filters[0].expression).toBe('environment');
       expect(response.body.data.filters[1].name).toBe('Service Filter');
       expect(response.body.data.filters[1].expression).toBe('service_name');
+      expect(response.body.data.filters[2].name).toBe('Region (Filtered)');
+      expect(response.body.data.filters[2].expression).toBe('region');
+      expect(response.body.data.filters[2].where).toBe(
+        "environment = 'production'",
+      );
+      expect(response.body.data.filters[2].whereLanguage).toBe('sql');
 
       const getResponse = await authRequest(
         'get',
         `${BASE_URL}/${response.body.data.id}`,
       ).expect(200);
-      expect(getResponse.body.data.filters).toHaveLength(2);
+      expect(getResponse.body.data.filters).toHaveLength(3);
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 
@@ -2519,6 +2533,14 @@ describe('External API v2 Dashboards - new format', () => {
             sourceId: traceSource._id.toString(),
             sourceMetricType: undefined,
           },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (Filtered)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            where: "environment = 'production'",
+            whereLanguage: 'sql' as const,
+          },
         ],
       };
 
@@ -2526,7 +2548,7 @@ describe('External API v2 Dashboards - new format', () => {
         .send(dashboardPayload)
         .expect(200);
 
-      expect(response.body.data.filters).toHaveLength(2);
+      expect(response.body.data.filters).toHaveLength(3);
       response.body.data.filters.forEach(
         (f: {
           id: string;
@@ -2550,12 +2572,18 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body.data.filters[0].expression).toBe('environment');
       expect(response.body.data.filters[1].name).toBe('Service Filter');
       expect(response.body.data.filters[1].expression).toBe('service_name');
+      expect(response.body.data.filters[2].name).toBe('Region (Filtered)');
+      expect(response.body.data.filters[2].expression).toBe('region');
+      expect(response.body.data.filters[2].where).toBe(
+        "environment = 'production'",
+      );
+      expect(response.body.data.filters[2].whereLanguage).toBe('sql');
 
       const getResponse = await authRequest(
         'get',
         `${BASE_URL}/${response.body.data.id}`,
       ).expect(200);
-      expect(getResponse.body.data.filters).toHaveLength(2);
+      expect(getResponse.body.data.filters).toHaveLength(3);
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 

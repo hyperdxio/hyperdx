@@ -1156,6 +1156,16 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           enum: [sum, gauge, histogram, summary, exponential histogram]
  *           description: Metric type when source is metrics
  *           example: "gauge"
+ *         where:
+ *           type: string
+ *           description: Optional WHERE condition to scope which rows this filter key reads values from
+ *           example: "ServiceName:api"
+ *         whereLanguage:
+ *           type: string
+ *           enum: [sql, lucene]
+ *           description: Language of the where condition
+ *           default: "sql"
+ *           example: "lucene"
  *
  *     Filter:
  *       allOf:
