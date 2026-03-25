@@ -39,6 +39,23 @@ function getSuggestionLabels(
     .map(o => o.label);
 }
 
+/**
+ * Returns the range [from, to] that CodeMirror would replace when the user
+ * accepts a suggestion. This lets us verify that the entire identifier
+ * (including any trailing characters after the cursor) gets replaced.
+ */
+function getReplacementRange(
+  doc: string,
+  pos: number,
+): { from: number; to: number } | null {
+  const source = createIdentifierCompletionSource(TEST_COMPLETIONS);
+  const state = EditorState.create({ doc });
+  const context = new CompletionContext(state, pos, false);
+  const result = source(context);
+  if (result == null) return null;
+  return { from: result.from, to: result.to ?? pos };
+}
+
 describe('Auto-Complete source', () => {
   it.each([
     { doc: 'SELECT col', expected: ['column1', 'column2'] },
@@ -101,5 +118,33 @@ describe('Auto-Complete source', () => {
     it('does not suppress when AS is part of a larger word', () => {
       expect(getSuggestionLabels('SELECT CAST')).toEqual([]);
     });
+  });
+
+  describe('mid-identifier completion', () => {
+    it.each([
+      {
+        name: "cursor before trailing ']",
+        doc: "ResourceAttributes['host.']",
+        pos: 25, // after 'host.'
+        expectedRange: { from: 0, to: 27 },
+      },
+      {
+        name: 'cursor in middle of a word',
+        doc: 'SELECT column1',
+        pos: 10, // after 'col'
+        expectedRange: { from: 7, to: 14 },
+      },
+      {
+        name: 'cursor at end of identifier (no trailing chars)',
+        doc: 'SELECT column1',
+        pos: 14,
+        expectedRange: { from: 7, to: 14 },
+      },
+    ])(
+      'replacement range covers full identifier when $name',
+      ({ doc, pos, expectedRange }) => {
+        expect(getReplacementRange(doc, pos)).toEqual(expectedRange);
+      },
+    );
   });
 });
