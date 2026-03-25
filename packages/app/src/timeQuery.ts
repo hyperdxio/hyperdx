@@ -63,7 +63,7 @@ export function parseTimeQuery(
   return parseTimeRangeInput(timeQuery, isUTC);
 }
 
-export function parseValidTimeRange(
+function parseValidTimeRange(
   timeQuery: string,
   isUTC: boolean,
 ): [Date, Date] | undefined {

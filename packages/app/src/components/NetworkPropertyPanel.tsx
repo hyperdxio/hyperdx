@@ -105,7 +105,7 @@ const generateCurl = ({
   return curl;
 };
 
-export const NetworkBody = ({
+const NetworkBody = ({
   body,
   theme,
   emptyMessage,
