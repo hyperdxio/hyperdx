@@ -13,14 +13,24 @@ import {
 export default function SectionHeader({
   section,
   tileCount,
+  collapsed,
+  defaultCollapsed,
   onToggle,
+  onToggleDefaultCollapsed,
   onRename,
   onDelete,
   onAddTile,
 }: {
   section: DashboardContainer;
   tileCount: number;
+  /** Effective collapsed state (URL state ?? DB default). */
+  collapsed: boolean;
+  /** The DB-stored default collapsed state. */
+  defaultCollapsed: boolean;
+  /** Toggle collapse in URL state (chevron click). */
   onToggle: () => void;
+  /** Toggle the DB-stored default collapsed state (menu action). */
+  onToggleDefaultCollapsed?: () => void;
   onRename?: (newTitle: string) => void;
   onDelete?: () => void;
   onAddTile?: () => void;
@@ -31,7 +41,7 @@ export default function SectionHeader({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const showControls = hovered || menuOpen;
-  const hasMenuControls = onDelete != null;
+  const hasMenuControls = onDelete != null || onToggleDefaultCollapsed != null;
 
   const handleSaveRename = () => {
     const trimmed = editedTitle.trim();
@@ -81,13 +91,13 @@ export default function SectionHeader({
         }
         role="button"
         tabIndex={editing ? undefined : 0}
-        aria-expanded={!section.collapsed}
+        aria-expanded={!collapsed}
         aria-label={`Toggle ${section.title} section`}
       >
         <IconChevronRight
           size={16}
           style={{
-            transform: section.collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+            transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
             transition: 'transform 150ms ease',
             flexShrink: 0,
             color: 'var(--mantine-color-dimmed)',
@@ -127,7 +137,7 @@ export default function SectionHeader({
             >
               {section.title}
             </Text>
-            {section.collapsed && tileCount > 0 && (
+            {collapsed && tileCount > 0 && (
               <Text size="xs" c="dimmed">
                 ({tileCount} {tileCount === 1 ? 'tile' : 'tiles'})
               </Text>
@@ -170,18 +180,21 @@ export default function SectionHeader({
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
-            <Menu.Item
-              leftSection={
-                section.collapsed ? (
-                  <IconEye size={14} />
-                ) : (
-                  <IconEyeOff size={14} />
-                )
-              }
-              onClick={onToggle}
-            >
-              {section.collapsed ? 'Expand by Default' : 'Collapse by Default'}
-            </Menu.Item>
+            {onToggleDefaultCollapsed && (
+              <Menu.Item
+                leftSection={
+                  defaultCollapsed ? (
+                    <IconEye size={14} />
+                  ) : (
+                    <IconEyeOff size={14} />
+                  )
+                }
+                onClick={onToggleDefaultCollapsed}
+                data-testid={`section-toggle-default-${section.id}`}
+              >
+                {defaultCollapsed ? 'Expand by Default' : 'Collapse by Default'}
+              </Menu.Item>
+            )}
             {onDelete && (
               <>
                 <Menu.Divider />
