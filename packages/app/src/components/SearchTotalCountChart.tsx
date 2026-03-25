@@ -103,7 +103,7 @@ export default function SearchTotalCountChart({
   );
 
   return (
-    <Text size="xs" mb={4}>
+    <Text size="xs" lh="normal">
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
