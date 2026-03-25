@@ -39,12 +39,23 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 | `variant="link"` | Link-style actions with no background or border (View Details, navigation-style CTAs) | `<Button variant="link">View Details</Button>` |
 | `variant="subtle"` | **ActionIcon only.** Transparent background with hover highlight; for toolbar/utility icons that shouldn't draw attention until hovered (collapse toggles, close buttons, auxiliary controls) | `<ActionIcon variant="subtle">...</ActionIcon>` |
 
-### DO NOT USE (Forbidden Patterns)
-
-The following patterns are **NOT ALLOWED** for Button and ActionIcon:
+### Correct Usage
 
 ```tsx
-// ❌ WRONG - Don't use these
+<Button variant="primary">Save</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="danger">Delete</Button>
+<Button variant="link">View Details</Button>
+<ActionIcon variant="primary">...</ActionIcon>
+<ActionIcon variant="secondary">...</ActionIcon>
+<ActionIcon variant="danger">...</ActionIcon>
+<ActionIcon variant="link">...</ActionIcon>
+<ActionIcon variant="subtle">...</ActionIcon>
+```
+
+### DO NOT USE (Forbidden Patterns)
+
+```tsx
 <Button variant="light" color="green">Save</Button>
 <Button variant="light" color="gray">Cancel</Button>
 <Button variant="light" color="red">Delete</Button>
@@ -55,17 +66,6 @@ The following patterns are **NOT ALLOWED** for Button and ActionIcon:
 <Button variant="default">Cancel</Button>
 <ActionIcon variant="light" color="red">...</ActionIcon>
 <ActionIcon variant="filled" color="gray">...</ActionIcon>
-
-// ✅ CORRECT - Use custom variants
-<Button variant="primary">Save</Button>
-<Button variant="secondary">Cancel</Button>
-<Button variant="danger">Delete</Button>
-<Button variant="link">View Details</Button>
-<ActionIcon variant="primary">...</ActionIcon>
-<ActionIcon variant="secondary">...</ActionIcon>
-<ActionIcon variant="danger">...</ActionIcon>
-<ActionIcon variant="link">...</ActionIcon>
-<ActionIcon variant="subtle">...</ActionIcon>
 ```
 
 **Link variant details**: Renders with no background, no border, and muted text color. On hover, text brightens to full contrast. Use for link-style CTAs that should blend into surrounding content (e.g., "View Details", "View Full Trace").
