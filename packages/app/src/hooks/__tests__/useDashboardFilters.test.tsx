@@ -1,11 +1,26 @@
-import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import useDashboardFilters from '../useDashboardFilters';
 
-// TODO: Re-enable tests after nuqs is upgraded to support unit testing
-// https://github.com/47ng/nuqs/issues/259
-describe.skip('useDashboardFilters', () => {
+// Mock nuqs useQueryState with a simple useState-like implementation
+let mockState: Filter[] | null = null;
+const mockSetState = jest.fn(
+  (updater: Filter[] | null | ((prev: Filter[] | null) => Filter[] | null)) => {
+    if (typeof updater === 'function') {
+      mockState = updater(mockState);
+    } else {
+      mockState = updater;
+    }
+  },
+);
+
+jest.mock('nuqs', () => ({
+  useQueryState: () => [mockState, mockSetState],
+  createParser: (opts: { parse: Function; serialize: Function }) => opts,
+}));
+
+describe('useDashboardFilters', () => {
   const mockFilters: DashboardFilter[] = [
     {
       id: 'filter1',
@@ -30,6 +45,11 @@ describe.skip('useDashboardFilters', () => {
     },
   ];
 
+  beforeEach(() => {
+    mockState = null;
+    mockSetState.mockClear();
+  });
+
   it('should initialize with empty filter values', () => {
     const { result } = renderHook(() => useDashboardFilters(mockFilters));
 
@@ -37,157 +57,155 @@ describe.skip('useDashboardFilters', () => {
     expect(result.current.filterQueries).toEqual([]);
   });
 
-  it('should set filter values correctly', () => {
+  it('should set a single filter value', () => {
     const { result } = renderHook(() => useDashboardFilters(mockFilters));
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', ['production']);
     });
 
-    expect(result.current.filterValues).toEqual({
-      filter1: 'production',
-    });
-  });
-
-  it('should set multiple filter values', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
-    });
-
-    expect(result.current.filterValues).toEqual({
-      filter1: 'production',
-      filter2: 'api-service',
-    });
-  });
-
-  it('should remove filter value when set to null', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
-    });
-
-    act(() => {
-      result.current.setFilterValue('filter1', null);
-    });
-
-    expect(result.current.filterValues).toEqual({
-      filter2: 'api-service',
-    });
-  });
-
-  it('should convert filter values to SQL filters', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
-    });
-
-    expect(result.current.filterQueries).toEqual([
-      {
-        type: 'sql',
-        condition: "environment = 'production'",
-      },
-      {
-        type: 'sql',
-        condition: "service.name = 'api-service'",
-      },
-    ]);
-  });
-
-  it('should handle numeric filter values', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter3', '200');
-    });
-
-    expect(result.current.filterQueries).toEqual([
-      {
-        type: 'sql',
-        condition: "status_code = '200'",
-      },
-    ]);
-  });
-
-  it('should ignore filter values for non-existent filters', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('nonexistent', 'value');
-    });
-
-    expect(result.current.filterQueries).toEqual([
-      {
-        type: 'sql',
-        condition: "environment = 'production'",
-      },
-    ]);
-  });
-
-  it('should update SQL filters when filter values change', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'staging');
-    });
-
-    expect(result.current.filterQueries).toEqual([
-      {
-        type: 'sql',
-        condition: "environment = 'staging'",
-      },
-    ]);
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-    });
-
-    expect(result.current.filterQueries).toEqual([
-      {
-        type: 'sql',
-        condition: "environment = 'production'",
-      },
-    ]);
-  });
-
-  it('should maintain filter values when filters array changes', () => {
-    const newFilters: DashboardFilter[] = [
-      ...mockFilters,
-      {
-        id: 'filter4',
-        type: 'QUERY_EXPRESSION',
-        name: 'Region',
-        expression: 'region',
-        source: 'logs',
-      },
-    ];
-
-    const { result, rerender } = renderHook(
-      ({ filters }) => useDashboardFilters(filters),
-      {
-        initialProps: { filters: mockFilters },
-      },
+    // Re-render to pick up the new mockState
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
     );
 
+    expect(result2.current.filterValues.environment.included).toEqual(
+      new Set(['production']),
+    );
+  });
+
+  it('should set multiple values for a single filter (multi-select)', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', ['production', 'staging']);
     });
 
-    expect(result.current.filterValues).toEqual({
-      filter1: 'production',
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(result2.current.filterValues.environment.included).toEqual(
+      new Set(['production', 'staging']),
+    );
+  });
+
+  it('should generate IN clause for multi-select values', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production', 'staging']);
     });
 
-    rerender({ filters: newFilters });
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
 
-    expect(result.current.filterValues).toEqual({
-      filter1: 'production',
+    expect(result2.current.filterQueries).toHaveLength(1);
+    const query = result2.current.filterQueries[0];
+    const condition = 'condition' in query ? query.condition : '';
+    expect(condition).toEqual(
+      "toString(environment) IN ('production', 'staging')",
+    );
+  });
+
+  it('should clear filter when set to empty array', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production']);
     });
+    act(() => {
+      result.current.setFilterValue('environment', []);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(result2.current.filterValues.environment).toBeUndefined();
+    expect(result2.current.filterQueries).toEqual([]);
+  });
+
+  it('should support multi-select on multiple expressions simultaneously', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production', 'staging']);
+    });
+    act(() => {
+      result.current.setFilterValue('service.name', ['api', 'web']);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(result2.current.filterValues.environment.included).toEqual(
+      new Set(['production', 'staging']),
+    );
+    expect(result2.current.filterValues['service.name'].included).toEqual(
+      new Set(['api', 'web']),
+    );
+    expect(result2.current.filterQueries).toHaveLength(2);
+  });
+
+  it('should replace previous multi-select values when updated', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production', 'staging']);
+    });
+    act(() => {
+      result.current.setFilterValue('environment', ['development']);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(result2.current.filterValues.environment.included).toEqual(
+      new Set(['development']),
+    );
+  });
+
+  it('should ignore filter values for non-existent filter expressions', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production']);
+    });
+    act(() => {
+      result.current.setFilterValue('nonexistent', ['value']);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(Object.keys(result2.current.filterValues)).toEqual(['environment']);
+  });
+
+  it('should clear one filter without affecting others', () => {
+    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+    act(() => {
+      result.current.setFilterValue('environment', ['production', 'staging']);
+    });
+    act(() => {
+      result.current.setFilterValue('service.name', ['api']);
+    });
+    act(() => {
+      result.current.setFilterValue('environment', []);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(mockFilters),
+    );
+
+    expect(result2.current.filterValues.environment).toBeUndefined();
+    expect(result2.current.filterValues['service.name'].included).toEqual(
+      new Set(['api']),
+    );
   });
 });
