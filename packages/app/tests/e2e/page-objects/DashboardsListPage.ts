@@ -8,6 +8,7 @@ export class DashboardsListPage {
   readonly page: Page;
   readonly pageContainer: Locator;
   readonly searchInput: Locator;
+  readonly newDashboardButton: Locator;
   readonly createDashboardButton: Locator;
   readonly importDashboardButton: Locator;
   readonly tempDashboardButton: Locator;
@@ -22,6 +23,7 @@ export class DashboardsListPage {
     this.page = page;
     this.pageContainer = page.getByTestId('dashboards-list-page');
     this.searchInput = page.getByPlaceholder('Search by name');
+    this.newDashboardButton = page.getByTestId('new-dashboard-button');
     this.createDashboardButton = page.getByTestId('create-dashboard-button');
     this.importDashboardButton = page.getByTestId('import-dashboard-button');
     this.tempDashboardButton = page.getByTestId('temp-dashboard-button');
@@ -49,11 +51,13 @@ export class DashboardsListPage {
   }
 
   async createNewDashboard() {
+    await this.newDashboardButton.click();
     await this.createDashboardButton.click();
     await this.page.waitForURL('**/dashboards/**');
   }
 
   async goToTempDashboard() {
+    await this.newDashboardButton.click();
     await this.tempDashboardButton.click();
   }
 

@@ -17,11 +17,7 @@ test.describe('Temporary Dashboard', { tag: ['@dashboard'] }, () => {
     async ({ page }) => {
       await dashboardsListPage.goto();
 
-      await test.step('Verify the Temporary button is visible', async () => {
-        await expect(dashboardsListPage.tempDashboardButton).toBeVisible();
-      });
-
-      await test.step('Click the Temporary button and navigate', async () => {
+      await test.step('Click New Dashboard and select Temporary Dashboard', async () => {
         await dashboardsListPage.goToTempDashboard();
       });
 

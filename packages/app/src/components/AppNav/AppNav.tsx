@@ -662,7 +662,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             />
             {!isCollapsed && (
               <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
-                Dashboards have moved! Try the{' '}
+                Saved dashboards have moved! Try the{' '}
                 <Anchor component={Link} href="/dashboards/list">
                   Dashboards page
                 </Anchor>

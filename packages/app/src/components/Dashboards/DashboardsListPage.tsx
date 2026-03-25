@@ -3,14 +3,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
-import { Tooltip } from 'recharts';
 import {
   ActionIcon,
   Button,
-  ButtonGroup,
   Container,
   Flex,
   Group,
+  Menu,
   Select,
   SimpleGrid,
   Stack,
@@ -21,6 +20,8 @@ import {
 import { useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconChevronDown,
+  IconDeviceFloppy,
   IconLayoutGrid,
   IconList,
   IconPlus,
@@ -206,35 +207,51 @@ export default function DashboardsListPage() {
                 <IconList size={16} />
               </ActionIcon>
             </ActionIcon.Group>
-            <ButtonGroup>
-              <Button
-                component={Link}
-                href="/dashboards/import"
-                variant="secondary"
-                leftSection={<IconUpload size={16} />}
-                data-testid="import-dashboard-button"
-              >
-                Import
-              </Button>
-              <Button
-                component={Link}
-                leftSection={<IconPlus size={16} />}
-                href="/dashboards"
-                variant="secondary"
-                data-testid="temp-dashboard-button"
-              >
-                Temporary
-              </Button>
-              <Button
-                variant="primary"
-                leftSection={<IconPlus size={16} />}
-                onClick={handleCreate}
-                loading={createDashboard.isPending}
-                data-testid="create-dashboard-button"
-              >
-                New Dashboard
-              </Button>
-            </ButtonGroup>
+            <Button
+              component={Link}
+              href="/dashboards/import"
+              variant="secondary"
+              leftSection={<IconUpload size={16} />}
+              data-testid="import-dashboard-button"
+            >
+              Import
+            </Button>
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Button
+                  variant="primary"
+                  leftSection={<IconPlus size={16} />}
+                  rightSection={<IconChevronDown size={14} />}
+                  loading={createDashboard.isPending}
+                  data-testid="new-dashboard-button"
+                >
+                  New Dashboard
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconDeviceFloppy size={14} />}
+                  onClick={handleCreate}
+                  data-testid="create-dashboard-button"
+                >
+                  Saved Dashboard
+                  <Text size="xs" c="dimmed">
+                    Persisted for your team
+                  </Text>
+                </Menu.Item>
+                <Menu.Item
+                  component={Link}
+                  href="/dashboards"
+                  leftSection={<IconPlus size={14} />}
+                  data-testid="temp-dashboard-button"
+                >
+                  Temporary Dashboard
+                  <Text size="xs" c="dimmed">
+                    Lives in your browser only
+                  </Text>
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </Group>
         </Flex>
 
