@@ -173,6 +173,8 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+const QUERY_KEY_PREFIX = 'search';
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string }[] | undefined,
@@ -275,6 +277,31 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         <IconLayoutSidebarLeftExpand size={14} />
       </ActionIcon>
     </Tooltip>
+  );
+}
+
+function SearchResultsCountGroup({
+  isFilterSidebarCollapsed,
+  onExpandFilters,
+  histogramTimeChartConfig,
+  enableParallelQueries,
+}: {
+  isFilterSidebarCollapsed: boolean;
+  onExpandFilters: () => void;
+  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  enableParallelQueries?: boolean;
+}) {
+  return (
+    <Group gap={4} align="center">
+      {isFilterSidebarCollapsed && (
+        <ExpandFiltersButton onExpand={onExpandFilters} />
+      )}
+      <SearchTotalCountChart
+        config={histogramTimeChartConfig}
+        queryKeyPrefix={QUERY_KEY_PREFIX}
+        enableParallelQueries={enableParallelQueries}
+      />
+    </Group>
   );
 }
 
@@ -1187,8 +1214,6 @@ function DBSearchPage() {
 
   const [newSourceModalOpened, setNewSourceModalOpened] = useState(false);
 
-  const QUERY_KEY_PREFIX = 'search';
-
   const isAnyQueryFetching =
     useIsFetching({
       queryKey: [QUERY_KEY_PREFIX],
@@ -1805,19 +1830,13 @@ function DBSearchPage() {
                         align="center"
                         style={{ width: '100%' }}
                       >
-                        <Group gap={4} align="center">
-                          {isFilterSidebarCollapsed && (
-                            <ExpandFiltersButton
-                              onExpand={() =>
-                                setIsFilterSidebarCollapsed(false)
-                              }
-                            />
-                          )}
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                          />
-                        </Group>
+                        <SearchResultsCountGroup
+                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                          onExpandFilters={() =>
+                            setIsFilterSidebarCollapsed(false)
+                          }
+                          histogramTimeChartConfig={histogramTimeChartConfig}
+                        />
                         <SearchNumRows
                           config={{
                             ...chartConfig,
@@ -1887,20 +1906,14 @@ function DBSearchPage() {
                           align="center"
                           style={{ width: '100%' }}
                         >
-                          <Group gap={4} align="center">
-                            {isFilterSidebarCollapsed && (
-                              <ExpandFiltersButton
-                                onExpand={() =>
-                                  setIsFilterSidebarCollapsed(false)
-                                }
-                              />
-                            )}
-                            <SearchTotalCountChart
-                              config={histogramTimeChartConfig}
-                              queryKeyPrefix={QUERY_KEY_PREFIX}
-                              enableParallelQueries
-                            />
-                          </Group>
+                          <SearchResultsCountGroup
+                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                            onExpandFilters={() =>
+                              setIsFilterSidebarCollapsed(false)
+                            }
+                            histogramTimeChartConfig={histogramTimeChartConfig}
+                            enableParallelQueries
+                          />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
