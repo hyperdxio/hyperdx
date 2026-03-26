@@ -1062,30 +1062,25 @@ export function DBTraceWaterfallChartContainer({
         ) : flattenedNodes.length === 0 ? (
           <div className="my-3">No matching spans or logs found</div>
         ) : (
-          <>
-            <TimelineChart
-              style={{
-                overflowY: 'auto',
-                maxHeight: `${heightPx}px`,
-              }}
-              rowHeight={22}
-              labelWidth={300}
-              onEventClick={(event: {
-                id: string;
-                type?: string;
-                aliasWith?: WithClause[];
-              }) => {
-                onClick?.({
-                  id: event.id,
-                  type: event.type ?? '',
-                  aliasWith: event.aliasWith ?? [],
-                });
-              }}
-              cursors={[]}
-              rows={timelineRows}
-              initialScrollRowIndex={initialScrollRowIndex}
-            />
-          </>
+          <TimelineChart
+            maxHeight={heightPx}
+            rowHeight={22}
+            labelWidth={300}
+            onEventClick={(event: {
+              id: string;
+              type?: string;
+              aliasWith?: WithClause[];
+            }) => {
+              onClick?.({
+                id: event.id,
+                type: event.type ?? '',
+                aliasWith: event.aliasWith ?? [],
+              });
+            }}
+            cursors={[]}
+            rows={timelineRows}
+            initialScrollRowIndex={initialScrollRowIndex}
+          />
         )}
       </div>
       <Divider
