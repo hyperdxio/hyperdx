@@ -1,7 +1,12 @@
+// Dashboard interaction tests — simple, isolated CRUD operations.
+// Covers: duplicate tile, add section, edit tile name, open/close filters modal,
+// delete dashboard from listing.
+//
+// For complex end-to-end workflows (persistence, alerts, saved queries, filters,
+// Raw SQL tiles), see dashboard.spec.ts.
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { DashboardsListPage } from '../page-objects/DashboardsListPage';
 import { expect, test } from '../utils/base-test';
-import { DEFAULT_LOGS_SOURCE_NAME } from '../utils/constants';
 
 test.describe('Dashboard Interactions', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;

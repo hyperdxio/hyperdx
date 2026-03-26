@@ -38,6 +38,13 @@ export class ChartExplorerPage {
     return this.getChartContainers().first();
   }
 
+  /**
+   * Get a chart type tab by name (e.g., 'line', 'table', 'number')
+   */
+  getChartTypeTab(type: string) {
+    return this.page.getByTestId(`chart-type-${type}`);
+  }
+
   // Getters for assertions
 
   get form() {

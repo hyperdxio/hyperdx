@@ -18,9 +18,7 @@ test.describe('Side Panel Navigation', { tag: '@search' }, () => {
 
     await test.step('Verify overview tab content is visible', async () => {
       await searchPage.sidePanel.clickTab('overview');
-      await expect(
-        searchPage.page.getByTestId('side-panel-tab-overview'),
-      ).toBeVisible();
+      await expect(searchPage.sidePanel.getTabPanel('overview')).toBeVisible();
     });
   });
 
@@ -32,9 +30,7 @@ test.describe('Side Panel Navigation', { tag: '@search' }, () => {
 
     await test.step('Click parsed tab and verify structured data', async () => {
       await searchPage.sidePanel.clickTab('parsed');
-      await expect(
-        searchPage.page.getByTestId('side-panel-tab-parsed'),
-      ).toBeVisible();
+      await expect(searchPage.sidePanel.getTabPanel('parsed')).toBeVisible();
     });
   });
 

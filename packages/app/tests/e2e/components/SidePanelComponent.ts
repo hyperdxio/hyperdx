@@ -72,6 +72,14 @@ export class SidePanelComponent {
   }
 
   /**
+   * Get a tab panel (content area) by name
+   * Usage: await expect(sidePanel.getTabPanel('overview')).toBeVisible()
+   */
+  getTabPanel(tabName: string) {
+    return this.page.getByTestId(`side-panel-tab-${tabName}`);
+  }
+
+  /**
    * Get content area of the side panel
    */
   get content() {

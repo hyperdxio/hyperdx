@@ -1,42 +1,69 @@
 import { SessionsPage } from '../page-objects/SessionsPage';
 import { expect, test } from '../utils/base-test';
+import { DEFAULT_SESSIONS_SOURCE_NAME } from '../utils/constants';
 
 test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
   let sessionsPage: SessionsPage;
 
   test.beforeEach(async ({ page }) => {
     sessionsPage = new SessionsPage(page);
+    // Navigate to search first to handle onboarding modal
+    await page.goto('/search');
+    await sessionsPage.goto();
   });
 
-  test('should load sessions page', async () => {
-    await test.step('Navigate to sessions page', async () => {
-      await sessionsPage.goto();
+  test('should display multiple session cards', async () => {
+    await test.step('Select data source', async () => {
+      await sessionsPage.selectDataSource(DEFAULT_SESSIONS_SOURCE_NAME);
     });
 
-    await test.step('Verify sessions page components are present', async () => {
-      // Use web-first assertions instead of synchronous expect
+    await test.step('Verify multiple session cards are visible', async () => {
+      const sessionCards = sessionsPage.getSessionCards();
+      await expect(sessionCards.first()).toBeVisible({ timeout: 10000 });
+      expect(await sessionCards.count()).toBeGreaterThan(1);
+    });
+  });
+
+  test('should open a session and display session details', async () => {
+    await test.step('Select data source and wait for cards', async () => {
+      await sessionsPage.selectDataSource(DEFAULT_SESSIONS_SOURCE_NAME);
+      await expect(sessionsPage.getFirstSessionCard()).toBeVisible({
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Open first session and verify side panel opens', async () => {
+      await sessionsPage.openFirstSession();
+      const drawer = sessionsPage.page.locator('role=dialog');
+      await expect(drawer).toBeVisible({ timeout: 10000 });
+    });
+  });
+
+  test('should display session search form with data source selector', async () => {
+    await test.step('Verify form components are visible', async () => {
       await expect(sessionsPage.form).toBeVisible();
       await expect(sessionsPage.dataSource).toBeVisible();
     });
+
+    await test.step('Verify data source selector is interactable', async () => {
+      await sessionsPage.dataSource.click();
+      const option = sessionsPage.page.locator(
+        `text=${DEFAULT_SESSIONS_SOURCE_NAME}`,
+      );
+      await expect(option).toBeVisible();
+    });
   });
 
-  test('should interact with session cards', async () => {
-    await test.step('Navigate to sessions page and wait for load', async () => {
-      // First go to search page to trigger onboarding modal handling
-      await sessionsPage.page.goto('/search');
-
-      // Then navigate to sessions page
-      await sessionsPage.goto();
-
-      // Select the default data source
-      await sessionsPage.selectDataSource();
+  test('should filter sessions by selecting data source', async () => {
+    await test.step('Verify initial state', async () => {
+      await expect(sessionsPage.form).toBeVisible();
+      await expect(sessionsPage.dataSource).toBeVisible();
     });
 
-    await test.step('Find and interact with session cards', async () => {
-      const firstSession = sessionsPage.getFirstSessionCard();
-      await expect(sessionsPage.dataSource).toBeVisible();
-      await expect(firstSession).toBeVisible();
-      await sessionsPage.openFirstSession();
+    await test.step('Select sessions data source and verify cards appear', async () => {
+      await sessionsPage.selectDataSource(DEFAULT_SESSIONS_SOURCE_NAME);
+      const firstCard = sessionsPage.getFirstSessionCard();
+      await expect(firstCard).toBeVisible({ timeout: 10000 });
     });
   });
 });
