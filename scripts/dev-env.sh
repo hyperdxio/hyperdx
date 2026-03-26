@@ -105,8 +105,26 @@ cat > "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" <<EOF
 }
 EOF
 
-# Clean up slot file and logs on exit
+# --- Start dev portal in background if port 9900 is free ---
+HDX_PORTAL_PORT="${HDX_PORTAL_PORT:-9900}"
+HDX_PORTAL_PID=""
+_hdx_start_portal() {
+  # Check if port is already in use (another portal or other process)
+  if ! (echo >/dev/tcp/127.0.0.1/"$HDX_PORTAL_PORT") 2>/dev/null; then
+    local portal_script="${BASH_SOURCE[0]%/*}/dev-portal/server.js"
+    if [ -f "$portal_script" ]; then
+      HDX_PORTAL_PORT="$HDX_PORTAL_PORT" node "$portal_script" >/dev/null 2>&1 &
+      HDX_PORTAL_PID=$!
+    fi
+  fi
+}
+_hdx_start_portal
+
+# Clean up slot file, logs, and portal on exit
 _hdx_cleanup_slot() {
+  if [ -n "$HDX_PORTAL_PID" ] && kill -0 "$HDX_PORTAL_PID" 2>/dev/null; then
+    kill "$HDX_PORTAL_PID" 2>/dev/null || true
+  fi
   rm -f "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" 2>/dev/null || true
   rm -rf "${HDX_DEV_LOGS_DIR}" 2>/dev/null || true
   rmdir "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}" 2>/dev/null || true
@@ -128,5 +146,5 @@ echo "║  OTel HTTP         http://localhost:${HDX_DEV_OTEL_HTTP_PORT}$(printf 
 echo "║  OTel gRPC         localhost:${HDX_DEV_OTEL_GRPC_PORT}$(printf '%*s' $((29 - ${#HDX_DEV_OTEL_GRPC_PORT})) '')║"
 echo "║  OpAMP             localhost:${HYPERDX_OPAMP_PORT}$(printf '%*s' $((29 - ${#HYPERDX_OPAMP_PORT})) '')║"
 echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  Portal:  http://localhost:9900  (run: make dev-portal)     ║"
+echo "║  Portal:  http://localhost:${HDX_PORTAL_PORT}$(printf '%*s' $((28 - ${#HDX_PORTAL_PORT})) '')║"
 echo "╚══════════════════════════════════════════════════════════════╝"
