@@ -10,7 +10,7 @@ import DBRowTableIconButton from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 
-export interface DBRowTableFieldWithPopoverProps {
+interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;
   cellValue: unknown;
   wrapLinesEnabled: boolean;
@@ -19,7 +19,7 @@ export interface DBRowTableFieldWithPopoverProps {
   isChart?: boolean;
 }
 
-export const DBRowTableFieldWithPopover = ({
+const DBRowTableFieldWithPopover = ({
   children,
   cellValue,
   tableContainerRef,
