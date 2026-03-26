@@ -241,12 +241,35 @@ async function buildDashboardData() {
         uptime: data.startedAt || '',
       });
     }
+
+    // Add alerts and common-utils as local services (detected by log file existence)
+    const logsDir = data.logsDir || path.join(SLOTS_DIR, String(slot), 'logs');
+    const localOnlyServices = [
+      { name: 'alerts', logFile: 'alerts.log' },
+      { name: 'common-utils', logFile: 'common-utils.log' },
+    ];
+    for (const { name, logFile } of localOnlyServices) {
+      if (!slotMap[slot].services.some(s => s.name === name)) {
+        const logExists = fs.existsSync(path.join(logsDir, logFile));
+        slotMap[slot].services.push({
+          name,
+          type: 'local',
+          status: logExists ? 'up' : 'down',
+          port: null,
+          url: null,
+          ports: [],
+          uptime: data.startedAt || '',
+        });
+      }
+    }
   }
 
   // Sort slots numerically, sort services within each slot
   const serviceOrder = [
     'app',
     'api',
+    'alerts',
+    'common-utils',
     'clickhouse',
     'mongodb',
     'otel-collector',
