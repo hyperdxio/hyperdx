@@ -52,7 +52,6 @@ test.describe('Search Table Features', { tag: '@search' }, () => {
       // Use fill + click instead of performSearch which waits for rows
       await searchPage.input.fill('xyznonexistent12345uniqueterm');
       await searchPage.submitButton.click();
-      await searchPage.page.waitForLoadState('networkidle');
     });
 
     await test.step('Verify no results message appears', async () => {

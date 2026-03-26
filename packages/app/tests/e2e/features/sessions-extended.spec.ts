@@ -32,11 +32,11 @@ test.describe('Sessions Extended', { tag: ['@sessions'] }, () => {
       });
     });
 
-    await test.step('Open first session and verify details view', async () => {
+    await test.step('Open first session and verify side panel opens', async () => {
       await sessionsPage.openFirstSession();
-      // After clicking a session card, content should change
-      // to show session details (either a side panel or navigated view)
-      await sessionsPage.page.waitForLoadState('networkidle');
+      // Clicking a session card opens a Drawer side panel
+      const drawer = sessionsPage.page.locator('role=dialog');
+      await expect(drawer).toBeVisible({ timeout: 10000 });
     });
   });
 

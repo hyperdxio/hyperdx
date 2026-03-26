@@ -54,7 +54,6 @@ test.describe('Dashboard Interactions', { tag: ['@dashboard'] }, () => {
 
     await test.step('Add a section to the dashboard', async () => {
       await dashboardPage.addSection();
-      await dashboardPage.page.waitForLoadState('networkidle');
 
       // Verify that a section heading appears
       const sectionHeader = dashboardPage.page.locator(

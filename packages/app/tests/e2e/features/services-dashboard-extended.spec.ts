@@ -36,10 +36,9 @@ test.describe('Services Dashboard Extended', { tag: ['@services'] }, () => {
 
     const initialUrl = page.url();
     await orderLink.click();
-    await page.waitForLoadState('networkidle');
 
     // URL should change after clicking the endpoint link
-    await expect(page).not.toHaveURL(initialUrl);
+    await expect(page).not.toHaveURL(initialUrl, { timeout: 10000 });
   });
 
   test('should filter endpoints with Lucene query and verify results', async () => {

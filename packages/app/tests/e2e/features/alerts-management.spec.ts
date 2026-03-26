@@ -54,7 +54,7 @@ test.describe('Alert Management', { tag: ['@alerts', '@full-stack'] }, () => {
   }
 
   test(
-    'should view alert details and navigate to alert link',
+    'should display alert card with state badge and navigate to source',
     { tag: '@full-stack' },
     async () => {
       const { savedSearchName } = await createSavedSearchAlert();
@@ -67,61 +67,20 @@ test.describe('Alert Management', { tag: ['@alerts', '@full-stack'] }, () => {
         ).toBeVisible({ timeout: 10000 });
       });
 
-      await test.step('Click the alert link and verify navigation to saved search', async () => {
-        const alertLink = alertsPage.getAlertLinkByName(savedSearchName);
-        await alertLink.click();
-        await expect(searchPage.page).toHaveURL(/\/search\//, {
-          timeout: 10000,
-        });
-      });
-    },
-  );
-
-  test(
-    'should display alert state badge on alert card',
-    { tag: '@full-stack' },
-    async () => {
-      const { savedSearchName } = await createSavedSearchAlert();
-
-      await test.step('Navigate to alerts page', async () => {
-        await alertsPage.goto();
-        await expect(alertsPage.pageContainer).toBeVisible();
-      });
-
-      await test.step('Verify the alert card is visible with a state badge', async () => {
+      await test.step('Verify the alert card has a state badge', async () => {
         const alertCard = alertsPage.getAlertCardByName(savedSearchName);
-        await expect(alertCard).toBeVisible({ timeout: 10000 });
+        await expect(alertCard).toBeVisible();
 
         const stateBadge = alertsPage.getAlertStateBadge(alertCard);
         await expect(stateBadge).toBeVisible();
       });
-    },
-  );
 
-  test(
-    'should navigate between alerts page and alert source',
-    { tag: '@full-stack' },
-    async () => {
-      const { savedSearchName } = await createSavedSearchAlert();
-
-      await test.step('Navigate to alerts page and verify alert exists', async () => {
-        await alertsPage.goto();
-        await expect(alertsPage.pageContainer).toBeVisible();
-        await expect(
-          alertsPage.getAlertLinkByName(savedSearchName),
-        ).toBeVisible({ timeout: 10000 });
-      });
-
-      await test.step('Click alert name link to navigate to saved search', async () => {
+      await test.step('Click the alert link and verify navigation to saved search', async () => {
         const alertLink = alertsPage.getAlertLinkByName(savedSearchName);
         await alertLink.click();
-        await expect(searchPage.page).toHaveURL(/\/search\//, {
+        await expect(searchPage.page).toHaveURL(/\/search\/[a-f0-9]+/, {
           timeout: 10000,
         });
-      });
-
-      await test.step('Verify saved search page loaded', async () => {
-        await expect(searchPage.page).toHaveURL(/\/search\/[a-f0-9]+/);
       });
     },
   );
@@ -190,27 +149,6 @@ test.describe('Alert Management', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify multiple alert cards are rendered', async () => {
         const alertCards = alertsPage.getAlertCards();
         expect(await alertCards.count()).toBeGreaterThanOrEqual(2);
-      });
-    },
-  );
-
-  test(
-    'should show alert history section on alerts page',
-    { tag: '@full-stack' },
-    async () => {
-      const { savedSearchName } = await createSavedSearchAlert();
-
-      await test.step('Navigate to alerts page', async () => {
-        await alertsPage.goto();
-        await expect(alertsPage.pageContainer).toBeVisible();
-      });
-
-      await test.step('Verify alert card is visible with content', async () => {
-        const alertCard = alertsPage.getAlertCardByName(savedSearchName);
-        await expect(alertCard).toBeVisible({ timeout: 10000 });
-
-        const stateBadge = alertsPage.getAlertStateBadge(alertCard);
-        await expect(stateBadge).toBeVisible();
       });
     },
   );
