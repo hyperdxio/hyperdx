@@ -1,57 +1,54 @@
+import { UserPreferencesPage } from '../page-objects/UserPreferencesPage';
 import { expect, test } from '../utils/base-test';
 
 test.describe('User Preferences', { tag: ['@core'] }, () => {
+  let userPreferencesPage: UserPreferencesPage;
+
   test.beforeEach(async ({ page }) => {
+    userPreferencesPage = new UserPreferencesPage(page);
     await page.goto('/search');
     await page.waitForLoadState('load');
   });
 
-  test('should open user menu and navigate to preferences', async ({
-    page,
-  }) => {
+  test('should open user menu and navigate to preferences', async () => {
     await test.step('Open the user menu', async () => {
-      await page.getByTestId('user-menu-trigger').click();
+      await userPreferencesPage.openUserMenu();
     });
 
     await test.step('Verify menu options are visible', async () => {
-      await expect(
-        page.getByTestId('user-preferences-menu-item'),
-      ).toBeVisible();
-      await expect(page.getByTestId('team-settings-menu-item')).toBeVisible();
+      await expect(userPreferencesPage.preferencesOption).toBeVisible();
+      await expect(userPreferencesPage.teamSettingsOption).toBeVisible();
     });
 
     await test.step('Click preferences menu item', async () => {
-      await page.getByTestId('user-preferences-menu-item').click();
+      await userPreferencesPage.preferencesOption.click();
     });
   });
 
-  test('should display preference options in the modal', async ({ page }) => {
-    const preferencesDialog = page.getByRole('dialog', {
-      name: /Preferences/,
-    });
-
+  test('should display preference options in the modal', async () => {
     await test.step('Open the preferences modal', async () => {
-      await page.getByTestId('user-menu-trigger').click();
-      await page.getByTestId('user-preferences-menu-item').click();
+      await userPreferencesPage.openPreferences();
     });
 
     await test.step('Verify preferences modal is visible', async () => {
-      await expect(preferencesDialog).toBeVisible();
+      await expect(userPreferencesPage.dialog).toBeVisible();
     });
 
     await test.step('Verify time format setting is visible', async () => {
       await expect(
-        preferencesDialog.filter({ hasText: 'Time format' }),
+        userPreferencesPage.dialog.filter({ hasText: 'Time format' }),
       ).toBeVisible();
     });
 
     await test.step('Verify UTC toggle is visible', async () => {
-      await expect(preferencesDialog.getByText('Use UTC time')).toBeVisible();
+      await expect(
+        userPreferencesPage.dialog.getByText('Use UTC time'),
+      ).toBeVisible();
     });
 
     await test.step('Verify color mode setting is visible', async () => {
       await expect(
-        preferencesDialog.filter({ hasText: 'Color Mode' }),
+        userPreferencesPage.dialog.filter({ hasText: 'Color Mode' }),
       ).toBeVisible();
     });
   });
@@ -59,12 +56,8 @@ test.describe('User Preferences', { tag: ['@core'] }, () => {
   test('should open user menu and navigate to team settings', async ({
     page,
   }) => {
-    await test.step('Open the user menu', async () => {
-      await page.getByTestId('user-menu-trigger').click();
-    });
-
-    await test.step('Click team settings menu item', async () => {
-      await page.getByTestId('team-settings-menu-item').click();
+    await test.step('Open the user menu and click team settings', async () => {
+      await userPreferencesPage.openTeamSettings();
     });
 
     await test.step('Verify navigation to team page', async () => {
@@ -72,23 +65,21 @@ test.describe('User Preferences', { tag: ['@core'] }, () => {
     });
   });
 
-  test('should close user menu by pressing Escape', async ({ page }) => {
+  test('should close user menu by pressing Escape', async () => {
     await test.step('Open the user menu', async () => {
-      await page.getByTestId('user-menu-trigger').click();
+      await userPreferencesPage.openUserMenu();
     });
 
     await test.step('Verify menu is open', async () => {
-      await expect(
-        page.getByTestId('user-preferences-menu-item'),
-      ).toBeVisible();
+      await expect(userPreferencesPage.preferencesOption).toBeVisible();
     });
 
     await test.step('Press Escape to close the menu', async () => {
-      await page.keyboard.press('Escape');
+      await userPreferencesPage.page.keyboard.press('Escape');
     });
 
     await test.step('Verify menu is closed', async () => {
-      await expect(page.getByTestId('user-preferences-menu-item')).toBeHidden();
+      await expect(userPreferencesPage.preferencesOption).toBeHidden();
     });
   });
 });

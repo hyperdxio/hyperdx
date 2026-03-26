@@ -74,18 +74,6 @@ test.describe('Side Panel Navigation', { tag: '@search' }, () => {
     });
   });
 
-  test('should close side panel with Escape key from context', async () => {
-    await test.step('Open side panel', async () => {
-      await searchPage.table.clickFirstRow();
-      await expect(searchPage.sidePanel.container).toBeVisible();
-    });
-
-    await test.step('Press Escape and verify panel is hidden', async () => {
-      await searchPage.page.keyboard.press('Escape');
-      await expect(searchPage.sidePanel.container).toBeHidden();
-    });
-  });
-
   test('should close side panel with Escape key', async () => {
     await test.step('Open side panel', async () => {
       await searchPage.table.clickFirstRow();
