@@ -50,7 +50,7 @@ type TimelineChartProps = {
   onEventClick?: (e: Row) => void;
   labelWidth: number;
   className?: string;
-  style?: any;
+  maxHeight: number;
   initialScrollRowIndex?: number;
 };
 
@@ -61,7 +61,7 @@ export const TimelineChart = memo(function ({
   onEventClick,
   labelWidth: initialLabelWidth,
   className,
-  style,
+  maxHeight,
   initialScrollRowIndex,
 }: TimelineChartProps) {
   const [scale, setScale] = useState(1);
@@ -190,7 +190,14 @@ export const TimelineChart = memo(function ({
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
   return (
-    <>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight,
+      }}
+      className={className}
+    >
       <Flex justify="end" mb="sm">
         <Text>
           <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
@@ -200,9 +207,10 @@ export const TimelineChart = memo(function ({
         style={{
           position: 'relative',
           overscrollBehaviorX: 'contain',
-          ...style,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
         }}
-        className={className}
         ref={timelineRef}
         onPointerDown={onPointerDown}
       >
@@ -302,7 +310,7 @@ export const TimelineChart = memo(function ({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 });
 
