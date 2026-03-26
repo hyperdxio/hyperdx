@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HyperDX Dev Portal</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --card-bg: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --text-muted: #7d8590;
+        --accent: #58a6ff;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --orange: #db6d28;
+        --log-bg: #0d1117;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
+          Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+      }
+
+      .layout {
+        display: flex;
+        height: 100vh;
+      }
+
+      .main-panel {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
+        min-width: 0;
+      }
+
+      .log-panel {
+        width: 0;
+        background: var(--card-bg);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        transition: width 0.2s ease;
+        overflow: hidden;
+      }
+
+      .log-panel.open {
+        width: 50%;
+        min-width: 400px;
+      }
+
+      .log-panel-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      .log-panel-header h3 {
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .log-panel-header .slot-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+
+      .log-panel-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .log-panel-actions button {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .log-panel-actions button:hover {
+        color: var(--text);
+        border-color: var(--text-muted);
+      }
+
+      .log-panel-actions .close-btn {
+        font-size: 18px;
+        line-height: 1;
+        padding: 2px 6px;
+        border: none;
+      }
+
+      .log-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-all;
+        background: var(--log-bg);
+        color: #c9d1d9;
+      }
+
+      .log-content .log-line {
+        padding: 0 4px;
+        border-radius: 2px;
+      }
+
+      .log-content .log-line:hover {
+        background: rgba(88, 166, 255, 0.05);
+      }
+
+      .log-streaming-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--green);
+      }
+
+      .log-streaming-badge .stream-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse 1.5s infinite;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .header .logo {
+        width: 28px;
+        height: 28px;
+        background: var(--accent);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--bg);
+      }
+
+      .header .status {
+        font-size: 13px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .header .status .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 80px 20px;
+        color: var(--text-muted);
+      }
+
+      .empty-state h2 {
+        font-size: 20px;
+        margin-bottom: 12px;
+        color: var(--text);
+      }
+
+      .empty-state code {
+        background: var(--card-bg);
+        padding: 4px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        font-size: 14px;
+      }
+
+      .stacks {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+      }
+
+      .stack-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .stack-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .stack-header .slot-badge {
+        background: var(--accent);
+        color: var(--bg);
+        font-size: 12px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-right: 10px;
+      }
+
+      .stack-header .branch {
+        font-size: 15px;
+        font-weight: 600;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .stack-header .worktree {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
+
+      .stack-header .stack-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .stack-header .open-btn {
+        background: var(--accent);
+        color: var(--bg);
+        border: none;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s;
+      }
+
+      .stack-header .open-btn:hover {
+        opacity: 0.85;
+      }
+
+      .services-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .services-table th {
+        text-align: left;
+        padding: 8px 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .services-table td {
+        padding: 10px 20px;
+        font-size: 14px;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+      }
+
+      .services-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .services-table tr.clickable {
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+
+      .services-table tr.clickable:hover {
+        background: rgba(88, 166, 255, 0.05);
+      }
+
+      .services-table tr.active {
+        background: rgba(88, 166, 255, 0.1);
+      }
+
+      .service-name {
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .service-name .type-badge {
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .type-badge.docker {
+        background: rgba(88, 166, 255, 0.15);
+        color: var(--accent);
+      }
+
+      .type-badge.local {
+        background: rgba(210, 153, 34, 0.15);
+        color: var(--yellow);
+      }
+
+      .log-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .log-btn:hover {
+        color: var(--text);
+        border-color: var(--text-muted);
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .status-dot.up {
+        background: var(--green);
+      }
+      .status-dot.down {
+        background: var(--red);
+      }
+
+      .port-link {
+        color: var(--accent);
+        text-decoration: none;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 13px;
+      }
+
+      .port-link:hover {
+        text-decoration: underline;
+      }
+
+      .port-plain {
+        color: var(--text-muted);
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 13px;
+      }
+
+      .error-banner {
+        background: rgba(248, 81, 73, 0.1);
+        border: 1px solid var(--red);
+        color: var(--red);
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <div class="main-panel">
+        <div class="header">
+          <h1>
+            <div class="logo">H</div>
+            HyperDX Dev Portal
+          </h1>
+          <div class="status">
+            <div class="dot"></div>
+            <span id="refresh-status">Auto-refreshing every 3s</span>
+          </div>
+        </div>
+
+        <div id="error-banner" class="error-banner"></div>
+        <div id="content"></div>
+      </div>
+
+      <div id="log-panel" class="log-panel">
+        <div class="log-panel-header">
+          <h3>
+            <span id="log-title">Logs</span>
+            <span id="log-slot-label" class="slot-label"></span>
+          </h3>
+          <div class="log-panel-actions">
+            <span
+              id="log-stream-badge"
+              class="log-streaming-badge"
+              style="display: none"
+            >
+              <span class="stream-dot"></span> Live
+            </span>
+            <button
+              onclick="toggleAutoScroll()"
+              id="autoscroll-btn"
+              title="Toggle auto-scroll"
+            >
+              Auto-scroll
+            </button>
+            <button onclick="clearLogPanel()" title="Clear log view">
+              Clear
+            </button>
+            <button onclick="closeLogPanel()" class="close-btn" title="Close">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div id="log-content" class="log-content"></div>
+      </div>
+    </div>
+
+    <script>
+      const contentEl = document.getElementById('content');
+      const errorEl = document.getElementById('error-banner');
+      const logPanel = document.getElementById('log-panel');
+      const logContent = document.getElementById('log-content');
+      const logTitle = document.getElementById('log-title');
+      const logSlotLabel = document.getElementById('log-slot-label');
+      const logStreamBadge = document.getElementById('log-stream-badge');
+
+      let currentLogSlot = null;
+      let currentLogService = null;
+      let currentEventSource = null;
+      let autoScroll = true;
+
+      function serviceDisplayName(name) {
+        const map = {
+          app: 'App (Next.js)',
+          api: 'API Server',
+          clickhouse: 'ClickHouse',
+          mongodb: 'MongoDB',
+          'otel-collector': 'OTel Collector',
+          'otel-collector-json': 'OTel JSON',
+          alerts: 'Alerts Task',
+          'common-utils': 'Common Utils',
+        };
+        return map[name] || name;
+      }
+
+      // --- Log panel ---
+
+      function openLogPanel(slot, service) {
+        // Close existing stream
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+
+        currentLogSlot = slot;
+        currentLogService = service;
+        logTitle.textContent = serviceDisplayName(service);
+        logSlotLabel.textContent = `slot ${slot}`;
+        logContent.textContent = 'Loading logs...\n';
+        logPanel.classList.add('open');
+        logStreamBadge.style.display = 'none';
+
+        // Highlight active row
+        document
+          .querySelectorAll('.services-table tr.active')
+          .forEach(el => el.classList.remove('active'));
+        const activeRow = document.querySelector(
+          `tr[data-slot="${slot}"][data-service="${service}"]`,
+        );
+        if (activeRow) activeRow.classList.add('active');
+
+        // Start SSE stream
+        const eventSource = new EventSource(
+          `/api/logs/${slot}/${encodeURIComponent(service)}?stream=1`,
+        );
+        currentEventSource = eventSource;
+
+        let firstMessage = true;
+        eventSource.onmessage = event => {
+          if (firstMessage) {
+            logContent.textContent = '';
+            logStreamBadge.style.display = 'inline-flex';
+            firstMessage = false;
+          }
+          logContent.textContent += event.data + '\n';
+          if (autoScroll) {
+            logContent.scrollTop = logContent.scrollHeight;
+          }
+        };
+
+        eventSource.addEventListener('close', () => {
+          logStreamBadge.style.display = 'none';
+          logContent.textContent += '\n--- stream ended ---\n';
+        });
+
+        eventSource.onerror = () => {
+          logStreamBadge.style.display = 'none';
+          if (firstMessage) {
+            logContent.textContent = 'No logs available for this service.\n';
+          }
+          eventSource.close();
+        };
+      }
+
+      function closeLogPanel() {
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+        logPanel.classList.remove('open');
+        currentLogSlot = null;
+        currentLogService = null;
+        document
+          .querySelectorAll('.services-table tr.active')
+          .forEach(el => el.classList.remove('active'));
+      }
+
+      function clearLogPanel() {
+        logContent.textContent = '';
+      }
+
+      function toggleAutoScroll() {
+        autoScroll = !autoScroll;
+        const btn = document.getElementById('autoscroll-btn');
+        btn.style.color = autoScroll ? 'var(--green)' : 'var(--text-muted)';
+        btn.style.borderColor = autoScroll ? 'var(--green)' : 'var(--border)';
+        if (autoScroll) {
+          logContent.scrollTop = logContent.scrollHeight;
+        }
+      }
+
+      // --- Dashboard rendering ---
+
+      function renderStacks(stacks) {
+        if (stacks.length === 0) {
+          return `
+          <div class="empty-state">
+            <h2>No dev stacks running</h2>
+            <p>Start a dev environment from a worktree:</p>
+            <br>
+            <code>make dev</code>
+          </div>
+        `;
+        }
+
+        return `<div class="stacks">${stacks.map(renderStack).join('')}</div>`;
+      }
+
+      function renderStack(stack) {
+        const appService = stack.services.find(
+          s => s.name === 'app' && s.status === 'up',
+        );
+        const appUrl = appService ? appService.url : null;
+
+        return `
+        <div class="stack-card">
+          <div class="stack-header">
+            <div>
+              <div style="display:flex;align-items:center">
+                <span class="slot-badge">${stack.slot}</span>
+                <span class="branch">${escapeHtml(stack.branch)}</span>
+              </div>
+              <div class="worktree">${escapeHtml(stack.worktree)}</div>
+            </div>
+            <div class="stack-actions">
+              ${appUrl ? `<a href="${appUrl}" target="_blank" class="open-btn">Open App</a>` : ''}
+            </div>
+          </div>
+          <table class="services-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Port</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${stack.services.map(svc => renderService(stack.slot, svc)).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      }
+
+      function renderService(slot, svc) {
+        const isHttp = svc.url && svc.status === 'up';
+        const portCell = isHttp
+          ? `<a href="${svc.url}" target="_blank" class="port-link" onclick="event.stopPropagation()">:${svc.port}</a>`
+          : svc.port
+            ? `<span class="port-plain">:${svc.port}</span>`
+            : `<span class="port-plain">-</span>`;
+
+        const isActive =
+          currentLogSlot == slot && currentLogService === svc.name;
+
+        return `
+        <tr class="clickable ${isActive ? 'active' : ''}"
+            data-slot="${slot}" data-service="${svc.name}"
+            onclick="openLogPanel(${slot}, '${svc.name}')">
+          <td>
+            <div class="service-name">
+              ${serviceDisplayName(svc.name)}
+              <span class="type-badge ${svc.type}">${svc.type}</span>
+            </div>
+          </td>
+          <td>
+            <div class="status-indicator">
+              <div class="status-dot ${svc.status}"></div>
+              ${svc.status === 'up' ? 'Running' : 'Stopped'}
+            </div>
+          </td>
+          <td>${portCell}</td>
+          <td><button class="log-btn" onclick="event.stopPropagation(); openLogPanel(${slot}, '${svc.name}')">Logs</button></td>
+        </tr>
+      `;
+      }
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      async function refresh() {
+        try {
+          const res = await fetch('/api/stacks');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const stacks = await res.json();
+          contentEl.innerHTML = renderStacks(stacks);
+          errorEl.style.display = 'none';
+        } catch (err) {
+          errorEl.textContent = `Failed to fetch stacks: ${err.message}`;
+          errorEl.style.display = 'block';
+        }
+      }
+
+      // Initial load + periodic refresh
+      refresh();
+      setInterval(refresh, 3000);
+
+      // Set initial auto-scroll button state
+      toggleAutoScroll();
+      toggleAutoScroll();
+    </script>
+  </body>
+</html>

@@ -6,12 +6,22 @@
 # Install dependencies and setup hooks
 yarn setup
 
-# Start full development stack (Docker + local services)
+# Start full development stack with worktree isolation (recommended)
+make dev
+
+# Or start without isolation (uses default ports, may conflict with other worktrees)
 yarn dev
+
+# Start the dev portal to see all running worktree stacks
+make dev-portal
+# → opens http://localhost:9900
 ```
 
 ## Key Development Scripts
 
+- `make dev`: Start full dev stack with worktree-isolated ports (recommended)
+- `make dev-down`: Stop the dev stack for the current worktree
+- `make dev-portal`: Start the dev portal dashboard (http://localhost:9900)
 - `yarn app:dev`: Start API, frontend, alerts task, and common-utils in watch
   mode
 - `yarn lint`: Run linting across all packages
@@ -26,6 +36,65 @@ yarn dev
 - `.env.development`: Development environment variables
 - Docker Compose manages ClickHouse, MongoDB, OTel Collector
 - Hot reload enabled for all services in development
+
+## Worktree Isolation (Multi-Agent / Multi-Developer)
+
+When multiple git worktrees need to run the dev stack simultaneously (e.g.
+multiple agents or developers working in parallel), use `make dev` instead of
+`yarn dev`. This automatically assigns unique ports per worktree.
+
+### How It Works
+
+1. A deterministic slot (0-99) is computed from the worktree directory name (via
+   `cksum`)
+2. Each service gets a unique port: `base + slot` (see table below)
+3. Docker Compose runs with a unique project name (`hdx-dev-<slot>`)
+4. Volume paths include the slot to prevent data corruption between worktrees
+
+### Dev Port Mapping (base + slot)
+
+Ports are allocated in the 30100-31199 range to avoid conflicts with CI
+integration tests (14320-40098) and E2E tests (8123, 29000, 29998).
+
+| Service           | Base Port | Range         | Env Variable                  |
+| ----------------- | --------- | ------------- | ----------------------------- |
+| API server        | 30100     | 30100 - 30199 | `HYPERDX_API_PORT`            |
+| App (Next.js)     | 30200     | 30200 - 30299 | `HYPERDX_APP_PORT`            |
+| OpAMP             | 30300     | 30300 - 30399 | `HYPERDX_OPAMP_PORT`          |
+| MongoDB           | 30400     | 30400 - 30499 | `HDX_DEV_MONGO_PORT`          |
+| ClickHouse HTTP   | 30500     | 30500 - 30599 | `HDX_DEV_CH_HTTP_PORT`        |
+| ClickHouse Native | 30600     | 30600 - 30699 | `HDX_DEV_CH_NATIVE_PORT`      |
+| OTel health       | 30700     | 30700 - 30799 | `HDX_DEV_OTEL_HEALTH_PORT`    |
+| OTel gRPC         | 30800     | 30800 - 30899 | `HDX_DEV_OTEL_GRPC_PORT`      |
+| OTel HTTP         | 30900     | 30900 - 30999 | `HDX_DEV_OTEL_HTTP_PORT`      |
+| OTel metrics      | 31000     | 31000 - 31099 | `HDX_DEV_OTEL_METRICS_PORT`   |
+| OTel JSON HTTP    | 31100     | 31100 - 31199 | `HDX_DEV_OTEL_JSON_HTTP_PORT` |
+
+### Dev Portal
+
+The dev portal is a centralized web dashboard that discovers all running
+worktree stacks by inspecting Docker container labels and slot files.
+
+```bash
+# Start the portal (runs on fixed port 9900)
+make dev-portal
+
+# Open in browser
+open http://localhost:9900
+```
+
+The portal auto-refreshes every 3 seconds and shows each worktree's:
+
+- Branch name and slot number
+- All services with status (running/stopped) and clickable port links
+- Separate cards for each active worktree
+
+### Overriding the Slot
+
+```bash
+# Use a specific slot instead of the auto-computed one
+HDX_DEV_SLOT=5 make dev
+```
 
 ## Testing Strategy
 

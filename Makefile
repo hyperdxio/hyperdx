@@ -33,17 +33,45 @@ install-tools:
 	yarn setup
 	@echo "All tools installed"
 
+# ---------------------------------------------------------------------------
+# Dev environment with worktree isolation
+# ---------------------------------------------------------------------------
+# Ports are allocated in the 30100-31199 range (base + slot) to avoid
+# conflicts with CI (14320-40098) and E2E (8123, 29000, 29998) ports.
+#
+# Port mapping (base + slot):
+#   API server        : 30100 + slot
+#   App (Next.js)     : 30200 + slot
+#   OpAMP             : 30300 + slot
+#   MongoDB           : 30400 + slot
+#   ClickHouse HTTP   : 30500 + slot
+#   ClickHouse Native : 30600 + slot
+#   OTel health       : 30700 + slot
+#   OTel gRPC         : 30800 + slot
+#   OTel HTTP         : 30900 + slot
+#   OTel metrics      : 31000 + slot
+#   OTel JSON HTTP    : 31100 + slot
+# ---------------------------------------------------------------------------
+
+.PHONY: dev
+dev:
+	bash -c '. ./scripts/dev-env.sh && yarn dev'
+
 .PHONY: dev-build
 dev-build:
-	docker compose -f docker-compose.dev.yml build
+	bash -c '. ./scripts/dev-env.sh && docker compose -p "$$HDX_DEV_PROJECT" -f docker-compose.dev.yml build'
 
 .PHONY: dev-up
 dev-up:
-	npm run dev
+	bash -c '. ./scripts/dev-env.sh && yarn dev'
 
 .PHONY: dev-down
 dev-down:
-	docker compose -f docker-compose.dev.yml down
+	bash -c '. ./scripts/dev-env.sh && docker compose -p "$$HDX_DEV_PROJECT" -f docker-compose.dev.yml down'
+
+.PHONY: dev-portal
+dev-portal:
+	node scripts/dev-portal/server.js
 
 .PHONY: dev-lint
 dev-lint:
