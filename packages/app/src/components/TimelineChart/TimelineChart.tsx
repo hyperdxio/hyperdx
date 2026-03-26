@@ -131,15 +131,16 @@ export const TimelineChart = memo(function ({
     if (metaKey || ctrlKey) {
       e.preventDefault();
       setScale(v => Math.max(v + -deltaY * 0.01, 1));
+      return;
     }
 
-    if (deltaX !== 0) {
+    const isHorizontalScroll = Math.abs(deltaX) > Math.abs(deltaY);
+    if (isHorizontalScroll) {
       e.preventDefault();
+      setOffset(v =>
+        Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
+      );
     }
-
-    setOffset(v =>
-      Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
-    );
   });
 
   useEffect(() => {
