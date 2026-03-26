@@ -60,8 +60,6 @@ export type SearchConfig = {
   orderBy?: string | null;
 };
 
-export type ServerDashboard = z.infer<typeof DashboardSchema>;
-
 export type Session = {
   errorCount: string;
   maxTimestamp: string;

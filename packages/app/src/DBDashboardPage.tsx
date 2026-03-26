@@ -9,6 +9,7 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
@@ -38,11 +39,12 @@ import {
   SearchConditionLanguage,
   SourceKind,
   SQLInterval,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Flex,
   Group,
@@ -1567,17 +1569,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {isLocalDashboard && (
-        <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-          <Flex justify="space-between" align="center">
-            <Text size="sm">
-              This is a temporary dashboard and can not be saved.
+
+      {isLocalDashboard ? (
+        <>
+          <Breadcrumbs mb="xs" mt="xs" fz="sm">
+            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+              Dashboards
+            </Anchor>
+            <Text fz="sm" c="dimmed">
+              Temporary Dashboard
             </Text>
-            <Button variant="primary" fw={400} onClick={onCreateDashboard}>
-              Create New Saved Dashboard
-            </Button>
-          </Flex>
-        </Paper>
+          </Breadcrumbs>
+          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
+            <Flex justify="space-between" align="center">
+              <Text size="sm">
+                This is a temporary dashboard and can not be saved.
+              </Text>
+              <Button
+                variant="primary"
+                fw={400}
+                onClick={onCreateDashboard}
+                data-testid="create-dashboard-button"
+              >
+                Create New Saved Dashboard
+              </Button>
+            </Flex>
+          </Paper>
+        </>
+      ) : (
+        <Breadcrumbs mb="xs" mt="xs" fz="sm">
+          <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+            Dashboards
+          </Anchor>
+          <Text fz="sm" c="dimmed">
+            {dashboard?.name ?? 'Untitled'}
+          </Text>
+        </Breadcrumbs>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
         <DashboardName

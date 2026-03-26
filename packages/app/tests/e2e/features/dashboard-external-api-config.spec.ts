@@ -7,6 +7,7 @@
  * legacy "series" format.
  */
 import { DashboardPage, TileConfig } from '../page-objects/DashboardPage';
+import { DashboardsListPage } from '../page-objects/DashboardsListPage';
 import { getApiUrl, getSources, getUserAccessKey } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 
@@ -144,6 +145,7 @@ test.describe(
       };
 
       let dashboardPage: DashboardPage;
+      let dashboardListPage: DashboardsListPage;
       let tiles: any;
 
       await test.step('Create dashboard via external API', async () => {
@@ -160,10 +162,11 @@ test.describe(
 
       await test.step('Navigate to dashboard and verify tiles', async () => {
         dashboardPage = new DashboardPage(page);
-        await dashboardPage.goto(); // Navigate to dashboards list
+        dashboardListPage = new DashboardsListPage(page);
+        await dashboardListPage.goto(); // Navigate to dashboards list
 
         // Find and click on the created dashboard
-        await dashboardPage.goToDashboardByName(dashboardPayload.name);
+        await dashboardListPage.clickDashboard(dashboardPayload.name);
 
         await expect(
           page.getByRole('heading', { name: dashboardPayload.name }),
@@ -305,11 +308,11 @@ test.describe(
       expect(updateResponse.ok()).toBeTruthy();
 
       // Navigate to dashboard through UI (via AppNav)
-      const dashboardPage = new DashboardPage(page);
-      await dashboardPage.goto(); // Navigate to dashboards list
+      const dashboardListPage = new DashboardsListPage(page);
+      await dashboardListPage.goto(); // Navigate to dashboards list
 
       // Find and click on the updated dashboard
-      await dashboardPage.goToDashboardByName(updatedName);
+      await dashboardListPage.clickDashboard(updatedName);
 
       await expect(
         page.getByRole('heading', { name: updatedName }),
@@ -373,8 +376,8 @@ test.describe(
       expect(getResponse.status()).toBe(404);
 
       // Verify dashboard is not present in UI
-      const dashboardPage = new DashboardPage(page);
-      await dashboardPage.goto(); // Navigate to dashboards list
+      const dashboardListPage = new DashboardsListPage(page);
+      await dashboardListPage.goto(); // Navigate to dashboards list
 
       // First verify the kept dashboard is visible (ensures data has loaded)
       const keptDashboardLink = page.locator(`text="${dashboardToKeep.name}"`);
