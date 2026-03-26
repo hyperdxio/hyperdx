@@ -35,11 +35,16 @@ const DEFAULT_TEST_USER = {
   password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
 } as const;
 
-const API_URL = process.env.E2E_API_URL || 'http://localhost:29000';
-const APP_URL = process.env.E2E_APP_URL || 'http://localhost:28081';
+// Port configuration from HDX_E2E_* env vars (set by scripts/test-e2e.sh)
+const API_PORT = process.env.HDX_E2E_API_PORT || '19000';
+const APP_PORT = process.env.HDX_E2E_APP_PORT || '48081';
+const MONGO_PORT = process.env.HDX_E2E_MONGO_PORT || '39999';
+
+const API_URL = process.env.E2E_API_URL || `http://localhost:${API_PORT}`;
+const APP_URL = process.env.E2E_APP_URL || `http://localhost:${APP_PORT}`;
 const AUTH_FILE = path.join(__dirname, '.auth/user.json');
 const MONGO_URI =
-  process.env.MONGO_URI || 'mongodb://localhost:29998/hyperdx-e2e';
+  process.env.MONGO_URI || `mongodb://localhost:${MONGO_PORT}/hyperdx-e2e`;
 
 /**
  * Clears the MongoDB database to ensure a clean slate for tests
@@ -49,9 +54,11 @@ function clearDatabase() {
 
   try {
     const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
+    const e2eSlot = process.env.HDX_E2E_SLOT || '0';
+    const e2eProject = `e2e-${e2eSlot}`;
     if (fs.existsSync(dockerComposeFile)) {
       execSync(
-        `docker compose -p e2e -f "${dockerComposeFile}" exec -T db mongosh --port 29998 --quiet --eval "use hyperdx-e2e; db.dropDatabase()" 2>&1`,
+        `docker compose -p ${e2eProject} -f "${dockerComposeFile}" exec -T db mongosh --quiet --eval "use hyperdx-e2e; db.dropDatabase()" 2>&1`,
         { encoding: 'utf-8', stdio: 'pipe' },
       );
       console.log('  ✓ Database cleared successfully (via Docker)');
