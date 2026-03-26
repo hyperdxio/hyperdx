@@ -1101,18 +1101,21 @@ export default function EditTimeChartForm({
                 <Tabs.Tab
                   value={DisplayType.Pie}
                   leftSection={<IconChartPie size={16} />}
+                  data-testid="chart-type-pie"
                 >
                   Pie
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
                   leftSection={<IconList size={16} />}
+                  data-testid="chart-type-search"
                 >
                   Search
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}
+                  data-testid="chart-type-markdown"
                 >
                   Markdown
                 </Tabs.Tab>
