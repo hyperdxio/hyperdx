@@ -43,8 +43,10 @@ directory:
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
 
-**Tools handle formatting and linting automatically** via pre-commit hooks.
-Focus on implementation; don't manually format code.
+**After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
+and lint issues across all packages. Pre-commit hooks handle this when
+committing, but if you finish edits without committing, run `yarn lint:fix`
+before stopping.
 
 ## Key Principles
 

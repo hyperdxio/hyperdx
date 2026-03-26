@@ -49,6 +49,7 @@
     "knip": "knip",
     "knip:ci": "knip --reporter json",
     "lint": "npx nx run-many -t ci:lint",
+    "lint:fix": "npx nx run-many -t lint:fix",
     "version": "make version",
     "release": "npx changeset tag && npx changeset publish"
   },

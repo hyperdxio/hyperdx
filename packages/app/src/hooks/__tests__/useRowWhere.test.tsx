@@ -335,7 +335,7 @@ describe('processRowToWhereClause', () => {
         'event_created',
         {
           name: 'event_created',
-          type: 'Nullable(DateTime64(3, \'UTC\'))',
+          type: "Nullable(DateTime64(3, 'UTC'))",
           valueExpr: 'event_created',
           jsType: JSDataType.Date,
         },

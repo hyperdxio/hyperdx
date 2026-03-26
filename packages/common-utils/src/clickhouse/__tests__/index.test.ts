@@ -1,6 +1,6 @@
 import {
-  extractColumnReferencesFromKey,
   convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
   JSDataType,
 } from '..';
 
@@ -62,9 +62,9 @@ describe('convertCHDataTypeToJSType', () => {
   });
 
   it('should handle LowCardinality(Nullable(String)) as String', () => {
-    expect(
-      convertCHDataTypeToJSType('LowCardinality(Nullable(String))'),
-    ).toBe(JSDataType.String);
+    expect(convertCHDataTypeToJSType('LowCardinality(Nullable(String))')).toBe(
+      JSDataType.String,
+    );
   });
 
   it('should handle DateTime64 as Date', () => {
