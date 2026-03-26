@@ -116,6 +116,11 @@ cd packages/app && yarn playwright install chromium
 ./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
 ```
 
+**After modifying shared E2E test utilities** (page objects in
+`tests/e2e/page-objects/`, components in `tests/e2e/components/`, or app source
+files that add/change `data-testid` attributes), run the **full** E2E suite —
+not just new tests — to catch regressions in existing specs.
+
 ## Important Context
 
 - **Authentication**: Passport.js with team-based access control
