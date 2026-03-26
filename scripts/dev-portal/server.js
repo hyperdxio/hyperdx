@@ -332,7 +332,7 @@ function getDockerLogs(slot, service, tail) {
   }
 }
 
-function getLogs(slot, service, tail = 200) {
+function getLogs(slot, service, tail = 100) {
   // Try local log file first, then Docker
   const local = getLocalLogs(slot, service, tail);
   if (local !== null) return local;
@@ -377,7 +377,7 @@ function streamLogs(slot, service, req, res) {
         '--no-color',
         '--follow',
         '--tail',
-        '100',
+        '50',
         composeService,
       ],
       { cwd: process.cwd() },
@@ -404,8 +404,8 @@ function streamLogs(slot, service, req, res) {
     try {
       if (fs.existsSync(logPath)) {
         const stat = fs.statSync(logPath);
-        // Read last 32KB for initial payload
-        const readStart = Math.max(0, stat.size - 32768);
+        // Read last 8KB for initial payload
+        const readStart = Math.max(0, stat.size - 8192);
         const fd = fs.openSync(logPath, 'r');
         const buf = Buffer.alloc(stat.size - readStart);
         fs.readSync(fd, buf, 0, buf.length, readStart);

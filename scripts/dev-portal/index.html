@@ -488,6 +488,112 @@
       let currentEventSource = null;
       let autoScroll = true;
 
+      const MAX_LOG_LINES = 5000;
+      let logBuffer = [];
+      let rafPending = false;
+
+      // --- ANSI escape code to HTML converter ---
+      const ANSI_COLORS = {
+        30: '#666', 31: '#f85149', 32: '#3fb950', 33: '#d29922',
+        34: '#58a6ff', 35: '#bc8cff', 36: '#76e3ea', 37: '#e6edf3',
+        39: null, // default
+        90: '#7d8590', 91: '#ff7b72', 92: '#56d364', 93: '#e3b341',
+        94: '#79c0ff', 95: '#d2a8ff', 96: '#a5d6ff', 97: '#ffffff',
+      };
+
+      function ansiToHtml(text) {
+        let html = '';
+        let i = 0;
+        let openSpans = 0;
+
+        while (i < text.length) {
+          // Match ESC[ ... m sequences
+          if (text[i] === '\x1b' && text[i + 1] === '[') {
+            const end = text.indexOf('m', i + 2);
+            if (end === -1) { i++; continue; }
+            const codes = text.substring(i + 2, end).split(';').map(Number);
+            i = end + 1;
+
+            for (const code of codes) {
+              if (code === 0 || code === 22 || code === 39) {
+                // Reset / unbold / default color — close open spans
+                while (openSpans > 0) { html += '</span>'; openSpans--; }
+              } else if (code === 1) {
+                html += '<span style="font-weight:bold">';
+                openSpans++;
+              } else if (code === 2) {
+                html += '<span style="opacity:0.6">';
+                openSpans++;
+              } else if (code === 3) {
+                html += '<span style="font-style:italic">';
+                openSpans++;
+              } else if (ANSI_COLORS[code] !== undefined) {
+                const color = ANSI_COLORS[code];
+                if (color) {
+                  html += `<span style="color:${color}">`;
+                  openSpans++;
+                }
+              } else if (code === 38) {
+                // 256-color or RGB — parse 38;2;r;g;b
+                const rgbIdx = codes.indexOf(38);
+                if (codes[rgbIdx + 1] === 2 && codes.length >= rgbIdx + 5) {
+                  const r = codes[rgbIdx + 2], g = codes[rgbIdx + 3], b = codes[rgbIdx + 4];
+                  html += `<span style="color:rgb(${r},${g},${b})">`;
+                  openSpans++;
+                }
+                break; // consumed remaining codes
+              }
+            }
+          } else {
+            // Escape HTML special chars
+            const ch = text[i];
+            if (ch === '<') html += '&lt;';
+            else if (ch === '>') html += '&gt;';
+            else if (ch === '&') html += '&amp;';
+            else html += ch;
+            i++;
+          }
+        }
+        while (openSpans > 0) { html += '</span>'; openSpans--; }
+        return html;
+      }
+
+      function flushLogBuffer() {
+        rafPending = false;
+        if (logBuffer.length === 0) return;
+
+        const fragment = document.createDocumentFragment();
+        for (const text of logBuffer) {
+          const div = document.createElement('div');
+          div.className = 'log-line';
+          div.innerHTML = ansiToHtml(text);
+          fragment.appendChild(div);
+        }
+        logBuffer.length = 0;
+
+        logContent.appendChild(fragment);
+
+        // Prune oldest lines if over cap
+        const overflow = logContent.children.length - MAX_LOG_LINES;
+        if (overflow > 0) {
+          for (let i = 0; i < overflow; i++) {
+            logContent.removeChild(logContent.firstChild);
+          }
+        }
+
+        if (autoScroll) {
+          logContent.scrollTop = logContent.scrollHeight;
+        }
+      }
+
+      function appendLogLine(text) {
+        logBuffer.push(text);
+        if (!rafPending) {
+          rafPending = true;
+          requestAnimationFrame(flushLogBuffer);
+        }
+      }
+
       function serviceDisplayName(name) {
         const map = {
           app: 'App (Next.js)',
@@ -515,7 +621,8 @@
         currentLogService = service;
         logTitle.textContent = serviceDisplayName(service);
         logSlotLabel.textContent = `slot ${slot}`;
-        logContent.textContent = 'Loading logs...\n';
+        logContent.innerHTML = '';
+        appendLogLine('Loading logs...');
         logPanel.classList.add('open');
         logStreamBadge.style.display = 'none';
 
@@ -537,25 +644,23 @@
         let firstMessage = true;
         eventSource.onmessage = event => {
           if (firstMessage) {
-            logContent.textContent = '';
+            logContent.innerHTML = '';
             logStreamBadge.style.display = 'inline-flex';
             firstMessage = false;
           }
-          logContent.textContent += event.data + '\n';
-          if (autoScroll) {
-            logContent.scrollTop = logContent.scrollHeight;
-          }
+          appendLogLine(event.data);
         };
 
         eventSource.addEventListener('close', () => {
           logStreamBadge.style.display = 'none';
-          logContent.textContent += '\n--- stream ended ---\n';
+          appendLogLine('--- stream ended ---');
         });
 
         eventSource.onerror = () => {
           logStreamBadge.style.display = 'none';
           if (firstMessage) {
-            logContent.textContent = 'No logs available for this service.\n';
+            logContent.innerHTML = '';
+            appendLogLine('No logs available for this service.');
           }
           eventSource.close();
         };
@@ -566,6 +671,7 @@
           currentEventSource.close();
           currentEventSource = null;
         }
+        logBuffer.length = 0;
         logPanel.classList.remove('open');
         currentLogSlot = null;
         currentLogService = null;
@@ -575,7 +681,8 @@
       }
 
       function clearLogPanel() {
-        logContent.textContent = '';
+        logContent.innerHTML = '';
+        logBuffer.length = 0;
       }
 
       function toggleAutoScroll() {
