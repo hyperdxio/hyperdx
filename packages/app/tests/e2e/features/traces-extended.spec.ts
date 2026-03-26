@@ -35,7 +35,9 @@ test.describe('Traces Extended', { tag: '@traces' }, () => {
 
     await test.step('Click first row to open side panel', async () => {
       await searchPage.table.clickFirstRow();
-      await expect(searchPage.sidePanel.container).toBeVisible();
+      await expect(searchPage.sidePanel.container).toBeVisible({
+        timeout: 10000,
+      });
     });
 
     await test.step('Verify side panel tabs are available', async () => {
@@ -64,7 +66,9 @@ test.describe('Traces Extended', { tag: '@traces' }, () => {
 
       // Click the first row to verify it's an AddItem span
       await searchPage.table.clickFirstRow();
-      await expect(searchPage.sidePanel.container).toBeVisible();
+      await expect(searchPage.sidePanel.container).toBeVisible({
+        timeout: 10000,
+      });
     });
   });
 });

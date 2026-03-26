@@ -40,7 +40,7 @@ export class SidePanelComponent {
    * Usage in spec: await expect(sidePanel.getTab('overview')).toBeVisible()
    */
   getTab(tabName: string) {
-    return this.page.getByTestId(`tab-${tabName}`);
+    return this.tabsContainer.getByTestId(`tab-${tabName}`);
   }
 
   /**
