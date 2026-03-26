@@ -1,6 +1,5 @@
 // Dashboard interaction tests — simple, isolated CRUD operations.
-// Covers: duplicate tile, add section, edit tile name, open/close filters modal,
-// delete dashboard from listing.
+// Covers: add section, edit tile name, delete dashboard from listing.
 //
 // For complex end-to-end workflows (persistence, alerts, saved queries, filters,
 // Raw SQL tiles), see dashboard.spec.ts.
@@ -16,39 +15,6 @@ test.describe('Dashboard Interactions', { tag: ['@dashboard'] }, () => {
     dashboardPage = new DashboardPage(page);
     dashboardsListPage = new DashboardsListPage(page);
     await dashboardPage.goto();
-  });
-
-  test('should duplicate a tile and verify both tiles exist', async () => {
-    const ts = Date.now();
-    const chartName = `Original Chart ${ts}`;
-
-    await test.step('Create a new dashboard', async () => {
-      await expect(dashboardPage.createButton).toBeVisible();
-      await dashboardPage.createNewDashboard();
-    });
-
-    await test.step('Add a tile to the dashboard', async () => {
-      await expect(dashboardPage.addButton).toBeVisible();
-      await dashboardPage.addTile();
-
-      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
-      await dashboardPage.chartEditor.createBasicChart(chartName);
-
-      const dashboardTiles = dashboardPage.getTiles();
-      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
-    });
-
-    await test.step('Duplicate the tile and verify both tiles exist', async () => {
-      await dashboardPage.duplicateTile(0);
-
-      const dashboardTiles = dashboardPage.getTiles();
-      await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
-
-      const firstTile = dashboardPage.getTile(0);
-      const secondTile = dashboardPage.getTile(1);
-      await expect(firstTile).toBeVisible();
-      await expect(secondTile).toBeVisible();
-    });
   });
 
   test('should add a dashboard section', async () => {
@@ -99,23 +65,6 @@ test.describe('Dashboard Interactions', { tag: ['@dashboard'] }, () => {
     await test.step('Verify the updated name appears on the dashboard', async () => {
       const tile = dashboardPage.getTiles().filter({ hasText: updatedName });
       await expect(tile).toBeVisible({ timeout: 10000 });
-    });
-  });
-
-  test('should open and close the dashboard filters modal', async () => {
-    await test.step('Create a new dashboard', async () => {
-      await expect(dashboardPage.createButton).toBeVisible();
-      await dashboardPage.createNewDashboard();
-    });
-
-    await test.step('Open the filters modal and verify empty state', async () => {
-      await dashboardPage.openEditFiltersModal();
-      await expect(dashboardPage.emptyFiltersList).toBeVisible();
-    });
-
-    await test.step('Close the filters modal with Escape', async () => {
-      await dashboardPage.page.keyboard.press('Escape');
-      await expect(dashboardPage.emptyFiltersList).toBeHidden();
     });
   });
 

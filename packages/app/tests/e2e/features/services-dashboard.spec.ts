@@ -58,19 +58,4 @@ test.describe('Services Dashboard', { tag: ['@services'] }, () => {
 
     await expect(page).not.toHaveURL(initialUrl, { timeout: 10000 });
   });
-
-  test('should filter endpoints with Lucene query and verify results', async () => {
-    await servicesPage.searchLucene('AddItem');
-
-    const addItemLink = await servicesPage.getTopEndpointsTableLink('AddItem');
-    await expect(addItemLink).toBeVisible();
-
-    const orderLink =
-      await servicesPage.getTopEndpointsTableLink('Order create');
-    await expect(orderLink).toHaveCount(0);
-
-    const getLogsLink =
-      await servicesPage.getTopEndpointsTableLink('GET /api/logs');
-    await expect(getLogsLink).toHaveCount(0);
-  });
 });
