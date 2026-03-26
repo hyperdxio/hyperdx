@@ -9,11 +9,12 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
@@ -38,11 +39,12 @@ import {
   SearchConditionLanguage,
   SourceKind,
   SQLInterval,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Flex,
   Group,
@@ -60,6 +62,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
   IconBell,
+  IconChartBar,
   IconCopy,
   IconDeviceFloppy,
   IconDotsVertical,
@@ -68,6 +71,7 @@ import {
   IconLayoutList,
   IconPencil,
   IconPlayerPlay,
+  IconPlus,
   IconRefresh,
   IconTags,
   IconTrash,
@@ -1099,38 +1103,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
-  const onAddTile = (containerId?: string) => {
-    // Auto-expand collapsed section so the new tile is visible
-    if (containerId && dashboard) {
-      const section = dashboard.containers?.find(s => s.id === containerId);
-      if (section?.collapsed) {
-        setDashboard(
-          produce(dashboard, draft => {
-            const s = draft.containers?.find(c => c.id === containerId);
-            if (s) s.collapsed = false;
-          }),
-        );
-      }
-    }
-    setEditedTile({
-      id: makeId(),
-      x: 0,
-      y: 0,
-      w: 8,
-      h: 10,
-      config: {
-        ...DEFAULT_CHART_CONFIG,
-        source: sources?.[0]?.id ?? '',
-      },
-      ...(containerId ? { containerId } : {}),
-    });
-  };
-
   const sections = useMemo(
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
   const hasSections = sections.length > 0;
+
+  // URL-based collapse state: tracks which sections the current viewer has
+  // explicitly collapsed/expanded. Falls back to the DB-stored default.
+  const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
+    'collapsed',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+  const [urlExpandedIds, setUrlExpandedIds] = useQueryState(
+    'expanded',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+
+  const collapsedIdSet = useMemo(
+    () => new Set(urlCollapsedIds ?? []),
+    [urlCollapsedIds],
+  );
+  const expandedIdSet = useMemo(
+    () => new Set(urlExpandedIds ?? []),
+    [urlExpandedIds],
+  );
+
+  const isSectionCollapsed = useCallback(
+    (section: DashboardContainer): boolean => {
+      // URL state takes precedence over DB default
+      if (collapsedIdSet.has(section.id)) return true;
+      if (expandedIdSet.has(section.id)) return false;
+      return section.collapsed ?? false;
+    },
+    [collapsedIdSet, expandedIdSet],
+  );
+
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
   const handleMoveTileToSection = useCallback(
@@ -1285,10 +1293,56 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
-  // Intentionally persists collapsed state to the server via setDashboard
-  // (same pattern as tile drag/resize). This matches Grafana and Kibana
-  // behavior where collapsed state is saved with the dashboard for all viewers.
+  // Helpers for updating URL-based collapse sets via immer.
+  const addToUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev =>
+        produce(prev ?? [], draft => {
+          if (!draft.includes(containerId)) draft.push(containerId);
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeFromUrlSet = useCallback(
+    (setter: typeof setUrlCollapsedIds, containerId: string) => {
+      setter(prev => {
+        const next = (prev ?? []).filter(id => id !== containerId);
+        return next.length > 0 ? next : null;
+      });
+    },
+    [],
+  );
+
+  // Toggle collapse in URL state only (per-viewer, shareable via link).
+  // Does NOT persist to DB — the DB `collapsed` field is the default.
   const handleToggleSection = useCallback(
+    (containerId: string) => {
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      const currentlyCollapsed = section ? isSectionCollapsed(section) : false;
+
+      if (currentlyCollapsed) {
+        addToUrlSet(setUrlExpandedIds, containerId);
+        removeFromUrlSet(setUrlCollapsedIds, containerId);
+      } else {
+        addToUrlSet(setUrlCollapsedIds, containerId);
+        removeFromUrlSet(setUrlExpandedIds, containerId);
+      }
+    },
+    [
+      dashboard?.containers,
+      isSectionCollapsed,
+      addToUrlSet,
+      removeFromUrlSet,
+      setUrlCollapsedIds,
+      setUrlExpandedIds,
+    ],
+  );
+
+  // Toggle the DB-stored default collapsed state (menu action).
+  // This changes what all viewers see by default when opening the dashboard.
+  const handleToggleDefaultCollapsed = useCallback(
     (containerId: string) => {
       if (!dashboard) return;
       setDashboard(
@@ -1300,6 +1354,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [dashboard, setDashboard],
   );
+
+  const onAddTile = (containerId?: string) => {
+    // Auto-expand collapsed section via URL state so the new tile is visible
+    if (containerId) {
+      const section = dashboard?.containers?.find(s => s.id === containerId);
+      if (section && isSectionCollapsed(section)) {
+        handleToggleSection(containerId);
+      }
+    }
+    setEditedTile({
+      id: makeId(),
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 10,
+      config: {
+        ...DEFAULT_CHART_CONFIG,
+        source: sources?.[0]?.id ?? '',
+      },
+      ...(containerId ? { containerId } : {}),
+    });
+  };
 
   const handleAddSection = useCallback(() => {
     if (!dashboard) return;
@@ -1493,17 +1569,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {isLocalDashboard && (
-        <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-          <Flex justify="space-between" align="center">
-            <Text size="sm">
-              This is a temporary dashboard and can not be saved.
+
+      {isLocalDashboard ? (
+        <>
+          <Breadcrumbs mb="xs" mt="xs" fz="sm">
+            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+              Dashboards
+            </Anchor>
+            <Text fz="sm" c="dimmed">
+              Temporary Dashboard
             </Text>
-            <Button variant="primary" fw={400} onClick={onCreateDashboard}>
-              Create New Saved Dashboard
-            </Button>
-          </Flex>
-        </Paper>
+          </Breadcrumbs>
+          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
+            <Flex justify="space-between" align="center">
+              <Text size="sm">
+                This is a temporary dashboard and can not be saved.
+              </Text>
+              <Button
+                variant="primary"
+                fw={400}
+                onClick={onCreateDashboard}
+                data-testid="create-dashboard-button"
+              >
+                Create New Saved Dashboard
+              </Button>
+            </Flex>
+          </Paper>
+        </>
+      ) : (
+        <Breadcrumbs mb="xs" mt="xs" fz="sm">
+          <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+            Dashboards
+          </Anchor>
+          <Text fz="sm" c="dimmed">
+            {dashboard?.name ?? 'Untitled'}
+          </Text>
+        </Breadcrumbs>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
         <DashboardName
@@ -1588,13 +1689,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   }}
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
-                </Menu.Item>
-                <Menu.Item
-                  data-testid="add-new-section-button"
-                  leftSection={<IconLayoutList size={16} />}
-                  onClick={handleAddSection}
-                >
-                  Add Section
                 </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item
@@ -1757,26 +1851,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       <SectionHeader
                         section={section}
                         tileCount={sectionTiles.length}
+                        collapsed={isSectionCollapsed(section)}
+                        defaultCollapsed={section.collapsed ?? false}
                         onToggle={() => handleToggleSection(section.id)}
+                        onToggleDefaultCollapsed={() =>
+                          handleToggleDefaultCollapsed(section.id)
+                        }
                         onRename={newTitle =>
                           handleRenameSection(section.id, newTitle)
                         }
                         onDelete={() => handleDeleteSection(section.id)}
                         onAddTile={() => onAddTile(section.id)}
                       />
-                      {!section.collapsed && sectionTiles.length > 0 && (
-                        <ReactGridLayout
-                          layout={sectionTiles.map(tileToLayoutItem)}
-                          containerPadding={[0, 0]}
-                          onLayoutChange={sectionLayoutChangeHandlers.get(
-                            section.id,
-                          )}
-                          cols={24}
-                          rowHeight={32}
-                        >
-                          {sectionTiles.map(renderTileComponent)}
-                        </ReactGridLayout>
-                      )}
+                      {!isSectionCollapsed(section) &&
+                        sectionTiles.length > 0 && (
+                          <ReactGridLayout
+                            layout={sectionTiles.map(tileToLayoutItem)}
+                            containerPadding={[0, 0]}
+                            onLayoutChange={sectionLayoutChangeHandlers.get(
+                              section.id,
+                            )}
+                            cols={24}
+                            rowHeight={32}
+                          >
+                            {sectionTiles.map(renderTileComponent)}
+                          </ReactGridLayout>
+                        )}
                     </div>
                   );
                 })}
@@ -1795,16 +1895,36 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </ErrorBoundary>
         ) : null}
       </Box>
-      <Button
-        data-testid="add-new-tile-button"
-        variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-        mt="sm"
-        fw={400}
-        onClick={() => onAddTile()}
-        w="100%"
-      >
-        + Add New Tile
-      </Button>
+      <Menu position="top" width={200}>
+        <Menu.Target>
+          <Button
+            data-testid="add-dropdown-button"
+            variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
+            mt="sm"
+            fw={400}
+            w="100%"
+            leftSection={<IconPlus size={16} />}
+          >
+            Add
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item
+            data-testid="add-new-tile-menu-item"
+            leftSection={<IconChartBar size={16} />}
+            onClick={() => onAddTile()}
+          >
+            New Tile
+          </Menu.Item>
+          <Menu.Item
+            data-testid="add-new-section-menu-item"
+            leftSection={<IconLayoutList size={16} />}
+            onClick={handleAddSection}
+          >
+            New Section
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}

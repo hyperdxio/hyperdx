@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { Card, Drawer, Stack, Text } from '@mantine/core';
+import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
@@ -92,6 +92,20 @@ export default function PatternSidePanel({
     [getRowWhere],
   );
 
+  const INITIAL_LIMIT = 100;
+  const [showAll, setShowAll] = React.useState(false);
+
+  React.useEffect(() => {
+    setShowAll(false);
+  }, [pattern]);
+
+  const displayedSamples = React.useMemo(() => {
+    if (showAll || pattern.samples.length <= INITIAL_LIMIT) {
+      return pattern.samples;
+    }
+    return pattern.samples.slice(0, INITIAL_LIMIT);
+  }, [pattern.samples, showAll]);
+
   const handleCloseRowSidePanel = React.useCallback(() => {
     setSelectedRowWhere(null);
   }, []);
@@ -126,7 +140,7 @@ export default function PatternSidePanel({
                   ~{pattern.count?.toLocaleString()} Sample Events
                 </Card.Section>
                 <RawLogTable
-                  rows={pattern.samples}
+                  rows={displayedSamples}
                   generateRowId={row => ({ where: row.id, aliasWith: [] })}
                   displayedColumns={displayedColumns}
                   columnTypeMap={columnTypeMap}
@@ -136,6 +150,17 @@ export default function PatternSidePanel({
                   showExpandButton={false}
                   isLive={false}
                 />
+                {!showAll && pattern.samples.length > INITIAL_LIMIT && (
+                  <Button
+                    variant="subtle"
+                    fullWidth
+                    size="xs"
+                    mt="xs"
+                    onClick={() => setShowAll(true)}
+                  >
+                    Show all {pattern.samples.length.toLocaleString()} samples
+                  </Button>
+                )}
               </Card>
             </Stack>
           </DrawerBody>

@@ -1,4 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
@@ -16,6 +17,7 @@ import z from 'zod';
 
 import * as config from '@/config';
 import { ISource } from '@/models/source';
+import { parseJSON } from '@/utils/common';
 import { Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 
@@ -60,14 +62,11 @@ export function getAIModel(): LanguageModel {
       return getAnthropicModel();
 
     case 'openai':
-      throw new Error(
-        `Provider '${provider}' is not yet supported. Currently only 'anthropic' is available. ` +
-          'Support for additional providers can be added in the future.',
-      );
+      return getOpenAIModel();
 
     default:
       throw new Error(
-        `Unknown AI provider: ${provider}. Currently supported: anthropic`,
+        `Unknown AI provider: ${provider}. Currently supported: anthropic, openai`,
       );
   }
 }
@@ -366,4 +365,37 @@ function getAnthropicModel(): LanguageModel {
   const modelName = config.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';
 
   return anthropic(modelName);
+}
+
+/**
+ * Configure OpenAI-compatible model using the Responses API (/v1/responses).
+ */
+function getOpenAIModel(): LanguageModel {
+  const apiKey = config.AI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('No API key defined for OpenAI provider. Set AI_API_KEY.');
+  }
+
+  if (!config.AI_MODEL_NAME) {
+    throw new Error(
+      'No model name configured for OpenAI provider. Set AI_MODEL_NAME ' +
+        '(e.g. "gpt-4o", "claude-sonnet-4-5-20250929" for LiteLLM proxies).',
+    );
+  }
+
+  const headers: Record<string, string> = config.AI_REQUEST_HEADERS
+    ? parseJSON<Record<string, string>>(
+        config.AI_REQUEST_HEADERS,
+        'AI_REQUEST_HEADERS',
+      )
+    : {};
+
+  const openai = createOpenAI({
+    apiKey,
+    ...(config.AI_BASE_URL && { baseURL: config.AI_BASE_URL }),
+    ...(Object.keys(headers).length > 0 && { headers }),
+  });
+
+  return openai.responses(config.AI_MODEL_NAME);
 }

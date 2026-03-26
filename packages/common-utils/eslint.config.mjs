@@ -26,9 +26,9 @@ export default [
     plugins: {
       '@typescript-eslint': tseslint.plugin,
       'simple-import-sort': simpleImportSort,
-      'prettier': prettierPlugin,
-      'n': nodePlugin,
-      'security': securityPlugin,
+      prettier: prettierPlugin,
+      n: nodePlugin,
+      security: securityPlugin,
     },
     rules: {
       ...nodePlugin.configs.recommended.rules,
@@ -49,12 +49,7 @@ export default [
       ],
       'n/no-process-exit': 'warn',
       'n/no-missing-import': 'off',
-      'n/no-unpublished-import': [
-        'error',
-        {
-          allowModules: ['supertest'],
-        },
-      ],
+      'n/no-unpublished-import': 'error',
       'n/no-unsupported-features/es-syntax': [
         'error',
         {
@@ -100,4 +95,3 @@ export default [
     },
   },
 ];
-

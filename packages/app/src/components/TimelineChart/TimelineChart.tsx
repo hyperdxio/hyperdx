@@ -48,8 +48,6 @@ type TimelineChartProps = {
   rowHeight: number;
   onEventClick?: (e: Row) => void;
   labelWidth: number;
-  className?: string;
-  style?: any;
   initialScrollRowIndex?: number;
 };
 
@@ -59,8 +57,6 @@ export const TimelineChart = memo(function ({
   rowHeight,
   onEventClick,
   labelWidth: initialLabelWidth,
-  className,
-  style,
   initialScrollRowIndex,
 }: TimelineChartProps) {
   const [scale, setScale] = useState(1);
@@ -130,15 +126,16 @@ export const TimelineChart = memo(function ({
     if (metaKey || ctrlKey) {
       e.preventDefault();
       setScale(v => Math.max(v + -deltaY * 0.01, 1));
+      return;
     }
 
-    if (deltaX !== 0) {
+    const isHorizontalScroll = Math.abs(deltaX) > Math.abs(deltaY);
+    if (isHorizontalScroll) {
       e.preventDefault();
+      setOffset(v =>
+        Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
+      );
     }
-
-    setOffset(v =>
-      Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
-    );
   });
 
   useEffect(() => {
@@ -193,9 +190,10 @@ export const TimelineChart = memo(function ({
         style={{
           position: 'relative',
           overscrollBehaviorX: 'contain',
-          ...style,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
         }}
-        className={className}
         ref={timelineRef}
         onPointerDown={onPointerDown}
       >

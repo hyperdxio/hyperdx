@@ -2,7 +2,6 @@ import {
   FormEvent,
   FormEventHandler,
   memo,
-  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -65,6 +64,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
+  IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
   IconTags,
@@ -172,6 +172,8 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+const QUERY_KEY_PREFIX = 'search';
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string }[] | undefined,
@@ -262,6 +264,46 @@ function SearchSubmitButton({
   );
 }
 
+function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
+  return (
+    <Tooltip label="Show filters" position="bottom">
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        onClick={onExpand}
+        aria-label="Show filters"
+      >
+        <IconLayoutSidebarLeftExpand size={14} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function SearchResultsCountGroup({
+  isFilterSidebarCollapsed,
+  onExpandFilters,
+  histogramTimeChartConfig,
+  enableParallelQueries,
+}: {
+  isFilterSidebarCollapsed: boolean;
+  onExpandFilters: () => void;
+  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  enableParallelQueries?: boolean;
+}) {
+  return (
+    <Group gap={4} align="center">
+      {isFilterSidebarCollapsed && (
+        <ExpandFiltersButton onExpand={onExpandFilters} />
+      )}
+      <SearchTotalCountChart
+        config={histogramTimeChartConfig}
+        queryKeyPrefix={QUERY_KEY_PREFIX}
+        enableParallelQueries={enableParallelQueries}
+      />
+    </Group>
+  );
+}
+
 function SearchNumRows({
   config,
   enabled,
@@ -279,7 +321,7 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" mb={4}>
+    <Text size="xs">
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
@@ -346,6 +388,13 @@ function SaveSearchModalComponent({
   const createSavedSearch = useCreateSavedSearch();
   const updateSavedSearch = useUpdateSavedSearch();
 
+  const { data: sourceObj } = useSource({
+    id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
+  const effectiveSelect =
+    searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
+
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -359,7 +408,7 @@ function SaveSearchModalComponent({
           {
             id: savedSearchId,
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
@@ -378,7 +427,7 @@ function SaveSearchModalComponent({
         createSavedSearch.mutate(
           {
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
@@ -806,6 +855,9 @@ function DBSearchPage() {
     }
   }, [analysisMode, setIsLive]);
 
+  const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
+    useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
+
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
     parseAsBoolean.withDefault(false),
@@ -1167,8 +1219,6 @@ function DBSearchPage() {
   );
 
   const [newSourceModalOpened, setNewSourceModalOpened] = useState(false);
-
-  const QUERY_KEY_PREFIX = 'search';
 
   const isAnyQueryFetching =
     useIsFetching({
@@ -1755,31 +1805,43 @@ function DBSearchPage() {
                 height: '100%',
               }}
             >
-              <ErrorBoundary message="Unable to render search filters">
-                <DBSearchPageFilters
-                  denoiseResults={denoiseResults}
-                  setDenoiseResults={setDenoiseResults}
-                  isLive={isLive}
-                  analysisMode={analysisMode}
-                  setAnalysisMode={setAnalysisMode}
-                  chartConfig={filtersChartConfig}
-                  sourceId={inputSourceObj?.id}
-                  showDelta={
-                    !!(searchedSource?.kind === SourceKind.Trace
-                      ? searchedSource.durationExpression
-                      : undefined)
-                  }
-                  {...searchFilters}
-                />
-              </ErrorBoundary>
+              {!isFilterSidebarCollapsed && (
+                <ErrorBoundary message="Unable to render search filters">
+                  <DBSearchPageFilters
+                    denoiseResults={denoiseResults}
+                    setDenoiseResults={setDenoiseResults}
+                    isLive={isLive}
+                    analysisMode={analysisMode}
+                    setAnalysisMode={setAnalysisMode}
+                    chartConfig={filtersChartConfig}
+                    sourceId={inputSourceObj?.id}
+                    showDelta={
+                      !!(searchedSource?.kind === SourceKind.Trace
+                        ? searchedSource.durationExpression
+                        : undefined)
+                    }
+                    onColumnToggle={toggleColumn}
+                    displayedColumns={displayedColumns}
+                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    {...searchFilters}
+                  />
+                </ErrorBoundary>
+              )}
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
-                      <Group justify="space-between" style={{ width: '100%' }}>
-                        <SearchTotalCountChart
-                          config={histogramTimeChartConfig}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        style={{ width: '100%' }}
+                      >
+                        <SearchResultsCountGroup
+                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                          onExpandFilters={() =>
+                            setIsFilterSidebarCollapsed(false)
+                          }
+                          histogramTimeChartConfig={histogramTimeChartConfig}
                         />
                         <SearchNumRows
                           config={{
@@ -1847,11 +1909,15 @@ function DBSearchPage() {
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
+                          align="center"
                           style={{ width: '100%' }}
                         >
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          <SearchResultsCountGroup
+                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                            onExpandFilters={() =>
+                              setIsFilterSidebarCollapsed(false)
+                            }
+                            histogramTimeChartConfig={histogramTimeChartConfig}
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">

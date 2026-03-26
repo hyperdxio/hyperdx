@@ -19,8 +19,11 @@ import {
   Checkbox,
   Code,
   Group,
+  Kbd,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -376,6 +379,37 @@ export function useEventsAroundFocus({
   };
 }
 
+export function getDescendantIds(node: {
+  id?: string;
+  children?: Array<{ id?: string; children?: any[] }>;
+}): string[] {
+  const ids: string[] = [];
+
+  if (!node.children?.length) {
+    return ids;
+  }
+
+  for (const child of node.children) {
+    if (child.id) {
+      ids.push(child.id);
+    }
+
+    ids.push(...getDescendantIds(child));
+  }
+
+  return ids;
+}
+
+function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
+  useEffect(() => onShown, [onShown]);
+
+  return (
+    <>
+      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
+    </>
+  );
+}
+
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableSource,
@@ -557,113 +591,135 @@ export function DBTraceWaterfallChartContainer({
         .map(row => row.SpanId) ?? [],
     );
   }, [traceRowsData]);
-  const rootNodes: Node[] = [];
-  const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
-  const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
-
-  for (const result of rows ?? []) {
-    const { type, SpanId, ParentSpanId } = result;
-    // ignore everything without spanId
-    if (!SpanId) continue;
-
-    // log have duplicate span id, tag it with -log
-    const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
-    const nodeParentSpanId =
-      type === SourceKind.Log ? SpanId : ParentSpanId || '';
-
-    const curNode = {
-      ...result,
-      children: [],
-    };
-
-    if (type === SourceKind.Trace) {
-      // Check if this is the first node with this SpanId
-      if (!spanIdMap.has(nodeSpanId)) {
-        // First occurrence - this becomes the canonical node for this SpanId
-        spanIdMap.set(nodeSpanId, result.id);
-
-        // Check if there's a placeholder parent waiting for this SpanId
-        const placeholderId = `placeholder-${nodeSpanId}`;
-        const placeholder = nodesMap.get(placeholderId);
-        if (placeholder) {
-          // Inherit children from placeholder
-          curNode.children = placeholder.children || [];
-          // Remove placeholder
-          nodesMap.delete(placeholderId);
-        }
-      }
-      // Always add to nodesMap with unique result.id
-      nodesMap.set(result.id, curNode);
-    }
-
-    // root if: is trace event, and (has no parent or parent id is not valid)
-    const isRootNode =
-      type === SourceKind.Trace &&
-      (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
-
-    if (isRootNode) {
-      rootNodes.push(curNode);
-    } else {
-      // Look up parent by SpanId
-      const parentResultId = spanIdMap.get(nodeParentSpanId);
-      let parentNode = parentResultId
-        ? nodesMap.get(parentResultId)
-        : undefined;
-
-      if (!parentNode) {
-        // Parent doesn't exist yet, create placeholder
-        const placeholderId = `placeholder-${nodeParentSpanId}`;
-        parentNode = nodesMap.get(placeholderId);
-        if (!parentNode) {
-          parentNode = { children: [] } as any;
-          nodesMap.set(placeholderId, parentNode);
-        }
-      }
-
-      parentNode.children.push(curNode);
-    }
-  }
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
 
+  const { nodesMap, flattenedNodes } = useMemo(() => {
+    const rootNodes: Node[] = [];
+    const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
+    const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
+
+    for (const result of rows ?? []) {
+      const { type, SpanId, ParentSpanId } = result;
+      // ignore everything without spanId
+      if (!SpanId) continue;
+
+      // log have duplicate span id, tag it with -log
+      const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
+      const nodeParentSpanId =
+        type === SourceKind.Log ? SpanId : ParentSpanId || '';
+
+      const curNode = {
+        ...result,
+        children: [],
+      };
+
+      if (type === SourceKind.Trace) {
+        // Check if this is the first node with this SpanId
+        if (!spanIdMap.has(nodeSpanId)) {
+          // First occurrence - this becomes the canonical node for this SpanId
+          spanIdMap.set(nodeSpanId, result.id);
+
+          // Check if there's a placeholder parent waiting for this SpanId
+          const placeholderId = `placeholder-${nodeSpanId}`;
+          const placeholder = nodesMap.get(placeholderId);
+          if (placeholder) {
+            // Inherit children from placeholder
+            curNode.children = placeholder.children || [];
+            // Remove placeholder
+            nodesMap.delete(placeholderId);
+          }
+        }
+        // Always add to nodesMap with unique result.id
+        nodesMap.set(result.id, curNode);
+      }
+
+      // root if: is trace event, and (has no parent or parent id is not valid)
+      const isRootNode =
+        type === SourceKind.Trace &&
+        (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
+
+      if (isRootNode) {
+        rootNodes.push(curNode);
+      } else {
+        // Look up parent by SpanId
+        const parentResultId = spanIdMap.get(nodeParentSpanId);
+        let parentNode = parentResultId
+          ? nodesMap.get(parentResultId)
+          : undefined;
+
+        if (!parentNode) {
+          // Parent doesn't exist yet, create placeholder
+          const placeholderId = `placeholder-${nodeParentSpanId}`;
+          parentNode = nodesMap.get(placeholderId);
+          if (!parentNode) {
+            parentNode = { children: [] } as any;
+            nodesMap.set(placeholderId, parentNode);
+          }
+        }
+
+        parentNode.children.push(curNode);
+      }
+    }
+
+    type NodeWithLevel = Node & { level: number };
+    // flatten the rootnode dag into an array via in-order traversal
+    const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
+      // Filter out hidden nodes, but still traverse their (non-hidden) descendants
+      if (!node.__hdx_hidden) {
+        arr.push({
+          level,
+          ...node,
+        });
+      }
+
+      // Filter out collapsed nodes
+      if (collapsedIds.has(node.id)) {
+        return;
+      }
+      node?.children?.forEach((child: any) => traverse(child, arr, level + 1));
+    };
+
+    const flattenedNodes: NodeWithLevel[] = [];
+    if (rootNodes.length > 0) {
+      rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
+    }
+
+    return { nodesMap, flattenedNodes };
+  }, [collapsedIds, rows, validSpanIDs]);
+
   const toggleCollapse = useCallback(
-    (id: string) => {
+    (id: string, event: React.MouseEvent) => {
+      event.stopPropagation(); // prevent collapsing from selecting row
+
       setCollapsedIds(prev => {
         const newSet = new Set(prev);
-        if (newSet.has(id)) {
+        const isCollapsed = newSet.has(id);
+
+        if (isCollapsed) {
           newSet.delete(id);
         } else {
           newSet.add(id);
         }
+
+        if (event.altKey) {
+          const node = nodesMap.get(id);
+          if (node?.children?.length) {
+            const descendantIds = getDescendantIds(node);
+            if (isCollapsed) {
+              descendantIds.forEach(descId => newSet.delete(descId));
+            } else {
+              descendantIds.forEach(descId => newSet.add(descId));
+            }
+          }
+        }
+
         return newSet;
       });
     },
-    [setCollapsedIds],
+    [nodesMap],
   );
-
-  type NodeWithLevel = Node & { level: number };
-  // flatten the rootnode dag into an array via in-order traversal
-  const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
-    // Filter out hidden nodes, but still traverse their (non-hidden) descendants
-    if (!node.__hdx_hidden) {
-      arr.push({
-        level,
-        ...node,
-      });
-    }
-
-    // Filter out collapsed nodes
-    if (collapsedIds.has(node.id)) {
-      return;
-    }
-    node?.children?.forEach((child: any) => traverse(child, arr, level + 1));
-  };
-
-  const flattenedNodes: NodeWithLevel[] = [];
-  if (rootNodes.length > 0) {
-    rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
-  }
 
   const spanCount = flattenedNodes.length;
   const errorCount = flattenedNodes.filter(
@@ -686,156 +742,200 @@ export function DBTraceWaterfallChartContainer({
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
 
-  const timelineRows = flattenedNodes.map((result, i) => {
-    const tookMs = (result.Duration || 0) * 1000;
-    const startOffset = new Date(result.Timestamp).getTime();
-    const start = startOffset - minOffset;
-    const end = start + tookMs;
+  const [collapseTooltipShown, { open: setCollapseTooltipShown }] =
+    useDisclosure(false);
 
-    const {
-      Body: _body,
-      ServiceName: serviceName,
-      id,
-      type,
-      aliasWith,
-    } = result;
-    let body = `${_body}`;
-    try {
-      body = typeof _body === 'string' ? _body : JSON.stringify(_body);
-    } catch (e) {
-      console.warn("DBTraceWaterfallChart: Couldn't JSON stringify Body", e);
-    }
+  const timelineRows = useMemo(
+    () =>
+      flattenedNodes.map((result, i) => {
+        const tookMs = (result.Duration || 0) * 1000;
+        const startOffset = new Date(result.Timestamp).getTime();
+        const start = startOffset - minOffset;
+        const end = start + tookMs;
 
-    // Extract HTTP-related logic
-    const eventAttributes = result.SpanAttributes || {};
-    const hasHttpAttributes =
-      eventAttributes['http.url'] || eventAttributes['http.method'];
-    const httpUrl = eventAttributes['http.url'];
-
-    const displayText =
-      hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
-
-    // Process span events into markers (only if showSpanEvents is enabled)
-    const markers =
-      showSpanEvents && result.SpanEvents
-        ? result.SpanEvents.map(spanEvent => ({
-            timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
-            name: spanEvent.Name,
-            attributes: spanEvent.Attributes || {},
-          }))
-        : [];
-
-    // Extract status logic
-    // TODO: Legacy schemas will have STATUS_CODE_ERROR
-    // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-    const isError =
-      result.StatusCode == 'Error' || result.SeverityText === 'error';
-    const status = result.StatusCode || result.SeverityText;
-    const isWarn = result.SeverityText === 'warn';
-    const isHighlighted = highlightedRowWhere === id;
-
-    return {
-      id,
-      type,
-      aliasWith,
-      label: (
-        <div
-          className={`${textColor({ isError, isWarn })} ${
-            isHighlighted && styles.traceTimelineLabelHighlighted
-          } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
-          role="button"
-          onClick={() => {
-            onClick?.({ id, type: type ?? '', aliasWith });
-          }}
-        >
-          <div className="d-flex align-items-center" style={{ height: 24 }}>
-            {Array.from({ length: result.level }).map((_, index) => (
-              <div
-                key={index}
-                style={{
-                  borderLeft: '1px solid var(--color-border)',
-                  marginLeft: 7,
-                  width: 8,
-                  minWidth: 8,
-                  maxWidth: 8,
-                  flexGrow: 1,
-                  flexShrink: 0,
-                  height: '100%',
-                }}
-              ></div>
-            ))}
-            <Center
-              style={{
-                opacity: result.children.length > 0 ? 1 : 0,
-              }}
-              onClick={() => {
-                toggleCollapse(id);
-              }}
-            >
-              {collapsedIds.has(id) ? (
-                <IconChevronRight size={16} className="me-1 text-muted-hover" />
-              ) : (
-                <IconChevronDown size={16} className="me-1 text-muted-hover" />
-              )}{' '}
-            </Center>
-            {!isFilterActive && (
-              <Text span size="xxs" me="xs" pt="2px">
-                {result.children.length > 0
-                  ? `(${result.children.length})`
-                  : ''}
-              </Text>
-            )}
-
-            <Group gap={0} wrap="nowrap">
-              {type === SourceKind.Log ? (
-                <IconLogs
-                  size={14}
-                  className="align-middle me-2"
-                  aria-label="Correlated Log Line"
-                />
-              ) : null}
-              <Text
-                size="xxs"
-                truncate="end"
-                // style={{ width: 200 }}
-                span
-                // onClick={() => {
-                //   toggleCollapse(id);
-                // }}
-                title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
-                role="button"
-              >
-                {serviceName ? `${serviceName} | ` : ''}
-                {displayText}
-              </Text>
-            </Group>
-          </div>
-        </div>
-      ),
-      style: {
-        // paddingTop: 1,
-        marginTop: i === 0 ? 32 : 0,
-      },
-      isActive: isHighlighted,
-      events: [
-        {
+        const {
+          Body: _body,
+          ServiceName: serviceName,
           id,
           type,
           aliasWith,
-          start,
-          end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
-          color: 'var(--color-text-inverted)',
-          backgroundColor: barColor({ isError, isWarn, isHighlighted, type }),
-          body: <span>{displayText}</span>,
-          minWidthPerc: 1,
-          isError,
-          markers,
-          showDuration: type !== SourceKind.Log,
-        },
-      ],
-    };
-  });
+        } = result;
+        let body = `${_body}`;
+        try {
+          body = typeof _body === 'string' ? _body : JSON.stringify(_body);
+        } catch (e) {
+          console.warn(
+            "DBTraceWaterfallChart: Couldn't JSON stringify Body",
+            e,
+          );
+        }
+
+        // Extract HTTP-related logic
+        const eventAttributes = result.SpanAttributes || {};
+        const hasHttpAttributes =
+          eventAttributes['http.url'] || eventAttributes['http.method'];
+        const httpUrl = eventAttributes['http.url'];
+
+        const displayText =
+          hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
+
+        // Process span events into markers (only if showSpanEvents is enabled)
+        const markers =
+          showSpanEvents && result.SpanEvents
+            ? result.SpanEvents.map(spanEvent => ({
+                timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
+                name: spanEvent.Name,
+                attributes: spanEvent.Attributes || {},
+              }))
+            : [];
+
+        // Extract status logic
+        // TODO: Legacy schemas will have STATUS_CODE_ERROR
+        // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
+        const isError =
+          result.StatusCode == 'Error' || result.SeverityText === 'error';
+        const status = result.StatusCode || result.SeverityText;
+        const isWarn = result.SeverityText === 'warn';
+        const isHighlighted = highlightedRowWhere === id;
+
+        return {
+          id,
+          type,
+          aliasWith,
+          label: (
+            <div
+              className={`${textColor({ isError, isWarn })} ${
+                isHighlighted && styles.traceTimelineLabelHighlighted
+              } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
+              role="button"
+              onClick={() => {
+                onClick?.({ id, type: type ?? '', aliasWith });
+              }}
+            >
+              <div className="d-flex align-items-center" style={{ height: 24 }}>
+                {Array.from({ length: result.level }).map((_, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      borderLeft: '1px solid var(--color-border)',
+                      marginLeft: 7,
+                      width: 8,
+                      minWidth: 8,
+                      maxWidth: 8,
+                      flexGrow: 1,
+                      flexShrink: 0,
+                      height: '100%',
+                    }}
+                  ></div>
+                ))}
+
+                <Tooltip
+                  disabled={!result.children.length || collapseTooltipShown}
+                  closeDelay={500}
+                  label={
+                    <CollapseTooltipLabel onShown={setCollapseTooltipShown} />
+                  }
+                  withArrow
+                >
+                  <Center
+                    style={{
+                      opacity: result.children.length > 0 ? 1 : 0,
+                    }}
+                    onClick={
+                      result.children.length > 0
+                        ? e => {
+                            toggleCollapse(id, e);
+                          }
+                        : undefined
+                    }
+                  >
+                    {collapsedIds.has(id) ? (
+                      <IconChevronRight
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    ) : (
+                      <IconChevronDown
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    )}{' '}
+                  </Center>
+                </Tooltip>
+
+                {!isFilterActive && (
+                  <Text span size="xxs" me="xs" pt="2px">
+                    {result.children.length > 0
+                      ? `(${result.children.length})`
+                      : ''}
+                  </Text>
+                )}
+
+                <Group gap={0} wrap="nowrap">
+                  {type === SourceKind.Log ? (
+                    <IconLogs
+                      size={14}
+                      className="align-middle me-2"
+                      aria-label="Correlated Log Line"
+                    />
+                  ) : null}
+                  <Text
+                    size="xxs"
+                    truncate="end"
+                    span
+                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                    role="button"
+                  >
+                    {serviceName ? `${serviceName} | ` : ''}
+                    {displayText}
+                  </Text>
+                </Group>
+              </div>
+            </div>
+          ),
+          style: {
+            // paddingTop: 1,
+            marginTop: i === 0 ? 32 : 0,
+          },
+          isActive: isHighlighted,
+          events: [
+            {
+              id,
+              type,
+              aliasWith,
+              start,
+              end,
+              tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
+              color: 'var(--color-text-inverted)',
+              backgroundColor: barColor({
+                isError,
+                isWarn,
+                isHighlighted,
+                type,
+              }),
+              body: <span>{displayText}</span>,
+              minWidthPerc: 1,
+              isError,
+              markers,
+              showDuration: type !== SourceKind.Log,
+            },
+          ],
+        };
+      }),
+    [
+      collapsedIds,
+      flattenedNodes,
+      formatTime,
+      highlightedRowWhere,
+      isFilterActive,
+      minOffset,
+      onClick,
+      showSpanEvents,
+      toggleCollapse,
+      collapseTooltipShown,
+      setCollapseTooltipShown,
+    ],
+  );
   // TODO: Highlighting support
   const initialScrollRowIndex = flattenedNodes.findIndex(v => {
     return v.id === highlightedRowWhere;
@@ -958,13 +1058,8 @@ export function DBTraceWaterfallChartContainer({
         ) : flattenedNodes.length === 0 ? (
           <div className="my-3">No matching spans or logs found</div>
         ) : (
-          <>
+          <div style={{ minWidth: 740 }}>
             <TimelineChart
-              style={{
-                overflowY: 'auto',
-                height: '100%',
-                minWidth: 740,
-              }}
               rowHeight={22}
               labelWidth={300}
               onEventClick={(event: {
@@ -982,7 +1077,7 @@ export function DBTraceWaterfallChartContainer({
               rows={timelineRows}
               initialScrollRowIndex={initialScrollRowIndex}
             />
-          </>
+          </div>
         )}
       </div>
     </>

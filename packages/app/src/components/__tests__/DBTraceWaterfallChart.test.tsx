@@ -14,6 +14,7 @@ import useRowWhere from '@/hooks/useRowWhere';
 import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
+  getDescendantIds,
   SpanRow,
   useEventsAroundFocus,
 } from '../DBTraceWaterfallChart';
@@ -384,5 +385,64 @@ describe('useEventsAroundFocus', () => {
   it('does not fetch when disabled', () => {
     const result = testEventsAroundFocus({ enabled: false });
     expect(result.rows.length).toBe(0);
+  });
+});
+
+describe('getDescendantIds', () => {
+  it('returns empty array for node with no children', () => {
+    expect(getDescendantIds({ id: 'root' })).toEqual([]);
+    expect(getDescendantIds({ id: 'root', children: [] })).toEqual([]);
+  });
+
+  it('returns empty array for node with undefined or missing children', () => {
+    expect(getDescendantIds({ id: 'root', children: undefined })).toEqual([]);
+  });
+
+  it('returns direct children ids for a single level', () => {
+    const node = {
+      id: 'root',
+      children: [
+        { id: 'a', children: [] },
+        { id: 'b', children: [] },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['a', 'b']);
+  });
+
+  it('returns all descendant ids for nested children', () => {
+    const node = {
+      id: 'root',
+      children: [
+        {
+          id: 'a',
+          children: [
+            { id: 'a1', children: [] },
+            { id: 'a2', children: [] },
+          ],
+        },
+        { id: 'b', children: [] },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['a', 'a1', 'a2', 'b']);
+  });
+
+  it('skips children without id but still recurses into their descendants', () => {
+    const node = {
+      id: 'root',
+      children: [
+        {
+          children: [{ id: 'grandchild', children: [] }],
+        },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['grandchild']);
+  });
+
+  it('returns single descendant for one child', () => {
+    const node = {
+      id: 'root',
+      children: [{ id: 'only', children: [] }],
+    };
+    expect(getDescendantIds(node)).toEqual(['only']);
   });
 });
