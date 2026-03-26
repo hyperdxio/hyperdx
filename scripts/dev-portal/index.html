@@ -4,19 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HyperDX Dev Portal</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' fill='none' viewBox='0 0 260 260'%3E%3Cdefs%3E%3CclipPath id='a'%3E%3Crect width='260' height='260' fill='%23fff' rx='40'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23a)'%3E%3Cpath fill='%2325E2A5' d='M242.166 65v130l-112.583 65.001L17 195V65L129.583 0l112.583 65Z'/%3E%3Cpath fill='%231E1E1E' d='M157.698 42.893c1.754 1.284 2.573 3.92 1.976 6.361l-15.713 64.274h28.994c1.74 0 3.314 1.302 4.004 3.313.691 2.011.366 4.346-.827 5.941l-69.801 93.342c-1.391 1.86-3.617 2.267-5.371.984-1.753-1.285-2.572-3.921-1.976-6.362l15.713-64.274H85.704c-1.74 0-3.315-1.302-4.005-3.312-.69-2.011-.365-4.346.828-5.942l69.801-93.342c1.39-1.86 3.616-2.267 5.37-.983Z'/%3E%3C/g%3E%3C/svg%3E"
+    />
     <style>
       :root {
-        --bg: #0d1117;
-        --card-bg: #161b22;
-        --border: #30363d;
-        --text: #e6edf3;
-        --text-muted: #7d8590;
-        --accent: #58a6ff;
-        --green: #3fb950;
-        --red: #f85149;
-        --yellow: #d29922;
+        /* HyperDX dark mode palette — from _tokens.scss + mantineTheme.ts */
+        --bg: #101113; /* dark-9: color-bg-body */
+        --card-bg: #1a1b1e; /* dark-7: color-bg-muted */
+        --card-surface: #25262b; /* dark-6: color-bg-field */
+        --border: #2c2e33; /* dark-5: color-border */
+        --border-emphasis: #373a40; /* dark-4: color-border-emphasis */
+        --text: #c1c2c5; /* dark-0: color-text */
+        --text-muted: #909296; /* dark-2: color-text-secondary */
+        --accent: #25e2a5; /* green-4: color-bg-brand / color-text-brand */
+        --accent-hover: #a0fad5; /* green-2 */
+        --green: #25e2a5; /* green-4: color-text-success */
+        --red: #ff725c; /* chart-error */
+        --yellow: #efb118; /* chart-warning */
         --orange: #db6d28;
-        --log-bg: #0d1117;
+        --log-bg: #141517; /* dark-8 */
+        --hover: #25262b; /* dark-6: color-bg-hover */
       }
 
       * {
@@ -170,14 +180,7 @@
       .header .logo {
         width: 28px;
         height: 28px;
-        background: var(--accent);
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        font-size: 14px;
-        color: var(--bg);
+        flex-shrink: 0;
       }
 
       .header .status {
@@ -229,7 +232,7 @@
       .stacks {
         display: grid;
         gap: 16px;
-        grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+        grid-template-columns: 1fr;
       }
 
       .stack-card {
@@ -349,12 +352,12 @@
       }
 
       .type-badge.docker {
-        background: rgba(88, 166, 255, 0.15);
+        background: rgba(37, 226, 165, 0.12);
         color: var(--accent);
       }
 
       .type-badge.local {
-        background: rgba(210, 153, 34, 0.15);
+        background: rgba(239, 177, 24, 0.12);
         color: var(--yellow);
       }
 
@@ -428,7 +431,30 @@
       <div class="main-panel">
         <div class="header">
           <h1>
-            <div class="logo">H</div>
+            <svg
+              class="logo"
+              width="28"
+              height="28"
+              viewBox="0 0 512 512"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g clip-path="url(#lc)">
+                <path
+                  d="M256 0L477.703 128V384L256 512L34.2975 384V128L256 0Z"
+                  fill="var(--accent)"
+                />
+                <path
+                  d="M311.365 84.4663C314.818 86.9946 316.431 92.1862 315.256 96.9926L284.313 223.563H341.409C344.836 223.563 347.936 226.127 349.295 230.086C350.655 234.046 350.014 238.644 347.665 241.786L210.211 425.598C207.472 429.26 203.089 430.062 199.635 427.534C196.182 425.005 194.569 419.814 195.744 415.007L226.686 288.437H169.591C166.164 288.437 163.064 285.873 161.705 281.914C160.345 277.954 160.986 273.356 163.335 270.214L300.789 86.4023C303.528 82.7403 307.911 81.938 311.365 84.4663Z"
+                  fill="var(--bg)"
+                />
+              </g>
+              <defs>
+                <clipPath id="lc">
+                  <rect width="512" height="512" fill="white" />
+                </clipPath>
+              </defs>
+            </svg>
             HyperDX Dev Portal
           </h1>
           <div class="status">
@@ -494,11 +520,23 @@
 
       // --- ANSI escape code to HTML converter ---
       const ANSI_COLORS = {
-        30: '#666', 31: '#f85149', 32: '#3fb950', 33: '#d29922',
-        34: '#58a6ff', 35: '#bc8cff', 36: '#76e3ea', 37: '#e6edf3',
+        30: '#666',
+        31: '#f85149',
+        32: '#3fb950',
+        33: '#d29922',
+        34: '#58a6ff',
+        35: '#bc8cff',
+        36: '#76e3ea',
+        37: '#e6edf3',
         39: null, // default
-        90: '#7d8590', 91: '#ff7b72', 92: '#56d364', 93: '#e3b341',
-        94: '#79c0ff', 95: '#d2a8ff', 96: '#a5d6ff', 97: '#ffffff',
+        90: '#7d8590',
+        91: '#ff7b72',
+        92: '#56d364',
+        93: '#e3b341',
+        94: '#79c0ff',
+        95: '#d2a8ff',
+        96: '#a5d6ff',
+        97: '#ffffff',
       };
 
       function ansiToHtml(text) {
@@ -510,14 +548,23 @@
           // Match ESC[ ... m sequences
           if (text[i] === '\x1b' && text[i + 1] === '[') {
             const end = text.indexOf('m', i + 2);
-            if (end === -1) { i++; continue; }
-            const codes = text.substring(i + 2, end).split(';').map(Number);
+            if (end === -1) {
+              i++;
+              continue;
+            }
+            const codes = text
+              .substring(i + 2, end)
+              .split(';')
+              .map(Number);
             i = end + 1;
 
             for (const code of codes) {
               if (code === 0 || code === 22 || code === 39) {
                 // Reset / unbold / default color — close open spans
-                while (openSpans > 0) { html += '</span>'; openSpans--; }
+                while (openSpans > 0) {
+                  html += '</span>';
+                  openSpans--;
+                }
               } else if (code === 1) {
                 html += '<span style="font-weight:bold">';
                 openSpans++;
@@ -537,7 +584,9 @@
                 // 256-color or RGB — parse 38;2;r;g;b
                 const rgbIdx = codes.indexOf(38);
                 if (codes[rgbIdx + 1] === 2 && codes.length >= rgbIdx + 5) {
-                  const r = codes[rgbIdx + 2], g = codes[rgbIdx + 3], b = codes[rgbIdx + 4];
+                  const r = codes[rgbIdx + 2],
+                    g = codes[rgbIdx + 3],
+                    b = codes[rgbIdx + 4];
                   html += `<span style="color:rgb(${r},${g},${b})">`;
                   openSpans++;
                 }
@@ -554,7 +603,10 @@
             i++;
           }
         }
-        while (openSpans > 0) { html += '</span>'; openSpans--; }
+        while (openSpans > 0) {
+          html += '</span>';
+          openSpans--;
+        }
         return html;
       }
 
@@ -750,12 +802,9 @@
       }
 
       function renderService(slot, svc) {
-        const isHttp = svc.url && svc.status === 'up';
-        const portCell = isHttp
-          ? `<a href="${svc.url}" target="_blank" class="port-link" onclick="event.stopPropagation()">:${svc.port}</a>`
-          : svc.port
-            ? `<span class="port-plain">:${svc.port}</span>`
-            : `<span class="port-plain">-</span>`;
+        const portCell = svc.port
+          ? `<span class="port-plain">:${svc.port}</span>`
+          : `<span class="port-plain">-</span>`;
 
         const isActive =
           currentLogSlot == slot && currentLogService === svc.name;
@@ -810,6 +859,11 @@
       // Set initial auto-scroll button state
       toggleAutoScroll();
       toggleAutoScroll();
+
+      // Keybindings
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeLogPanel();
+      });
     </script>
   </body>
 </html>

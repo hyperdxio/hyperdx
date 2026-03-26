@@ -55,7 +55,7 @@ install-tools:
 
 .PHONY: dev
 dev:
-	bash -c '. ./scripts/dev-env.sh && yarn dev'
+	yarn dev
 
 .PHONY: dev-build
 dev-build:
@@ -63,11 +63,11 @@ dev-build:
 
 .PHONY: dev-up
 dev-up:
-	bash -c '. ./scripts/dev-env.sh && yarn dev'
+	yarn dev
 
 .PHONY: dev-down
 dev-down:
-	bash -c '. ./scripts/dev-env.sh && docker compose -p "$$HDX_DEV_PROJECT" -f docker-compose.dev.yml down'
+	yarn dev:down
 
 .PHONY: dev-portal
 dev-portal:
