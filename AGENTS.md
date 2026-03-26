@@ -121,6 +121,24 @@ cd packages/app && yarn playwright install chromium
 files that add/change `data-testid` attributes), run the **full** E2E suite —
 not just new tests — to catch regressions in existing specs.
 
+## Reviewing or Writing E2E Tests
+
+Before writing new E2E tests or reviewing a PR that adds them:
+
+1. **Map existing coverage first.** Read every spec file under
+   `tests/e2e/features/` and build a list of what behavior each test exercises
+   (not just its name — what it actually asserts).
+2. **Check each new test against that map.** A test is redundant if its
+   assertions are a subset of an existing test's, even when the existing test is
+   part of a larger workflow. Do not add isolated tests for behavior already
+   covered by comprehensive tests.
+3. **Present the overlap analysis before making changes.** Show the full
+   existing-vs-new matrix and get alignment, then write or modify code.
+4. **One spec file per feature area.** Do not split tests into `foo.spec.ts` and
+   `foo-extended.spec.ts`. If a file gets too long, split by sub-feature (e.g.,
+   `dashboard.spec.ts` for workflows, `dashboard-interactions.spec.ts` for
+   isolated CRUD), not by "basic vs extended."
+
 ## Important Context
 
 - **Authentication**: Passport.js with team-based access control
