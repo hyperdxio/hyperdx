@@ -237,9 +237,9 @@ jobs:
             echo "::error::$total_failed E2E test(s) failed"
             exit 1
           fi
-          # Fail when any shard failed even if we couldn't read failure count from artifacts
-          if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
-            echo "::error::One or more E2E test shards failed"
+          # Fail when any shard failed or was cancelled before completing
+          if [ "${{ needs.e2e-tests.result }}" = "failure" ] || [ "${{ needs.e2e-tests.result }}" = "cancelled" ]; then
+            echo "::error::One or more E2E test shards failed (result: ${{ needs.e2e-tests.result }})"
             exit 1
           fi
 
