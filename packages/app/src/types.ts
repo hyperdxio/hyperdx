@@ -3,7 +3,6 @@ import {
   Alert,
   AlertsPageItem as _AlertsPageItem,
   BuilderChartConfig,
-  DashboardSchema,
   Filter,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
@@ -43,8 +42,6 @@ export type SearchConfig = {
   filters?: Filter[] | null;
   orderBy?: string | null;
 };
-
-export type ServerDashboard = z.infer<typeof DashboardSchema>;
 
 export type StacktraceFrame = {
   filename: string;

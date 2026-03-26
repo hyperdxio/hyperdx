@@ -18,8 +18,10 @@ import {
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Box,
+  Breadcrumbs,
   Card,
   Flex,
   Grid,
@@ -1245,6 +1247,14 @@ function KubernetesDashboardPage() {
 
   return (
     <Box data-testid="kubernetes-dashboard-page" p="sm">
+      <Breadcrumbs mb="xs" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          Kubernetes
+        </Text>
+      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel

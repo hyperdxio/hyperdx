@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
@@ -13,6 +14,8 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Anchor,
+  Breadcrumbs,
   Button,
   Collapse,
   Container,
@@ -508,11 +511,16 @@ function DBDashboardImportPage() {
   return (
     <div>
       <Head>
-        <title>Create a Dashboard - {brandName}</title>
+        <title>Import Dashboard - {brandName}</title>
       </Head>
-      <PageHeader>
-        <div>Create Dashboard &gt; Import Dashboard</div>
-      </PageHeader>
+      <Breadcrumbs my="lg" ms="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          Import
+        </Text>
+      </Breadcrumbs>
       <div>
         <Container>
           <Stack gap="lg" mt="xl">
