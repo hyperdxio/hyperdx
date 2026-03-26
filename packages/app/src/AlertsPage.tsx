@@ -394,13 +394,17 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
+          <Badge variant="light" color="red" data-testid="alert-state-badge">
             Alert
           </Badge>
         )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
+        {alert.state === AlertState.OK && (
+          <Badge variant="light" data-testid="alert-state-badge">
+            Ok
+          </Badge>
+        )}
         {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray">
+          <Badge variant="light" color="gray" data-testid="alert-state-badge">
             Disabled
           </Badge>
         )}

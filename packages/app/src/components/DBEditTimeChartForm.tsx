@@ -1080,18 +1080,21 @@ export default function EditTimeChartForm({
                 <Tabs.Tab
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
+                  data-testid="chart-type-line"
                 >
                   Line/Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
                   leftSection={<IconTable size={16} />}
+                  data-testid="chart-type-table"
                 >
                   Table
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Number}
                   leftSection={<IconNumbers size={16} />}
+                  data-testid="chart-type-number"
                 >
                   Number
                 </Tabs.Tab>

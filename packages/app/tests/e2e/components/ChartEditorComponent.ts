@@ -45,10 +45,10 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Set chart type
+   * Set chart type using data-testid
    */
-  async setChartType(name: DisplayType) {
-    await this.chartTypeInput.getByRole('tab', { name }).click();
+  async setChartType(type: DisplayType) {
+    await this.page.getByTestId(`chart-type-${type}`).click();
   }
 
   /**

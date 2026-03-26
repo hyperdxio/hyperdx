@@ -191,7 +191,10 @@ export default function SearchWhereInput({
           onLanguageChange={handleLanguageChange}
         />
       </Flex>
-      <Box className={`${styles.inputWrapper} ${sizeClass}`}>
+      <Box
+        className={`${styles.inputWrapper} ${sizeClass}`}
+        data-testid={isSql ? `${dataTestId}-sql` : undefined}
+      >
         {isSql ? (
           <SQLInlineEditorControlled
             {...tc}

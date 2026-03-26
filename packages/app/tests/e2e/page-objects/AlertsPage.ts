@@ -55,6 +55,29 @@ export class AlertsPage {
   }
 
   /**
+   * Get an alert card by name (filtered by link text)
+   */
+  getAlertCardByName(name: string) {
+    return this.alertsPageContainer
+      .getByTestId(/^alert-card-/)
+      .filter({ hasText: name });
+  }
+
+  /**
+   * Get the state badge within an alert card
+   */
+  getAlertStateBadge(card: Locator) {
+    return card.getByTestId('alert-state-badge');
+  }
+
+  /**
+   * Get the alert link within an alert card
+   */
+  getAlertLinkByName(name: string) {
+    return this.alertsPageContainer.getByRole('link').filter({ hasText: name });
+  }
+
+  /**
    * Open alerts creation modal
    */
   async openAlertsModal() {
