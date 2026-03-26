@@ -142,7 +142,7 @@ export class DashboardPage {
   }
 
   /**
-   * Navigate to dashboards list
+   * Navigate to the temporary dashboards page
    */
   async goto() {
     await this.page.goto('/dashboards', { waitUntil: 'networkidle' });
@@ -160,7 +160,7 @@ export class DashboardPage {
    */
   async createNewDashboard() {
     await this.createDashboardButton.click();
-    await this.page.waitForURL('**/dashboards**');
+    await this.page.waitForURL(/\/dashboards\/.+/);
   }
 
   async changeGranularity(granularity: string) {
@@ -228,7 +228,7 @@ export class DashboardPage {
    */
   async openNewTileEditor() {
     await this.createDashboardButton.click();
-    await this.page.waitForURL('**/dashboards**');
+    await this.page.waitForURL(/\/dashboards\/.+/);
     await this.addDropdownButton.click();
     await this.addTileMenuItem.click();
     await expect(this.chartEditor.nameInput).toBeVisible();

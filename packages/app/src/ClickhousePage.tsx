@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import {
   parseAsFloat,
   parseAsStringEnum,
@@ -16,7 +17,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Grid,
   Group,
@@ -584,6 +587,14 @@ function ClickhousePage() {
 
   return (
     <Box p="sm" data-testid="clickhouse-dashboard-page">
+      <Breadcrumbs mb="xs" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          ClickHouse
+        </Text>
+      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>
