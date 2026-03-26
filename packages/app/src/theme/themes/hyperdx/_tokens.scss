@@ -71,6 +71,13 @@
   --color-state-focus: var(--mantine-color-dark-4);
   --color-outline-focus: var(--mantine-color-green-4);
 
+  /* Slider */
+  --color-slider-bar: var(--mantine-color-green-4);
+  --color-slider-thumb: var(--mantine-color-green-4);
+  --color-slider-thumb-border: var(--mantine-color-green-4);
+  --color-slider-dot: var(--mantine-color-dark-2);
+  --color-slider-dot-active: var(--mantine-color-green-8);
+
   /* Code / Misc UI */
   --color-bg-code: var(--mantine-color-dark-8);
   --color-border-code: var(--mantine-color-dark-6);
@@ -111,12 +118,10 @@
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
+  --mantine-color-text: var(--color-text);
 }
 
 @mixin light-mode-tokens {
-  /* Mantine Overrides */
-  --mantine-color-body: var(--color-bg-body);
-
   /* Backgrounds - inverted (dark becomes light) */
   --color-bg-body: var(--mantine-color-white);
   --color-bg-surface: var(--mantine-color-white);
@@ -180,6 +185,13 @@
   --color-state-focus: var(--mantine-color-dark-5);
   --color-outline-focus: var(--mantine-color-green-8);
 
+  /* Slider */
+  --color-slider-bar: var(--mantine-color-green-8);
+  --color-slider-thumb: var(--mantine-color-green-8);
+  --color-slider-thumb-border: var(--mantine-color-green-8);
+  --color-slider-dot: var(--mantine-color-gray-6);
+  --color-slider-dot-active: var(--mantine-color-gray-1);
+
   /* Code / Misc UI - inverted */
   --color-bg-code: var(--mantine-color-dark-1);
   --color-border-code: var(--mantine-color-dark-3);
@@ -215,6 +227,10 @@
   --color-chart-success-highlight: #80d9b3;
   --color-chart-warning-highlight: #f5c94d;
   --color-chart-error-highlight: #ffa090;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+  --mantine-color-text: var(--color-text);
 }
 
 /* Dark Mode - scoped to .theme-hyperdx */

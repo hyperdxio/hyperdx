@@ -590,6 +590,78 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('materialized column optimization with expression alias CTEs', () => {
+    it('should rewrite WHERE to use materialized column when with clauses are expression aliases (isSubquery: false)', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        with: [
+          {
+            name: 'body',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: "LogAttributes['attr_key'] = 'attr_val'",
+        whereLanguage: 'sql',
+        granularity: '1 minute',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      expect(mockMetadata.getMaterializedColumnsLookupTable).toHaveBeenCalled();
+      expect(sql).toContain("attr_key = 'attr_val'");
+      expect(sql).not.toContain("LogAttributes['attr_key']");
+    });
+
+    it('should skip materialized columns when with clauses are subquery CTEs', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: '',
+          tableName: 'TestCte',
+        },
+        with: [
+          {
+            name: 'TestCte',
+            sql: chSql`SELECT * FROM otel_logs`,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await renderChartConfig(config, mockMetadata, querySettings);
+      expect(
+        mockMetadata.getMaterializedColumnsLookupTable,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('k8s semantic convention migrations', () => {
     it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
       const config: ChartConfigWithOptDateRange = {
@@ -1187,6 +1259,39 @@ describe('renderChartConfig', () => {
         primaryKey:
           '-toInt64(toStartOfInterval(timestamp, toIntervalMinute(15))), service_id, timestamp',
         expected: `(timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000))`,
+      },
+      {
+        description:
+          'with toStartOfHour and dateRangeEndInclusive=false (must stay inclusive on coarse filter)',
+        timestampValueExpression: 'toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'with compound expression and dateRangeEndInclusive=false (raw col exclusive, toStartOf inclusive)',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))AND(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'with toStartOfHour and dateRangeStartInclusive=false (must stay inclusive on coarse filter)',
+        timestampValueExpression: 'toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
       },
     ];
 

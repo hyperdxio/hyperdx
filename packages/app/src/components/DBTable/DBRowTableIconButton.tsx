@@ -5,7 +5,7 @@ import { IconCheck } from '@tabler/icons-react';
 
 import styles from '../../../styles/LogTable.module.scss';
 
-export interface DBRowTableIconButtonProps {
+interface DBRowTableIconButtonProps {
   onClick: (e: React.MouseEvent) => void;
   className?: string;
   title?: string;

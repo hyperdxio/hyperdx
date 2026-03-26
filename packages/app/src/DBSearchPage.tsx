@@ -2,7 +2,6 @@ import {
   FormEvent,
   FormEventHandler,
   memo,
-  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -11,7 +10,6 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
@@ -51,7 +49,6 @@ import {
   Flex,
   Grid,
   Group,
-  Menu,
   Modal,
   Paper,
   Select,
@@ -67,10 +64,9 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
-  IconCirclePlus,
+  IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
-  IconSettings,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -176,6 +172,8 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+const QUERY_KEY_PREFIX = 'search';
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string }[] | undefined,
@@ -189,59 +187,6 @@ export function getDefaultSourceId(
     return lastSelectedSourceId;
   }
   return sources[0].id;
-}
-
-function SourceEditMenu({
-  setModalOpen,
-  setModelFormExpanded,
-}: {
-  setModalOpen: (val: SetStateAction<boolean>) => void;
-  setModelFormExpanded: (val: SetStateAction<boolean>) => void;
-}) {
-  return (
-    <Menu withArrow position="bottom-start">
-      <Menu.Target>
-        <ActionIcon
-          data-testid="source-settings-menu"
-          variant="subtle"
-          size="sm"
-          title="Edit Source"
-        >
-          <Text size="xs">
-            <IconSettings size={14} />
-          </Text>
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>Sources</Menu.Label>
-        <Menu.Item
-          data-testid="create-new-source-menu-item"
-          leftSection={<IconCirclePlus size={14} />}
-          onClick={() => setModalOpen(true)}
-        >
-          Create New Source
-        </Menu.Item>
-        {IS_LOCAL_MODE ? (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            onClick={() => setModelFormExpanded(v => !v)}
-          >
-            Edit Source
-          </Menu.Item>
-        ) : (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            component={Link}
-            href="/team"
-          >
-            Edit Sources
-          </Menu.Item>
-        )}
-      </Menu.Dropdown>
-    </Menu>
-  );
 }
 
 function SourceEditModal({
@@ -319,6 +264,46 @@ function SearchSubmitButton({
   );
 }
 
+function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
+  return (
+    <Tooltip label="Show filters" position="bottom">
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        onClick={onExpand}
+        aria-label="Show filters"
+      >
+        <IconLayoutSidebarLeftExpand size={14} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function SearchResultsCountGroup({
+  isFilterSidebarCollapsed,
+  onExpandFilters,
+  histogramTimeChartConfig,
+  enableParallelQueries,
+}: {
+  isFilterSidebarCollapsed: boolean;
+  onExpandFilters: () => void;
+  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  enableParallelQueries?: boolean;
+}) {
+  return (
+    <Group gap={4} align="center">
+      {isFilterSidebarCollapsed && (
+        <ExpandFiltersButton onExpand={onExpandFilters} />
+      )}
+      <SearchTotalCountChart
+        config={histogramTimeChartConfig}
+        queryKeyPrefix={QUERY_KEY_PREFIX}
+        enableParallelQueries={enableParallelQueries}
+      />
+    </Group>
+  );
+}
+
 function SearchNumRows({
   config,
   enabled,
@@ -336,7 +321,7 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" mb={4}>
+    <Text size="xs">
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
@@ -403,6 +388,13 @@ function SaveSearchModalComponent({
   const createSavedSearch = useCreateSavedSearch();
   const updateSavedSearch = useUpdateSavedSearch();
 
+  const { data: sourceObj } = useSource({
+    id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
+  const effectiveSelect =
+    searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
+
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -416,7 +408,7 @@ function SaveSearchModalComponent({
           {
             id: savedSearchId,
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
@@ -435,7 +427,7 @@ function SaveSearchModalComponent({
         createSavedSearch.mutate(
           {
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
               searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
@@ -863,6 +855,9 @@ function DBSearchPage() {
     }
   }, [analysisMode, setIsLive]);
 
+  const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
+    useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
+
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
     parseAsBoolean.withDefault(false),
@@ -1225,8 +1220,6 @@ function DBSearchPage() {
 
   const [newSourceModalOpened, setNewSourceModalOpened] = useState(false);
 
-  const QUERY_KEY_PREFIX = 'search';
-
   const isAnyQueryFetching =
     useIsFetching({
       queryKey: [QUERY_KEY_PREFIX],
@@ -1568,6 +1561,14 @@ function DBSearchPage() {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
 
+  const onEditSources = useCallback(() => {
+    if (IS_LOCAL_MODE) {
+      setModelFormExpanded(v => !v);
+    } else {
+      router.push('/team');
+    }
+  }, [setModelFormExpanded]);
+
   const setNewSourceModalClosed = useCallback(
     () => setNewSourceModalOpened(false),
     [setNewSourceModalOpened],
@@ -1609,22 +1610,18 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
-            <SourceSelectControlled
-              key={`${savedSearchId}`}
-              size="xs"
-              control={control}
-              name="source"
-              onCreate={openNewSourceModal}
-              allowedSourceKinds={ALLOWED_SOURCE_KINDS}
-              data-testid="source-selector"
-              sourceSchemaPreview={sourceSchemaPreview}
-            />
-            <SourceEditMenu
-              setModalOpen={setNewSourceModalOpened}
-              setModelFormExpanded={setModelFormExpanded}
-            />
-          </Group>
+          <SourceSelectControlled
+            key={`${savedSearchId}`}
+            size="xs"
+            control={control}
+            name="source"
+            onCreate={openNewSourceModal}
+            onEdit={onEditSources}
+            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+            data-testid="source-selector"
+            sourceSchemaPreview={sourceSchemaPreview}
+            style={{ minWidth: 150 }}
+          />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
@@ -1808,31 +1805,43 @@ function DBSearchPage() {
                 height: '100%',
               }}
             >
-              <ErrorBoundary message="Unable to render search filters">
-                <DBSearchPageFilters
-                  denoiseResults={denoiseResults}
-                  setDenoiseResults={setDenoiseResults}
-                  isLive={isLive}
-                  analysisMode={analysisMode}
-                  setAnalysisMode={setAnalysisMode}
-                  chartConfig={filtersChartConfig}
-                  sourceId={inputSourceObj?.id}
-                  showDelta={
-                    !!(searchedSource?.kind === SourceKind.Trace
-                      ? searchedSource.durationExpression
-                      : undefined)
-                  }
-                  {...searchFilters}
-                />
-              </ErrorBoundary>
+              {!isFilterSidebarCollapsed && (
+                <ErrorBoundary message="Unable to render search filters">
+                  <DBSearchPageFilters
+                    denoiseResults={denoiseResults}
+                    setDenoiseResults={setDenoiseResults}
+                    isLive={isLive}
+                    analysisMode={analysisMode}
+                    setAnalysisMode={setAnalysisMode}
+                    chartConfig={filtersChartConfig}
+                    sourceId={inputSourceObj?.id}
+                    showDelta={
+                      !!(searchedSource?.kind === SourceKind.Trace
+                        ? searchedSource.durationExpression
+                        : undefined)
+                    }
+                    onColumnToggle={toggleColumn}
+                    displayedColumns={displayedColumns}
+                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    {...searchFilters}
+                  />
+                </ErrorBoundary>
+              )}
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
-                      <Group justify="space-between" style={{ width: '100%' }}>
-                        <SearchTotalCountChart
-                          config={histogramTimeChartConfig}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        style={{ width: '100%' }}
+                      >
+                        <SearchResultsCountGroup
+                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                          onExpandFilters={() =>
+                            setIsFilterSidebarCollapsed(false)
+                          }
+                          histogramTimeChartConfig={histogramTimeChartConfig}
                         />
                         <SearchNumRows
                           config={{
@@ -1900,11 +1909,15 @@ function DBSearchPage() {
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
+                          align="center"
                           style={{ width: '100%' }}
                         >
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          <SearchResultsCountGroup
+                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                            onExpandFilters={() =>
+                              setIsFilterSidebarCollapsed(false)
+                            }
+                            histogramTimeChartConfig={histogramTimeChartConfig}
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">

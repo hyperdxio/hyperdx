@@ -687,7 +687,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
-  sectionId: z.string().optional(),
+  containerId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -699,13 +699,14 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
-export const DashboardSectionSchema = z.object({
+export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
+  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
 });
 
-export type DashboardSection = z.infer<typeof DashboardSectionSchema>;
+export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -716,6 +717,8 @@ export const DashboardFilterSchema = z.object({
   expression: z.string().min(1),
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+  where: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -739,14 +742,14 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
-  sections: z
-    .array(DashboardSectionSchema)
+  containers: z
+    .array(DashboardContainerSchema)
     .refine(
-      sections => {
-        const ids = sections.map(s => s.id);
+      containers => {
+        const ids = containers.map(c => c.id);
         return new Set(ids).size === ids.length;
       },
-      { message: 'Section IDs must be unique' },
+      { message: 'Container IDs must be unique' },
     )
     .optional(),
 });

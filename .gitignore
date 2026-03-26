@@ -4,6 +4,7 @@
 # Override global .gitignore to track project-level AI tooling configs
 !.cursor
 !.cursor/mcp.json
+.worktrees
 
 # Playwright MCP scratch files
 seed.spec.ts
@@ -50,6 +51,7 @@ packages/app/next-env.d.ts
 
 # optional npm cache directory
 **/.npm
+package-lock.json
 
 # dependency directories
 **/node_modules

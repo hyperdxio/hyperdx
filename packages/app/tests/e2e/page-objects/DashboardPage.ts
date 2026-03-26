@@ -62,7 +62,9 @@ export class DashboardPage {
   readonly searchInput: Locator;
 
   private readonly createDashboardButton: Locator;
-  private readonly addTileButton: Locator;
+  private readonly addDropdownButton: Locator;
+  private readonly addTileMenuItem: Locator;
+  private readonly addSectionMenuItem: Locator;
   private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
@@ -93,7 +95,15 @@ export class DashboardPage {
     this.createDashboardButton = page.locator(
       '[data-testid="create-dashboard-button"]',
     );
-    this.addTileButton = page.locator('[data-testid="add-new-tile-button"]');
+    this.addDropdownButton = page.locator(
+      '[data-testid="add-dropdown-button"]',
+    );
+    this.addTileMenuItem = page.locator(
+      '[data-testid="add-new-tile-menu-item"]',
+    );
+    this.addSectionMenuItem = page.locator(
+      '[data-testid="add-new-section-menu-item"]',
+    );
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchSubmitButton = page.locator(
       '[data-testid="search-submit-button"]',
@@ -193,7 +203,16 @@ export class DashboardPage {
    * Add a new tile to the dashboard
    */
   async addTile() {
-    await this.addTileButton.click();
+    await this.addDropdownButton.click();
+    await this.addTileMenuItem.click();
+  }
+
+  /**
+   * Add a new section to the dashboard
+   */
+  async addSection() {
+    await this.addDropdownButton.click();
+    await this.addSectionMenuItem.click();
   }
 
   /**
@@ -210,7 +229,8 @@ export class DashboardPage {
   async openNewTileEditor() {
     await this.createDashboardButton.click();
     await this.page.waitForURL('**/dashboards**');
-    await this.addTileButton.click();
+    await this.addDropdownButton.click();
+    await this.addTileMenuItem.click();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
   }
@@ -577,8 +597,8 @@ export class DashboardPage {
     return this.createDashboardButton;
   }
 
-  get addNewTileButton() {
-    return this.addTileButton;
+  get addButton() {
+    return this.addDropdownButton;
   }
 
   get dashboardName() {
