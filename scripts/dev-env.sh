@@ -76,6 +76,9 @@ export HDX_DEV_OTEL_METRICS_PORT
 export HDX_DEV_OTEL_JSON_HTTP_PORT
 export HDX_DEV_PROJECT
 
+# --- Clean up stale Next.js lock file from previous crashed sessions ---
+rm -f "${PWD}/packages/app/.next/dev/lock" 2>/dev/null || true
+
 # --- Set up directories for portal discovery + logs ---
 HDX_DEV_SLOTS_DIR="${HOME}/.config/hyperdx/dev-slots"
 HDX_DEV_LOGS_DIR="${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}/logs"

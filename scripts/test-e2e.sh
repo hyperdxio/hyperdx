@@ -211,6 +211,9 @@ run_tests() {
 # Set up cleanup trap
 setup_cleanup_trap
 
+# Clean up E2E Next.js build directory to avoid stale lock/cache issues
+rm -rf "$REPO_ROOT/packages/app/.next-e2e" 2>/dev/null || true
+
 # Always start and seed ClickHouse (shared by both modes)
 setup_clickhouse
 
