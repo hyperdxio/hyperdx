@@ -1,5 +1,13 @@
 # @hyperdx/common-utils
 
+## 0.16.2
+
+### Patch Changes
+
+- 4f7dd9ef: fix: Correctly detect text index with quoted tokenizer argument
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 6936ef8e: fix: Enable materialized column optimization for expression alias CTEs
+
 ## 0.16.1
 
 ### Patch Changes
