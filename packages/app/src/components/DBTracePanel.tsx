@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -13,8 +14,9 @@ import {
   Paper,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { IconPencil } from '@tabler/icons-react';
+import { IconPencil, IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -135,6 +137,7 @@ export default function DBTracePanel({
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
   useEffect(() => {
+    setEventRowWhere(null);
     return () => {
       setEventRowWhere(null);
     };
@@ -143,6 +146,27 @@ export default function DBTracePanel({
   const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
     SpanDetailTab.Overview,
   );
+
+  const [highlightedSpanId, setHighlightedSpanId] = useState<string | null>(
+    null,
+  );
+  const isInitialHighlightRef = useRef(true);
+
+  const handleSpanClick = useCallback(
+    (rowWhere: { id: string; type: string; aliasWith: WithClause[] }) => {
+      setHighlightedSpanId(rowWhere.id);
+      if (isInitialHighlightRef.current) {
+        isInitialHighlightRef.current = false;
+        return;
+      }
+      setEventRowWhere(rowWhere);
+    },
+    [setEventRowWhere],
+  );
+
+  const handleCloseSpanDetails = useCallback(() => {
+    setEventRowWhere(null);
+  }, [setEventRowWhere]);
 
   const { size: rightPanelSize, startResize: startHorizontalResize } =
     useResizable(40, 'right');
@@ -279,8 +303,8 @@ export default function DBTracePanel({
             traceId={traceId}
             dateRange={dateRange}
             focusDate={focusDate}
-            highlightedRowWhere={eventRowWhere?.id}
-            onClick={setEventRowWhere}
+            highlightedRowWhere={highlightedSpanId ?? eventRowWhere?.id}
+            onClick={handleSpanClick}
             initialRowHighlightHint={initialRowHighlightHint}
           />
         )}
@@ -316,29 +340,41 @@ export default function DBTracePanel({
             padding: 'var(--mantine-spacing-sm)',
           }}
         >
-          <TabBar
-            className="fs-8"
-            items={[
-              {
-                text: 'Overview',
-                value: SpanDetailTab.Overview,
-              },
-              {
-                text: 'Column Values',
-                value: SpanDetailTab.Parsed,
-              },
-              ...(hasSelectedSpanK8sContext
-                ? [
-                    {
-                      text: 'Infrastructure',
-                      value: SpanDetailTab.Infrastructure,
-                    },
-                  ]
-                : []),
-            ]}
-            activeItem={displayedTab}
-            onClick={(v: any) => setDisplayedTab(v)}
-          />
+          <Flex align="center" justify="space-between">
+            <TabBar
+              className="fs-8"
+              items={[
+                {
+                  text: 'Overview',
+                  value: SpanDetailTab.Overview,
+                },
+                {
+                  text: 'Column Values',
+                  value: SpanDetailTab.Parsed,
+                },
+                ...(hasSelectedSpanK8sContext
+                  ? [
+                      {
+                        text: 'Infrastructure',
+                        value: SpanDetailTab.Infrastructure,
+                      },
+                    ]
+                  : []),
+              ]}
+              activeItem={displayedTab}
+              onClick={(v: any) => setDisplayedTab(v)}
+            />
+            <Tooltip label="Close" position="bottom">
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={handleCloseSpanDetails}
+                aria-label="Close span details"
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Flex>
           {displayedTab === SpanDetailTab.Overview && selectedSpanSource && (
             <RowOverviewPanel
               source={selectedSpanSource}

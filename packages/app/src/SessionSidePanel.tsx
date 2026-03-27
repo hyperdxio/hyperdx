@@ -222,13 +222,10 @@ export default function SessionSidePanel({
                 <Flex align="center" justify="space-between" gap="sm" mb={8}>
                   <SidePanelBreadcrumbs
                     items={breadcrumbs}
-                    onBack={handleClose}
-                  />
-                  <SidePanelHeaderActions
-                    onClose={handleClose}
                     isFullWidth={isFullWidth}
                     onToggleFullWidth={toggleFullWidth}
                   />
+                  <SidePanelHeaderActions onClose={handleClose} />
                 </Flex>
                 <Text size="xs" c="dimmed">
                   Last active {timeAgo} ago

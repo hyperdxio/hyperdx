@@ -30,13 +30,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import {
-  IconArrowsMaximize,
-  IconArrowsMinimize,
-  IconCopy,
-  IconShare,
-  IconX,
-} from '@tabler/icons-react';
+import { IconCopy, IconShare, IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -103,15 +97,7 @@ enum Tab {
   Replay = 'replay',
 }
 
-export function SidePanelHeaderActions({
-  onClose,
-  isFullWidth,
-  onToggleFullWidth,
-}: {
-  onClose: () => void;
-  isFullWidth?: boolean;
-  onToggleFullWidth?: () => void;
-}) {
+export function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
   return (
     <Group gap={8} wrap="nowrap">
       <CopyButton
@@ -130,25 +116,6 @@ export function SidePanelHeaderActions({
           </Tooltip>
         )}
       </CopyButton>
-      {onToggleFullWidth && (
-        <Tooltip
-          label={isFullWidth ? 'Exit full width' : 'Full width'}
-          position="bottom"
-        >
-          <ActionIcon
-            variant="subtle"
-            size="sm"
-            onClick={onToggleFullWidth}
-            aria-label={isFullWidth ? 'Exit full width' : 'Full width'}
-          >
-            {isFullWidth ? (
-              <IconArrowsMinimize size={16} />
-            ) : (
-              <IconArrowsMaximize size={16} />
-            )}
-          </ActionIcon>
-        </Tooltip>
-      )}
       <Tooltip label="Close" position="bottom">
         <ActionIcon
           variant="subtle"
@@ -237,7 +204,7 @@ export const DBRowSidePanelInner = ({
     [],
   );
 
-  const handleNavigateBack = useCallback(() => {
+  const _handleNavigateBack = useCallback(() => {
     if (navStack.length > 0) {
       setNavStack(prev => prev.slice(0, -1));
     } else if (sourceStack.length > 0) {
@@ -534,7 +501,7 @@ export const DBRowSidePanelInner = ({
       const isLastSource = i === sourceStack.length - 1;
       if (isLastSource && navStack.length === 0) {
         items.push({
-          label: mainContent || entry.label,
+          label: entry.label,
           sourceKind: entry.source.kind as SourceKind,
         });
       } else {
@@ -598,17 +565,10 @@ export const DBRowSidePanelInner = ({
         <Flex align="center" justify="space-between" gap="sm" mb={8}>
           <SidePanelBreadcrumbs
             items={allBreadcrumbs}
-            onBack={
-              navStack.length > 0 || sourceStack.length > 0 || parentBreadcrumbs
-                ? handleNavigateBack
-                : onClose
-            }
-          />
-          <SidePanelHeaderActions
-            onClose={onClose}
             isFullWidth={isFullWidth}
             onToggleFullWidth={onToggleFullWidth}
           />
+          <SidePanelHeaderActions onClose={onClose} />
         </Flex>
         <Group gap="xs" wrap="wrap">
           {timestampDate && !isNaN(timestampDate.getTime()) && (

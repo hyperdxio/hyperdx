@@ -9,7 +9,8 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
-  IconArrowLeft,
+  IconArrowBarToLeft,
+  IconArrowBarToRight,
   IconConnection,
   IconDeviceLaptop,
   IconLogs,
@@ -45,10 +46,12 @@ function truncate(text: string, max: number) {
 
 function SidePanelBreadcrumbs({
   items,
-  onBack,
+  isFullWidth,
+  onToggleFullWidth,
 }: {
   items: BreadcrumbItem[];
-  onBack?: () => void;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
 }) {
   const breadcrumbElements = useMemo(() => {
     return items.map((item, i) => {
@@ -64,7 +67,7 @@ function SidePanelBreadcrumbs({
 
       const content = (
         <Group gap={4} wrap="nowrap">
-          <SourceIcon kind={item.sourceKind} />
+          {i === 0 && <SourceIcon kind={item.sourceKind} />}
           <Text size="xs" fw={isLast ? 600 : undefined} truncate="end">
             {truncatedLabel}
           </Text>
@@ -106,15 +109,22 @@ function SidePanelBreadcrumbs({
 
   return (
     <Group gap={8} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-      {onBack && (
-        <Tooltip label="Back" position="bottom">
+      {onToggleFullWidth && (
+        <Tooltip
+          label={isFullWidth ? 'Collapse panel' : 'Expand panel'}
+          position="bottom"
+        >
           <ActionIcon
             variant="subtle"
             size="sm"
-            onClick={onBack}
-            aria-label="Back"
+            onClick={onToggleFullWidth}
+            aria-label={isFullWidth ? 'Collapse panel' : 'Expand panel'}
           >
-            <IconArrowLeft size={16} />
+            {isFullWidth ? (
+              <IconArrowBarToRight size={16} />
+            ) : (
+              <IconArrowBarToLeft size={16} />
+            )}
           </ActionIcon>
         </Tooltip>
       )}
