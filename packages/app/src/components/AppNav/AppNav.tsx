@@ -568,7 +568,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               )}
             </Link>
             <ActionIcon
-              variant="transparent"
+              variant="subtle"
               size="sm"
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
