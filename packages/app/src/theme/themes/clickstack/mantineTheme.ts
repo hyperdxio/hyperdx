@@ -24,7 +24,7 @@ import componentClasses from '../components.module.scss';
  * Primary color: Yellow/Gold accent
  * Style: Modern, professional
  */
-export const makeTheme = ({
+const makeTheme = ({
   fontFamily = '"Inter", sans-serif',
 }: {
   fontFamily?: string;

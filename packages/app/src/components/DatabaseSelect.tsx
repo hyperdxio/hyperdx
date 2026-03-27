@@ -14,7 +14,7 @@ type DatabaseSelectProps = {
   connectionId: string | undefined;
 };
 
-export default function DatabaseSelect({
+function DatabaseSelect({
   database,
   setDatabase,
   connectionId,
