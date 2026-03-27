@@ -126,8 +126,13 @@ export const makeTheme = ({
           '--slider-color': 'var(--color-slider-bar)',
         },
       }),
+      styles: {
+        thumb: {
+          backgroundColor: 'var(--color-slider-thumb)',
+          borderColor: 'var(--color-slider-thumb-border)',
+        },
+      },
       classNames: {
-        thumb: componentClasses.sliderThumb,
         mark: componentClasses.sliderMark,
       },
     }),
