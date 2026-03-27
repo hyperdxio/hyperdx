@@ -112,7 +112,7 @@ type FilterCheckboxProps = {
   isPercentageLoading?: boolean;
 };
 
-export const TextButton = ({
+const TextButton = ({
   onClick,
   label,
   ms,
@@ -159,7 +159,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-export const FilterCheckbox = ({
+const FilterCheckbox = ({
   value,
   label,
   pinned,
@@ -1505,10 +1505,7 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
-export function isFieldPrimary(
-  tableMetadata: TableMetadata | undefined,
-  key: string,
-) {
+function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
   return tableMetadata?.primary_key?.includes(key);
 }
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);

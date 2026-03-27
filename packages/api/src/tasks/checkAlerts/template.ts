@@ -119,7 +119,7 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-export const notifyChannel = async ({
+const notifyChannel = async ({
   channel,
   message,
 }: {

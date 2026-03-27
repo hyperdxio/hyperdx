@@ -1,4 +1,4 @@
-export const DEFAULT_TIME_WINDOWS_SECONDS = [
+const DEFAULT_TIME_WINDOWS_SECONDS = [
   6 * 60 * 60, // 6h
   6 * 60 * 60, // 6h
   12 * 60 * 60, // 12h
