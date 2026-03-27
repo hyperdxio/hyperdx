@@ -26,22 +26,11 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
-      - name: Run Knip on PR branch
-        run: yarn knip --reporter json > /tmp/knip-pr.json 2>/dev/null || true
+      - name: Run Knip
+        run:
+          yarn knip --reporter json > /tmp/knip-results.json 2>/dev/null || true
 
-      - name: Checkout main branch
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: main
-          clean: false
-
-      - name: Install dependencies (main)
-        run: yarn install
-
-      - name: Run Knip on main branch
-        run: yarn knip --reporter json > /tmp/knip-main.json 2>/dev/null || true
-
-      - name: Compare results and comment
+      - name: Report results
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
@@ -50,106 +39,56 @@ jobs:
             const issueCategories = [
               'files', 'dependencies', 'devDependencies', 'unlisted',
               'unresolved', 'binaries', 'exports', 'types',
-              'enumMembers', 'duplicates'
             ];
 
-            function countIssues(filePath) {
+            const categoryLabels = {
+              files: 'Unused files',
+              dependencies: 'Unused dependencies',
+              devDependencies: 'Unused devDependencies',
+              unlisted: 'Unlisted dependencies',
+              unresolved: 'Unresolved imports',
+              binaries: 'Unlisted binaries',
+              exports: 'Unused exports',
+              types: 'Unused exported types',
+            };
+
+            function parseResults(filePath) {
               try {
                 const raw = fs.readFileSync(filePath, 'utf8');
                 const data = JSON.parse(raw);
                 const counts = {};
-                // items maps category -> Set of "file:name" identifiers
                 const items = {};
-                for (const cat of issueCategories) items[cat] = new Set();
-                // Top-level "files" are unused files (just strings)
+                for (const cat of issueCategories) items[cat] = [];
+
                 for (const f of data.files || []) {
                   counts.files = (counts.files || 0) + 1;
-                  items.files.add(f);
+                  items.files.push(f);
                 }
+
                 for (const issue of data.issues || []) {
                   for (const cat of issueCategories) {
                     if (cat === 'files') continue;
                     if (Array.isArray(issue[cat]) && issue[cat].length > 0) {
                       counts[cat] = (counts[cat] || 0) + issue[cat].length;
                       for (const item of issue[cat]) {
-                        items[cat].add(`${issue.file}:${item.name}`);
+                        items[cat].push(`${issue.file}:${item.name}`);
                       }
                     }
                   }
                 }
+
                 let total = 0;
                 for (const v of Object.values(counts)) total += v;
                 return { counts, total, items };
               } catch (e) {
                 console.log(`Failed to parse ${filePath}: ${e.message}`);
                 const items = {};
-                for (const cat of issueCategories) items[cat] = new Set();
+                for (const cat of issueCategories) items[cat] = [];
                 return { counts: {}, total: 0, items };
               }
             }
 
-            const pr = countIssues('/tmp/knip-pr.json');
-            const main = countIssues('/tmp/knip-main.json');
-
-            const categories = [
-              ['files', 'Unused files'],
-              ['dependencies', 'Unused dependencies'],
-              ['devDependencies', 'Unused devDependencies'],
-              ['unlisted', 'Unlisted dependencies'],
-              ['unresolved', 'Unresolved imports'],
-              ['binaries', 'Unlisted binaries'],
-              ['exports', 'Unused exports'],
-              ['types', 'Unused exported types'],
-              ['enumMembers', 'Unused enum members'],
-              ['duplicates', 'Duplicate exports'],
-            ];
-
-            const diff = pr.total - main.total;
-            const emoji = diff > 0 ? '🔴' : diff < 0 ? '🟢' : '⚪';
-            const sign = diff > 0 ? '+' : '';
-
-            let body = `## Knip - Unused Code Analysis\n\n`;
-
-            if (diff === 0) {
-              body += `${emoji} No changes detected (${main.total} issues on both main and PR)\n`;
-            } else {
-              body += `${emoji} **${sign}${diff}** change in total issues (${main.total} on main → ${pr.total} on PR)\n\n`;
-              body += `| Category | main | PR | Diff |\n`;
-              body += `|----------|-----:|---:|-----:|\n`;
-
-              const detailLines = [];
-              for (const [key, label] of categories) {
-                const mainCount = main.counts[key] || 0;
-                const prCount = pr.counts[key] || 0;
-                const catDiff = prCount - mainCount;
-                if (mainCount === 0 && prCount === 0) continue;
-                const catSign = catDiff > 0 ? '+' : '';
-                const catEmoji = catDiff > 0 ? ' 🔴' : catDiff < 0 ? ' 🟢' : '';
-                body += `| ${label} | ${mainCount} | ${prCount} | ${catSign}${catDiff}${catEmoji} |\n`;
-
-                if (catDiff !== 0) {
-                  const added = [...pr.items[key]].filter(x => !main.items[key].has(x));
-                  const removed = [...main.items[key]].filter(x => !pr.items[key].has(x));
-                  if (added.length || removed.length) {
-                    detailLines.push(`**${label}**`);
-                    for (const a of added) detailLines.push(`- 🔴 \`${a}\``);
-                    for (const r of removed) detailLines.push(`- 🟢 ~\`${r}\`~`);
-                  }
-                }
-              }
-
-              if (detailLines.length) {
-                body += `\n<details><summary>Details</summary>\n\n`;
-                body += detailLines.join('\n') + '\n';
-                body += `</details>\n`;
-              }
-            }
-
-            body += `\n<details><summary>What is this?</summary>\n\n`;
-            body += `[Knip](https://knip.dev) finds unused files, dependencies, and exports in your codebase.\n`;
-            body += `This comment compares the PR branch against \`main\` to detect regressions.\n\n`;
-            body += `Run \`yarn knip\` locally to see full details.\n`;
-            body += `</details>\n`;
+            const results = parseResults('/tmp/knip-results.json');
 
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
@@ -160,6 +99,38 @@ jobs:
             const existing = comments.find(c =>
               c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
             );
+
+            if (results.total === 0) {
+              // No issues: delete existing comment if present, then exit successfully
+              if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                });
+              }
+              console.log('No knip issues found.');
+              return;
+            }
+
+            // Build comment body
+            let body = `## Knip - Unused Code Analysis\n\n`;
+            body += `🔴 **${results.total} issue${results.total === 1 ? '' : 's'}** found\n\n`;
+
+            for (const cat of issueCategories) {
+              const count = results.counts[cat] || 0;
+              if (count === 0) continue;
+              const label = categoryLabels[cat];
+              body += `### ${label} (${count})\n\n`;
+              for (const item of results.items[cat]) {
+                body += `- \`${item}\`\n`;
+              }
+              body += `\n`;
+            }
+
+            body += `---\n`;
+            body += `[Knip](https://knip.dev) finds unused files, dependencies, and exports in your codebase.\n`;
+            body += `Run \`yarn knip\` locally to see full details.\n`;
 
             if (existing) {
               await github.rest.issues.updateComment({
@@ -176,3 +147,6 @@ jobs:
                 body,
               });
             }
+
+            // Fail the job since there are issues
+            core.setFailed(`Knip found ${results.total} issue${results.total === 1 ? '' : 's'}. Run \`yarn knip\` locally to fix them.`);

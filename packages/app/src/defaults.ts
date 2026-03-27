@@ -4,6 +4,9 @@ import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist
 export const DEFAULT_SEARCH_ROW_LIMIT = 200;
 export const DEFAULT_QUERY_TIMEOUT = 60; // max_execution_time, seconds
 
+// TODO: Remove - added to test knip CI workflow
+export const KNIP_TEST_UNUSED_EXPORT = 'delete-me';
+
 export function searchChartConfigDefaults(
   team: any | undefined | null,
 ): Partial<BuilderChartConfigWithDateRange> {
