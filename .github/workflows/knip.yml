@@ -60,18 +60,14 @@ jobs:
                 const items = {};
                 for (const cat of issueCategories) items[cat] = [];
 
-                for (const f of data.files || []) {
-                  counts.files = (counts.files || 0) + 1;
-                  items.files.push(f);
-                }
-
                 for (const issue of data.issues || []) {
                   for (const cat of issueCategories) {
-                    if (cat === 'files') continue;
                     if (Array.isArray(issue[cat]) && issue[cat].length > 0) {
                       counts[cat] = (counts[cat] || 0) + issue[cat].length;
                       for (const item of issue[cat]) {
-                        items[cat].push(`${issue.file}:${item.name}`);
+                        // Unused files use the file path as the name; other categories prefix with the parent file
+                        const label = cat === 'files' ? item.name : `${issue.file}:${item.name}`;
+                        items[cat].push(label);
                       }
                     }
                   }
