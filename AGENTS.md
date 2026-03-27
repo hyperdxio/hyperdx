@@ -68,8 +68,6 @@ Each package has different test commands available:
 cd packages/app
 yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
-yarn test:e2e          # Run end-to-end tests
-yarn test:e2e:ci       # Run end-to-end tests in CI
 ```
 
 **packages/api** (integration tests only):
@@ -110,10 +108,15 @@ make ci-unit        # Unit tests across all packages
 # First-time setup (install Chromium browser):
 cd packages/app && yarn playwright install chromium
 
-# Run tests:
-./scripts/test-e2e.sh                                       # All E2E (full-stack)
-./scripts/test-e2e.sh --quiet <file>                        # Single file
-./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
+# Run all E2E tests:
+make e2e
+
+# Run a specific test file (dev mode: hot reload):
+make dev-e2e FILE=navigation                    # Match files containing "navigation"
+make dev-e2e FILE=navigation GREP="help menu"   # Also filter by test name
+make dev-e2e GREP="should navigate"             # Filter by test name across all files
+make dev-e2e FILE=navigation REPORT=1           # Open HTML report after run
+make dev-e2e-clean                               # Remove test artifacts
 ```
 
 ## Important Context
