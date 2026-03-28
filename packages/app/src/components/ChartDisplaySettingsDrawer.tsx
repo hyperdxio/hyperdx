@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -11,6 +11,7 @@ import {
   Divider,
   Drawer,
   Group,
+  NumberInput,
   Stack,
 } from '@mantine/core';
 
@@ -25,7 +26,9 @@ export type ChartConfigDisplaySettings = Pick<
   | 'alignDateRangeToGranularity'
   | 'fillNulls'
   | 'compareToPreviousPeriod'
->;
+> & {
+  maxNumberOfGroups?: number;
+};
 
 interface ChartDisplaySettingsDrawerProps {
   opened: boolean;
@@ -41,6 +44,7 @@ function applyDefaultSettings({
   alignDateRangeToGranularity,
   compareToPreviousPeriod,
   fillNulls,
+  maxNumberOfGroups,
 }: ChartConfigDisplaySettings): ChartConfigDisplaySettings {
   return {
     numberFormat: numberFormat ?? DEFAULT_NUMBER_FORMAT,
@@ -48,6 +52,7 @@ function applyDefaultSettings({
       alignDateRangeToGranularity == null ? true : alignDateRangeToGranularity,
     fillNulls: fillNulls ?? 0,
     compareToPreviousPeriod: compareToPreviousPeriod ?? false,
+    maxNumberOfGroups: maxNumberOfGroups ?? 10,
   };
 }
 
@@ -83,6 +88,7 @@ export default function ChartDisplaySettingsDrawer({
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+  const isBarChart = displayType === DisplayType.Bar;
 
   return (
     <Drawer
@@ -128,6 +134,29 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
+        {isBarChart && (
+          <>
+            <Box>
+              <Controller
+                control={control}
+                name="maxNumberOfGroups"
+                render={({ field }) => (
+                  <NumberInput
+                    size="xs"
+                    label="Max Number of Groups"
+                    min={1}
+                    max={1000}
+                    value={field.value ?? 10}
+                    onChange={v =>
+                      field.onChange(typeof v === 'number' ? v : 10)
+                    }
+                  />
+                )}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
         <NumberFormatForm control={control} />
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">

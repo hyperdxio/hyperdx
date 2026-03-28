@@ -16,6 +16,16 @@ ORDER BY ts ASC;`;
 export const SQL_PLACEHOLDERS: Record<DisplayType, string> = {
   [DisplayType.Line]: TIMESERIES_PLACEHOLDER_SQL,
   [DisplayType.StackedBar]: TIMESERIES_PLACEHOLDER_SQL,
+  [DisplayType.Bar]: `SELECT
+  SeverityText,
+  count()
+FROM
+  default.otel_logs
+WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+GROUP BY SeverityText
+ORDER BY count() DESC
+LIMIT 10;`,
   [DisplayType.Table]: `SELECT
   count()
 FROM
@@ -90,6 +100,34 @@ export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
 > = {
   [DisplayType.Line]: TIMESERIES_INSTRUCTIONS,
   [DisplayType.StackedBar]: TIMESERIES_INSTRUCTIONS,
+  [DisplayType.Bar]: (
+    <>
+      <Text size="xs" fw="bold">
+        Result columns are plotted as follows:
+      </Text>
+      <List size="xs" withPadding spacing={3} mb="xs">
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            Bar Value
+          </Text>
+          <Text span size="xs">
+            {' '}
+            — The first numeric column determines each bar&apos;s height.
+          </Text>
+        </List.Item>
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            X Axis Label
+          </Text>
+          <Text span size="xs">
+            {' '}
+            — Each unique value of each string, map, and array type column will
+            be used as an X axis label. Group By is required.
+          </Text>
+        </List.Item>
+      </List>
+    </>
+  ),
   [DisplayType.Pie]: (
     <>
       <Text size="xs" fw="bold">

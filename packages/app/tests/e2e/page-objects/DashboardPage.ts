@@ -30,7 +30,14 @@ export type TileConfig = {
   groupBy?: string;
   markdown?: string;
 };
-type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
+type SeriesType =
+  | 'time'
+  | 'number'
+  | 'table'
+  | 'search'
+  | 'markdown'
+  | 'pie'
+  | 'bar';
 /**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
@@ -492,7 +499,9 @@ export class DashboardPage {
     const type: SeriesData['type'] =
       config.displayType === 'line' || config.displayType === 'stacked_bar'
         ? 'time'
-        : config.displayType;
+        : config.displayType === 'bar'
+          ? 'bar'
+          : config.displayType;
 
     const groupBy = config.groupBy ? [config.groupBy] : undefined;
     const selectItems = Array.isArray(config.select) ? config.select : [];

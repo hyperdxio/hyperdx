@@ -44,7 +44,8 @@ export function getDefaultTileSize(displayType?: DisplayType): {
   switch (displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
-      // Half-width time series charts
+    case DisplayType.Bar:
+      // Half-width charts
       return { w: 12, h: 10 };
 
     case DisplayType.Table:

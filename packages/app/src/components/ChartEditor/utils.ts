@@ -51,11 +51,13 @@ export const isRawSqlDisplayType = (
   | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.Bar
   | DisplayType.Pie
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Number;
 
@@ -236,17 +238,30 @@ export const validateChartForm = (
     });
   }
 
-  // Validate number and pie charts only have one series
+  // Validate number, pie, and bar charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Number ||
-      form.displayType === DisplayType.Pie) &&
+      form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Bar) &&
     form.series.length > 1
   ) {
     errors.push({
       path: `series`,
       message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  // Validate bar charts require a group by
+  if (
+    !isRawSqlChart &&
+    form.displayType === DisplayType.Bar &&
+    !form.groupBy
+  ) {
+    errors.push({
+      path: `groupBy`,
+      message: 'Group By is required for bar charts',
     });
   }
 

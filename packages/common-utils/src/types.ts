@@ -15,6 +15,7 @@ export enum MetricsDataType {
 export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
+  Bar = 'bar',
   Table = 'table',
   Pie = 'pie',
   Number = 'number',

@@ -58,6 +58,7 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconBell,
+  IconChartBar,
   IconChartLine,
   IconChartPie,
   IconCirclePlus,
@@ -77,6 +78,7 @@ import { SortingState } from '@tanstack/react-table';
 import {
   AGG_FNS,
   buildTableRowSearchUrl,
+  convertToBarChartConfig,
   convertToNumberChartConfig,
   convertToPieChartConfig,
   convertToTableChartConfig,
@@ -138,6 +140,7 @@ import { AlertScheduleFields } from './AlertScheduleFields';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
+import { DBBarChart } from './DBBarChart';
 import DBNumberChart from './DBNumberChart';
 import { DBPieChart } from './DBPieChart';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
@@ -643,6 +646,8 @@ export default function EditTimeChartForm({
         return 'pie';
       case DisplayType.Number:
         return 'number';
+      case DisplayType.Bar:
+        return 'bar';
       default:
         return 'time';
     }
@@ -657,7 +662,7 @@ export default function EditTimeChartForm({
     }
   }, [displayType, setValue]);
 
-  const showGeneratedSql = ['table', 'time', 'number', 'pie'].includes(
+  const showGeneratedSql = ['table', 'time', 'number', 'pie', 'bar'].includes(
     activeTab,
   );
 
@@ -669,6 +674,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     numberFormat,
+    limit,
   ] = useWatch({
     control,
     name: [
@@ -676,6 +682,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'numberFormat',
+      'limit',
     ],
   });
 
@@ -685,12 +692,14 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      maxNumberOfGroups: limit?.limit ?? 10,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      limit,
     ],
   );
 
@@ -987,6 +996,8 @@ export default function EditTimeChartForm({
         return convertToTableChartConfig(config);
       } else if (activeTab === 'pie') {
         return convertToPieChartConfig(config);
+      } else if (activeTab === 'bar') {
+        return convertToBarChartConfig(config);
       }
 
       return config;
@@ -1047,14 +1058,18 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      maxNumberOfGroups,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      if (displayType === DisplayType.Bar) {
+        setValue('limit', { limit: maxNumberOfGroups ?? 10 });
+      }
       onSubmit();
     },
-    [setValue, onSubmit],
+    [setValue, onSubmit, displayType],
   );
 
   const tableConnection = useMemo(
@@ -1081,7 +1096,13 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  Time Series
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Bar}
+                  leftSection={<IconChartBar size={16} />}
+                >
+                  Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
@@ -1299,7 +1320,8 @@ export default function EditTimeChartForm({
                 <Flex mt={4} align="center" justify="space-between">
                   <Group gap="xs">
                     {displayType !== DisplayType.Number &&
-                      displayType !== DisplayType.Pie && (
+                      displayType !== DisplayType.Pie &&
+                      displayType !== DisplayType.Bar && (
                         <Button
                           variant="subtle"
                           size="sm"
@@ -1617,6 +1639,15 @@ export default function EditTimeChartForm({
       {queryReady && queriedConfig != null && activeTab === 'pie' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBPieChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
+      {queryReady && queriedConfig != null && activeTab === 'bar' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBBarChart
             config={queriedConfig}
             showMVOptimizationIndicator={false}
             errorVariant="inline"

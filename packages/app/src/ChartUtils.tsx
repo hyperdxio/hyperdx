@@ -1080,6 +1080,19 @@ export function convertToPieChartConfig(
   return omit(config, ['granularity']);
 }
 
+export function convertToBarChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Apply a default limit if not already configured
+  if (!convertedConfig.limit) {
+    convertedConfig.limit = { limit: 10 };
+  }
+
+  return convertedConfig;
+}
+
 export function convertToTableChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {

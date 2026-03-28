@@ -96,6 +96,7 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
+import { DBBarChart } from './components/DBBarChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -540,6 +541,14 @@ const Tile = forwardRef(
             )}
             {queriedConfig?.displayType === DisplayType.Pie && (
               <DBPieChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
+            {queriedConfig?.displayType === DisplayType.Bar && (
+              <DBBarChart
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarPrefix={toolbar}
