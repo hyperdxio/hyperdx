@@ -648,6 +648,128 @@ export const usePrevious = <T>(value: T): T | undefined => {
   return ref.current;
 };
 
+type AutoScaleUnitConfig = {
+  type: 'auto_scale';
+  base: 'iec' | 'si';
+  isBits: boolean;
+  perSec: boolean;
+};
+
+type FixedUnitConfig = {
+  type: 'fixed';
+  suffix: string;
+};
+
+type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
+
+const NUMERIC_UNIT_CONFIGS: Record<string, UnitFormatConfig> = {
+  // Data
+  bytes_iec: { type: 'auto_scale', base: 'iec', isBits: false, perSec: false },
+  bytes_si: { type: 'auto_scale', base: 'si', isBits: false, perSec: false },
+  bits_iec: { type: 'auto_scale', base: 'iec', isBits: true, perSec: false },
+  bits_si: { type: 'auto_scale', base: 'si', isBits: true, perSec: false },
+  kibibytes: { type: 'fixed', suffix: 'KiB' },
+  kilobytes: { type: 'fixed', suffix: 'KB' },
+  mebibytes: { type: 'fixed', suffix: 'MiB' },
+  megabytes: { type: 'fixed', suffix: 'MB' },
+  gibibytes: { type: 'fixed', suffix: 'GiB' },
+  gigabytes: { type: 'fixed', suffix: 'GB' },
+  tebibytes: { type: 'fixed', suffix: 'TiB' },
+  terabytes: { type: 'fixed', suffix: 'TB' },
+  pebibytes: { type: 'fixed', suffix: 'PiB' },
+  petabytes: { type: 'fixed', suffix: 'PB' },
+  // Data Rate
+  packets_sec: { type: 'fixed', suffix: 'pkt/s' },
+  bytes_sec_iec: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: true,
+  },
+  bytes_sec_si: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: true,
+  },
+  bits_sec_iec: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: true,
+  },
+  bits_sec_si: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: true,
+  },
+  kibibytes_sec: { type: 'fixed', suffix: 'KiB/s' },
+  kibibits_sec: { type: 'fixed', suffix: 'Kibit/s' },
+  kilobytes_sec: { type: 'fixed', suffix: 'KB/s' },
+  kilobits_sec: { type: 'fixed', suffix: 'Kbit/s' },
+  mebibytes_sec: { type: 'fixed', suffix: 'MiB/s' },
+  mebibits_sec: { type: 'fixed', suffix: 'Mibit/s' },
+  megabytes_sec: { type: 'fixed', suffix: 'MB/s' },
+  megabits_sec: { type: 'fixed', suffix: 'Mbit/s' },
+  gibibytes_sec: { type: 'fixed', suffix: 'GiB/s' },
+  gibibits_sec: { type: 'fixed', suffix: 'Gibit/s' },
+  gigabytes_sec: { type: 'fixed', suffix: 'GB/s' },
+  gigabits_sec: { type: 'fixed', suffix: 'Gbit/s' },
+  tebibytes_sec: { type: 'fixed', suffix: 'TiB/s' },
+  tebibits_sec: { type: 'fixed', suffix: 'Tibit/s' },
+  terabytes_sec: { type: 'fixed', suffix: 'TB/s' },
+  terabits_sec: { type: 'fixed', suffix: 'Tbit/s' },
+  pebibytes_sec: { type: 'fixed', suffix: 'PiB/s' },
+  pebibits_sec: { type: 'fixed', suffix: 'Pibit/s' },
+  petabytes_sec: { type: 'fixed', suffix: 'PB/s' },
+  petabits_sec: { type: 'fixed', suffix: 'Pbit/s' },
+  // Throughput
+  cps: { type: 'fixed', suffix: 'cps' },
+  ops: { type: 'fixed', suffix: 'ops' },
+  rps: { type: 'fixed', suffix: 'rps' },
+  reads_sec: { type: 'fixed', suffix: 'rps' },
+  wps: { type: 'fixed', suffix: 'wps' },
+  iops: { type: 'fixed', suffix: 'iops' },
+  cpm: { type: 'fixed', suffix: 'cpm' },
+  opm: { type: 'fixed', suffix: 'opm' },
+  rpm_reads: { type: 'fixed', suffix: 'rpm' },
+  wpm: { type: 'fixed', suffix: 'wpm' },
+};
+
+const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];
+const SI_BIT_UNITS = ['b', 'Kbit', 'Mbit', 'Gbit', 'Tbit', 'Pbit'];
+
+const formatAutoScaleData = (
+  value: number,
+  base: 'iec' | 'si',
+  isBits: boolean,
+  perSec: boolean,
+  mantissa: number,
+): string => {
+  const divisor = base === 'iec' ? 1024 : 1000;
+  const units =
+    base === 'iec'
+      ? isBits
+        ? IEC_BIT_UNITS
+        : IEC_BYTE_UNITS
+      : isBits
+        ? SI_BIT_UNITS
+        : SI_BYTE_UNITS;
+  const rateSuffix = perSec ? '/s' : '';
+
+  let absVal = Math.abs(value);
+  let i = 0;
+  while (absVal >= divisor && i < units.length - 1) {
+    absVal /= divisor;
+    i++;
+  }
+  const scaledValue = value < 0 ? -absVal : absVal;
+  return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
+};
+
 export const formatNumber = (
   value?: number,
   options?: NumberFormat,
@@ -666,9 +788,38 @@ export const formatNumber = (
     return value.toString();
   }
 
+  const mantissa = options.mantissa ?? 0;
+
+  // Handle new unit categories with numericUnit
+  if (
+    options.numericUnit &&
+    (options.output === 'byte' ||
+      options.output === 'data_rate' ||
+      options.output === 'throughput')
+  ) {
+    const config = NUMERIC_UNIT_CONFIGS[options.numericUnit];
+    if (config) {
+      if (config.type === 'auto_scale') {
+        return formatAutoScaleData(
+          value,
+          config.base,
+          config.isBits,
+          config.perSec,
+          mantissa,
+        );
+      }
+      return `${value.toFixed(mantissa)} ${config.suffix}`;
+    }
+  }
+
+  // Handle data_rate / throughput without a numericUnit — fall through to number
+  if (options.output === 'data_rate' || options.output === 'throughput') {
+    return value.toFixed(mantissa);
+  }
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
-    mantissa: options.mantissa || 0,
+    mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
     ...(options.output === 'byte' && {

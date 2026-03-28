@@ -1,6 +1,11 @@
 import * as React from 'react';
 import { useMemo } from 'react';
-import { Control, Controller, useWatch } from 'react-hook-form';
+import {
+  Control,
+  Controller,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
 import { NumberFormat } from '@hyperdx/common-utils/dist/types';
 import {
   Checkbox as MCheckbox,
@@ -28,6 +33,8 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   percent: <IconPercentage size={14} />,
   byte: <IconDatabase size={14} />,
   time: <IconClock size={14} />,
+  data_rate: <IconDatabase size={14} />,
+  throughput: <IconNumbers size={14} />,
 };
 
 const TEST_NUMBER = 1234;
@@ -41,11 +48,117 @@ export const DEFAULT_NUMBER_FORMAT: NumberFormat = {
   decimalBytes: false,
 };
 
+type UnitOption = { value: string; label: string };
+type UnitGroup = { group: string; items: UnitOption[] };
+
+const DATA_UNIT_OPTIONS: UnitOption[] = [
+  { value: 'bytes_iec', label: 'bytes (IEC)' },
+  { value: 'bytes_si', label: 'bytes (SI)' },
+  { value: 'bits_iec', label: 'bits (IEC)' },
+  { value: 'bits_si', label: 'bits (SI)' },
+  { value: 'kibibytes', label: 'kibibytes' },
+  { value: 'kilobytes', label: 'kilobytes' },
+  { value: 'mebibytes', label: 'mebibytes' },
+  { value: 'megabytes', label: 'megabytes' },
+  { value: 'gibibytes', label: 'gibibytes' },
+  { value: 'gigabytes', label: 'gigabytes' },
+  { value: 'tebibytes', label: 'tebibytes' },
+  { value: 'terabytes', label: 'terabytes' },
+  { value: 'pebibytes', label: 'pebibytes' },
+  { value: 'petabytes', label: 'petabytes' },
+];
+
+const DATA_RATE_UNIT_OPTIONS: UnitOption[] = [
+  { value: 'packets_sec', label: 'packets/sec' },
+  { value: 'bytes_sec_iec', label: 'bytes/sec (IEC)' },
+  { value: 'bytes_sec_si', label: 'bytes/sec (SI)' },
+  { value: 'bits_sec_iec', label: 'bits/sec (IEC)' },
+  { value: 'bits_sec_si', label: 'bits/sec (SI)' },
+  { value: 'kibibytes_sec', label: 'kibibytes/sec' },
+  { value: 'kibibits_sec', label: 'kibibits/sec' },
+  { value: 'kilobytes_sec', label: 'kilobytes/sec' },
+  { value: 'kilobits_sec', label: 'kilobits/sec' },
+  { value: 'mebibytes_sec', label: 'mebibytes/sec' },
+  { value: 'mebibits_sec', label: 'mebibits/sec' },
+  { value: 'megabytes_sec', label: 'megabytes/sec' },
+  { value: 'megabits_sec', label: 'megabits/sec' },
+  { value: 'gibibytes_sec', label: 'gibibytes/sec' },
+  { value: 'gibibits_sec', label: 'gibibits/sec' },
+  { value: 'gigabytes_sec', label: 'gigabytes/sec' },
+  { value: 'gigabits_sec', label: 'gigabits/sec' },
+  { value: 'tebibytes_sec', label: 'tebibytes/sec' },
+  { value: 'tebibits_sec', label: 'tebibits/sec' },
+  { value: 'terabytes_sec', label: 'terabytes/sec' },
+  { value: 'terabits_sec', label: 'terabits/sec' },
+  { value: 'pebibytes_sec', label: 'pebibytes/sec' },
+  { value: 'pebibits_sec', label: 'pebibits/sec' },
+  { value: 'petabytes_sec', label: 'petabytes/sec' },
+  { value: 'petabits_sec', label: 'petabits/sec' },
+];
+
+const THROUGHPUT_UNIT_OPTIONS: UnitOption[] = [
+  { value: 'cps', label: 'counts/sec (cps)' },
+  { value: 'ops', label: 'ops/sec (ops)' },
+  { value: 'rps', label: 'requests/sec (rps)' },
+  { value: 'reads_sec', label: 'reads/sec (rps)' },
+  { value: 'wps', label: 'writes/sec (wps)' },
+  { value: 'iops', label: 'I/O ops/sec (iops)' },
+  { value: 'cpm', label: 'counts/min (cpm)' },
+  { value: 'opm', label: 'ops/min (opm)' },
+  { value: 'rpm_reads', label: 'reads/min (rpm)' },
+  { value: 'wpm', label: 'writes/min (wpm)' },
+];
+
+const UNIT_OPTIONS_BY_OUTPUT: Record<string, UnitOption[]> = {
+  byte: DATA_UNIT_OPTIONS,
+  data_rate: DATA_RATE_UNIT_OPTIONS,
+  throughput: THROUGHPUT_UNIT_OPTIONS,
+};
+
+const DEFAULT_NUMERIC_UNIT_BY_OUTPUT: Record<string, string> = {
+  byte: 'bytes_iec',
+  data_rate: 'bytes_sec_iec',
+  throughput: 'cps',
+};
+
+const OUTPUT_CATEGORY_OPTIONS: UnitGroup[] = [
+  {
+    group: 'Basic',
+    items: [
+      { value: 'number', label: 'Number' },
+      { value: 'currency', label: 'Currency' },
+      { value: 'percent', label: 'Percentage' },
+      { value: 'time', label: 'Time' },
+    ],
+  },
+  {
+    group: 'Data',
+    items: [{ value: 'byte', label: 'Data' }],
+  },
+  {
+    group: 'Network',
+    items: [
+      { value: 'data_rate', label: 'Data rate' },
+      { value: 'throughput', label: 'Throughput' },
+    ],
+  },
+];
+
+const hasNumericUnit = (output: string) =>
+  output === 'byte' || output === 'data_rate' || output === 'throughput';
+
 export const NumberFormatForm: React.FC<{
   control: Control<ChartConfigDisplaySettings>;
-}> = ({ control }) => {
+  setValue: UseFormSetValue<ChartConfigDisplaySettings>;
+}> = ({ control, setValue }) => {
   const format =
     useWatch({ control, name: 'numberFormat' }) ?? DEFAULT_NUMBER_FORMAT;
+
+  const unitOptions = useMemo(
+    () =>
+      format.output ? (UNIT_OPTIONS_BY_OUTPUT[format.output] ?? null) : null,
+    [format.output],
+  );
 
   return (
     <>
@@ -63,19 +176,21 @@ export const NumberFormatForm: React.FC<{
             control={control}
             key="numberFormat.output"
             name="numberFormat.output"
-            render={({ field }) => (
+            render={({ field: { onChange, ...field } }) => (
               <NativeSelect
                 {...field}
                 label="Output format"
                 leftSection={format.output && FORMAT_ICONS[format.output]}
                 style={{ flex: 1 }}
-                data={[
-                  { value: 'number', label: 'Number' },
-                  { value: 'currency', label: 'Currency' },
-                  { value: 'byte', label: 'Bytes' },
-                  { value: 'percent', label: 'Percentage' },
-                  { value: 'time', label: 'Time' },
-                ]}
+                data={OUTPUT_CATEGORY_OPTIONS}
+                onChange={e => {
+                  const newOutput = e.target.value as NumberFormat['output'];
+                  onChange(newOutput);
+                  setValue(
+                    'numberFormat.numericUnit',
+                    DEFAULT_NUMERIC_UNIT_BY_OUTPUT[newOutput] ?? undefined,
+                  );
+                }}
               />
             )}
           />
@@ -91,6 +206,25 @@ export const NumberFormatForm: React.FC<{
           )}
         </div>
 
+        {unitOptions && (
+          <Controller
+            control={control}
+            key="numberFormat.numericUnit"
+            name="numberFormat.numericUnit"
+            render={({ field: { value, onChange, ...field } }) => (
+              <NativeSelect
+                {...field}
+                label="Unit"
+                value={
+                  value ?? DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output ?? '']
+                }
+                onChange={e => onChange(e.target.value)}
+                data={unitOptions}
+              />
+            )}
+          />
+        )}
+
         <div style={{ marginTop: -6 }}>
           <Paper p="xs" py={4}>
             <div
@@ -100,7 +234,14 @@ export const NumberFormatForm: React.FC<{
             >
               Example
             </div>
-            {formatNumber(TEST_NUMBER || 0, format)}
+            {formatNumber(TEST_NUMBER || 0, {
+              ...format,
+              numericUnit:
+                format.numericUnit ??
+                (format.output
+                  ? DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output]
+                  : undefined),
+            })}
           </Paper>
         </div>
 
@@ -128,8 +269,9 @@ export const NumberFormatForm: React.FC<{
             />
           </div>
         )}
+
         <Stack gap="xs">
-          {format.output === 'byte' ? (
+          {format.output === 'byte' && !format.numericUnit ? (
             <Controller
               control={control}
               key="numberFormat.decimalBytes"
@@ -176,7 +318,7 @@ export const NumberFormatForm: React.FC<{
                 );
               }}
             />
-          ) : (
+          ) : !hasNumericUnit(format.output ?? '') ? (
             <>
               <Controller
                 control={control}
@@ -209,7 +351,7 @@ export const NumberFormatForm: React.FC<{
                 )}
               />
             </>
-          )}
+          ) : null}
         </Stack>
       </Stack>
     </>

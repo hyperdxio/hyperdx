@@ -489,7 +489,16 @@ export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 // DASHBOARDS
 // --------------------------
 export const NumberFormatSchema = z.object({
-  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.string().optional(),
   mantissa: z.number().int().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
