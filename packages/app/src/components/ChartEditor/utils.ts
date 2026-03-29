@@ -8,6 +8,7 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
+  getSampleWeightExpression,
   isLogSource,
   isMetricSource,
   isTraceSource,
@@ -142,9 +143,7 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
-      sampleWeightExpression: isTraceSource(source)
-        ? source.sampleRateExpression
-        : undefined,
+      sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
       select: isSelectEmpty

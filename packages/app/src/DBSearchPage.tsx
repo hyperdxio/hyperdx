@@ -36,6 +36,7 @@ import {
   Filter,
   isLogSource,
   isTraceSource,
+  pickSampleWeightExpressionProps,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -687,9 +688,7 @@ function useSearchedConfigToChartConfig(
           whereLanguage: whereLanguage ?? 'sql',
           timestampValueExpression: sourceObj.timestampValueExpression,
           implicitColumnExpression: sourceObj.implicitColumnExpression,
-          ...(isTraceSource(sourceObj) && sourceObj.sampleRateExpression
-            ? { sampleWeightExpression: sourceObj.sampleRateExpression }
-            : {}),
+          ...pickSampleWeightExpressionProps(sourceObj),
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
           orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,

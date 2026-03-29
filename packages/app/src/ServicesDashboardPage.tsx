@@ -19,6 +19,7 @@ import {
   Filter,
   isLogSource,
   isTraceSource,
+  pickSampleWeightExpressionProps,
   PresetDashboard,
   SourceKind,
   TTraceSource,
@@ -34,9 +35,7 @@ function pickSourceConfigFields(source: TSource) {
     ...(isLogSource(source) || isTraceSource(source)
       ? { implicitColumnExpression: source.implicitColumnExpression }
       : {}),
-    ...(isTraceSource(source) && source.sampleRateExpression
-      ? { sampleWeightExpression: source.sampleRateExpression }
-      : {}),
+    ...pickSampleWeightExpressionProps(source),
   };
 }
 import {

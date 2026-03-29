@@ -416,9 +416,9 @@ const aggFnExpr = ({
         const nullCheck = `${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
         if (isWhereUsed) {
           const cond = { UNSAFE_RAW_SQL: `${where} AND ${nullCheck}` };
-          return chSql`sumIf(${weightedVal}, ${cond}) / sumIf(${w}, ${cond})`;
+          return chSql`sumIf(${weightedVal}, ${cond}) / nullIf(sumIf(${w}, ${cond}), 0)`;
         }
-        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }})`;
+        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / nullIf(sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }}), 0)`;
       }
 
       if (fn === 'sum') {

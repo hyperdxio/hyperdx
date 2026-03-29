@@ -9,6 +9,7 @@ import {
   AILineTableResponse,
   AssistantLineTableConfigSchema,
   ChartConfigWithDateRange,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import type { LanguageModel } from 'ai';
@@ -272,11 +273,7 @@ export function getChartConfigFromResolvedConfig(
     connection: source.connection.toString(),
     groupBy: resObject.groupBy,
     timestampValueExpression: source.timestampValueExpression,
-    ...(source.kind === SourceKind.Trace &&
-      'sampleRateExpression' in source &&
-      source.sampleRateExpression && {
-        sampleWeightExpression: source.sampleRateExpression,
-      }),
+    ...pickSampleWeightExpressionProps(source),
     dateRange: [dateRange[0].toString(), dateRange[1].toString()],
     markdown: resObject.markdown,
     granularity: 'auto',

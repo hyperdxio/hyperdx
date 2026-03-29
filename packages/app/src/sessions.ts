@@ -5,6 +5,7 @@ import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
+  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
   TSessionSource,
@@ -162,9 +163,7 @@ export function useSessions(
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
-            ...(traceSource.sampleRateExpression && {
-              sampleWeightExpression: traceSource.sampleRateExpression,
-            }),
+            ...pickSampleWeightExpressionProps(traceSource),
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
           },

@@ -1020,6 +1020,28 @@ export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
 }
 
+type SourceLikeForSampleWeight = {
+  kind: SourceKind;
+  sampleRateExpression?: string | null;
+};
+
+/** Trace sample rate expression for chart sampleWeightExpression when set. */
+export function getSampleWeightExpression(
+  source: SourceLikeForSampleWeight,
+): string | undefined {
+  return source.kind === SourceKind.Trace && source.sampleRateExpression
+    ? source.sampleRateExpression
+    : undefined;
+}
+
+/** For object spread: { ...pickSampleWeightExpressionProps(source) } */
+export function pickSampleWeightExpressionProps(
+  source: SourceLikeForSampleWeight,
+): { sampleWeightExpression: string } | undefined {
+  const w = getSampleWeightExpression(source);
+  return w ? { sampleWeightExpression: w } : undefined;
+}
+
 export const AssistantLineTableConfigSchema = z.object({
   displayType: z.enum([DisplayType.Line, DisplayType.Table]),
   markdown: z.string().optional(),

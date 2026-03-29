@@ -4,6 +4,7 @@ import { parseAsString, useQueryState } from 'nuqs';
 import {
   DisplayType,
   type Filter,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Text } from '@mantine/core';
@@ -109,9 +110,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                           'connection',
                           'from',
                         ]),
-                        ...(source.sampleRateExpression && {
-                          sampleWeightExpression: source.sampleRateExpression,
-                        }),
+                        ...pickSampleWeightExpressionProps(source),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
@@ -149,9 +148,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                           'connection',
                           'from',
                         ]),
-                        ...(source.sampleRateExpression && {
-                          sampleWeightExpression: source.sampleRateExpression,
-                        }),
+                        ...pickSampleWeightExpressionProps(source),
                         where: '',
                         whereLanguage: 'sql',
                         select: [

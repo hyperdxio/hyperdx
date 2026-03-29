@@ -1,5 +1,8 @@
 import { pick } from 'lodash';
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import {
+  pickSampleWeightExpressionProps,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
@@ -95,9 +98,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
           config={{
             source: source.id,
             ...pick(source, ['timestampValueExpression', 'connection', 'from']),
-            ...(source.sampleRateExpression && {
-              sampleWeightExpression: source.sampleRateExpression,
-            }),
+            ...pickSampleWeightExpressionProps(source),
             where: '',
             whereLanguage: 'sql',
             select: [

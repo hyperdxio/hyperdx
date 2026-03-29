@@ -2002,7 +2002,7 @@ describe('renderChartConfig', () => {
         '* greatest(toUInt64OrZero(toString(SampleRate)), 1)',
       );
       expect(actual).toContain(
-        '/ sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+        '/ nullIf(sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL), 0)',
       );
       expect(actual).not.toContain('avg(');
       expect(actual).toMatchSnapshot();

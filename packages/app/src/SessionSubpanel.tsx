@@ -8,6 +8,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
+  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
   TSessionSource,
@@ -188,9 +189,7 @@ function useSessionChartConfigs({
       where,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
-      ...(traceSource.sampleRateExpression && {
-        sampleWeightExpression: traceSource.sampleRateExpression,
-      }),
+      ...pickSampleWeightExpressionProps(traceSource),
       connection: traceSource.connection,
       orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {

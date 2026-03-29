@@ -1,6 +1,10 @@
 import { pick } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import type { Filter, TTraceSource } from '@hyperdx/common-utils/dist/types';
+import {
+  type Filter,
+  pickSampleWeightExpressionProps,
+  type TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
@@ -33,9 +37,7 @@ export default function SlowestEventsTile({
     {
       source: source.id,
       ...pick(source, ['timestampValueExpression', 'connection', 'from']),
-      ...(source.sampleRateExpression && {
-        sampleWeightExpression: source.sampleRateExpression,
-      }),
+      ...pickSampleWeightExpressionProps(source),
       where: '',
       whereLanguage: 'sql',
       select: [
@@ -120,9 +122,7 @@ export default function SlowestEventsTile({
                   'connection',
                   'from',
                 ]),
-                ...(source.sampleRateExpression && {
-                  sampleWeightExpression: source.sampleRateExpression,
-                }),
+                ...pickSampleWeightExpressionProps(source),
                 where: '',
                 whereLanguage: 'sql',
                 select: [
