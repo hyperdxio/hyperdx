@@ -81,6 +81,7 @@ export const NestedFilterGroup = ({
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => VIRTUAL_ITEM_HEIGHT_ESTIMATE,
     overscan: 10,
+    getItemKey: index => childFilters[index]?.key ?? index,
   });
 
   return (
