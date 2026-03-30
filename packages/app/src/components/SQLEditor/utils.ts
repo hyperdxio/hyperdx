@@ -3,8 +3,9 @@ import {
   Completion,
   CompletionContext,
 } from '@codemirror/autocomplete';
-import { sql } from '@codemirror/lang-sql';
 import { EditorView } from '@uiw/react-codemirror';
+
+import { clickhouseSql } from '@/utils/codeMirror';
 
 import {
   AGGREGATE_FUNCTIONS,
@@ -96,7 +97,7 @@ export const createCodeMirrorSqlDialect = ({
 
   return [
     // SQL language for syntax highlighting (completions are overridden below)
-    sql({ upperCaseKeywords: true }),
+    clickhouseSql({ upperCaseKeywords: true }),
     // Override built-in SQL completions with our custom source
     autocompletion({
       override: [createIdentifierCompletionSource(completions)],

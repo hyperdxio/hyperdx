@@ -12,7 +12,6 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
@@ -179,69 +178,62 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.useContext(AppNavContext);
 
   return (
-    <>
-      <Paper
-        className={cx(styles.helpButton, {
-          [styles.helpButtonCollapsed]: isCollapsed,
-        })}
-      >
-        <Menu
-          withArrow
-          position="top-start"
-          transitionProps={{ transition: 'fade-up' }}
-          defaultOpened={false}
+    <Menu position="right-start" transitionProps={{ transition: 'fade-right' }}>
+      <Menu.Target>
+        <UnstyledButton
+          data-testid="help-menu-trigger"
+          className={styles.navItem}
         >
-          <Menu.Target>
-            <UnstyledButton data-testid="help-menu-trigger" w="100%">
-              <Group align="center" justify="center" h={28}>
-                <IconHelp size={16} />
-              </Group>
-            </UnstyledButton>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label>
-              Help{' '}
-              {version && (
-                <Text size="xs" component="span">
-                  v{version}
-                </Text>
-              )}
-            </Menu.Label>
+          <span className={styles.navItemContent}>
+            <span className={styles.navItemIcon}>
+              <IconHelp size={16} />
+            </span>
+            {!isCollapsed && <span>Help</span>}
+          </span>
+        </UnstyledButton>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>
+          Help{' '}
+          {version && (
+            <Text size="xs" component="span">
+              v{version}
+            </Text>
+          )}
+        </Menu.Label>
 
-            <Menu.Item
-              data-testid="documentation-menu-item"
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack"
-              component="a"
-              target="_blank"
-              rel="noopener noreferrer"
-              leftSection={<IconBook size={16} />}
-            >
-              Documentation
-            </Menu.Item>
-            <Menu.Item
-              data-testid="discord-menu-item"
-              leftSection={<IconBrandDiscord size={16} />}
-              component="a"
-              href="https://hyperdx.io/discord"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Discord Community
-            </Menu.Item>
-            <Menu.Item
-              data-testid="setup-instructions-menu-item"
-              leftSection={<IconBulb size={16} />}
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
-              component="a"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Setup Instructions
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </Paper>
-    </>
+        <Menu.Item
+          data-testid="documentation-menu-item"
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+          component="a"
+          target="_blank"
+          rel="noopener noreferrer"
+          leftSection={<IconBook size={16} />}
+        >
+          Documentation
+        </Menu.Item>
+        <Menu.Item
+          data-testid="discord-menu-item"
+          leftSection={<IconBrandDiscord size={16} />}
+          component="a"
+          href="https://hyperdx.io/discord"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Discord Community
+        </Menu.Item>
+        <Menu.Item
+          data-testid="setup-instructions-menu-item"
+          leftSection={<IconBulb size={16} />}
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+          component="a"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Setup Instructions
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 };
 
