@@ -4314,6 +4314,7 @@ __metadata:
     sass: "npm:^1.54.8"
     serialize-query-params: "npm:^2.0.2"
     serve: "npm:^14.0.0"
+    sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
     store2: "npm:^2.14.3"
     storybook: "npm:^10.2.10"
@@ -4362,7 +4363,7 @@ __metadata:
     node-sql-parser: "npm:^5.3.5"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
-    sql-formatter: "npm:^15.4.11"
+    sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
     ts-jest: "npm:^29.4.5"
     tsup: "npm:^8.4.0"
@@ -16421,13 +16422,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"get-stdin@npm:=8.0.0":
-  version: 8.0.0
-  resolution: "get-stdin@npm:8.0.0"
-  checksum: 10c0/b71b72b83928221052f713b3b6247ebf1ceaeb4ef76937778557537fd51ad3f586c9e6a7476865022d9394b39b74eed1dc7514052fa74d80625276253571b76f
-  languageName: node
-  linkType: hard
-
 "get-stream@npm:^6.0.0, get-stream@npm:^6.0.1":
   version: 6.0.1
   resolution: "get-stream@npm:6.0.1"
@@ -25542,16 +25536,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sql-formatter@npm:^15.4.11":
-  version: 15.4.11
-  resolution: "sql-formatter@npm:15.4.11"
+"sql-formatter@npm:^15.7.2":
+  version: 15.7.2
+  resolution: "sql-formatter@npm:15.7.2"
   dependencies:
     argparse: "npm:^2.0.1"
-    get-stdin: "npm:=8.0.0"
     nearley: "npm:^2.20.1"
   bin:
     sql-formatter: bin/sql-formatter-cli.cjs
-  checksum: 10c0/a61f252d6d71face6693a41e5b6a689c913f9bf88a37c3410bdf24a0858da552cbac336a9dc2a254e876fdc2f77026465b55425b1c9f15c4afa2f6218c22d80f
+  checksum: 10c0/276681392df604aa59af49eb901a831db0b3ada7817a2372fb427500e77f61068aae63b586006b0521700e74ab76b2e7a7ebd20f67ca3f0b1518f5f0c7a7bd1f
   languageName: node
   linkType: hard
 
