@@ -670,6 +670,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Text>
             )}
 
+            {/* Help */}
+            <AppNavHelpMenu version={APP_VERSION} />
+
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (
               <AppNavLink
@@ -692,7 +695,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </ScrollArea>
 
         <div className={styles.footer} style={{ width: navWidth }}>
-          <AppNavHelpMenu version={APP_VERSION} />
           {IS_LOCAL_MODE && !isCollapsed && (
             <Link
               href="/careers"
