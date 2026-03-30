@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.22.1
+
+### Patch Changes
+
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 47e1f565: feat: Add OpenAI provider support for AI assistance
+- 629009da: Update OpenAI model configuration to use the new Responses API
+- acd117ab: perf: Optimize alerthistories aggregation queries to reduce DocDB CPU load
+- Updated dependencies [4f7dd9ef]
+- Updated dependencies [275dc941]
+- Updated dependencies [6936ef8e]
+  - @hyperdx/common-utils@0.16.2
+
 ## 2.22.0
 
 ### Patch Changes

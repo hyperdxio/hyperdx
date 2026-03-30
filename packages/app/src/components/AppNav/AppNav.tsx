@@ -26,6 +26,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
+  IconArrowBarToLeft,
   IconBell,
   IconBellFilled,
   IconChartDots,
@@ -34,7 +35,6 @@ import {
   IconCommand,
   IconDeviceLaptop,
   IconLayoutGrid,
-  IconLayoutSidebarLeftCollapse,
   IconSearch,
   IconSettings,
   IconSitemap,
@@ -568,7 +568,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               )}
             </Link>
             <ActionIcon
-              variant="transparent"
+              variant="subtle"
               size="sm"
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
@@ -576,7 +576,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               title="Collapse/Expand Navigation"
               onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
-              <IconLayoutSidebarLeftCollapse size={16} />
+              <IconArrowBarToLeft size={16} />
             </ActionIcon>
           </div>
         </div>
@@ -670,6 +670,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Text>
             )}
 
+            {/* Help */}
+            <AppNavHelpMenu version={APP_VERSION} />
+
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (
               <AppNavLink
@@ -692,7 +695,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </ScrollArea>
 
         <div className={styles.footer} style={{ width: navWidth }}>
-          <AppNavHelpMenu version={APP_VERSION} />
           {IS_LOCAL_MODE && !isCollapsed && (
             <Link
               href="/careers"

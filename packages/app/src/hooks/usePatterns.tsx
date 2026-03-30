@@ -104,7 +104,7 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
-export const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
+const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
 export type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;

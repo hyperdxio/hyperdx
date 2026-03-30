@@ -7,8 +7,6 @@ import {
   InputProps,
   PasswordInput,
   PasswordInputProps,
-  Switch,
-  SwitchProps,
   TextInput,
   TextInputProps,
 } from '@mantine/core';
@@ -39,17 +37,6 @@ interface TextInputControlledProps<T extends FieldValues>
 
 interface CheckboxControlledProps<T extends FieldValues>
   extends Omit<CheckboxProps, 'name' | 'style'>,
-    Omit<
-      React.InputHTMLAttributes<HTMLInputElement>,
-      'name' | 'size' | 'color'
-    > {
-  name: Path<T>;
-  control: Control<T>;
-  rules?: Parameters<Control<T>['register']>[1];
-}
-
-interface SwitchControlledProps<T extends FieldValues>
-  extends Omit<SwitchProps, 'name' | 'style'>,
     Omit<
       React.InputHTMLAttributes<HTMLInputElement>,
       'name' | 'size' | 'color'
@@ -131,24 +118,6 @@ export function CheckBoxControlled<T extends FieldValues>({
           checked={value}
           error={error?.message}
         />
-      )}
-    />
-  );
-}
-
-export function SwitchControlled<T extends FieldValues>({
-  name,
-  control,
-  rules,
-  ...props
-}: SwitchControlledProps<T>) {
-  return (
-    <Controller
-      name={name}
-      control={control}
-      rules={rules}
-      render={({ field: { value, ...field }, fieldState: { error } }) => (
-        <Switch {...props} {...field} checked={value} error={error?.message} />
       )}
     />
   );

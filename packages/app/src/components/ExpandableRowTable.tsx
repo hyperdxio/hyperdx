@@ -84,22 +84,6 @@ export const ExpandedLogRow = memo(
   },
 );
 
-export interface ExpandableRowTableProps {
-  // Expansion state management
-  expandedRows: Record<string, boolean>;
-  onToggleRowExpansion: (rowId: string) => void;
-  onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
-  collapseAllRows?: boolean;
-  showExpandButton?: boolean;
-
-  // Row data
-  source?: TSource;
-  getRowId: (row: Record<string, any>) => string;
-
-  // Table display
-  highlightedLineId?: string;
-}
-
 // Hook for managing expansion state
 export const useExpandableRows = (
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void,

@@ -20,9 +20,9 @@ import { Table, TableCellButton } from './Table';
 import styles from '../../styles/LogSidePanel.module.scss';
 
 // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-export const UNDEFINED_WIDTH = 99999;
+const UNDEFINED_WIDTH = 99999;
 
-export const parseEvents = (__events?: string) => {
+const parseEvents = (__events?: string) => {
   try {
     return JSON.parse(__events || '[]')[0].fields.reduce(
       (acc: any, field: any) => {
@@ -40,7 +40,7 @@ export const parseEvents = (__events?: string) => {
   }
 };
 
-export const getFirstFrame = (frames?: TStacktraceFrame[]) => {
+const getFirstFrame = (frames?: TStacktraceFrame[]) => {
   if (!frames || !frames.length) {
     return null;
   }
@@ -52,7 +52,7 @@ export const getFirstFrame = (frames?: TStacktraceFrame[]) => {
   );
 };
 
-export const StacktraceFrame = ({
+const StacktraceFrame = ({
   filename,
   function: functionName,
   lineno,
@@ -96,7 +96,7 @@ export const StacktraceFrame = ({
   );
 };
 
-export type StacktraceBreadcrumbCategory =
+type StacktraceBreadcrumbCategory =
   | 'ui.click'
   | 'fetch'
   | 'xhr'
@@ -104,7 +104,7 @@ export type StacktraceBreadcrumbCategory =
   | 'navigation'
   | string;
 
-export type StacktraceBreadcrumb = {
+type StacktraceBreadcrumb = {
   type?: string;
   level?: string;
   event_id?: string;
@@ -114,7 +114,7 @@ export type StacktraceBreadcrumb = {
   timestamp: number;
 };
 
-export const CollapsibleSection = ({
+const CollapsibleSection = ({
   title,
   children,
   initiallyCollapsed,
@@ -156,7 +156,7 @@ export const SectionWrapper: React.FC<
 /**
  * Stacktrace elements
  */
-export const StacktraceValue = ({
+const StacktraceValue = ({
   label,
   value,
 }: {
@@ -193,7 +193,7 @@ const StacktraceRowExpandButton = ({
   );
 };
 
-export const StacktraceRow = ({
+const StacktraceRow = ({
   row,
   table,
 }: {
@@ -291,7 +291,7 @@ export const StacktraceRow = ({
   );
 };
 
-export const stacktraceColumns: ColumnDef<TStacktraceFrame>[] = [
+const stacktraceColumns: ColumnDef<TStacktraceFrame>[] = [
   {
     accessorKey: 'filename',
     cell: StacktraceRow,
@@ -342,7 +342,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
   );
 });
 
-export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
+const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   {
     accessorKey: 'category',
     header: 'Category',
@@ -450,7 +450,7 @@ export const useShowMoreRows = <T extends object>({
   return { visibleRows, hiddenRowsCount, handleToggleMoreRows, isExpanded };
 };
 
-export type ExceptionValues = {
+type ExceptionValues = {
   type: string;
   value: string;
   mechanism?: {

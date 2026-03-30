@@ -30,13 +30,13 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToLeft,
   IconChartBar,
   IconChartBarOff,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
-  IconLayoutSidebarLeftCollapse,
   IconMinus,
   IconPin,
   IconPinFilled,
@@ -112,7 +112,7 @@ type FilterCheckboxProps = {
   isPercentageLoading?: boolean;
 };
 
-export const TextButton = ({
+const TextButton = ({
   onClick,
   label,
   ms,
@@ -159,7 +159,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-export const FilterCheckbox = ({
+const FilterCheckbox = ({
   value,
   label,
   pinned,
@@ -960,12 +960,17 @@ const DBSearchPageFiltersComponent = ({
         // todo: add number type with sliders :D
       )
       .map(({ path, type }) => {
-        return { type, path: mergePath(path, jsonColumns ?? []) };
+        return {
+          type,
+          path: mergePath(path, jsonColumns ?? []),
+          isMapSubField: path.length > 1,
+        };
       })
       .filter(
         field =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
+          field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
           Object.keys(filterState).includes(field.path) || // keep selected fields
           isFieldPinned(field.path), // keep pinned fields
       )
@@ -1218,7 +1223,7 @@ const DBSearchPageFiltersComponent = ({
                   onClick={onCollapse}
                   aria-label="Hide filters"
                 >
-                  <IconLayoutSidebarLeftCollapse size={14} />
+                  <IconArrowBarToLeft size={14} />
                 </ActionIcon>
               </Tooltip>
             )}
@@ -1505,10 +1510,7 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
-export function isFieldPrimary(
-  tableMetadata: TableMetadata | undefined,
-  key: string,
-) {
+function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
   return tableMetadata?.primary_key?.includes(key);
 }
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);

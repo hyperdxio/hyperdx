@@ -17,7 +17,7 @@ import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
 
-export type AlertPreviewChartProps = {
+type AlertPreviewChartProps = {
   source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
