@@ -25,6 +25,9 @@ HDX_CI_OPAMP_PORT:= $(shell echo $$((14320 + $(HDX_CI_SLOT))))
 
 export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
 
+# Log directory for dev-portal visibility (integration tests)
+HDX_CI_LOGS_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/logs-int
+
 .PHONY: all
 all: install-tools
 
@@ -37,7 +40,7 @@ install-tools:
 # Dev environment with worktree isolation
 # ---------------------------------------------------------------------------
 # Ports are allocated in the 30100-31199 range (base + slot) to avoid
-# conflicts with CI (14320-40098) and E2E (8123, 29000, 29998) ports.
+# conflicts with CI (14320-40098) and E2E (20320-21399) ports.
 #
 # Port mapping (base + slot):
 #   API server        : 30100 + slot
@@ -73,6 +76,16 @@ dev-down:
 dev-portal:
 	node scripts/dev-portal/server.js
 
+.PHONY: dev-portal-stop
+dev-portal-stop:
+	@pid=$$(lsof -ti :$${HDX_PORTAL_PORT:-9900} 2>/dev/null); \
+	if [ -n "$$pid" ]; then \
+		echo "Stopping dev portal (PID $$pid)"; \
+		kill $$pid 2>/dev/null || true; \
+	else \
+		echo "Dev portal is not running"; \
+	fi
+
 .PHONY: dev-lint
 dev-lint:
 	npx nx run-many -t lint:fix
@@ -85,6 +98,35 @@ ci-build:
 ci-lint:
 	npx nx run-many -t ci:lint
 
+.PHONY: dev-int-down
+dev-int-down:
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	@for port in $(HDX_CI_API_PORT) $(HDX_CI_OPAMP_PORT); do \
+		pids=$$(lsof -ti :$$port 2>/dev/null); \
+		for pid in $$pids; do \
+			echo "Killing process $$pid on port $$port"; \
+			kill $$pid 2>/dev/null || true; \
+		done; \
+	done
+	@rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; true
+
+.PHONY: dev-e2e-down
+dev-e2e-down:
+	$(eval HDX_E2E_SLOT := $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}'))
+	docker compose -p e2e-$(HDX_E2E_SLOT) -f packages/app/tests/e2e/docker-compose.yml down -v
+	@for port in $$((21000 + $(HDX_E2E_SLOT))) $$((20320 + $(HDX_E2E_SLOT))) $$((21300 + $(HDX_E2E_SLOT))) $$((21200 + $(HDX_E2E_SLOT))); do \
+		pids=$$(lsof -ti :$$port 2>/dev/null); \
+		for pid in $$pids; do \
+			echo "Killing process $$pid on port $$port"; \
+			kill $$pid 2>/dev/null || true; \
+		done; \
+	done
+
+.PHONY: dev-clean
+dev-clean: dev-down dev-int-down dev-e2e-down dev-portal-stop
+	@rm -rf $(HOME)/.config/hyperdx/dev-slots
+	@echo "All dev services cleaned up"
+
 .PHONY: dev-int-build
 dev-int-build:
 	npx nx run-many -t ci:build
@@ -93,23 +135,33 @@ dev-int-build:
 .PHONY: dev-int
 dev-int:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
+	@mkdir -p $(HDX_CI_LOGS_DIR)
+	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/api:dev:int $(FILE); ret=$$?; \
+	npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log; ret=$${PIPESTATUS[0]}; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
 	exit $$ret
 
 .PHONY: dev-int-common-utils
 dev-int-common-utils:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT))"
+	@mkdir -p $(HDX_CI_LOGS_DIR)
+	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/common-utils:dev:int $(FILE)
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log; ret=$${PIPESTATUS[0]}; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
+	exit $$ret
 
 .PHONY: ci-int
 ci-int:
+	@mkdir -p $(HDX_CI_LOGS_DIR)
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
-	npx nx run-many -t ci:int --parallel=false
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	npx nx run-many -t ci:int --parallel=false 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log; ret=$${PIPESTATUS[0]}; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
+	exit $$ret
 
 .PHONY: dev-unit
 dev-unit:

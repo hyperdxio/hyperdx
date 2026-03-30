@@ -8,9 +8,9 @@ const USE_DEV = process.env.E2E_USE_DEV === 'true';
 const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
 
 // Port configuration (set by scripts/test-e2e.sh via HDX_E2E_* env vars)
-const API_PORT = process.env.HDX_E2E_API_PORT || '19000';
-const APP_PORT = process.env.HDX_E2E_APP_PORT || '48081';
-const APP_LOCAL_PORT = process.env.HDX_E2E_APP_LOCAL_PORT || '48001';
+const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
+const APP_PORT = process.env.HDX_E2E_APP_PORT || '21300';
+const APP_LOCAL_PORT = process.env.HDX_E2E_APP_LOCAL_PORT || '21200';
 
 // Timeout configuration constants (in milliseconds)
 const TEST_TIMEOUT_MS = 60 * 1000; // 60 seconds per test

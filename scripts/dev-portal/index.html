@@ -250,14 +250,38 @@
         justify-content: space-between;
       }
 
-      .stack-header .slot-badge {
-        background: var(--accent);
-        color: var(--bg);
-        font-size: 12px;
+      .env-badge {
+        font-size: 10px;
         font-weight: 700;
-        padding: 2px 8px;
+        padding: 2px 7px;
         border-radius: 10px;
-        margin-right: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .env-badge.dev {
+        background: rgba(37, 226, 165, 0.15);
+        color: var(--accent);
+      }
+
+      .env-badge.e2e {
+        background: rgba(88, 166, 255, 0.15);
+        color: #58a6ff;
+      }
+
+      .env-badge.int {
+        background: rgba(239, 177, 24, 0.15);
+        color: var(--yellow);
+      }
+
+      .services-table tr.env-separator td {
+        padding: 8px 20px 4px;
+        border-bottom: none;
+        background: var(--card-surface);
+      }
+
+      .services-table tr.env-separator + tr td {
+        border-top: none;
       }
 
       .stack-header .branch {
@@ -511,6 +535,7 @@
 
       let currentLogSlot = null;
       let currentLogService = null;
+      let currentLogEnvType = null;
       let currentEventSource = null;
       let autoScroll = true;
 
@@ -656,13 +681,20 @@
           'otel-collector-json': 'OTel JSON',
           alerts: 'Alerts Task',
           'common-utils': 'Common Utils',
+          'e2e-runner': 'E2E Runner',
         };
         return map[name] || name;
       }
 
+      function envTypeLabel(envType) {
+        const map = { dev: 'Dev', e2e: 'E2E', int: 'Integration' };
+        return map[envType] || envType;
+      }
+
       // --- Log panel ---
 
-      function openLogPanel(slot, service) {
+      function openLogPanel(slot, service, envType) {
+        envType = envType || 'dev';
         // Close existing stream
         if (currentEventSource) {
           currentEventSource.close();
@@ -671,8 +703,9 @@
 
         currentLogSlot = slot;
         currentLogService = service;
+        currentLogEnvType = envType;
         logTitle.textContent = serviceDisplayName(service);
-        logSlotLabel.textContent = `slot ${slot}`;
+        logSlotLabel.textContent = `${envTypeLabel(envType)} \u00b7 slot ${slot}`;
         logContent.innerHTML = '';
         appendLogLine('Loading logs...');
         logPanel.classList.add('open');
@@ -683,13 +716,13 @@
           .querySelectorAll('.services-table tr.active')
           .forEach(el => el.classList.remove('active'));
         const activeRow = document.querySelector(
-          `tr[data-slot="${slot}"][data-service="${service}"]`,
+          `tr[data-slot="${slot}"][data-service="${service}"][data-env="${envType}"]`,
         );
         if (activeRow) activeRow.classList.add('active');
 
         // Start SSE stream
         const eventSource = new EventSource(
-          `/api/logs/${slot}/${encodeURIComponent(service)}?stream=1`,
+          `/api/logs/${envType}/${slot}/${encodeURIComponent(service)}?stream=1`,
         );
         currentEventSource = eventSource;
 
@@ -727,6 +760,7 @@
         logPanel.classList.remove('open');
         currentLogSlot = null;
         currentLogService = null;
+        currentLogEnvType = null;
         document
           .querySelectorAll('.services-table tr.active')
           .forEach(el => el.classList.remove('active'));
@@ -753,32 +787,67 @@
         if (stacks.length === 0) {
           return `
           <div class="empty-state">
-            <h2>No dev stacks running</h2>
-            <p>Start a dev environment from a worktree:</p>
+            <h2>No stacks running</h2>
+            <p>Start an environment from a worktree:</p>
             <br>
-            <code>make dev</code>
+            <code>make dev</code> &nbsp; <code>make dev-e2e</code> &nbsp; <code>make dev-int</code>
           </div>
         `;
         }
 
-        return `<div class="stacks">${stacks.map(renderStack).join('')}</div>`;
+        // Group stacks by worktree name so all envs for the same
+        // worktree appear in a single card.
+        const groups = new Map();
+        for (const stack of stacks) {
+          const key = stack.worktree || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(stack);
+        }
+
+        return `<div class="stacks">${[...groups.values()].map(renderWorktreeCard).join('')}</div>`;
       }
 
-      function renderStack(stack) {
-        const appService = stack.services.find(
-          s => s.name === 'app' && s.status === 'up',
-        );
+      function renderWorktreeCard(stacks) {
+        // Use the dev stack for the header since it has the richest metadata.
+        const header = stacks.find(s => s.envType === 'dev') || stacks[0];
+        const devStack = stacks.find(s => s.envType === 'dev');
+        const appService =
+          devStack &&
+          devStack.services.find(s => s.name === 'app' && s.status === 'up');
         const appUrl = appService ? appService.url : null;
+
+        // Flatten all services from every env into one table.
+        // Insert a separator row before each env group.
+        const envOrder = ['dev', 'e2e', 'int'];
+        const sorted = [...stacks].sort(
+          (a, b) =>
+            (envOrder.indexOf(a.envType) ?? 9) -
+            (envOrder.indexOf(b.envType) ?? 9),
+        );
+
+        let rows = '';
+        for (const stack of sorted) {
+          const envType = stack.envType || 'dev';
+          // Env group separator row
+          rows += `
+            <tr class="env-separator">
+              <td colspan="4">
+                <span class="env-badge ${envType}">${envTypeLabel(envType)}</span>
+              </td>
+            </tr>`;
+          rows += stack.services
+            .map(svc => renderService(stack.slot, svc, envType))
+            .join('');
+        }
 
         return `
         <div class="stack-card">
           <div class="stack-header">
             <div>
               <div style="display:flex;align-items:center">
-                <span class="slot-badge">${stack.slot}</span>
-                <span class="branch">${escapeHtml(stack.branch)}</span>
+                <span class="branch">${escapeHtml(header.branch)}</span>
               </div>
-              <div class="worktree">${escapeHtml(stack.worktree)}</div>
+              <div class="worktree">${escapeHtml(header.worktree)}</div>
             </div>
             <div class="stack-actions">
               ${appUrl ? `<a href="${appUrl}" target="_blank" class="open-btn">Open App</a>` : ''}
@@ -794,25 +863,28 @@
               </tr>
             </thead>
             <tbody>
-              ${stack.services.map(svc => renderService(stack.slot, svc)).join('')}
+              ${rows}
             </tbody>
           </table>
         </div>
       `;
       }
 
-      function renderService(slot, svc) {
+      function renderService(slot, svc, envType) {
+        envType = envType || 'dev';
         const portCell = svc.port
           ? `<span class="port-plain">:${svc.port}</span>`
           : `<span class="port-plain">-</span>`;
 
         const isActive =
-          currentLogSlot == slot && currentLogService === svc.name;
+          currentLogSlot == slot &&
+          currentLogService === svc.name &&
+          currentLogEnvType === envType;
 
         return `
         <tr class="clickable ${isActive ? 'active' : ''}"
-            data-slot="${slot}" data-service="${svc.name}"
-            onclick="openLogPanel(${slot}, '${svc.name}')">
+            data-slot="${slot}" data-service="${svc.name}" data-env="${envType}"
+            onclick="openLogPanel(${slot}, '${svc.name}', '${envType}')">
           <td>
             <div class="service-name">
               ${serviceDisplayName(svc.name)}
@@ -826,7 +898,7 @@
             </div>
           </td>
           <td>${portCell}</td>
-          <td><button class="log-btn" onclick="event.stopPropagation(); openLogPanel(${slot}, '${svc.name}')">Logs</button></td>
+          <td><button class="log-btn" onclick="event.stopPropagation(); openLogPanel(${slot}, '${svc.name}', '${envType}')">Logs</button></td>
         </tr>
       `;
       }

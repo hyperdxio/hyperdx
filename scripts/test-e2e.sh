@@ -34,28 +34,41 @@ DOCKER_COMPOSE_FILE="$REPO_ROOT/packages/app/tests/e2e/docker-compose.yml"
 # so that multiple worktrees can run E2E tests in parallel without port
 # conflicts. Override HDX_E2E_SLOT manually if you need a specific slot.
 #
-# Port mapping (base + slot) — shares the same base ports as dev-int
-# since they never run simultaneously. All ports are below the OS
-# ephemeral range (49152) to avoid OrbStack/Docker conflicts:
-#   OpAMP            : 14320 + slot  (14320-14419)  shared with dev-int
-#   ClickHouse HTTP  : 18123 + slot  (18123-18222)  shared with dev-int
-#   ClickHouse Native: 18223 + slot  (18223-18322)  e2e only
-#   API server       : 19000 + slot  (19000-19099)  shared with dev-int
-#   MongoDB          : 39999 + slot  (39999-40098)  shared with dev-int
-#   App (local)      : 48001 + slot  (48001-48100)  e2e only
-#   App (fullstack)  : 48081 + slot  (48081-48180)  e2e only
+# Port allocation — E2E gets its own range (20320-21399) so it can run
+# simultaneously with CI integration tests (14320-40098) and the dev
+# stack (30100-31199). All ports are below the OS ephemeral range
+# (32768 Linux, 49152 macOS).
+#
+# Port mapping (base + slot):
+#   OpAMP            : 20320 + slot  (20320-20419)
+#   ClickHouse HTTP  : 20500 + slot  (20500-20599)
+#   ClickHouse Native: 20600 + slot  (20600-20699)
+#   API server       : 21000 + slot  (21000-21099)
+#   MongoDB          : 21100 + slot  (21100-21199)
+#   App (local)      : 21200 + slot  (21200-21299)
+#   App (fullstack)  : 21300 + slot  (21300-21399)
 # ---------------------------------------------------------------------------
 export HDX_E2E_SLOT="${HDX_E2E_SLOT:-$(printf '%s' "$(basename "$REPO_ROOT")" | cksum | awk '{print $1 % 100}')}"
 
-export HDX_E2E_OPAMP_PORT="${HDX_E2E_OPAMP_PORT:-$((14320 + HDX_E2E_SLOT))}"
-export HDX_E2E_CH_PORT="${HDX_E2E_CH_PORT:-$((18123 + HDX_E2E_SLOT))}"
-export HDX_E2E_CH_NATIVE_PORT="${HDX_E2E_CH_NATIVE_PORT:-$((18223 + HDX_E2E_SLOT))}"
-export HDX_E2E_API_PORT="${HDX_E2E_API_PORT:-$((19000 + HDX_E2E_SLOT))}"
-export HDX_E2E_MONGO_PORT="${HDX_E2E_MONGO_PORT:-$((39999 + HDX_E2E_SLOT))}"
-export HDX_E2E_APP_LOCAL_PORT="${HDX_E2E_APP_LOCAL_PORT:-$((48001 + HDX_E2E_SLOT))}"
-export HDX_E2E_APP_PORT="${HDX_E2E_APP_PORT:-$((48081 + HDX_E2E_SLOT))}"
+export HDX_E2E_OPAMP_PORT="${HDX_E2E_OPAMP_PORT:-$((20320 + HDX_E2E_SLOT))}"
+export HDX_E2E_CH_PORT="${HDX_E2E_CH_PORT:-$((20500 + HDX_E2E_SLOT))}"
+export HDX_E2E_CH_NATIVE_PORT="${HDX_E2E_CH_NATIVE_PORT:-$((20600 + HDX_E2E_SLOT))}"
+export HDX_E2E_API_PORT="${HDX_E2E_API_PORT:-$((21000 + HDX_E2E_SLOT))}"
+export HDX_E2E_MONGO_PORT="${HDX_E2E_MONGO_PORT:-$((21100 + HDX_E2E_SLOT))}"
+export HDX_E2E_APP_LOCAL_PORT="${HDX_E2E_APP_LOCAL_PORT:-$((21200 + HDX_E2E_SLOT))}"
+export HDX_E2E_APP_PORT="${HDX_E2E_APP_PORT:-$((21300 + HDX_E2E_SLOT))}"
 
 export E2E_PROJECT="e2e-${HDX_E2E_SLOT}"
+
+# --- Log capture for dev-portal visibility ---
+HDX_E2E_SLOTS_DIR="${HOME}/.config/hyperdx/dev-slots"
+HDX_E2E_LOGS_DIR="${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}/logs-e2e"
+mkdir -p "$HDX_E2E_LOGS_DIR"
+exec > >(tee "$HDX_E2E_LOGS_DIR/e2e.log") 2>&1
+
+# --- Start dev portal in background if not already running ---
+# shellcheck source=./ensure-dev-portal.sh
+source "${REPO_ROOT}/scripts/ensure-dev-portal.sh"
 
 echo "Using E2E slot ${HDX_E2E_SLOT} (project=${E2E_PROJECT} ch=${HDX_E2E_CH_PORT} ch-native=${HDX_E2E_CH_NATIVE_PORT} mongo=${HDX_E2E_MONGO_PORT} api=${HDX_E2E_API_PORT} app=${HDX_E2E_APP_PORT} app-local=${HDX_E2E_APP_LOCAL_PORT} opamp=${HDX_E2E_OPAMP_PORT})"
 
@@ -92,6 +105,8 @@ done
 cleanup_services() {
   echo "Stopping E2E services and removing volumes..."
   docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" down -v
+  rm -rf "$HDX_E2E_LOGS_DIR" 2>/dev/null || true
+  rmdir "${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}" 2>/dev/null || true
 }
 
 check_mongodb_health() {

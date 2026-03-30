@@ -42,7 +42,7 @@
     "run:clickhouse": "nx run @hyperdx/app:run:clickhouse",
     "dev": "sh -c '. ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml up -d && yarn app:dev; dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down'",
     "dev:local": "IS_LOCAL_APP_MODE='DANGEROUSLY_is_local_app_mode💀' yarn dev",
-    "dev:down": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down'",
+    "dev:down": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down && sh ./scripts/dev-kill-ports.sh'",
     "dev:compose": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml'",
     "knip": "knip",
     "knip:ci": "knip --reporter json",

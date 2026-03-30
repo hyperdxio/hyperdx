@@ -54,7 +54,7 @@ multiple agents or developers working in parallel), use `make dev` instead of
 ### Dev Port Mapping (base + slot)
 
 Ports are allocated in the 30100-31199 range to avoid conflicts with CI
-integration tests (14320-40098) and E2E tests (8123, 29000, 29998).
+integration tests (14320-40098) and E2E tests (20320-21399).
 
 | Service           | Base Port | Range         | Env Variable                  |
 | ----------------- | --------- | ------------- | ----------------------------- |
@@ -158,8 +158,21 @@ Port mapping (base + slot):
 
 ### E2E Testing
 
-E2E tests use the same slot-based isolation pattern as integration tests, so
-multiple agents can run E2E tests in parallel without port conflicts.
+E2E tests use the same slot-based isolation pattern as integration tests, with
+their own dedicated port range (20320-21399) so they can run simultaneously with
+both the dev stack and CI integration tests.
+
+E2E port mapping (base + slot):
+
+| Service           | Base Port | Range         | Env Variable             |
+| ----------------- | --------- | ------------- | ------------------------ |
+| OpAMP             | 20320     | 20320 - 20419 | `HDX_E2E_OPAMP_PORT`     |
+| ClickHouse HTTP   | 20500     | 20500 - 20599 | `HDX_E2E_CH_PORT`        |
+| ClickHouse Native | 20600     | 20600 - 20699 | `HDX_E2E_CH_NATIVE_PORT` |
+| API server        | 21000     | 21000 - 21099 | `HDX_E2E_API_PORT`       |
+| MongoDB           | 21100     | 21100 - 21199 | `HDX_E2E_MONGO_PORT`     |
+| App (local)       | 21200     | 21200 - 21299 | `HDX_E2E_APP_LOCAL_PORT` |
+| App (fullstack)   | 21300     | 21300 - 21399 | `HDX_E2E_APP_PORT`       |
 
 ```bash
 # Run all E2E tests
@@ -189,21 +202,9 @@ HDX_E2E_SLOT=5 ./scripts/test-e2e.sh
   range
 - The slot and assigned ports are printed when E2E tests start
 
-Port mapping (base + slot):
-
-| Service           | Default port (slot 0) | Variable               |
-| ----------------- | --------------------- | ---------------------- |
-| OpAMP             | 14320                 | HDX_E2E_OPAMP_PORT     |
-| ClickHouse HTTP   | 18123                 | HDX_E2E_CH_PORT        |
-| ClickHouse Native | 18223                 | HDX_E2E_CH_NATIVE_PORT |
-| API server        | 19000                 | HDX_E2E_API_PORT       |
-| MongoDB           | 39999                 | HDX_E2E_MONGO_PORT     |
-| App (local)       | 48001                 | HDX_E2E_APP_LOCAL_PORT |
-| App (fullstack)   | 48081                 | HDX_E2E_APP_PORT       |
-
-**Port range safety:** E2E shares the same base ports as `dev-int` (they never
-run simultaneously). All ports are below the OS ephemeral range (49152) to avoid
-conflicts with OrbStack and Docker networking.
+**Port range safety:** E2E has its own dedicated port range (20320-21399) that
+does not overlap with CI integration tests (14320-40098) or the dev stack
+(30100-31199), so all three can run simultaneously from the same worktree.
 
 ## Common Development Tasks
 

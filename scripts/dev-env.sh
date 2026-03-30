@@ -16,7 +16,7 @@
 # Port allocation scheme — each service gets a 100-wide band in the 30100-31199
 # range, well clear of:
 #   - CI integration test ports (14320-14419, 18123-18222, 19000-19099, 39999-40098)
-#   - E2E test ports           (8123, 9000, 24320, 28081, 29000, 29998)
+#   - E2E test ports           (20320-21399)
 #   - Default dev ports        (4317-4320, 8000, 8080, 8123, 8888, 9000, 13133, 14318, 27017)
 #   - OS ephemeral ports       (32768+ Linux, 49152+ macOS)
 #
@@ -109,19 +109,8 @@ cat > "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" <<EOF
 EOF
 
 # --- Start dev portal in background if port 9900 is free ---
-HDX_PORTAL_PORT="${HDX_PORTAL_PORT:-9900}"
-HDX_PORTAL_PID=""
-_hdx_start_portal() {
-  # Check if port is already in use (another portal or other process)
-  if ! (echo >/dev/tcp/127.0.0.1/"$HDX_PORTAL_PORT") 2>/dev/null; then
-    local portal_script="${BASH_SOURCE[0]%/*}/dev-portal/server.js"
-    if [ -f "$portal_script" ]; then
-      HDX_PORTAL_PORT="$HDX_PORTAL_PORT" node "$portal_script" >/dev/null 2>&1 &
-      HDX_PORTAL_PID=$!
-    fi
-  fi
-}
-_hdx_start_portal
+# shellcheck source=./ensure-dev-portal.sh
+source "${BASH_SOURCE[0]%/*}/ensure-dev-portal.sh"
 
 # Clean up slot file, logs, and portal on exit
 _hdx_cleanup_slot() {
