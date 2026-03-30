@@ -63,8 +63,8 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToRight,
   IconBolt,
-  IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
   IconTags,
@@ -273,7 +273,7 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         onClick={onExpand}
         aria-label="Show filters"
       >
-        <IconLayoutSidebarLeftExpand size={14} />
+        <IconArrowBarToRight size={14} />
       </ActionIcon>
     </Tooltip>
   );
