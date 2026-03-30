@@ -45,7 +45,7 @@ body {
 
 .log-panel {
   width: 0;
-  background: var(--card-bg);
+  background: var(--bg);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -119,17 +119,12 @@ body {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
-  background: var(--log-bg);
+  background: var(--bg);
   color: #c9d1d9;
 }
 
 .log-content .log-line {
   padding: 0 4px;
-  border-radius: 2px;
-}
-
-.log-content .log-line:hover {
-  background: rgba(88, 166, 255, 0.05);
 }
 
 .log-streaming-badge {
