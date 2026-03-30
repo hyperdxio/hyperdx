@@ -76,8 +76,10 @@ export HDX_DEV_OTEL_METRICS_PORT
 export HDX_DEV_OTEL_JSON_HTTP_PORT
 export HDX_DEV_PROJECT
 
-# --- Clean up stale Next.js lock file from previous crashed sessions ---
-rm -f "${PWD}/packages/app/.next/dev/lock" 2>/dev/null || true
+# --- Clean up stale Next.js state from previous sessions ---
+# Nuke the entire .next directory to avoid stale webpack bundles, lock files,
+# and cached module resolutions after common-utils rebuilds.
+rm -rf "${PWD}/packages/app/.next" 2>/dev/null || true
 
 # --- Set up directories for portal discovery + logs ---
 HDX_DEV_SLOTS_DIR="${HOME}/.config/hyperdx/dev-slots"
