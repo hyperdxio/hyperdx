@@ -651,7 +651,7 @@ describe('FilterGroup', () => {
       <FilterGroup {...defaultProps} isDefaultExpanded={true} />,
     );
 
-    expect(screen.getAllByTestId(/filter-checkbox-input/)).toHaveLength(3);
+    expect(screen.getAllByTestId(/filter-checkbox-.+-input/)).toHaveLength(3);
   });
 });
 
