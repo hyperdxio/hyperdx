@@ -1062,7 +1062,7 @@ function OrderByFormRow({
   );
 }
 
-export function LogTableModelForm(props: TableModelProps) {
+function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
@@ -1323,7 +1323,7 @@ export function LogTableModelForm(props: TableModelProps) {
   );
 }
 
-export function TraceTableModelForm(props: TableModelProps) {
+function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
@@ -1616,7 +1616,7 @@ export function TraceTableModelForm(props: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control }: TableModelProps) {
+function SessionTableModelForm({ control }: TableModelProps) {
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
@@ -1672,7 +1672,7 @@ interface TableModelProps {
   setValue: UseFormSetValue<TSource>;
 }
 
-export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
