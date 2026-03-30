@@ -36,6 +36,7 @@ import {
   Filter,
   isLogSource,
   isTraceSource,
+  pickSampleWeightExpressionProps,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -63,8 +64,8 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToRight,
   IconBolt,
-  IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
   IconTags,
@@ -273,7 +274,7 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         onClick={onExpand}
         aria-label="Show filters"
       >
-        <IconLayoutSidebarLeftExpand size={14} />
+        <IconArrowBarToRight size={14} />
       </ActionIcon>
     </Tooltip>
   );
@@ -687,6 +688,7 @@ function useSearchedConfigToChartConfig(
           whereLanguage: whereLanguage ?? 'sql',
           timestampValueExpression: sourceObj.timestampValueExpression,
           implicitColumnExpression: sourceObj.implicitColumnExpression,
+          ...pickSampleWeightExpressionProps(sourceObj),
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
           orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,

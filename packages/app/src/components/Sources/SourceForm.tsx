@@ -1062,7 +1062,7 @@ function OrderByFormRow({
   );
 }
 
-export function LogTableModelForm(props: TableModelProps) {
+function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
@@ -1323,7 +1323,7 @@ export function LogTableModelForm(props: TableModelProps) {
   );
 }
 
-export function TraceTableModelForm(props: TableModelProps) {
+function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
@@ -1546,6 +1546,21 @@ export function TraceTableModelForm(props: TableModelProps) {
         />
       </FormRow>
       <FormRow
+        label={'Sample Rate Expression'}
+        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation -- exact values may differ slightly. Leave empty if spans are not sampled."
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="sampleRateExpression"
+          placeholder="SampleRate"
+        />
+      </FormRow>
+      <FormRow
         label={'Span Events Expression'}
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >
@@ -1616,7 +1631,7 @@ export function TraceTableModelForm(props: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control }: TableModelProps) {
+function SessionTableModelForm({ control }: TableModelProps) {
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
@@ -1672,7 +1687,7 @@ interface TableModelProps {
   setValue: UseFormSetValue<TSource>;
 }
 
-export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,

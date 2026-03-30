@@ -1,5 +1,33 @@
 # @hyperdx/app
 
+## 2.22.1
+
+### Patch Changes
+
+- 6c347a52: fix: ClickStack and HyperDX color token improvements
+
+  - Fix link colors in ClickStack (blue in light mode, yellow in dark mode)
+  - Override checkbox and radio button colors to use accent color with contrasting icons
+  - Restyle slider marks as solid 6px dots with semantic color tokens
+  - Add subtle Button variant to both themes
+
+- a6a83d59: feat: Add collapsible filter sidebar toggle to search page
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+- cdc29d5a: fix: Fix query error on ClickHouse Query latency chart
+- 8b629385: fix: Preserve default select when saving search
+- 7ab7f6de: feat: allow collapsing child spans
+- c9d1dda3: feat: Add column toggle button to filter panel in DBSearchPage
+- 45755260: fix: Prevent duplicate demo sources in Play Environment source select
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 1fb8e355: fix: Improve auto-complete behavior for aliases and maps
+- 2207edbf: docs: Link to the SQL-based visualization docs
+- dd313f77: fix: Fix intermittently-missing SQL autocomplete suggestions
+- e21811cc: feat: Add dashboard listing page
+- Updated dependencies [4f7dd9ef]
+- Updated dependencies [275dc941]
+- Updated dependencies [6936ef8e]
+  - @hyperdx/common-utils@0.16.2
+
 ## 2.22.0
 
 ### Minor Changes

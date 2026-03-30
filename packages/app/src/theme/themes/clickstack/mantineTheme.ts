@@ -24,7 +24,7 @@ import componentClasses from '../components.module.scss';
  * Primary color: Yellow/Gold accent
  * Style: Modern, professional
  */
-export const makeTheme = ({
+const makeTheme = ({
   fontFamily = '"Inter", sans-serif',
 }: {
   fontFamily?: string;
@@ -112,8 +112,13 @@ export const makeTheme = ({
           '--slider-color': 'var(--color-slider-bar)',
         },
       }),
+      styles: {
+        thumb: {
+          backgroundColor: 'var(--color-slider-thumb)',
+          borderColor: 'var(--color-slider-thumb-border)',
+        },
+      },
       classNames: {
-        thumb: componentClasses.sliderThumb,
         mark: componentClasses.sliderMark,
       },
     }),

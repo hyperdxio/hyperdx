@@ -87,6 +87,55 @@ Port mapping (base + slot):
 - Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
 - Tests run against real database instances for accurate integration testing
 
+### E2E Testing
+
+E2E tests use the same slot-based isolation pattern as integration tests, so
+multiple agents can run E2E tests in parallel without port conflicts.
+
+```bash
+# Run all E2E tests
+make e2e
+
+# Run a specific test file (dev mode: hot reload, containers kept running)
+make dev-e2e FILE=navigation
+
+# Run a specific test by grep pattern
+make dev-e2e FILE=navigation GREP="help menu"
+
+# Grep across all files
+make dev-e2e GREP="should navigate"
+
+# Open HTML report after tests finish (screenshots, traces, step-by-step)
+make dev-e2e FILE=navigation REPORT=1
+
+# Or call the script directly for more control
+./scripts/test-e2e.sh --ui --last-failed
+
+# Override the slot manually
+HDX_E2E_SLOT=5 ./scripts/test-e2e.sh
+```
+
+- A deterministic slot (0-99) is computed from the worktree directory name
+- Each slot gets its own Docker Compose project name (`e2e-<slot>`) and port
+  range
+- The slot and assigned ports are printed when E2E tests start
+
+Port mapping (base + slot):
+
+| Service           | Default port (slot 0) | Variable               |
+| ----------------- | --------------------- | ---------------------- |
+| OpAMP             | 14320                 | HDX_E2E_OPAMP_PORT     |
+| ClickHouse HTTP   | 18123                 | HDX_E2E_CH_PORT        |
+| ClickHouse Native | 18223                 | HDX_E2E_CH_NATIVE_PORT |
+| API server        | 19000                 | HDX_E2E_API_PORT       |
+| MongoDB           | 39999                 | HDX_E2E_MONGO_PORT     |
+| App (local)       | 48001                 | HDX_E2E_APP_LOCAL_PORT |
+| App (fullstack)   | 48081                 | HDX_E2E_APP_PORT       |
+
+**Port range safety:** E2E shares the same base ports as `dev-int` (they never
+run simultaneously). All ports are below the OS ephemeral range (49152) to avoid
+conflicts with OrbStack and Docker networking.
+
 ## Common Development Tasks
 
 ### Adding New Features
