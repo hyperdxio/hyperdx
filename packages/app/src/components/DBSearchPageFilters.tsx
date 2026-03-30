@@ -30,13 +30,13 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToLeft,
   IconChartBar,
   IconChartBarOff,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
-  IconLayoutSidebarLeftCollapse,
   IconMinus,
   IconPin,
   IconPinFilled,
@@ -1218,7 +1218,7 @@ const DBSearchPageFiltersComponent = ({
                   onClick={onCollapse}
                   aria-label="Hide filters"
                 >
-                  <IconLayoutSidebarLeftCollapse size={14} />
+                  <IconArrowBarToLeft size={14} />
                 </ActionIcon>
               </Tooltip>
             )}
