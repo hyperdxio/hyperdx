@@ -280,8 +280,8 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Navigate to dashboards page', async () => {
-        await page.goto('/dashboards');
-        await expect(page.getByTestId('dashboard-page')).toBeVisible();
+        await page.goto('/dashboards/list');
+        await expect(page.getByTestId('dashboards-list-page')).toBeVisible();
       });
 
       await test.step('Navigate back to saved search', async () => {
@@ -299,6 +299,49 @@ test.describe('Saved Search Functionality', () => {
 
         expect(selectContent).toContain('upper(ServiceName) as service_name');
         expect(selectContent).toContain('Timestamp, Body');
+      });
+    },
+  );
+
+  test(
+    'should preserve default SELECT when saving a search',
+    {},
+    async ({ page }) => {
+      let savedSearchUrl: string;
+
+      await test.step('Create saved search without setting a custom select', async () => {
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Default Select Navigation Test',
+        );
+
+        savedSearchUrl = page.url().split('?')[0];
+      });
+
+      await test.step('Verify default SELECT is loaded', async () => {
+        const selectEditor = searchPage.getSELECTEditor();
+        const selectContent = await selectEditor.textContent();
+        expect(selectContent).toContain(
+          'Timestamp, ServiceName, SeverityText, Body',
+        );
+      });
+
+      await test.step('Navigate to dashboards page', async () => {
+        await page.goto('/dashboards');
+        await expect(page.getByTestId('dashboard-page')).toBeVisible();
+      });
+
+      await test.step('Navigate back to saved search', async () => {
+        await page.goto(savedSearchUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+      });
+
+      await test.step('Verify default SELECT is loaded', async () => {
+        const selectEditor = searchPage.getSELECTEditor();
+        const selectContent = await selectEditor.textContent();
+        expect(selectContent).toContain(
+          'Timestamp, ServiceName, SeverityText, Body',
+        );
       });
     },
   );

@@ -71,6 +71,13 @@
   --color-state-focus: var(--mantine-color-dark-4);
   --color-outline-focus: var(--mantine-color-green-4);
 
+  /* Slider */
+  --color-slider-bar: var(--mantine-color-green-4);
+  --color-slider-thumb: var(--mantine-color-green-4);
+  --color-slider-thumb-border: var(--mantine-color-green-4);
+  --color-slider-dot: var(--mantine-color-dark-2);
+  --color-slider-dot-active: var(--mantine-color-green-8);
+
   /* Code / Misc UI */
   --color-bg-code: var(--mantine-color-dark-8);
   --color-border-code: var(--mantine-color-dark-6);
@@ -177,6 +184,13 @@
   --color-state-selected: var(--mantine-color-dark-4);
   --color-state-focus: var(--mantine-color-dark-5);
   --color-outline-focus: var(--mantine-color-green-8);
+
+  /* Slider */
+  --color-slider-bar: var(--mantine-color-green-8);
+  --color-slider-thumb: var(--mantine-color-green-8);
+  --color-slider-thumb-border: var(--mantine-color-green-8);
+  --color-slider-dot: var(--mantine-color-gray-6);
+  --color-slider-dot-active: var(--mantine-color-gray-1);
 
   /* Code / Misc UI - inverted */
   --color-bg-code: var(--mantine-color-dark-1);

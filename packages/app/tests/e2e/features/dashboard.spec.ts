@@ -2,6 +2,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
+import { DashboardsListPage } from '../page-objects/DashboardsListPage';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
@@ -10,9 +11,11 @@ import {
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
+  let dashboardsListPage: DashboardsListPage;
 
   test.beforeEach(async ({ page }) => {
     dashboardPage = new DashboardPage(page);
+    dashboardsListPage = new DashboardsListPage(page);
     await dashboardPage.goto();
   });
 
@@ -98,7 +101,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Verify dashboard appears in dashboards list', async () => {
-      await dashboardPage.goto();
+      await dashboardsListPage.goto();
 
       // Look for our dashboard in the list
       const dashboardLink = dashboardPage.page.locator(
@@ -535,7 +538,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Verify the filter is applied
       const filterSelect = dashboardPage.getFilterSelectByName('Service');
-      await expect(filterSelect).toHaveValue('accounting');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
     });
 
     await test.step('Enter query in search bar', async () => {
@@ -584,7 +589,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Verify the saved filter value is populated
       const filterSelect = dashboardPage.getFilterSelectByName('Service');
-      await expect(filterSelect).toHaveValue('accounting');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
     });
   });
 

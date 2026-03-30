@@ -144,9 +144,10 @@ export default function SQLInlineEditor({
 
   const compartmentRef = useRef<Compartment>(new Compartment());
 
+  const hasNonEmptyValue = value.trim().length > 0;
+
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
-      const currentText = viewRef.state.doc.toString();
       const identifiers = [
         ...(filteredFields?.map(column => {
           if (column.path.length > 1) {
@@ -171,15 +172,16 @@ export default function SQLInlineEditor({
       });
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          currentText.length > 0 ? auto : queryHistoryList,
+          hasNonEmptyValue ? auto : queryHistoryList,
         ),
       });
     },
     [
       filteredFields,
       additionalSuggestions,
-      createHistoryList,
       disableKeywordAutocomplete,
+      createHistoryList,
+      hasNonEmptyValue,
     ],
   );
 
