@@ -9,6 +9,8 @@ import {
   AILineTableResponse,
   AssistantLineTableConfigSchema,
   ChartConfigWithDateRange,
+  pickSampleWeightExpressionProps,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import type { LanguageModel } from 'ai';
 import * as chrono from 'chrono-node';
@@ -271,6 +273,7 @@ export function getChartConfigFromResolvedConfig(
     connection: source.connection.toString(),
     groupBy: resObject.groupBy,
     timestampValueExpression: source.timestampValueExpression,
+    ...pickSampleWeightExpressionProps(source),
     dateRange: [dateRange[0].toString(), dateRange[1].toString()],
     markdown: resObject.markdown,
     granularity: 'auto',
