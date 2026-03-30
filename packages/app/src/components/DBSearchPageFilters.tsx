@@ -960,12 +960,17 @@ const DBSearchPageFiltersComponent = ({
         // todo: add number type with sliders :D
       )
       .map(({ path, type }) => {
-        return { type, path: mergePath(path, jsonColumns ?? []) };
+        return {
+          type,
+          path: mergePath(path, jsonColumns ?? []),
+          isMapSubField: path.length > 1,
+        };
       })
       .filter(
         field =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
+          field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
           Object.keys(filterState).includes(field.path) || // keep selected fields
           isFieldPinned(field.path), // keep pinned fields
       )

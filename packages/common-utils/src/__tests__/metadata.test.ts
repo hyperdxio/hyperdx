@@ -688,6 +688,223 @@ describe('Metadata', () => {
     });
   });
 
+  describe('getAllFields', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should extract LowCardinality(String) type for Map sub-fields when value type is LowCardinality', async () => {
+      // Simulate: Map(LowCardinality(String), LowCardinality(String))
+      // This is the "working" case — sub-fields get type LowCardinality(String)
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      const md = new Metadata(mockClickhouseClient, realCache);
+
+      // Mock getColumns → returns one Map column
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          // DESCRIBE TABLE
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  name: 'LogAttributes',
+                  type: 'Map(LowCardinality(String), LowCardinality(String))',
+                  default_type: '',
+                  default_expression: '',
+                  comment: '',
+                  codec_expression: '',
+                  ttl_expression: '',
+                },
+              ],
+            }),
+        })
+        .mockResolvedValueOnce({
+          // lowCardinalityKeys query for LogAttributes
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'http.method' }, { key: 'http.status_code' }],
+            }),
+        });
+
+      const fields = await md.getAllFields({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+      });
+
+      // The Map column itself should be present
+      const mapField = fields.find(
+        f => f.path.length === 1 && f.path[0] === 'LogAttributes',
+      );
+      expect(mapField).toBeDefined();
+      expect(mapField!.type).toBe(
+        'Map(LowCardinality(String), LowCardinality(String))',
+      );
+
+      // Sub-fields should have LowCardinality(String) as their type
+      const httpMethod = fields.find(
+        f =>
+          f.path.length === 2 &&
+          f.path[0] === 'LogAttributes' &&
+          f.path[1] === 'http.method',
+      );
+      expect(httpMethod).toBeDefined();
+      expect(httpMethod!.type).toBe('LowCardinality(String)');
+      // This type includes 'LowCardinality', so the UI filter check passes
+      expect(httpMethod!.type.includes('LowCardinality')).toBe(true);
+    });
+
+    it('should extract String type for Map sub-fields when value type is plain String — BUG: fields excluded from default filters', async () => {
+      // Simulate: Map(LowCardinality(String), String)
+      // This is the customer's schema (Constructor.io) — sub-fields get type "String"
+      // which causes them to be filtered out of the default facet panel
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      const md = new Metadata(mockClickhouseClient, realCache);
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          // DESCRIBE TABLE
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  name: 'LogAttributes',
+                  type: 'Map(LowCardinality(String), String)',
+                  default_type: '',
+                  default_expression: '',
+                  comment: '',
+                  codec_expression: '',
+                  ttl_expression: '',
+                },
+                {
+                  name: 'ResourceAttributes',
+                  type: 'Map(LowCardinality(String), String)',
+                  default_type: '',
+                  default_expression: '',
+                  comment: '',
+                  codec_expression: '',
+                  ttl_expression: '',
+                },
+              ],
+            }),
+        })
+        .mockResolvedValueOnce({
+          // lowCardinalityKeys query for LogAttributes
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'io.constructor.message' }, { key: 'severity' }],
+            }),
+        })
+        .mockResolvedValueOnce({
+          // lowCardinalityKeys query for ResourceAttributes
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'log.index' }, { key: 'service.name' }],
+            }),
+        });
+
+      const fields = await md.getAllFields({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+      });
+
+      // Sub-fields for LogAttributes
+      const logAttrField = fields.find(
+        f =>
+          f.path[0] === 'LogAttributes' &&
+          f.path[1] === 'io.constructor.message',
+      );
+      expect(logAttrField).toBeDefined();
+      // BUG: The extracted type is "String" (the Map VALUE type), NOT "LowCardinality(String)"
+      expect(logAttrField!.type).toBe('String');
+      // This means the UI's LowCardinality check FAILS, hiding the field by default
+      expect(logAttrField!.type.includes('LowCardinality')).toBe(false);
+
+      // Same issue for ResourceAttributes
+      const resAttrField = fields.find(
+        f => f.path[0] === 'ResourceAttributes' && f.path[1] === 'log.index',
+      );
+      expect(resAttrField).toBeDefined();
+      expect(resAttrField!.type).toBe('String');
+      expect(resAttrField!.type.includes('LowCardinality')).toBe(false);
+    });
+
+    it('demonstrates that Map sub-fields with plain String type are included via isMapSubField check', async () => {
+      // This test simulates the fixed keysToFetch filtering logic from DBSearchPageFilters.tsx
+      const fields = [
+        // Regular LowCardinality column — always shown
+        {
+          path: ['SeverityText'],
+          type: 'LowCardinality(String)',
+          jsType: 'string' as const,
+        },
+        {
+          path: ['ServiceName'],
+          type: 'LowCardinality(String)',
+          jsType: 'string' as const,
+        },
+        // Map(LowCardinality(String), LowCardinality(String)) sub-fields — shown (type has LowCardinality)
+        {
+          path: ['SpanAttributes', 'http.method'],
+          type: 'LowCardinality(String)',
+          jsType: 'string' as const,
+        },
+        // Map(LowCardinality(String), String) sub-fields — now shown via isMapSubField
+        {
+          path: ['LogAttributes', 'io.constructor.message'],
+          type: 'String',
+          jsType: 'string' as const,
+        },
+        {
+          path: ['ResourceAttributes', 'log.index'],
+          type: 'String',
+          jsType: 'string' as const,
+        },
+        // Regular String column (not a Map sub-field) — still hidden by default
+        { path: ['Body'], type: 'String', jsType: 'string' as const },
+      ];
+
+      // Simulate the fixed filter logic from DBSearchPageFilters.tsx
+      const showMoreFields = false; // default state
+      const filterState: Record<string, unknown> = {};
+      const isFieldPinned = () => false;
+
+      const keysToFetch = fields
+        .filter(field => field.jsType && ['string'].includes(field.jsType))
+        .map(({ path, type }) => ({
+          type,
+          path: path.join('.'),
+          isMapSubField: path.length > 1,
+        }))
+        .filter(
+          field =>
+            showMoreFields ||
+            field.type.includes('LowCardinality') ||
+            field.isMapSubField || // Fix: always include Map/JSON sub-fields
+            Object.keys(filterState).includes(field.path) ||
+            isFieldPinned(),
+        )
+        .map(f => f.path);
+
+      // LowCardinality columns still shown
+      expect(keysToFetch).toContain('SeverityText');
+      expect(keysToFetch).toContain('ServiceName');
+      expect(keysToFetch).toContain('SpanAttributes.http.method');
+
+      // Map(LowCardinality(String), String) sub-fields NOW included
+      expect(keysToFetch).toContain('LogAttributes.io.constructor.message');
+      expect(keysToFetch).toContain('ResourceAttributes.log.index');
+
+      // Regular non-LowCardinality columns still hidden by default
+      expect(keysToFetch).not.toContain('Body');
+    });
+  });
+
   describe('parseTokensExpression', () => {
     it.each([
       // Test cases without tokens
