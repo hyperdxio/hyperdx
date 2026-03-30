@@ -124,6 +124,9 @@ _hdx_cleanup_slot() {
     _hist="${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}/history/dev-${_ts}"
     mkdir -p "$_hist"
     mv "$HDX_DEV_LOGS_DIR"/* "$_hist/" 2>/dev/null || true
+    cat > "$_hist/meta.json" <<METAEOF
+{"worktree":"${HDX_DEV_WORKTREE}","branch":"${HDX_DEV_BRANCH}","worktreePath":"${PWD}"}
+METAEOF
   fi
   rm -rf "$HDX_DEV_LOGS_DIR" 2>/dev/null || true
 }

@@ -111,6 +111,11 @@ cleanup_services() {
     _hist="${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}/history/e2e-${_ts}"
     mkdir -p "$_hist"
     mv "$HDX_E2E_LOGS_DIR"/* "$_hist/" 2>/dev/null || true
+    _wt=$(basename "$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")")
+    _br=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    cat > "$_hist/meta.json" <<METAEOF
+{"worktree":"${_wt}","branch":"${_br}","worktreePath":"${REPO_ROOT}"}
+METAEOF
   fi
   rm -rf "$HDX_E2E_LOGS_DIR" 2>/dev/null || true
 }

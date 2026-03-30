@@ -513,6 +513,33 @@
         gap: 8px;
       }
 
+      .history-toggle-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: all 0.15s;
+        user-select: none;
+      }
+
+      .history-toggle-btn:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .history-card-body {
+        overflow: hidden;
+        transition: max-height 0.2s ease;
+      }
+
+      .history-card-body.collapsed {
+        max-height: 0 !important;
+      }
+
       .history-entry {
         border-top: 1px solid var(--border);
       }
@@ -595,6 +622,49 @@
         font-size: 11px;
         color: var(--text-muted);
         font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+
+      /* --- History search --- */
+      .history-search {
+        position: relative;
+        margin-bottom: 16px;
+      }
+
+      .history-search input {
+        width: 100%;
+        padding: 9px 14px 9px 36px;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 14px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.15s;
+        box-sizing: border-box;
+      }
+
+      .history-search input:focus {
+        border-color: var(--accent);
+      }
+
+      .history-search input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .history-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+        font-size: 14px;
+        pointer-events: none;
+      }
+
+      .search-match {
+        background: rgba(37, 226, 165, 0.2);
+        border-radius: 2px;
       }
 
       /* --- Confirm modal --- */
@@ -1214,12 +1284,29 @@
         return `${(bytes / 1048576).toFixed(1)} MB`;
       }
 
+      let historySearchQuery = '';
+      let _allHistoryEntries = [];
+
+      function onHistorySearch(el) {
+        historySearchQuery = el.value;
+        historyExpanded.clear();
+        const cursorPos = el.selectionStart;
+        // Re-render from cached entries without re-fetching
+        historyEl.innerHTML = renderHistory(_allHistoryEntries);
+        // Restore focus and cursor position after re-render
+        const input = historyEl.querySelector('.history-search input');
+        if (input) {
+          input.focus();
+          input.setSelectionRange(cursorPos, cursorPos);
+        }
+      }
+
       async function refreshHistory() {
         try {
           const res = await fetch('/api/history');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const entries = await res.json();
-          historyEl.innerHTML = renderHistory(entries);
+          _allHistoryEntries = await res.json();
+          historyEl.innerHTML = renderHistory(_allHistoryEntries);
           errorEl.style.display = 'none';
         } catch (err) {
           errorEl.textContent = `Failed to fetch history: ${err.message}`;
@@ -1227,7 +1314,33 @@
         }
       }
 
+      // Simple fuzzy match: all query terms (space-separated) must appear
+      // somewhere in the searchable text (case-insensitive).
+      function fuzzyMatch(query, texts) {
+        if (!query) return true;
+        const haystack = texts.join(' ').toLowerCase();
+        const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+        return terms.every(term => haystack.includes(term));
+      }
+
+      function filterHistoryEntries(entries, query) {
+        if (!query) return entries;
+        return entries.filter(entry =>
+          fuzzyMatch(query, [entry.worktree || '', entry.branch || '']),
+        );
+      }
+
       function renderHistory(entries) {
+        const searchHtml = `
+          <div class="history-search">
+            <span class="history-search-icon">\u{1F50D}</span>
+            <input type="text"
+                   placeholder="Search worktree or branch..."
+                   value="${escapeHtml(historySearchQuery)}"
+                   oninput="onHistorySearch(this)" />
+          </div>
+        `;
+
         if (entries.length === 0) {
           return `
             <div class="empty-state">
@@ -1237,28 +1350,53 @@
           `;
         }
 
-        // Group entries by worktree, same as the live view
+        const filtered = filterHistoryEntries(entries, historySearchQuery);
+
+        // Group filtered entries by worktree
         const groups = new Map();
-        for (const entry of entries) {
+        for (const entry of filtered) {
           const key = entry.worktree || 'unknown';
           if (!groups.has(key)) groups.set(key, []);
           groups.get(key).push(entry);
         }
+
+        const noResults = filtered.length === 0;
 
         return `
           <div class="history-header">
             <h2>Past Runs</h2>
             <button class="clear-all-btn" onclick="clearAllHistory()">Clear All</button>
           </div>
-          <div class="stacks">
-            ${[...groups.entries()].map(([worktree, group]) => renderHistoryWorktreeCard(worktree, group)).join('')}
-          </div>
+          ${searchHtml}
+          ${
+            noResults
+              ? `<div class="empty-state"><p>No runs matching "${escapeHtml(historySearchQuery)}"</p></div>`
+              : `<div class="stacks">
+                ${[...groups.entries()].map(([worktree, group]) => renderHistoryWorktreeCard(worktree, group)).join('')}
+              </div>`
+          }
         `;
+      }
+
+      // Track which history cards are expanded (by worktree name).
+      // All cards are collapsed by default.
+      const historyExpanded = new Set();
+
+      function toggleHistoryCard(worktree) {
+        if (historyExpanded.has(worktree)) {
+          historyExpanded.delete(worktree);
+        } else {
+          historyExpanded.add(worktree);
+        }
+        refreshHistory();
       }
 
       function renderHistoryWorktreeCard(worktree, entries) {
         // Use the first entry for branch info
         const branch = entries[0].branch || 'unknown';
+        const collapsed = !historyExpanded.has(worktree);
+        const chevron = collapsed ? '\u25b6' : '\u25bc';
+        const count = entries.length;
 
         return `
           <div class="stack-card">
@@ -1266,12 +1404,18 @@
               <div>
                 <div style="display:flex;align-items:center">
                   <span class="branch">${escapeHtml(branch)}</span>
+                  <span style="color:var(--text-muted);font-size:12px;margin-left:8px">${count} run${count !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="worktree">${escapeHtml(worktree)}</div>
               </div>
+              <div class="stack-actions">
+                <button class="history-toggle-btn" onclick="toggleHistoryCard('${escapeHtml(worktree)}')">${chevron}</button>
+              </div>
             </div>
-            <div class="history-list" style="padding:0">
-              ${entries.map(renderHistoryEntry).join('')}
+            <div class="history-card-body${collapsed ? ' collapsed' : ''}" style="max-height:${collapsed ? 0 : entries.length * 200}px">
+              <div class="history-list" style="padding:0">
+                ${entries.map(renderHistoryEntry).join('')}
+              </div>
             </div>
           </div>
         `;

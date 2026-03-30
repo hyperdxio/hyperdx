@@ -37,6 +37,9 @@ define archive-int-logs
 		_hist="$(HDX_CI_HISTORY_DIR)/int-$$_ts"; \
 		mkdir -p "$$_hist"; \
 		mv $(HDX_CI_LOGS_DIR)/* "$$_hist/" 2>/dev/null; \
+		_wt=$$(basename "$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"); \
+		_br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
+		printf '{"worktree":"%s","branch":"%s","worktreePath":"%s"}\n' "$$_wt" "$$_br" "$(CURDIR)" > "$$_hist/meta.json"; \
 	fi; \
 	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null
 endef

@@ -692,8 +692,18 @@ function discoverHistory() {
   const results = [];
   try {
     if (!fs.existsSync(SLOTS_DIR)) return results;
-    // Cache worktree/branch info per slot to avoid redundant lookups
-    const slotInfoCache = new Map();
+
+    // Compute this portal's own slot so we know when process.cwd() is a
+    // valid fallback (only for the slot that matches this worktree).
+    let localSlot = null;
+    try {
+      const cwd = process.cwd();
+      const base = path.basename(cwd);
+      const cksum = [...base].reduce((s, c) => s + c.charCodeAt(0), 0);
+      localSlot = cksum % 100;
+    } catch {
+      // ignore
+    }
 
     for (const slotEntry of fs.readdirSync(SLOTS_DIR)) {
       const histDir = path.join(SLOTS_DIR, slotEntry, 'history');
@@ -703,36 +713,27 @@ function discoverHistory() {
       const slot = parseInt(slotEntry, 10);
       if (isNaN(slot)) continue;
 
-      // Resolve worktree/branch for this slot
-      if (!slotInfoCache.has(slot)) {
-        let worktree = 'unknown';
-        let branch = 'unknown';
-        // Try reading the slot JSON file (written by dev-env.sh)
-        const slotFile = path.join(SLOTS_DIR, `${slot}.json`);
-        try {
-          if (fs.existsSync(slotFile)) {
-            const data = JSON.parse(fs.readFileSync(slotFile, 'utf-8'));
-            if (data.worktree) worktree = data.worktree;
-            if (data.branch) branch = data.branch;
-            if (data.worktreePath && worktree === 'unknown') {
-              worktree = path.basename(data.worktreePath);
-            }
-          }
-        } catch {
-          // ignore
-        }
-        // Fall back to current working directory if this is the local slot
-        if (worktree === 'unknown') {
-          const cwd = process.cwd();
-          const repoRoot = resolveGitRoot(cwd);
-          if (repoRoot) {
-            worktree = path.basename(repoRoot);
-            branch = resolveGitBranch(cwd, new Map());
+      // Resolve slot-level worktree/branch from the JSON file (if still alive)
+      let slotWorktree = null;
+      let slotBranch = null;
+      const slotFile = path.join(SLOTS_DIR, `${slot}.json`);
+      try {
+        if (fs.existsSync(slotFile)) {
+          const data = JSON.parse(fs.readFileSync(slotFile, 'utf-8'));
+          slotWorktree = data.worktree || null;
+          slotBranch = data.branch || null;
+          if (!slotWorktree && data.worktreePath) {
+            slotWorktree = path.basename(data.worktreePath);
           }
         }
-        slotInfoCache.set(slot, { worktree, branch });
+      } catch {
+        // ignore
       }
-      const { worktree, branch } = slotInfoCache.get(slot);
+
+      // Collect entries for this slot, reading meta.json where available
+      const slotEntries = [];
+      let metaWorktree = null;
+      let metaBranch = null;
 
       for (const runDir of fs.readdirSync(histDir)) {
         const match = runDir.match(HISTORY_DIR_RE);
@@ -753,16 +754,59 @@ function discoverHistory() {
           }
         }
 
-        results.push({
+        // Read per-run meta.json
+        let runWorktree = null;
+        let runBranch = null;
+        const metaPath = path.join(runPath, 'meta.json');
+        try {
+          if (fs.existsSync(metaPath)) {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            runWorktree = meta.worktree || null;
+            runBranch = meta.branch || null;
+            // Remember the first valid meta as a fallback for siblings
+            if (runWorktree && !metaWorktree) {
+              metaWorktree = runWorktree;
+              metaBranch = runBranch;
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+
+        slotEntries.push({
           slot,
           envType: match[1],
           timestamp: match[2],
           dir: runDir,
           files,
           totalSize,
-          worktree,
-          branch,
+          worktree: runWorktree,
+          branch: runBranch,
         });
+      }
+
+      // For entries without meta.json, resolve the worktree using this
+      // priority: 1) sibling meta.json, 2) slot JSON file, 3) process.cwd()
+      // (only if this is the local slot).
+      let fallbackWorktree = metaWorktree || slotWorktree || null;
+      let fallbackBranch = metaBranch || slotBranch || null;
+      if (!fallbackWorktree && slot === localSlot) {
+        const cwd = process.cwd();
+        const repoRoot = resolveGitRoot(cwd);
+        if (repoRoot) {
+          fallbackWorktree = path.basename(repoRoot);
+          fallbackBranch = resolveGitBranch(cwd, new Map());
+        }
+      }
+
+      for (const entry of slotEntries) {
+        if (!entry.worktree) {
+          entry.worktree = fallbackWorktree || `slot-${slot}`;
+        }
+        if (!entry.branch) {
+          entry.branch = fallbackBranch || 'unknown';
+        }
+        results.push(entry);
       }
     }
   } catch {
