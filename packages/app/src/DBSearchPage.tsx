@@ -44,7 +44,6 @@ import {
   Box,
   Button,
   Card,
-  Center,
   Code,
   Flex,
   Grid,
@@ -77,6 +76,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
@@ -1789,12 +1789,11 @@ function DBSearchPage() {
       >
         {!queryReady ? (
           <Paper shadow="xs" p="xl" h="100%">
-            <Center mih={100} h="100%">
-              <Text size="sm">
-                Please start by selecting a source and then click the play
-                button to query data.
-              </Text>
-            </Center>
+            <EmptyState
+              icon={<IconPlayerPlay size={32} />}
+              title="No data to display"
+              description="Select a source and click the play button to query data."
+            />
           </Paper>
         ) : (
           <>

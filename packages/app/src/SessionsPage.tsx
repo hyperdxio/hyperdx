@@ -23,9 +23,6 @@ import {
   Group,
   Stack,
   Stepper,
-  Text,
-  ThemeIcon,
-  Title,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
@@ -35,6 +32,7 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import EmptyState from '@/components/EmptyState';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
@@ -499,69 +497,64 @@ SessionsPage.getLayout = withAppNav;
 function SessionSetupInstructions() {
   const brandName = useBrandDisplayName();
   return (
-    <>
-      <Card w={500} mx="auto" mt="xl" p="xl" withBorder>
-        <Stack gap="lg">
-          <Stack align="center" gap="xs">
-            <ThemeIcon size={56} radius="xl" variant="light" color="gray">
-              <IconDeviceLaptop size={32} />
-            </ThemeIcon>
-            <Title order={3} fw={600}>
-              Set up session replays
-            </Title>
-            <Text size="sm" c="dimmed" ta="center">
+    <Card w={500} mx="auto" mt="xl" p="xl" withBorder>
+      <Stack gap="lg">
+        <EmptyState
+          icon={<IconDeviceLaptop size={32} />}
+          title="Set up session replays"
+          description={
+            <>
               Follow these steps to start recording and viewing session replays
               with the {brandName} Otel Collector.
-            </Text>
-          </Stack>
-          <Divider />
-          <Stepper active={-1} orientation="vertical" size="md">
-            <Stepper.Step
-              label={
-                <>
-                  Create a new source with <Code>Session</Code> type
-                </>
-              }
-              description={
-                <>
-                  Go to Team Settings, click <Code>Add Source</Code> under
-                  Sources section, and select <Code>Session</Code> as the source
-                  type.
-                </>
-              }
-            />
-            <Stepper.Step
-              label={
-                <>
-                  Choose the <Code>hyperdx_sessions</Code> table
-                </>
-              }
-              description={
-                <>
-                  Select the <Code>hyperdx_sessions</Code> table from the
-                  dropdown, and select the corresponding trace source.
-                </>
-              }
-            />
-            <Stepper.Step
-              label="Start recording sessions"
-              description={
-                <>
-                  Install the{' '}
-                  <Anchor
-                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {brandName} Browser Integration
-                  </Anchor>{' '}
-                  to start recording sessions.
-                </>
-              }
-            />
-          </Stepper>
-        </Stack>
-      </Card>
-    </>
+            </>
+          }
+        />
+        <Divider />
+        <Stepper active={-1} orientation="vertical" size="md">
+          <Stepper.Step
+            label={
+              <>
+                Create a new source with <Code>Session</Code> type
+              </>
+            }
+            description={
+              <>
+                Go to Team Settings, click <Code>Add Source</Code> under Sources
+                section, and select <Code>Session</Code> as the source type.
+              </>
+            }
+          />
+          <Stepper.Step
+            label={
+              <>
+                Choose the <Code>hyperdx_sessions</Code> table
+              </>
+            }
+            description={
+              <>
+                Select the <Code>hyperdx_sessions</Code> table from the
+                dropdown, and select the corresponding trace source.
+              </>
+            }
+          />
+          <Stepper.Step
+            label="Start recording sessions"
+            description={
+              <>
+                Install the{' '}
+                <Anchor
+                  href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {brandName} Browser Integration
+                </Anchor>{' '}
+                to start recording sessions.
+              </>
+            }
+          />
+        </Stepper>
+      </Stack>
+    </Card>
   );
 }
