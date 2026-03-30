@@ -6,30 +6,18 @@
 # Install dependencies and setup hooks
 yarn setup
 
-# Start full development stack with worktree isolation (recommended)
-make dev
-
-# Or start without isolation (uses default ports, may conflict with other worktrees)
-yarn dev
-
-# Start the dev portal to see all running worktree stacks
-make dev-portal
-# → opens http://localhost:9900
+# Start full development stack (auto-assigns unique ports per worktree)
+yarn dev        # or equivalently: make dev
 ```
 
 ## Key Development Scripts
 
-- `make dev`: Start full dev stack with worktree-isolated ports (recommended)
-- `make dev-down`: Stop the dev stack for the current worktree
-- `make dev-portal`: Start the dev portal dashboard (http://localhost:9900)
-- `yarn app:dev`: Start API, frontend, alerts task, and common-utils in watch
-  mode
+- `yarn dev` / `make dev`: Start full dev stack with worktree-isolated ports. A
+  dev portal at http://localhost:9900 auto-starts showing all running stacks.
+- `yarn dev:down` / `make dev-down`: Stop the dev stack for the current worktree
+- `make dev-portal`: Start the dev portal manually (auto-started by `yarn dev`)
 - `yarn lint`: Run linting across all packages
-- `yarn dev:int`: Run integration tests in watch mode
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
-- `yarn test:e2e`: Run Playwright E2E tests (in `packages/app`)
-- `yarn test:e2e:ci`: Run Playwright E2E tests in CI Docker environment (in
-  `packages/app`)
 
 ## Environment Configuration
 

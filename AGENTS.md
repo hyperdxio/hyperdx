@@ -26,16 +26,18 @@ MongoDB (configuration/metadata)
 
 ```bash
 yarn setup          # Install dependencies
-make dev            # Start full stack with worktree-isolated ports (recommended)
+yarn dev            # Start full stack with worktree-isolated ports
 ```
 
 The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
 
-**Multi-worktree support**: `make dev` assigns unique ports per worktree so
-multiple worktrees can run simultaneously. A dev portal at http://localhost:9900
-auto-starts and shows all running stacks. Use `make dev-clean` to stop
-everything. See `agent_docs/development.md` for details.
+**This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
+`make dev-e2e` all use slot-based port isolation so multiple worktrees can run
+dev servers, integration tests, and E2E tests simultaneously without conflicts.
+A dev portal at http://localhost:9900 auto-starts and shows all running stacks.
+See [`agent_docs/development.md`](agent_docs/development.md) for the full
+multi-worktree setup, port allocation tables, and available commands.
 
 ## Working on the Codebase (HOW)
 
