@@ -949,6 +949,9 @@ const server = http.createServer(async (req, res) => {
       'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify({ ok }));
+  } else if (pathname === '/styles.css') {
+    res.writeHead(200, { 'Content-Type': 'text/css' });
+    res.end(fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf-8'));
   } else if (pathname === '/' || pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(renderDashboardHtml());
