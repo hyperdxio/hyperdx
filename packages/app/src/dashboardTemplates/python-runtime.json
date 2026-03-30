@@ -1,0 +1,320 @@
+{
+  "version": "0.1.0",
+  "name": "Python Runtime Metrics",
+  "description": "Memory, CPU, GC collections, threads, and context switches for Python applications",
+  "tags": [
+    "Runtime Metrics"
+  ],
+  "tiles": [
+    {
+      "id": "b028c5",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Memory RSS",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.memory",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c847ba",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c02ef1",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "GC Collections",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.gc_count",
+            "metricType": "sum",
+            "isDelta": true
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "f0634b",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "GC Leaks",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "cpython.gc.uncollectable_objects",
+            "metricType": "sum",
+            "isDelta": true
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "9adc01",
+      "x": 0,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Memory Usage",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.memory",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "3a5843",
+      "x": 12,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "be51d5",
+      "x": 0,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "GC Collections (rate)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.gc_count",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "gc_count"
+          },
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "cpython.gc.collections",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "collections"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "421240",
+      "x": 12,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Collected vs Uncollectable Objects",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "cpython.gc.collected_objects",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "collected"
+          },
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "cpython.gc.uncollectable_objects",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "leaks (uncollectable)"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "50a6fb",
+      "x": 0,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Cores Used",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.cpu_time",
+            "metricType": "sum",
+            "isDelta": true
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "d72a48",
+      "x": 12,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Threads & Context Switches",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.thread_count",
+            "metricType": "sum",
+            "alias": "threads"
+          },
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "process.runtime.cpython.context_switches",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "ctx switches"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "id": "svc-filter-001",
+      "type": "QUERY_EXPRESSION",
+      "name": "ServiceName",
+      "expression": "ServiceName",
+      "source": "Metrics",
+      "sourceMetricType": "sum",
+      "where": "ResourceAttributes['telemetry.sdk.language'] = 'python'",
+      "whereLanguage": "sql"
+    }
+  ]
+}

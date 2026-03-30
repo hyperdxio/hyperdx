@@ -1,0 +1,325 @@
+{
+  "version": "0.1.0",
+  "name": "Node.js Runtime Metrics",
+  "description": "Event loop delay, heap usage, CPU utilization, and V8 memory for Node.js applications",
+  "tags": [
+    "Runtime Metrics"
+  ],
+  "tiles": [
+    {
+      "id": "55ef66",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "EL Delay p99 (ms)",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.delay.p99",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 1,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "31e132",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Event Loop Util",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "52f4a5",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Heap Used",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "v8js.memory.heap.used",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "2029f0",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "f9dae7",
+      "x": 0,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Event Loop Delay Percentiles (ms)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.delay.p50",
+            "metricType": "gauge",
+            "alias": "p50"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.delay.p90",
+            "metricType": "gauge",
+            "alias": "p90"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.delay.p99",
+            "metricType": "gauge",
+            "alias": "p99"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 1,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "93c11e",
+      "x": 12,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Event Loop Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "7155d4",
+      "x": 0,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "V8 Heap: Used vs Limit",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "v8js.memory.heap.used",
+            "metricType": "gauge",
+            "alias": "used"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "v8js.memory.heap.limit",
+            "metricType": "gauge",
+            "alias": "limit"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c2ea50",
+      "x": 12,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "V8 Heap Spaces (physical size)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "v8js.memory.heap.space.physical_size",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['v8js.heap.space.name']",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "ea6e2d",
+      "x": 0,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "a73b57",
+      "x": 12,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Event Loop Busy Time",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "nodejs.eventloop.time",
+            "metricType": "sum",
+            "isDelta": true
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "id": "svc-filter-001",
+      "type": "QUERY_EXPRESSION",
+      "name": "ServiceName",
+      "expression": "ServiceName",
+      "source": "Metrics",
+      "sourceMetricType": "gauge",
+      "where": "ResourceAttributes['telemetry.sdk.language'] = 'nodejs'",
+      "whereLanguage": "sql"
+    }
+  ]
+}
