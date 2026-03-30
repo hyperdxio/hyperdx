@@ -16,14 +16,6 @@ export function findUserByEmail(email: string) {
   return User.findOne({ email: email.toLowerCase() });
 }
 
-export async function findUserByEmailInTeam(
-  email: string,
-  team: string | ObjectId,
-) {
-  // Case-insensitive email search - lowercase the email since User model stores emails in lowercase
-  return User.findOne({ email: email.toLowerCase(), team });
-}
-
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }

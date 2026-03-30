@@ -10,7 +10,7 @@ export type Json =
   | Json[]
   | { [key: string]: Json };
 
-export const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output: null | T = null;
   let error: null | Error | unknown = null;
   try {
@@ -41,9 +41,6 @@ export const truncateString = (str: string, length: number) => {
   }
   return str;
 };
-
-export const sleep = (ms: number) =>
-  new Promise(resolve => setTimeout(resolve, ms));
 
 export const convertMsToGranularityString = (ms: number): Granularity => {
   const granularitySizeSeconds = Math.ceil(ms / 1000);

@@ -8,7 +8,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { sql } from '@codemirror/lang-sql';
 import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
@@ -28,6 +27,7 @@ import {
   Tabs,
   Text,
   Tooltip,
+  useMantineColorScheme,
 } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
 import ReactCodeMirror from '@uiw/react-codemirror';
@@ -43,6 +43,7 @@ import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { clickhouseSql } from './utils/codeMirror';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { usePrevious } from './utils';
@@ -487,6 +488,7 @@ function InsertsTab({
 }
 
 function ClickhousePage() {
+  const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
   const [_connection, setConnection] = useQueryState('connection');
   const [latencyFilter, setLatencyFilter] = useQueryStates({
@@ -790,10 +792,10 @@ function ClickhousePage() {
                   renderRowDetails={row => {
                     return (
                       <ReactCodeMirror
-                        extensions={[sql()]}
+                        extensions={[clickhouseSql()]}
                         editable={false}
                         value={formatSql(row.query)}
-                        theme="dark"
+                        theme={colorScheme === 'dark' ? 'dark' : 'light'}
                         lang="sql"
                         maxHeight="200px"
                       />
