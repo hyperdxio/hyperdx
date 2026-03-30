@@ -2,18 +2,20 @@ import Link from 'next/link';
 import { ActionIcon, Badge, Card, Group, Menu, Text } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
-export function DashboardCard({
+export function ListingCard({
   name,
   href,
   description,
   tags,
   onDelete,
+  statusIcon,
 }: {
   name: string;
   href: string;
   description?: string;
   tags?: string[];
   onDelete?: () => void;
+  statusIcon?: React.ReactNode;
 }) {
   return (
     <Card
@@ -25,14 +27,17 @@ export function DashboardCard({
       style={{ cursor: 'pointer', textDecoration: 'none' }}
     >
       <Group justify="space-between" mb="xs" wrap="nowrap">
-        <Text
-          fw={500}
-          lineClamp={1}
-          style={{ flex: 1, minWidth: 0 }}
-          title={name}
-        >
-          {name}
-        </Text>
+        <Group gap={4} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            fw={500}
+            lineClamp={1}
+            style={{ flex: 1, minWidth: 0 }}
+            title={name}
+          >
+            {name}
+          </Text>
+          {statusIcon}
+        </Group>
         {onDelete && (
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
