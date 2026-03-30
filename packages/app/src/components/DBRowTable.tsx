@@ -202,7 +202,7 @@ const PatternTrendChartTooltip = () => {
   return null;
 };
 
-export const PatternTrendChart = ({
+const PatternTrendChart = ({
   data,
   dateRange,
   color,
@@ -1430,7 +1430,7 @@ export function useConfigWithPrimaryAndPartitionKey(
   return mergedConfig;
 }
 
-export function selectColumnMapWithoutAdditionalKeys(
+function selectColumnMapWithoutAdditionalKeys(
   selectMeta: ColumnMetaType[] | undefined,
   additionalKeysLength: number | undefined,
 ): Map<

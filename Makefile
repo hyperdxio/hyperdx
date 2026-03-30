@@ -91,12 +91,33 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+# ---------------------------------------------------------------------------
+# E2E tests — port isolation is handled by scripts/test-e2e.sh
+# ---------------------------------------------------------------------------
+# Slot for the Playwright report server (only used by the Makefile REPORT flag)
+HDX_E2E_SLOT ?= $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}')
+
 .PHONY: e2e
 e2e:
-	# Run full-stack by default (MongoDB + API + local Docker ClickHouse)
-	# For more control (--ui, --last-failed, --headed, etc), call the script directly:
-	#   ./scripts/test-e2e.sh --ui --last-failed
 	./scripts/test-e2e.sh
+
+# Remove E2E test artifacts (results, reports, auth state)
+.PHONY: dev-e2e-clean
+dev-e2e-clean:
+	rm -rf packages/app/test-results packages/app/playwright-report packages/app/blob-report packages/app/tests/e2e/.auth
+
+# Run a specific E2E test file or grep pattern (dev mode: hot reload)
+# Usage:
+#   make dev-e2e FILE=navigation                    # Match files containing "navigation"
+#   make dev-e2e FILE=navigation GREP="help menu"   # Also filter by test name
+#   make dev-e2e GREP="should navigate"             # Filter by test name across all files
+#   make dev-e2e FILE=navigation REPORT=1           # Open HTML report after tests finish
+.PHONY: dev-e2e
+dev-e2e:
+	./scripts/test-e2e.sh --dev $(if $(FILE),$(FILE)) $(if $(GREP),--grep "$(GREP)") $(ARGS); \
+	ret=$$?; \
+	$(if $(REPORT),cd packages/app && npx playwright show-report --port $$((9323 + $(HDX_E2E_SLOT)));) \
+	exit $$ret
 
 
 

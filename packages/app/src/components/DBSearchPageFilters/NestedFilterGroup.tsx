@@ -8,7 +8,7 @@ import { FilterGroup } from '../DBSearchPageFilters';
 
 import classes from '../../../styles/SearchPage.module.scss';
 
-export type NestedFilterGroupProps = {
+type NestedFilterGroupProps = {
   name: string;
   childFilters: {
     key: string;

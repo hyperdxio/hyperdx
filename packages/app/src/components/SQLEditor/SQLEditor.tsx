@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { acceptCompletion } from '@codemirror/autocomplete';
-import { sql } from '@codemirror/lang-sql';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { Paper, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
@@ -12,6 +11,7 @@ import CodeMirror, {
 } from '@uiw/react-codemirror';
 
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { clickhouseSql } from '@/utils/codeMirror';
 
 import {
   createCodeMirrorSqlDialect,
@@ -100,7 +100,7 @@ export default function SQLEditor({
           createCodeMirrorStyleTheme(),
           // eslint-disable-next-line react-hooks/refs
           compartmentRef.current.of(
-            sql({
+            clickhouseSql({
               upperCaseKeywords: true,
             }),
           ),

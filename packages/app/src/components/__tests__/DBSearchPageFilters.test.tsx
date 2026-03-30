@@ -412,7 +412,7 @@ describe('FilterGroup', () => {
   it('should sort options alphabetically by default', () => {
     renderWithMantine(<FilterGroup {...defaultProps} />);
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
@@ -431,7 +431,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
@@ -460,7 +460,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('banana'); // Selected
@@ -493,7 +493,7 @@ describe('FilterGroup', () => {
     );
     await userEvent.click(showPercentages);
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/%/);
     expect(labels[0]).toHaveTextContent('~99%'); // apple
@@ -512,7 +512,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple'); // included first
@@ -543,7 +543,7 @@ describe('FilterGroup', () => {
     );
 
     // Should show MAX_FILTER_GROUP_ITEMS (10) by default
-    let options = screen.getAllByTestId(/filter-checkbox-input/);
+    let options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(10);
 
     // Selected items should be visible even if they would be beyond MAX_FILTER_GROUP_ITEMS
@@ -556,7 +556,7 @@ describe('FilterGroup', () => {
     await userEvent.click(showMoreButton);
 
     // Should show all items
-    options = screen.getAllByTestId(/filter-checkbox-input/);
+    options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(15);
   });
 

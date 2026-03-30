@@ -65,9 +65,9 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify custom SELECT is preserved', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).toContain('upper(ServiceName) as service_name');
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_name',
+        );
       });
     },
   );
@@ -107,10 +107,10 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify different source has its own default SELECT', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).not.toContain('lower(Body) as body_lower');
-        expect(selectContent).toMatch(/Timestamp/i);
+        await expect(selectEditor).not.toContainText(
+          'lower(Body) as body_lower',
+        );
+        await expect(selectEditor).toContainText('Timestamp');
       });
 
       await test.step('Navigate back to saved search', async () => {
@@ -120,11 +120,11 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify saved search SELECT is restored', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
         // Verifies the fix: SELECT restores to saved search's custom value
-        expect(selectContent).toContain('lower(Body) as body_lower');
-        expect(selectContent).toContain('Timestamp, Body, lower(Body)');
+        await expect(selectEditor).toContainText('lower(Body) as body_lower');
+        await expect(selectEditor).toContainText(
+          'Timestamp, Body, lower(Body)',
+        );
       });
     },
   );
@@ -153,12 +153,10 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify SELECT changed to the new source default', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).not.toContain(
+        await expect(selectEditor).not.toContainText(
           'lower(ServiceName) as service_name',
         );
-        expect(selectContent).toMatch(/Timestamp/i);
+        await expect(selectEditor).toContainText('Timestamp');
       });
 
       await test.step('Switch back to original source via dropdown', async () => {
@@ -170,9 +168,9 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify SELECT is search custom SELECT', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).toContain('lower(ServiceName) as service_name');
+        await expect(selectEditor).toContainText(
+          'lower(ServiceName) as service_name',
+        );
       });
     },
   );
@@ -240,8 +238,7 @@ test.describe('Saved Search Functionality', () => {
 
         // Verify ORDER BY is restored
         const orderByEditor = searchPage.getOrderByEditor();
-        const orderByContent = await orderByEditor.textContent();
-        expect(orderByContent).toContain('ServiceName ASC');
+        await expect(orderByEditor).toContainText('ServiceName ASC');
 
         // Verify search results are visible (search executed automatically)
         await searchPage.table.waitForRowsToPopulate();
@@ -295,10 +292,10 @@ test.describe('Saved Search Functionality', () => {
 
         // Verify SELECT content
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).toContain('upper(ServiceName) as service_name');
-        expect(selectContent).toContain('Timestamp, Body');
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_name',
+        );
+        await expect(selectEditor).toContainText('Timestamp, Body');
       });
     },
   );
@@ -320,8 +317,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify default SELECT is loaded', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-        expect(selectContent).toContain(
+        await expect(selectEditor).toContainText(
           'Timestamp, ServiceName, SeverityText, Body',
         );
       });
@@ -338,8 +334,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify default SELECT is loaded', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-        expect(selectContent).toContain(
+        await expect(selectEditor).toContainText(
           'Timestamp, ServiceName, SeverityText, Body',
         );
       });
@@ -484,11 +479,16 @@ test.describe('Saved Search Functionality', () => {
         appliedFilterValue = picked;
 
         // Apply the filter
-        await searchPage.filters.applyFilter(appliedFilterValue);
+        await searchPage.filters.applyFilter(
+          'SeverityText',
+          appliedFilterValue,
+        );
 
         // Verify filter is checked
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).toBeChecked();
 
         // Submit search to apply filters
@@ -516,8 +516,10 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup('SeverityText');
 
         // Verify filter is not checked
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).not.toBeChecked();
       });
 
@@ -532,8 +534,10 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup('SeverityText');
 
         // Verify filter is checked again
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).toBeChecked();
       });
     },
@@ -565,7 +569,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Create saved search with one filter', async () => {
         await searchPage.filters.openFilterGroup(firstFilterGroup);
-        await searchPage.filters.applyFilter(firstFilter);
+        await searchPage.filters.applyFilter(firstFilterGroup, firstFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
 
@@ -578,7 +582,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Update saved search with second filter', async () => {
         await searchPage.filters.openFilterGroup(secondFilterGroup);
-        await searchPage.filters.applyFilter(secondFilter);
+        await searchPage.filters.applyFilter(secondFilterGroup, secondFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
 
@@ -600,10 +604,16 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup(firstFilterGroup);
         await searchPage.filters.openFilterGroup(secondFilterGroup);
         await expect(
-          searchPage.filters.getFilterCheckboxInput(firstFilter),
+          searchPage.filters.getFilterCheckboxInput(
+            firstFilterGroup,
+            firstFilter,
+          ),
         ).toBeChecked();
         await expect(
-          searchPage.filters.getFilterCheckboxInput(secondFilter),
+          searchPage.filters.getFilterCheckboxInput(
+            secondFilterGroup,
+            secondFilter,
+          ),
         ).toBeChecked();
       });
     },

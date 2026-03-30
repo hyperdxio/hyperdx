@@ -12,9 +12,15 @@
       ]
     },
     "packages/api": {
-      "entry": ["src/index.ts", "src/tasks/index.ts", "scripts/*.ts"],
+      "entry": [
+        "src/index.ts",
+        "src/tasks/index.ts",
+        "scripts/*.ts",
+        "src/fixtures.ts"
+      ],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["pino-pretty", "aws4"]
+      "ignoreDependencies": ["pino-pretty", "aws4"],
+      "ignore": ["src/opamp/**", "src/utils/logParser.ts"]
     },
     "packages/common-utils": {
       "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
@@ -26,5 +32,6 @@
     "concurrently",
     "dotenv",
     "babel-plugin-react-compiler"
-  ]
+  ],
+  "exclude": ["enumMembers", "duplicates"]
 }

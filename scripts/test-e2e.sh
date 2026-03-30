@@ -17,7 +17,7 @@
 #   ./scripts/test-e2e.sh --keep-running --ui  # Start containers and open UI
 #   # Make changes, tests auto-rerun in UI mode
 #   # When done:
-#   docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml down -v
+#   docker compose -p e2e-<slot> -f packages/app/tests/e2e/docker-compose.yml down -v
 #
 # All Playwright flags are passed through automatically
 
@@ -26,6 +26,38 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_COMPOSE_FILE="$REPO_ROOT/packages/app/tests/e2e/docker-compose.yml"
+
+# ---------------------------------------------------------------------------
+# Multi-agent / worktree isolation
+# ---------------------------------------------------------------------------
+# Compute a deterministic port offset (0-99) from the working directory name
+# so that multiple worktrees can run E2E tests in parallel without port
+# conflicts. Override HDX_E2E_SLOT manually if you need a specific slot.
+#
+# Port mapping (base + slot) — shares the same base ports as dev-int
+# since they never run simultaneously. All ports are below the OS
+# ephemeral range (49152) to avoid OrbStack/Docker conflicts:
+#   OpAMP            : 14320 + slot  (14320-14419)  shared with dev-int
+#   ClickHouse HTTP  : 18123 + slot  (18123-18222)  shared with dev-int
+#   ClickHouse Native: 18223 + slot  (18223-18322)  e2e only
+#   API server       : 19000 + slot  (19000-19099)  shared with dev-int
+#   MongoDB          : 39999 + slot  (39999-40098)  shared with dev-int
+#   App (local)      : 48001 + slot  (48001-48100)  e2e only
+#   App (fullstack)  : 48081 + slot  (48081-48180)  e2e only
+# ---------------------------------------------------------------------------
+export HDX_E2E_SLOT="${HDX_E2E_SLOT:-$(printf '%s' "$(basename "$REPO_ROOT")" | cksum | awk '{print $1 % 100}')}"
+
+export HDX_E2E_OPAMP_PORT="${HDX_E2E_OPAMP_PORT:-$((14320 + HDX_E2E_SLOT))}"
+export HDX_E2E_CH_PORT="${HDX_E2E_CH_PORT:-$((18123 + HDX_E2E_SLOT))}"
+export HDX_E2E_CH_NATIVE_PORT="${HDX_E2E_CH_NATIVE_PORT:-$((18223 + HDX_E2E_SLOT))}"
+export HDX_E2E_API_PORT="${HDX_E2E_API_PORT:-$((19000 + HDX_E2E_SLOT))}"
+export HDX_E2E_MONGO_PORT="${HDX_E2E_MONGO_PORT:-$((39999 + HDX_E2E_SLOT))}"
+export HDX_E2E_APP_LOCAL_PORT="${HDX_E2E_APP_LOCAL_PORT:-$((48001 + HDX_E2E_SLOT))}"
+export HDX_E2E_APP_PORT="${HDX_E2E_APP_PORT:-$((48081 + HDX_E2E_SLOT))}"
+
+export E2E_PROJECT="e2e-${HDX_E2E_SLOT}"
+
+echo "Using E2E slot ${HDX_E2E_SLOT} (project=${E2E_PROJECT} ch=${HDX_E2E_CH_PORT} ch-native=${HDX_E2E_CH_NATIVE_PORT} mongo=${HDX_E2E_MONGO_PORT} api=${HDX_E2E_API_PORT} app=${HDX_E2E_APP_PORT} app-local=${HDX_E2E_APP_LOCAL_PORT} opamp=${HDX_E2E_OPAMP_PORT})"
 
 # Configuration constants
 readonly MAX_MONGODB_WAIT_ATTEMPTS=15
@@ -59,13 +91,13 @@ done
 
 cleanup_services() {
   echo "Stopping E2E services and removing volumes..."
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" down -v
+  docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" down -v
 }
 
 check_mongodb_health() {
   # Health check script that tests ping, insert, and delete operations
-  # Note: MongoDB is configured to run on port 29998 inside the container
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --port 29998 --quiet --eval "
+  # Note: MongoDB runs on port 27017 inside the container (default)
+  docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "
     try {
       db.adminCommand('ping');
       db.getSiblingDB('test').test.insertOne({_id: 'healthcheck', ts: new Date()});
@@ -81,7 +113,7 @@ check_mongodb_health() {
 check_clickhouse_health() {
   # Health check from HOST perspective (not inside container)
   # This ensures the port is actually accessible to Playwright
-  curl -sf http://localhost:8123/ping >/dev/null 2>&1 || wget --spider -q http://localhost:8123/ping 2>&1
+  curl -sf "http://localhost:${HDX_E2E_CH_PORT}/ping" >/dev/null 2>&1 || wget --spider -q "http://localhost:${HDX_E2E_CH_PORT}/ping" 2>&1
 }
 
 wait_for_clickhouse() {
@@ -97,7 +129,7 @@ wait_for_clickhouse() {
     if [ $attempt -eq $MAX_CLICKHOUSE_WAIT_ATTEMPTS ]; then
       local total_wait=$((MAX_CLICKHOUSE_WAIT_ATTEMPTS * CLICKHOUSE_WAIT_DELAY_SECONDS))
       echo "ClickHouse failed to become ready after $total_wait seconds"
-      echo "Try running: docker compose -p e2e -f $DOCKER_COMPOSE_FILE logs ch-server"
+      echo "Try running: docker compose -p $E2E_PROJECT -f $DOCKER_COMPOSE_FILE logs ch-server"
       return 1
     fi
 
@@ -112,10 +144,10 @@ wait_for_mongodb() {
   local attempt=1
 
   # Verify mongosh is available in the container
-  if ! docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db which mongosh >/dev/null 2>&1; then
+  if ! docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" exec -T db which mongosh >/dev/null 2>&1; then
     echo "ERROR: mongosh not found in MongoDB container"
     echo "Container may not be running or using incompatible image"
-    echo "Try running: docker compose -p e2e -f $DOCKER_COMPOSE_FILE logs db"
+    echo "Try running: docker compose -p $E2E_PROJECT -f $DOCKER_COMPOSE_FILE logs db"
     return 1
   fi
 
@@ -147,13 +179,13 @@ setup_cleanup_trap() {
     trap cleanup_services EXIT ERR
   else
     echo "⚠️  Skipping cleanup - containers will remain running"
-    echo "   Use 'docker compose -p e2e -f $DOCKER_COMPOSE_FILE down -v' to stop them manually"
+    echo "   Use 'docker compose -p $E2E_PROJECT -f $DOCKER_COMPOSE_FILE down -v' to stop them manually"
   fi
 }
 
 setup_clickhouse() {
   echo "Starting ClickHouse..."
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" up -d ch-server
+  docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" up -d ch-server
 
   if ! wait_for_clickhouse; then
     exit 1
@@ -185,7 +217,7 @@ setup_clickhouse
 # Conditionally start MongoDB for full-stack mode
 if [ "$LOCAL_MODE" = false ]; then
   echo "Starting MongoDB for full-stack mode..."
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" up -d db
+  docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" up -d db
   
   if ! wait_for_mongodb; then
     exit 1
