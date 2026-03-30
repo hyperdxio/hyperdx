@@ -16,7 +16,7 @@ import focusClasses from '../../../../styles/focus.module.scss';
 import variantClasses from '../../../../styles/variants.module.scss';
 import componentClasses from '../components.module.scss';
 
-export const makeTheme = ({
+const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
 }: {
   fontFamily?: string;
