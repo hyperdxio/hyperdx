@@ -112,14 +112,20 @@ EOF
 # shellcheck source=./ensure-dev-portal.sh
 source "${BASH_SOURCE[0]%/*}/ensure-dev-portal.sh"
 
-# Clean up slot file, logs, and portal on exit
+# Clean up slot file and archive logs on exit
 _hdx_cleanup_slot() {
   if [ -n "$HDX_PORTAL_PID" ] && kill -0 "$HDX_PORTAL_PID" 2>/dev/null; then
     kill "$HDX_PORTAL_PID" 2>/dev/null || true
   fi
   rm -f "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" 2>/dev/null || true
-  rm -rf "${HDX_DEV_LOGS_DIR}" 2>/dev/null || true
-  rmdir "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}" 2>/dev/null || true
+  # Archive logs to history instead of deleting
+  if [ -d "$HDX_DEV_LOGS_DIR" ] && [ -n "$(ls -A "$HDX_DEV_LOGS_DIR" 2>/dev/null)" ]; then
+    _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    _hist="${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}/history/dev-${_ts}"
+    mkdir -p "$_hist"
+    mv "$HDX_DEV_LOGS_DIR"/* "$_hist/" 2>/dev/null || true
+  fi
+  rm -rf "$HDX_DEV_LOGS_DIR" 2>/dev/null || true
 }
 trap _hdx_cleanup_slot EXIT
 

@@ -105,8 +105,14 @@ done
 cleanup_services() {
   echo "Stopping E2E services and removing volumes..."
   docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" down -v
+  # Archive logs to history instead of deleting
+  if [ -d "$HDX_E2E_LOGS_DIR" ] && [ -n "$(ls -A "$HDX_E2E_LOGS_DIR" 2>/dev/null)" ]; then
+    _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    _hist="${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}/history/e2e-${_ts}"
+    mkdir -p "$_hist"
+    mv "$HDX_E2E_LOGS_DIR"/* "$_hist/" 2>/dev/null || true
+  fi
   rm -rf "$HDX_E2E_LOGS_DIR" 2>/dev/null || true
-  rmdir "${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}" 2>/dev/null || true
 }
 
 check_mongodb_health() {

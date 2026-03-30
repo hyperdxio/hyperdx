@@ -684,6 +684,131 @@ function streamLogs(slot, service, req, res, envType = 'dev') {
 }
 
 // ---------------------------------------------------------------------------
+// Log history — archived runs stored in <slot>/history/<envType>-<ISO ts>/
+// ---------------------------------------------------------------------------
+const HISTORY_DIR_RE = /^(dev|e2e|int)-(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/;
+
+function discoverHistory() {
+  const results = [];
+  try {
+    if (!fs.existsSync(SLOTS_DIR)) return results;
+    // Cache worktree/branch info per slot to avoid redundant lookups
+    const slotInfoCache = new Map();
+
+    for (const slotEntry of fs.readdirSync(SLOTS_DIR)) {
+      const histDir = path.join(SLOTS_DIR, slotEntry, 'history');
+      if (!fs.existsSync(histDir) || !fs.statSync(histDir).isDirectory())
+        continue;
+
+      const slot = parseInt(slotEntry, 10);
+      if (isNaN(slot)) continue;
+
+      // Resolve worktree/branch for this slot
+      if (!slotInfoCache.has(slot)) {
+        let worktree = 'unknown';
+        let branch = 'unknown';
+        // Try reading the slot JSON file (written by dev-env.sh)
+        const slotFile = path.join(SLOTS_DIR, `${slot}.json`);
+        try {
+          if (fs.existsSync(slotFile)) {
+            const data = JSON.parse(fs.readFileSync(slotFile, 'utf-8'));
+            if (data.worktree) worktree = data.worktree;
+            if (data.branch) branch = data.branch;
+            if (data.worktreePath && worktree === 'unknown') {
+              worktree = path.basename(data.worktreePath);
+            }
+          }
+        } catch {
+          // ignore
+        }
+        // Fall back to current working directory if this is the local slot
+        if (worktree === 'unknown') {
+          const cwd = process.cwd();
+          const repoRoot = resolveGitRoot(cwd);
+          if (repoRoot) {
+            worktree = path.basename(repoRoot);
+            branch = resolveGitBranch(cwd, new Map());
+          }
+        }
+        slotInfoCache.set(slot, { worktree, branch });
+      }
+      const { worktree, branch } = slotInfoCache.get(slot);
+
+      for (const runDir of fs.readdirSync(histDir)) {
+        const match = runDir.match(HISTORY_DIR_RE);
+        if (!match) continue;
+
+        const runPath = path.join(histDir, runDir);
+        if (!fs.statSync(runPath).isDirectory()) continue;
+
+        const files = fs.readdirSync(runPath).filter(f => f.endsWith('.log'));
+        if (files.length === 0) continue;
+
+        let totalSize = 0;
+        for (const f of files) {
+          try {
+            totalSize += fs.statSync(path.join(runPath, f)).size;
+          } catch {
+            // ignore
+          }
+        }
+
+        results.push({
+          slot,
+          envType: match[1],
+          timestamp: match[2],
+          dir: runDir,
+          files,
+          totalSize,
+          worktree,
+          branch,
+        });
+      }
+    }
+  } catch {
+    // slots dir doesn't exist or isn't readable
+  }
+  // Sort newest first
+  results.sort((a, b) => (b.timestamp > a.timestamp ? 1 : -1));
+  return results;
+}
+
+function getHistoryLog(slot, dir, file) {
+  // Validate directory name to prevent path traversal
+  if (!HISTORY_DIR_RE.test(dir)) return null;
+  if (file.includes('/') || file.includes('..')) return null;
+
+  const logPath = path.join(SLOTS_DIR, String(slot), 'history', dir, file);
+  try {
+    if (!fs.existsSync(logPath)) return null;
+    return fs.readFileSync(logPath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function deleteHistoryEntry(slot, dir) {
+  if (!HISTORY_DIR_RE.test(dir)) return false;
+  const dirPath = path.join(SLOTS_DIR, String(slot), 'history', dir);
+  try {
+    if (!fs.existsSync(dirPath)) return false;
+    fs.rmSync(dirPath, { recursive: true, force: true });
+    // Clean up empty parent directories
+    const histDir = path.join(SLOTS_DIR, String(slot), 'history');
+    try {
+      if (fs.existsSync(histDir) && fs.readdirSync(histDir).length === 0) {
+        fs.rmdirSync(histDir);
+      }
+    } catch {
+      // ignore
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HTML template
 // ---------------------------------------------------------------------------
 function renderDashboardHtml() {
@@ -741,6 +866,45 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(logs);
     }
+  } else if (pathname === '/api/history' && req.method === 'GET') {
+    const data = discoverHistory();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify(data));
+  } else if (
+    pathname.match(/^\/api\/history\/(\d+)\/([^/]+)\/(.+)$/) &&
+    req.method === 'GET'
+  ) {
+    const match = pathname.match(/^\/api\/history\/(\d+)\/([^/]+)\/(.+)$/);
+    const slot = match[1];
+    const dir = decodeURIComponent(match[2]);
+    const file = decodeURIComponent(match[3]);
+    const content = getHistoryLog(slot, dir, file);
+    if (content !== null) {
+      res.writeHead(200, {
+        'Content-Type': 'text/plain',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(content);
+    } else {
+      res.writeHead(404, { 'Access-Control-Allow-Origin': '*' });
+      res.end('Not found');
+    }
+  } else if (
+    pathname.match(/^\/api\/history\/(\d+)\/([^/]+)$/) &&
+    req.method === 'DELETE'
+  ) {
+    const match = pathname.match(/^\/api\/history\/(\d+)\/([^/]+)$/);
+    const slot = match[1];
+    const dir = decodeURIComponent(match[2]);
+    const ok = deleteHistoryEntry(slot, dir);
+    res.writeHead(ok ? 200 : 404, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({ ok }));
   } else if (pathname === '/' || pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(renderDashboardHtml());

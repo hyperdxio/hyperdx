@@ -448,9 +448,261 @@
         font-size: 14px;
         display: none;
       }
+
+      /* --- Tabs --- */
+      .tab-bar {
+        display: flex;
+        gap: 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .tab {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-muted);
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .tab:hover {
+        color: var(--text);
+      }
+
+      .tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      /* --- History --- */
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .history-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .clear-all-btn {
+        background: none;
+        border: 1px solid var(--red);
+        color: var(--red);
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .clear-all-btn:hover {
+        background: rgba(248, 81, 73, 0.1);
+      }
+
+      .history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .history-entry {
+        border-top: 1px solid var(--border);
+      }
+
+      .history-entry:first-child {
+        border-top: none;
+      }
+
+      .history-entry-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: var(--card-surface);
+        border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+      }
+
+      .history-entry-header .history-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .history-time {
+        font-size: 13px;
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .history-ts {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+
+      .history-delete-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .history-delete-btn:hover {
+        color: var(--red);
+        border-color: var(--red);
+      }
+
+      .file-list {
+        padding: 4px 0;
+      }
+
+      .file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 20px;
+        cursor: pointer;
+        transition: background 0.1s;
+        font-size: 13px;
+      }
+
+      .file-item:hover {
+        background: rgba(88, 166, 255, 0.05);
+      }
+
+      .file-item.active {
+        background: rgba(88, 166, 255, 0.1);
+      }
+
+      .file-name {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        color: var(--text);
+      }
+
+      .file-size {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+
+      /* --- Confirm modal --- */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+
+      .modal-overlay.visible {
+        opacity: 1;
+      }
+
+      .modal-box {
+        background: var(--card-bg);
+        border: 1px solid var(--border-emphasis);
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 380px;
+        width: 90%;
+        transform: scale(0.95);
+        transition: transform 0.15s;
+      }
+
+      .modal-overlay.visible .modal-box {
+        transform: scale(1);
+      }
+
+      .modal-box h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .modal-box p {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-bottom: 20px;
+        line-height: 1.5;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .modal-actions button {
+        padding: 7px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .modal-cancel {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      .modal-cancel:hover {
+        border-color: var(--text-muted);
+      }
+
+      .modal-danger {
+        background: var(--red);
+        border: 1px solid var(--red);
+        color: #fff;
+      }
+
+      .modal-danger:hover {
+        opacity: 0.85;
+      }
     </style>
   </head>
   <body>
+    <div
+      id="modal-overlay"
+      class="modal-overlay"
+      style="display: none"
+      onclick="if(event.target===this)closeModal(false)"
+    >
+      <div class="modal-box">
+        <h3 id="modal-title">Confirm</h3>
+        <p id="modal-message">Are you sure?</p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick="closeModal(false)">
+            Cancel
+          </button>
+          <button
+            class="modal-danger"
+            id="modal-confirm-btn"
+            onclick="closeModal(true)"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="layout">
       <div class="main-panel">
         <div class="header">
@@ -487,8 +739,18 @@
           </div>
         </div>
 
+        <div class="tab-bar">
+          <button class="tab active" id="tab-live" onclick="switchTab('live')">
+            Live
+          </button>
+          <button class="tab" id="tab-history" onclick="switchTab('history')">
+            History
+          </button>
+        </div>
+
         <div id="error-banner" class="error-banner"></div>
         <div id="content"></div>
+        <div id="history-content" style="display: none"></div>
       </div>
 
       <div id="log-panel" class="log-panel">
@@ -526,6 +788,7 @@
 
     <script>
       const contentEl = document.getElementById('content');
+      const historyEl = document.getElementById('history-content');
       const errorEl = document.getElementById('error-banner');
       const logPanel = document.getElementById('log-panel');
       const logContent = document.getElementById('log-content');
@@ -533,6 +796,7 @@
       const logSlotLabel = document.getElementById('log-slot-label');
       const logStreamBadge = document.getElementById('log-stream-badge');
 
+      let activeTab = 'live';
       let currentLogSlot = null;
       let currentLogService = null;
       let currentLogEnvType = null;
@@ -911,6 +1175,243 @@
           .replace(/"/g, '&quot;');
       }
 
+      // --- Tab switching ---
+
+      function switchTab(tab) {
+        activeTab = tab;
+        document
+          .getElementById('tab-live')
+          .classList.toggle('active', tab === 'live');
+        document
+          .getElementById('tab-history')
+          .classList.toggle('active', tab === 'history');
+
+        if (tab === 'live') {
+          contentEl.style.display = '';
+          historyEl.style.display = 'none';
+          refresh();
+        } else {
+          contentEl.style.display = 'none';
+          historyEl.style.display = '';
+          refreshHistory();
+        }
+      }
+
+      // --- History rendering ---
+
+      function timeAgo(date) {
+        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+        if (seconds < 0) return 'just now';
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1048576).toFixed(1)} MB`;
+      }
+
+      async function refreshHistory() {
+        try {
+          const res = await fetch('/api/history');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const entries = await res.json();
+          historyEl.innerHTML = renderHistory(entries);
+          errorEl.style.display = 'none';
+        } catch (err) {
+          errorEl.textContent = `Failed to fetch history: ${err.message}`;
+          errorEl.style.display = 'block';
+        }
+      }
+
+      function renderHistory(entries) {
+        if (entries.length === 0) {
+          return `
+            <div class="empty-state">
+              <h2>No past runs</h2>
+              <p>Logs from completed dev, E2E, and integration runs will appear here.</p>
+            </div>
+          `;
+        }
+
+        // Group entries by worktree, same as the live view
+        const groups = new Map();
+        for (const entry of entries) {
+          const key = entry.worktree || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(entry);
+        }
+
+        return `
+          <div class="history-header">
+            <h2>Past Runs</h2>
+            <button class="clear-all-btn" onclick="clearAllHistory()">Clear All</button>
+          </div>
+          <div class="stacks">
+            ${[...groups.entries()].map(([worktree, group]) => renderHistoryWorktreeCard(worktree, group)).join('')}
+          </div>
+        `;
+      }
+
+      function renderHistoryWorktreeCard(worktree, entries) {
+        // Use the first entry for branch info
+        const branch = entries[0].branch || 'unknown';
+
+        return `
+          <div class="stack-card">
+            <div class="stack-header">
+              <div>
+                <div style="display:flex;align-items:center">
+                  <span class="branch">${escapeHtml(branch)}</span>
+                </div>
+                <div class="worktree">${escapeHtml(worktree)}</div>
+              </div>
+            </div>
+            <div class="history-list" style="padding:0">
+              ${entries.map(renderHistoryEntry).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderHistoryEntry(entry) {
+        const relTime = timeAgo(new Date(entry.timestamp));
+        return `
+          <div class="history-entry">
+            <div class="history-entry-header">
+              <div class="history-meta">
+                <span class="env-badge ${entry.envType}">${envTypeLabel(entry.envType)}</span>
+                <span class="history-time">${relTime}</span>
+                <span class="history-ts">${escapeHtml(entry.timestamp)}</span>
+              </div>
+              <button class="history-delete-btn" onclick="event.stopPropagation(); deleteHistoryEntry(${entry.slot}, '${escapeHtml(entry.dir)}')">Delete</button>
+            </div>
+            <div class="file-list">
+              ${entry.files
+                .map(
+                  f => `
+                <div class="file-item"
+                     onclick="viewHistoryLog(${entry.slot}, '${escapeHtml(entry.dir)}', '${escapeHtml(f)}', '${entry.envType}')">
+                  <span class="file-name">${escapeHtml(f)}</span>
+                  <span class="file-size">${formatSize(entry.totalSize)}</span>
+                </div>
+              `,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      async function viewHistoryLog(slot, dir, file, envType) {
+        // Close any existing SSE stream
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+
+        currentLogSlot = null;
+        currentLogService = null;
+        currentLogEnvType = null;
+
+        logTitle.textContent = file;
+        logSlotLabel.textContent = `${envTypeLabel(envType)} \u00b7 ${timeAgo(new Date(dir.replace(/^(dev|e2e|int)-/, '')))}`;
+        logContent.innerHTML = '';
+        appendLogLine('Loading archived log...');
+        logPanel.classList.add('open');
+        logStreamBadge.style.display = 'none';
+
+        // Highlight active file item
+        document
+          .querySelectorAll('.file-item.active')
+          .forEach(el => el.classList.remove('active'));
+
+        try {
+          const res = await fetch(
+            `/api/history/${slot}/${encodeURIComponent(dir)}/${encodeURIComponent(file)}`,
+          );
+          const text = await res.text();
+          logContent.innerHTML = '';
+          for (const line of text.split('\n')) {
+            appendLogLine(line);
+          }
+        } catch {
+          logContent.innerHTML = '';
+          appendLogLine('Failed to load log file.');
+        }
+      }
+
+      async function deleteHistoryEntry(slot, dir) {
+        const ok = await showModal(
+          'Delete run?',
+          'This will permanently remove the log files for this run.',
+          'Delete',
+        );
+        if (!ok) return;
+        await fetch(`/api/history/${slot}/${encodeURIComponent(dir)}`, {
+          method: 'DELETE',
+        });
+        closeLogPanel();
+        refreshHistory();
+      }
+
+      async function clearAllHistory() {
+        const ok = await showModal(
+          'Clear all history?',
+          'This will permanently delete all past run logs. This cannot be undone.',
+          'Delete All',
+        );
+        if (!ok) return;
+        try {
+          const res = await fetch('/api/history');
+          const entries = await res.json();
+          await Promise.all(
+            entries.map(e =>
+              fetch(`/api/history/${e.slot}/${encodeURIComponent(e.dir)}`, {
+                method: 'DELETE',
+              }),
+            ),
+          );
+        } catch {
+          // ignore errors
+        }
+        closeLogPanel();
+        refreshHistory();
+      }
+
+      // --- Custom confirm modal ---
+      let _modalResolve = null;
+
+      function showModal(title, message, confirmLabel) {
+        return new Promise(resolve => {
+          _modalResolve = resolve;
+          document.getElementById('modal-title').textContent = title;
+          document.getElementById('modal-message').textContent = message;
+          document.getElementById('modal-confirm-btn').textContent =
+            confirmLabel || 'Confirm';
+          const overlay = document.getElementById('modal-overlay');
+          overlay.style.display = 'flex';
+          requestAnimationFrame(() => overlay.classList.add('visible'));
+        });
+      }
+
+      function closeModal(result) {
+        const overlay = document.getElementById('modal-overlay');
+        overlay.classList.remove('visible');
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 150);
+        if (_modalResolve) {
+          _modalResolve(result);
+          _modalResolve = null;
+        }
+      }
+
+      // --- Live dashboard ---
+
       async function refresh() {
         try {
           const res = await fetch('/api/stacks');
@@ -924,9 +1425,11 @@
         }
       }
 
-      // Initial load + periodic refresh
+      // Initial load + periodic refresh (only refresh active tab)
       refresh();
-      setInterval(refresh, 3000);
+      setInterval(() => {
+        if (activeTab === 'live') refresh();
+      }, 3000);
 
       // Set initial auto-scroll button state
       toggleAutoScroll();
@@ -934,7 +1437,13 @@
 
       // Keybindings
       document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeLogPanel();
+        if (e.key === 'Escape') {
+          if (_modalResolve) {
+            closeModal(false);
+          } else {
+            closeLogPanel();
+          }
+        }
       });
     </script>
   </body>

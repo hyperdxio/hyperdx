@@ -27,6 +27,19 @@ export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
 
 # Log directory for dev-portal visibility (integration tests)
 HDX_CI_LOGS_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/logs-int
+HDX_CI_HISTORY_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/history
+
+# Archive integration logs to history (call at end of each test target)
+# Usage: $(call archive-int-logs)
+define archive-int-logs
+	if [ -d "$(HDX_CI_LOGS_DIR)" ] && [ -n "$$(ls -A $(HDX_CI_LOGS_DIR) 2>/dev/null)" ]; then \
+		_ts=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		_hist="$(HDX_CI_HISTORY_DIR)/int-$$_ts"; \
+		mkdir -p "$$_hist"; \
+		mv $(HDX_CI_LOGS_DIR)/* "$$_hist/" 2>/dev/null; \
+	fi; \
+	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null
+endef
 
 .PHONY: all
 all: install-tools
@@ -108,7 +121,7 @@ dev-int-down:
 			kill $$pid 2>/dev/null || true; \
 		done; \
 	done
-	@rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; true
+	@$(call archive-int-logs); true
 
 .PHONY: dev-e2e-down
 dev-e2e-down:
@@ -140,7 +153,7 @@ dev-int:
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log; ret=$${PIPESTATUS[0]}; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
-	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
+	$(call archive-int-logs); \
 	exit $$ret
 
 .PHONY: dev-int-common-utils
@@ -151,7 +164,7 @@ dev-int-common-utils:
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log; ret=$${PIPESTATUS[0]}; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
-	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
+	$(call archive-int-logs); \
 	exit $$ret
 
 .PHONY: ci-int
@@ -160,7 +173,7 @@ ci-int:
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
 	npx nx run-many -t ci:int --parallel=false 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log; ret=$${PIPESTATUS[0]}; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
-	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null; rmdir $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT) 2>/dev/null; \
+	$(call archive-int-logs); \
 	exit $$ret
 
 .PHONY: dev-unit
