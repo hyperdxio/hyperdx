@@ -100,6 +100,7 @@ export function cleanedFacetName(key: string): string {
 }
 
 type FilterCheckboxProps = {
+  columnName: string;
   label: string;
   value?: 'included' | 'excluded' | false;
   pinned: boolean;
@@ -160,6 +161,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
 };
 
 const FilterCheckbox = ({
+  columnName,
   value,
   label,
   pinned,
@@ -171,10 +173,11 @@ const FilterCheckbox = ({
   percentage,
   isPercentageLoading,
 }: FilterCheckboxProps) => {
+  const testIdPrefix = `filter-checkbox-${columnName}-${label}`;
   return (
     <div
       className={cx(classes.filterCheckbox, className)}
-      data-testid={`filter-checkbox-${label}`}
+      data-testid={testIdPrefix}
     >
       <Group
         gap={8}
@@ -189,7 +192,7 @@ const FilterCheckbox = ({
             // taken care by the onClick in the group
           }}
           indeterminate={value === 'excluded'}
-          data-testid={`filter-checkbox-input-${label}`}
+          data-testid={`${testIdPrefix}-input`}
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -234,14 +237,14 @@ const FilterCheckbox = ({
           <TextButton
             onClick={onClickOnly}
             label="Only"
-            data-testid={`filter-only-${label}`}
+            data-testid={`${testIdPrefix}-only`}
           />
         )}
         {onClickExclude && (
           <TextButton
             onClick={onClickExclude}
             label="Exclude"
-            data-testid={`filter-exclude-${label}`}
+            data-testid={`${testIdPrefix}-exclude`}
           />
         )}
         <ActionIcon
@@ -252,14 +255,14 @@ const FilterCheckbox = ({
           aria-label={pinned ? 'Unpin field' : 'Pin field'}
           role="checkbox"
           aria-checked={pinned}
-          data-testid={`filter-pin-${label}`}
+          data-testid={`${testIdPrefix}-pin`}
         >
           {pinned ? <IconPinFilled size={12} /> : <IconPin size={12} />}
         </ActionIcon>
       </div>
       {pinned && (
         <Center me="1px">
-          <IconPinFilled size={12} data-testid={`filter-pin-${label}-pinned`} />
+          <IconPinFilled size={12} data-testid={`${testIdPrefix}-pin-pinned`} />
         </Center>
       )}
     </div>
@@ -755,6 +758,7 @@ export const FilterGroup = ({
                 {displayedOptions.map(option => (
                   <FilterCheckbox
                     key={option.value.toString()}
+                    columnName={name}
                     label={option.label}
                     pinned={isPinned(option.value)}
                     className={
