@@ -21,23 +21,23 @@ import { Box, Text } from '@mantine/core';
 export type DragHandleProps = React.HTMLAttributes<HTMLElement>;
 
 export type DragData = {
-  type: 'section';
-  sectionId: string;
-  sectionTitle: string;
+  type: 'container';
+  containerId: string;
+  containerTitle: string;
 };
 
 type Props = {
   children: React.ReactNode;
   containers: DashboardContainer[];
-  onReorderSections: (fromIndex: number, toIndex: number) => void;
+  onReorderContainers: (fromIndex: number, toIndex: number) => void;
 };
 
-// --- Provider (section reorder only) ---
+// --- Provider (container reorder only) ---
 
 export function DashboardDndProvider({
   children,
   containers,
-  onReorderSections,
+  onReorderContainers,
 }: Props) {
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
 
@@ -49,8 +49,8 @@ export function DashboardDndProvider({
   });
   const sensors = useSensors(mouseSensor, touchSensor);
 
-  const sectionSortableIds = useMemo(
-    () => containers.map(c => `section-sort-${c.id}`),
+  const containerSortableIds = useMemo(
+    () => containers.map(c => `container-sort-${c.id}`),
     [containers],
   );
 
@@ -67,18 +67,18 @@ export function DashboardDndProvider({
       const activeData = active.data.current as DragData | undefined;
       if (!activeData) return;
 
-      // Section reorder via sortable
+      // Container reorder via sortable
       const overData = over.data.current as DragData | undefined;
       if (
-        overData?.type === 'section' &&
-        activeData.sectionId !== overData.sectionId
+        overData?.type === 'container' &&
+        activeData.containerId !== overData.containerId
       ) {
-        const from = containers.findIndex(c => c.id === activeData.sectionId);
-        const to = containers.findIndex(c => c.id === overData.sectionId);
-        if (from !== -1 && to !== -1) onReorderSections(from, to);
+        const from = containers.findIndex(c => c.id === activeData.containerId);
+        const to = containers.findIndex(c => c.id === overData.containerId);
+        if (from !== -1 && to !== -1) onReorderContainers(from, to);
       }
     },
-    [containers, onReorderSections],
+    [containers, onReorderContainers],
   );
 
   return (
@@ -88,7 +88,7 @@ export function DashboardDndProvider({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={sectionSortableIds}
+        items={containerSortableIds}
         strategy={verticalListSortingStrategy}
       >
         {children}
@@ -106,7 +106,7 @@ export function DashboardDndProvider({
             }}
           >
             <Text size="sm" fw={500}>
-              {activeDrag.sectionTitle}
+              {activeDrag.containerTitle}
             </Text>
           </Box>
         )}

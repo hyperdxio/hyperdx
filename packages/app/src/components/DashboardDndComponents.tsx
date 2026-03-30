@@ -7,22 +7,22 @@ import { IconPlus } from '@tabler/icons-react';
 import { type DragData, type DragHandleProps } from './DashboardDndContext';
 
 // --- Empty container placeholder ---
-// Visual placeholder for empty sections/groups/tabs with optional add-tile click.
+// Visual placeholder for empty groups/tabs with optional add-tile click.
 
 export function EmptyContainerPlaceholder({
-  sectionId,
+  containerId,
   children,
   isEmpty,
   onAddTile,
 }: {
-  sectionId: string;
+  containerId: string;
   children?: React.ReactNode;
   isEmpty?: boolean;
   onAddTile?: () => void;
 }) {
   return (
     <div
-      data-testid={`container-placeholder-${sectionId}`}
+      data-testid={`container-placeholder-${containerId}`}
       style={{
         minHeight: isEmpty ? 80 : undefined,
         borderRadius: 4,
@@ -59,15 +59,15 @@ export function EmptyContainerPlaceholder({
   );
 }
 
-// --- Sortable section wrapper (for container reordering) ---
+// --- Sortable container wrapper (for container reordering) ---
 
-export function SortableSectionWrapper({
-  sectionId,
-  sectionTitle,
+export function SortableContainerWrapper({
+  containerId,
+  containerTitle,
   children,
 }: {
-  sectionId: string;
-  sectionTitle: string;
+  containerId: string;
+  containerTitle: string;
   children: (dragHandleProps: DragHandleProps) => React.ReactNode;
 }) {
   const {
@@ -78,11 +78,11 @@ export function SortableSectionWrapper({
     transition,
     isDragging,
   } = useSortable({
-    id: `section-sort-${sectionId}`,
+    id: `container-sort-${containerId}`,
     data: {
-      type: 'section',
-      sectionId,
-      sectionTitle,
+      type: 'container',
+      containerId,
+      containerTitle,
     } satisfies DragData,
   });
 

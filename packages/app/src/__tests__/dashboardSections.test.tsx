@@ -5,39 +5,52 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 describe('DashboardContainer schema', () => {
-  it('validates a valid section', () => {
+  it('validates a valid group', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-1',
+      type: 'group',
+      title: 'Infrastructure',
+      collapsed: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('group');
+    }
+  });
+
+  it('accepts legacy section type for backward compatibility', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'section-1',
       type: 'section',
-      title: 'Infrastructure',
+      title: 'Legacy Section',
       collapsed: false,
     });
     expect(result.success).toBe(true);
   });
 
-  it('validates a collapsed section', () => {
+  it('validates a collapsed group', () => {
     const result = DashboardContainerSchema.safeParse({
-      id: 'section-2',
-      type: 'section',
+      id: 'group-2',
+      type: 'group',
       title: 'Database Metrics',
       collapsed: true,
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects a section missing required fields', () => {
+  it('rejects a container missing required fields', () => {
     const result = DashboardContainerSchema.safeParse({
-      id: 'section-3',
+      id: 'group-3',
       // missing title and collapsed
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects a section with empty id or title', () => {
+  it('rejects a container with empty id or title', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: '',
-        type: 'section',
+        type: 'group',
         title: 'Valid',
         collapsed: false,
       }).success,
@@ -45,7 +58,7 @@ describe('DashboardContainer schema', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: 'valid',
-        type: 'section',
+        type: 'group',
         title: '',
         collapsed: false,
       }).success,
@@ -206,7 +219,7 @@ describe('Tile schema with containerId and tabId', () => {
   });
 });
 
-describe('Dashboard schema with sections', () => {
+describe('Dashboard schema with containers', () => {
   const baseDashboard = {
     id: 'dash-1',
     name: 'My Dashboard',
@@ -233,28 +246,28 @@ describe('Dashboard schema with sections', () => {
     }
   });
 
-  it('rejects duplicate section IDs', () => {
+  it('rejects duplicate container IDs', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
-        { id: 's1', type: 'section', title: 'Section A', collapsed: false },
-        { id: 's1', type: 'section', title: 'Section B', collapsed: true },
+        { id: 's1', type: 'group', title: 'Group A', collapsed: false },
+        { id: 's1', type: 'group', title: 'Group B', collapsed: true },
       ],
     });
     expect(result.success).toBe(false);
   });
 
-  it('validates a dashboard with sections', () => {
+  it('validates a dashboard with groups', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
         {
           id: 's1',
-          type: 'section',
+          type: 'group',
           title: 'Infrastructure',
           collapsed: false,
         },
-        { id: 's2', type: 'section', title: 'Application', collapsed: true },
+        { id: 's2', type: 'group', title: 'Application', collapsed: true },
       ],
     });
     expect(result.success).toBe(true);
@@ -265,7 +278,22 @@ describe('Dashboard schema with sections', () => {
     }
   });
 
-  it('validates a full dashboard with sections and tiles referencing them', () => {
+  it('accepts legacy section type in dashboard containers', () => {
+    const result = DashboardSchema.safeParse({
+      ...baseDashboard,
+      containers: [
+        {
+          id: 's1',
+          type: 'section',
+          title: 'Legacy',
+          collapsed: false,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates a full dashboard with groups and tiles referencing them', () => {
     const tile = {
       id: 'tile-1',
       x: 0,
@@ -293,7 +321,7 @@ describe('Dashboard schema with sections', () => {
       containers: [
         {
           id: 's1',
-          type: 'section',
+          type: 'group',
           title: 'Infrastructure',
           collapsed: false,
         },
@@ -354,7 +382,7 @@ describe('Dashboard schema with sections', () => {
   });
 });
 
-describe('section tile grouping logic', () => {
+describe('container tile grouping logic', () => {
   // Test the grouping logic used in DBDashboardPage
   type SimpleTile = { id: string; containerId?: string; tabId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
@@ -518,7 +546,7 @@ describe('section tile grouping logic', () => {
   });
 });
 
-describe('section authoring operations', () => {
+describe('container authoring operations', () => {
   type SimpleTile = { id: string; containerId?: string; tabId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
   type SimpleDashboard = {

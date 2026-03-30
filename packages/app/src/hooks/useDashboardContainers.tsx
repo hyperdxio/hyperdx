@@ -21,68 +21,49 @@ export default function useDashboardContainers({
   setDashboard: (dashboard: Dashboard) => void;
   confirm: ConfirmFn;
 }) {
-  const handleAddContainer = useCallback(
-    (type: 'section' | 'group' = 'section') => {
-      if (!dashboard) return;
-      const titles: Record<string, string> = {
-        section: 'New Section',
-        group: 'New Group',
-      };
-      setDashboard(
-        produce(dashboard, draft => {
-          if (!draft.containers) draft.containers = [];
-          const containerId = makeId();
-          if (type === 'group') {
-            const tabId = makeId();
-            draft.containers.push({
-              id: containerId,
-              type,
-              title: titles[type],
-              collapsed: false,
-              tabs: [{ id: tabId, title: titles[type] }],
-              activeTabId: tabId,
-            });
-          } else {
-            draft.containers.push({
-              id: containerId,
-              type,
-              title: titles[type],
-              collapsed: false,
-            });
-          }
-        }),
-      );
-    },
-    [dashboard, setDashboard],
-  );
+  const handleAddContainer = useCallback(() => {
+    if (!dashboard) return;
+    setDashboard(
+      produce(dashboard, draft => {
+        if (!draft.containers) draft.containers = [];
+        const containerId = makeId();
+        const tabId = makeId();
+        draft.containers.push({
+          id: containerId,
+          type: 'group',
+          title: 'New Group',
+          collapsed: false,
+          tabs: [{ id: tabId, title: 'New Group' }],
+          activeTabId: tabId,
+        });
+      }),
+    );
+  }, [dashboard, setDashboard]);
 
-  // Intentionally persists collapsed state to the server via setDashboard
-  // (same pattern as tile drag/resize). This matches Grafana and Kibana
-  // behavior where collapsed state is saved with the dashboard for all viewers.
-  const handleToggleSection = useCallback(
+  const handleToggleCollapsed = useCallback(
     (containerId: string) => {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
-          const section = draft.containers?.find(s => s.id === containerId);
-          if (section) section.collapsed = !section.collapsed;
+          const container = draft.containers?.find(s => s.id === containerId);
+          if (container) container.collapsed = !container.collapsed;
         }),
       );
     },
     [dashboard, setDashboard],
   );
 
-  const handleRenameSection = useCallback(
+  const handleRenameContainer = useCallback(
     (containerId: string, newTitle: string) => {
       if (!dashboard || !newTitle.trim()) return;
       setDashboard(
         produce(dashboard, draft => {
-          const section = draft.containers?.find(s => s.id === containerId);
-          if (section) {
-            section.title = newTitle.trim();
-            // For groups with 1 tab, sync tabs[0].title (they share the header)
-            if (section.type === 'group' && section.tabs?.length === 1) {
-              section.tabs[0].title = newTitle.trim();
+          const container = draft.containers?.find(s => s.id === containerId);
+          if (container) {
+            container.title = newTitle.trim();
+            // Sync tabs[0].title when there is 1 tab (they share the header)
+            if (container.tabs?.length === 1) {
+              container.tabs[0].title = newTitle.trim();
             }
           }
         }),
@@ -91,14 +72,14 @@ export default function useDashboardContainers({
     [dashboard, setDashboard],
   );
 
-  const handleDeleteSection = useCallback(
+  const handleDeleteContainer = useCallback(
     async (containerId: string) => {
       if (!dashboard) return;
       const container = dashboard.containers?.find(c => c.id === containerId);
       const tileCount = dashboard.tiles.filter(
         t => t.containerId === containerId,
       ).length;
-      const label = container?.title ?? 'this section';
+      const label = container?.title ?? 'this group';
 
       const message =
         tileCount > 0 ? (
@@ -127,10 +108,12 @@ export default function useDashboardContainers({
 
       setDashboard(
         produce(dashboard, draft => {
-          const allSectionIds = new Set(draft.containers?.map(c => c.id) ?? []);
+          const allContainerIds = new Set(
+            draft.containers?.map(c => c.id) ?? [],
+          );
           let maxUngroupedY = 0;
           for (const tile of draft.tiles) {
-            if (!tile.containerId || !allSectionIds.has(tile.containerId)) {
+            if (!tile.containerId || !allContainerIds.has(tile.containerId)) {
               maxUngroupedY = Math.max(maxUngroupedY, tile.y + tile.h);
             }
           }
@@ -152,7 +135,7 @@ export default function useDashboardContainers({
     [dashboard, setDashboard, confirm],
   );
 
-  const handleReorderSections = useCallback(
+  const handleReorderContainers = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (!dashboard?.containers) return;
       setDashboard(
@@ -194,7 +177,7 @@ export default function useDashboardContainers({
               }
             }
           } else if (existingTabs.length === 0) {
-            // Legacy group with no tabs: create 2 tabs
+            // Legacy container with no tabs: create 2 tabs
             const tab1Id = makeId();
             const tab2Id = makeId();
             c.tabs = [
@@ -280,9 +263,8 @@ export default function useDashboardContainers({
   );
 
   // Intentionally persisted to server (same as collapsed state) — shared
-  // across all viewers, matching Grafana/Kibana behavior where active tab
-  // is part of the dashboard layout definition. If user-local tab state
-  // is needed later, move to useState/localStorage instead.
+  // across all viewers. If user-local tab state is needed later, move to
+  // useState/localStorage instead.
   const handleTabChange = useCallback(
     (containerId: string, tabId: string) => {
       if (!dashboard) return;
@@ -298,10 +280,10 @@ export default function useDashboardContainers({
 
   return {
     handleAddContainer,
-    handleToggleSection,
-    handleRenameSection,
-    handleDeleteSection,
-    handleReorderSections,
+    handleToggleCollapsed,
+    handleRenameContainer,
+    handleDeleteContainer,
+    handleReorderContainers,
     handleAddTab,
     handleRenameTab,
     handleDeleteTab,

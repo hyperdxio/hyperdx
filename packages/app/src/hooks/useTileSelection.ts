@@ -26,26 +26,26 @@ export default function useTileSelection({
     });
   }, []);
 
-  // Creates a 'section' type container (not 'group') intentionally.
-  // Sections are collapsible and are the most common container type for
-  // organizing tiles on a dashboard. The function name reflects the user
-  // action (grouping selected tiles) rather than the container type created.
+  // Creates a group container and assigns selected tiles to it.
   const handleGroupSelected = useCallback(() => {
     if (!dashboard || selectedTileIds.size === 0) return;
     const groupId = makeId();
+    const tabId = makeId();
     setDashboard(
       produce(dashboard, draft => {
         if (!draft.containers) draft.containers = [];
         draft.containers.push({
           id: groupId,
-          type: 'section',
-          title: 'New Section',
+          type: 'group',
+          title: 'New Group',
           collapsed: false,
+          tabs: [{ id: tabId, title: 'New Group' }],
+          activeTabId: tabId,
         });
         for (const tile of draft.tiles) {
           if (selectedTileIds.has(tile.id)) {
             tile.containerId = groupId;
-            delete tile.tabId; // Clear tab assignment from previous group
+            tile.tabId = tabId;
           }
         }
       }),
