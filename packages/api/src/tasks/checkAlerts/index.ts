@@ -23,6 +23,8 @@ import {
 import {
   BuilderChartConfigWithOptDateRange,
   DisplayType,
+  getSampleWeightExpression,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -108,6 +110,7 @@ export async function computeAliasWithClauses(
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.implicitColumnExpression
         : undefined,
+    ...pickSampleWeightExpressionProps(source),
     timestampValueExpression: source.timestampValueExpression,
   };
   const query = await renderChartConfig(config, metadata, source.querySettings);
@@ -454,6 +457,7 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined,
+      ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
     };
   } else if (details.taskType === AlertTaskType.TILE) {
@@ -475,6 +479,7 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined;
+      const sampleWeightExpression = getSampleWeightExpression(source);
       const metricTables =
         source.kind === SourceKind.Metric ? source.metricTables : undefined;
       return {
@@ -487,6 +492,7 @@ const getChartConfigFromAlert = (
         granularity: `${windowSizeInMins} minute`,
         groupBy: tile.config.groupBy,
         implicitColumnExpression,
+        sampleWeightExpression,
         metricTables,
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,
