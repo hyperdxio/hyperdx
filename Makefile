@@ -154,7 +154,7 @@ dev-int:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log; ret=$${PIPESTATUS[0]}; \
+	bash -c 'set -o pipefail; npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
 	$(call archive-int-logs); \
 	exit $$ret
@@ -165,7 +165,7 @@ dev-int-common-utils:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log; ret=$${PIPESTATUS[0]}; \
+	bash -c 'set -o pipefail; npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
 	$(call archive-int-logs); \
 	exit $$ret
@@ -174,7 +174,7 @@ dev-int-common-utils:
 ci-int:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
-	npx nx run-many -t ci:int --parallel=false 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log; ret=$${PIPESTATUS[0]}; \
+	bash -c 'set -o pipefail; npx nx run-many -t ci:int --parallel=false 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
 	$(call archive-int-logs); \
 	exit $$ret
