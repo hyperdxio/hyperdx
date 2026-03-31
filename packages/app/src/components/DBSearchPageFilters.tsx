@@ -360,57 +360,65 @@ export type FilterGroupProps = {
   distributionKey?: string;
 };
 
-export const FilterGroup = ({
+/**
+ * Inner body of a FilterGroup — only mounted when expanded.
+ * All expensive hooks (useGetValuesDistribution, sorting memos, etc.)
+ * live here so collapsed groups pay near-zero cost.
+ */
+const FilterGroupBody = ({
   name,
   options,
   optionsLoading,
-  selectedValues = { included: new Set(), excluded: new Set() },
+  selectedValues,
   onChange,
-  onClearClick,
   onOnlyClick,
   onExcludeClick,
   isPinned,
   onPinClick,
-  onFieldPinClick,
-  isFieldPinned,
-  onColumnToggle,
-  isColumnDisplayed,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
-  isDefaultExpanded,
-  'data-testid': dataTestId,
   chartConfig,
   isLive,
   distributionKey,
-  onRangeChange,
-}: FilterGroupProps) => {
+  showDistributions,
+  onDistributionError,
+  onFetchingDistributionChange,
+}: {
+  name: string;
+  options: { value: string | boolean; label: string }[];
+  optionsLoading?: boolean;
+  selectedValues: {
+    included: Set<string | boolean>;
+    excluded: Set<string | boolean>;
+    range?: { min: number; max: number };
+  };
+  onChange: (value: string | boolean) => void;
+  onOnlyClick: (value: string | boolean) => void;
+  onExcludeClick: (value: string | boolean) => void;
+  isPinned: (value: string | boolean) => boolean;
+  onPinClick: (value: string | boolean) => void;
+  onLoadMore: (key: string) => void;
+  loadMoreLoading: boolean;
+  hasLoadedMore: boolean;
+  chartConfig: BuilderChartConfigWithDateRange;
+  isLive?: boolean;
+  distributionKey?: string;
+  showDistributions: boolean;
+  onDistributionError: () => void;
+  onFetchingDistributionChange: (isFetching: boolean) => void;
+}) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
-  // Accordion expanded state
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
   // Track recently moved items for highlight animation
   const [recentlyMoved, setRecentlyMoved] = useState<Set<string | boolean>>(
     new Set(),
   );
-  // Show what percentage of the data has each value
-  const [showDistributions, setShowDistributions] = useState(false);
   // For live searches, don't refresh percentages when date range changes
   const [dateRange, setDateRange] = useState<[Date, Date]>(
     chartConfig.dateRange,
   );
-
-  // If this filter has a range, display it differently
-  const hasRange = selectedValues.range != null;
-
-  const toggleShowDistributions = () => {
-    if (!showDistributions) {
-      setExpanded(true);
-      setDateRange(chartConfig.dateRange);
-    }
-    setShowDistributions(prev => !prev);
-  };
 
   useEffect(() => {
     if (!isLive) {
@@ -418,16 +426,9 @@ export const FilterGroup = ({
     }
   }, [chartConfig.dateRange, isLive]);
 
-  useEffect(() => {
-    if (isDefaultExpanded) {
-      setExpanded(true);
-    }
-  }, [isDefaultExpanded]);
-
   const handleSetSearch = useCallback(
     (value: string) => {
       setSearch(value);
-
       if (value && !hasLoadedMore) {
         onLoadMore(name);
       }
@@ -451,6 +452,10 @@ export const FilterGroup = ({
   );
 
   useEffect(() => {
+    onFetchingDistributionChange(isFetchingDistribution);
+  }, [isFetchingDistribution, onFetchingDistributionChange]);
+
+  useEffect(() => {
     if (distributionError) {
       notifications.show({
         color: 'red',
@@ -458,14 +463,14 @@ export const FilterGroup = ({
         message: distributionError?.message,
         autoClose: 5000,
       });
-      setShowDistributions(false);
+      onDistributionError();
     }
-  }, [distributionError]);
+  }, [distributionError, onDistributionError]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
-    (hasRange ? 1 : 0);
+    (selectedValues.range != null ? 1 : 0);
 
   // Loaded options + any selected options that aren't in the loaded list
   const augmentedOptions = useMemo(() => {
@@ -551,9 +556,8 @@ export const FilterGroup = ({
   // Simple highlight animation when checkbox is checked
   const handleChange = useCallback(
     (value: string | boolean) => {
-      const wasIncluded = selectedValues.included.has(value);
-
       // If checking (not unchecking), trigger highlight animation
+      const wasIncluded = selectedValues.included.has(value);
       if (!wasIncluded) {
         setRecentlyMoved(prev => new Set(prev).add(value));
         setTimeout(() => {
@@ -564,7 +568,6 @@ export const FilterGroup = ({
           });
         }, 600);
       }
-
       onChange(value);
     },
     [onChange, selectedValues],
@@ -577,6 +580,313 @@ export const FilterGroup = ({
     !search &&
     augmentedOptions.length > INITIAL_MAX_VALUES_DISPLAYED &&
     totalAppliedFiltersSize < augmentedOptions.length;
+
+  return (
+    <Stack gap={0}>
+      {augmentedOptions.length > 5 && (
+        <div className="px-2 pb-2">
+          <TextInput
+            size="xs"
+            placeholder="Search values..."
+            value={search}
+            data-testid={`filter-search-${name}`}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              handleSetSearch(event.currentTarget.value)
+            }
+            rightSectionWidth={20}
+            rightSection={<IconSearch size={12} stroke={2} />}
+            classNames={{
+              input: 'ps-0.5',
+            }}
+          />
+        </div>
+      )}
+      {displayedOptions.map(option => (
+        <FilterCheckbox
+          key={option.value.toString()}
+          columnName={name}
+          label={option.label}
+          pinned={isPinned(option.value)}
+          className={
+            recentlyMoved.has(option.value) ? classes.recentlyMoved : ''
+          }
+          value={
+            selectedValues.included.has(option.value)
+              ? 'included'
+              : selectedValues.excluded.has(option.value)
+                ? 'excluded'
+                : false
+          }
+          onChange={() => handleChange(option.value)}
+          onClickOnly={() => onOnlyClick(option.value)}
+          onClickExclude={() => onExcludeClick(option.value)}
+          onClickPin={() => onPinClick(option.value)}
+          isPercentageLoading={isFetchingDistribution}
+          percentage={
+            showDistributions && distributionData
+              ? (distributionData.get(option.value.toString()) ?? 0)
+              : undefined
+          }
+        />
+      ))}
+      {optionsLoading ? (
+        <Group m={6} gap="xs">
+          <Loader size={12} color="gray" />
+          <Text c="dimmed" size="xs">
+            Loading...
+          </Text>
+        </Group>
+      ) : displayedOptions.length === 0 ? (
+        <Group m={6} gap="xs">
+          <Text c="dimmed" size="xs">
+            No options found
+          </Text>
+        </Group>
+      ) : null}
+      {isLimitingDisplayedItems && (shouldShowMore || search) && (
+        <Text size="xxs" ms={28} fs="italic">
+          Search to see more
+        </Text>
+      )}
+      {loadMoreLoading && (
+        <Group m={6} gap="xs">
+          <Loader size={12} color="gray" />
+          <Text c="dimmed" size="xs">
+            Loading more...
+          </Text>
+        </Group>
+      )}
+      {showShowMoreButton && (
+        <div className="d-flex m-1">
+          <TextButton
+            data-testid={`filter-show-more-${name}`}
+            label={
+              shouldShowMore ? (
+                <>
+                  <IconChevronUp size={12} /> Less
+                </>
+              ) : (
+                <>
+                  <IconChevronRight size={12} /> Show more
+                </>
+              )
+            }
+            onClick={() => {
+              // When show more is clicked, immediately show all and also fetch more from server.
+              setShowMore(!shouldShowMore);
+              if (!shouldShowMore) {
+                onLoadMore?.(name);
+              }
+            }}
+          />
+        </div>
+      )}
+      {onLoadMore &&
+        !showShowMoreButton &&
+        !shouldShowMore &&
+        !hasLoadedMore &&
+        !loadMoreLoading && (
+          <div className="d-flex m-1">
+            <TextButton
+              data-testid={`filter-load-more-${name}`}
+              display={hasLoadedMore ? 'none' : undefined}
+              label={
+                <>
+                  <IconChevronRight size={12} /> Load more
+                </>
+              }
+              onClick={() => onLoadMore(name)}
+            />
+          </div>
+        )}
+    </Stack>
+  );
+};
+
+type FilterGroupActionsProps = {
+  name: string;
+  hasRange: boolean;
+  showDistributions: boolean;
+  isFetchingDistribution: boolean;
+  isColumnDisplayed: boolean;
+  isFieldPinned: boolean;
+  totalAppliedFiltersSize: number;
+  toggleShowDistributions: VoidFunction;
+  onColumnToggle: VoidFunction;
+  onFieldPinClick: VoidFunction;
+  onClearClick: VoidFunction;
+};
+function FilterGroupActions({
+  name,
+  hasRange,
+  showDistributions,
+  isFetchingDistribution,
+  isColumnDisplayed,
+  isFieldPinned,
+  totalAppliedFiltersSize,
+  toggleShowDistributions,
+  onColumnToggle,
+  onFieldPinClick,
+  onClearClick,
+}: FilterGroupActionsProps) {
+  return (
+    <Group gap={0} wrap="nowrap">
+      {!hasRange && (
+        <>
+          <Tooltip
+            label={
+              showDistributions ? 'Hide Distribution' : 'Show Distribution'
+            }
+            position="top"
+            withArrow
+            fz="xxs"
+            color="gray"
+          >
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              onClick={toggleShowDistributions}
+              data-testid={`toggle-distribution-button-${name}`}
+              aria-checked={showDistributions}
+              role="checkbox"
+            >
+              {isFetchingDistribution ? (
+                <Center>
+                  <IconRefresh className="spin-animate" size={12} />
+                </Center>
+              ) : showDistributions ? (
+                <IconChartBarOff size={14} />
+              ) : (
+                <IconChartBar size={14} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip
+            label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
+            position="top"
+            withArrow
+            fz="xxs"
+            color="gray"
+          >
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              onClick={onColumnToggle}
+              data-testid={`toggle-column-button-${name}`}
+            >
+              {isColumnDisplayed ? (
+                <IconMinus size={14} />
+              ) : (
+                <IconPlus size={14} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+          {onFieldPinClick && (
+            <Tooltip
+              label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
+              position="top"
+              withArrow
+              fz="xxs"
+              color="gray"
+            >
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                onClick={onFieldPinClick}
+              >
+                {isFieldPinned ? (
+                  <IconPinFilled size={14} />
+                ) : (
+                  <IconPin size={14} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </>
+      )}
+      {totalAppliedFiltersSize > 0 && (
+        <Tooltip
+          label="Clear Filters"
+          position="top"
+          withArrow
+          fz="xxs"
+          color="gray"
+        >
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color="gray"
+            onClick={onClearClick}
+          >
+            <IconFilterOff size={14} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+    </Group>
+  );
+}
+
+const voidFunc = () => {};
+
+export const FilterGroup = ({
+  name,
+  options,
+  optionsLoading,
+  selectedValues = { included: new Set(), excluded: new Set() },
+  onChange,
+  onClearClick,
+  onOnlyClick,
+  onExcludeClick,
+  isPinned,
+  onPinClick,
+  onFieldPinClick,
+  isFieldPinned,
+  onColumnToggle,
+  isColumnDisplayed,
+  onLoadMore,
+  loadMoreLoading,
+  hasLoadedMore,
+  isDefaultExpanded,
+  'data-testid': dataTestId,
+  chartConfig,
+  isLive,
+  distributionKey,
+  onRangeChange,
+}: FilterGroupProps) => {
+  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  const [showDistributions, setShowDistributions] = useState(false);
+  const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
+
+  const hasRange = selectedValues.range != null;
+
+  const toggleShowDistributions = useCallback(() => {
+    setShowDistributions(prev => {
+      if (!prev) {
+        setExpanded(true);
+      }
+      return !prev;
+    });
+  }, []);
+
+  const onDistributionError = useCallback(() => {
+    setShowDistributions(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDefaultExpanded) {
+      setExpanded(true);
+    }
+  }, [isDefaultExpanded]);
+
+  const totalAppliedFiltersSize =
+    selectedValues.included.size +
+    selectedValues.excluded.size +
+    (hasRange ? 1 : 0);
+
+  const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
   return (
     <Accordion
@@ -602,7 +912,7 @@ export const FilterGroup = ({
                 chevron: 'm-0',
                 label: 'p-0',
               }}
-              className={displayedOptions.length ? '' : 'opacity-50'}
+              className={hasOptions ? '' : 'opacity-50'}
             >
               <Tooltip
                 openDelay={name.length > 26 ? 0 : 1500}
@@ -617,109 +927,19 @@ export const FilterGroup = ({
                 </Text>
               </Tooltip>
             </Accordion.Control>
-            <Group gap={0} wrap="nowrap">
-              {!hasRange && (
-                <>
-                  <Tooltip
-                    label={
-                      showDistributions
-                        ? 'Hide Distribution'
-                        : 'Show Distribution'
-                    }
-                    position="top"
-                    withArrow
-                    fz="xxs"
-                    color="gray"
-                  >
-                    <ActionIcon
-                      size="xs"
-                      variant="subtle"
-                      color="gray"
-                      onClick={toggleShowDistributions}
-                      data-testid={`toggle-distribution-button-${name}`}
-                      aria-checked={showDistributions}
-                      role="checkbox"
-                    >
-                      {isFetchingDistribution ? (
-                        <Center>
-                          <IconRefresh className="spin-animate" size={12} />
-                        </Center>
-                      ) : showDistributions ? (
-                        <IconChartBarOff size={14} />
-                      ) : (
-                        <IconChartBar size={14} />
-                      )}
-                    </ActionIcon>
-                  </Tooltip>
-                  {onColumnToggle && (
-                    <Tooltip
-                      label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
-                      position="top"
-                      withArrow
-                      fz="xxs"
-                      color="gray"
-                    >
-                      <ActionIcon
-                        size="xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={onColumnToggle}
-                        data-testid={`toggle-column-button-${name}`}
-                      >
-                        {isColumnDisplayed ? (
-                          <IconMinus size={14} />
-                        ) : (
-                          <IconPlus size={14} />
-                        )}
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                  {onFieldPinClick && (
-                    <Tooltip
-                      label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
-                      position="top"
-                      withArrow
-                      fz="xxs"
-                      color="gray"
-                    >
-                      <ActionIcon
-                        size="xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={onFieldPinClick}
-                      >
-                        {isFieldPinned ? (
-                          <IconPinFilled size={14} />
-                        ) : (
-                          <IconPin size={14} />
-                        )}
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                </>
-              )}
-              {totalAppliedFiltersSize > 0 && (
-                <Tooltip
-                  label="Clear Filters"
-                  position="top"
-                  withArrow
-                  fz="xxs"
-                  color="gray"
-                >
-                  <ActionIcon
-                    size="xs"
-                    variant="subtle"
-                    color="gray"
-                    onClick={() => {
-                      onClearClick();
-                      setSearch('');
-                    }}
-                  >
-                    <IconFilterOff size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              )}
-            </Group>
+            <FilterGroupActions
+              name={name}
+              hasRange={hasRange}
+              showDistributions={showDistributions}
+              isFetchingDistribution={isFetchingDistribution}
+              isColumnDisplayed={isColumnDisplayed ?? false}
+              isFieldPinned={isFieldPinned ?? false}
+              totalAppliedFiltersSize={totalAppliedFiltersSize}
+              toggleShowDistributions={toggleShowDistributions}
+              onColumnToggle={onColumnToggle ?? voidFunc}
+              onFieldPinClick={onFieldPinClick ?? voidFunc}
+              onClearClick={onClearClick}
+            />
           </Center>
           <Accordion.Panel
             data-testid="filter-group-panel"
@@ -735,127 +955,28 @@ export const FilterGroup = ({
                 onRangeChange={onRangeChange}
               />
             ) : (
-              <Stack gap={0}>
-                {/* Show search bar if expanded and there are more than 5 values */}
-                {isExpanded && augmentedOptions.length > 5 && (
-                  <div className="px-2 pb-2">
-                    <TextInput
-                      size="xs"
-                      placeholder="Search values..."
-                      value={search}
-                      data-testid={`filter-search-${name}`}
-                      onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        handleSetSearch(event.currentTarget.value)
-                      }
-                      rightSectionWidth={20}
-                      rightSection={<IconSearch size={12} stroke={2} />}
-                      classNames={{
-                        input: 'ps-0.5',
-                      }}
-                    />
-                  </div>
-                )}
-                {displayedOptions.map(option => (
-                  <FilterCheckbox
-                    key={option.value.toString()}
-                    columnName={name}
-                    label={option.label}
-                    pinned={isPinned(option.value)}
-                    className={
-                      recentlyMoved.has(option.value)
-                        ? classes.recentlyMoved
-                        : ''
-                    }
-                    value={
-                      selectedValues.included.has(option.value)
-                        ? 'included'
-                        : selectedValues.excluded.has(option.value)
-                          ? 'excluded'
-                          : false
-                    }
-                    onChange={() => handleChange(option.value)}
-                    onClickOnly={() => onOnlyClick(option.value)}
-                    onClickExclude={() => onExcludeClick(option.value)}
-                    onClickPin={() => onPinClick(option.value)}
-                    isPercentageLoading={isFetchingDistribution}
-                    percentage={
-                      showDistributions && distributionData
-                        ? (distributionData.get(option.value.toString()) ?? 0)
-                        : undefined
-                    }
-                  />
-                ))}
-                {optionsLoading ? (
-                  <Group m={6} gap="xs">
-                    <Loader size={12} color="gray" />
-                    <Text c="dimmed" size="xs">
-                      Loading...
-                    </Text>
-                  </Group>
-                ) : displayedOptions.length === 0 ? (
-                  <Group m={6} gap="xs">
-                    <Text c="dimmed" size="xs">
-                      No options found
-                    </Text>
-                  </Group>
-                ) : null}
-                {isLimitingDisplayedItems && (shouldShowMore || search) && (
-                  <Text size="xxs" ms={28} fs="italic">
-                    Search to see more
-                  </Text>
-                )}
-                {loadMoreLoading && (
-                  <Group m={6} gap="xs">
-                    <Loader size={12} color="gray" />
-                    <Text c="dimmed" size="xs">
-                      Loading more...
-                    </Text>
-                  </Group>
-                )}
-                {showShowMoreButton && (
-                  <div className="d-flex m-1">
-                    <TextButton
-                      data-testid={`filter-show-more-${name}`}
-                      label={
-                        shouldShowMore ? (
-                          <>
-                            <IconChevronUp size={12} /> Less
-                          </>
-                        ) : (
-                          <>
-                            <IconChevronRight size={12} /> Show more
-                          </>
-                        )
-                      }
-                      onClick={() => {
-                        // When show more is clicked, immediately show all and also fetch more from server.
-                        setShowMore(!shouldShowMore);
-                        if (!shouldShowMore) {
-                          onLoadMore?.(name);
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-                {onLoadMore &&
-                  !showShowMoreButton &&
-                  !shouldShowMore &&
-                  !hasLoadedMore &&
-                  !loadMoreLoading && (
-                    <div className="d-flex m-1">
-                      <TextButton
-                        data-testid={`filter-load-more-${name}`}
-                        display={hasLoadedMore ? 'none' : undefined}
-                        label={
-                          <>
-                            <IconChevronRight size={12} /> Load more
-                          </>
-                        }
-                        onClick={() => onLoadMore(name)}
-                      />
-                    </div>
-                  )}
-              </Stack>
+              isExpanded && (
+                <FilterGroupBody
+                  name={name}
+                  options={options}
+                  optionsLoading={optionsLoading}
+                  selectedValues={selectedValues}
+                  onChange={onChange}
+                  onOnlyClick={onOnlyClick}
+                  onExcludeClick={onExcludeClick}
+                  isPinned={isPinned}
+                  onPinClick={onPinClick}
+                  onLoadMore={onLoadMore}
+                  loadMoreLoading={loadMoreLoading}
+                  hasLoadedMore={hasLoadedMore}
+                  chartConfig={chartConfig}
+                  isLive={isLive}
+                  distributionKey={distributionKey}
+                  showDistributions={showDistributions}
+                  onDistributionError={onDistributionError}
+                  onFetchingDistributionChange={setIsFetchingDistribution}
+                />
+              )
             )}
           </Accordion.Panel>
         </Stack>
