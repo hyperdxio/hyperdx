@@ -29,7 +29,7 @@ yarn setup          # Install dependencies
 yarn dev            # Start full stack (Docker + local services)
 ```
 
-The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
 
 ## Working on the Codebase (HOW)
