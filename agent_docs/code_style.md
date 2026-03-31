@@ -100,7 +100,7 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `icon` | `ReactNode` | — | Icon in the theme circle (hidden if not provided) |
-| `title` | `string` | `"No data available"` | Heading text |
+| `title` | `string` | — | Heading text |
 | `description` | `ReactNode` | — | Subtext below the title |
 | `children` | `ReactNode` | — | Actions (buttons, links) below description |
 | `variant` | `"default" \| "card"` | `"default"` | `"card"` wraps in a bordered Paper |
