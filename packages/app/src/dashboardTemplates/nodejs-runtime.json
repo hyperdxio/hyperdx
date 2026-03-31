@@ -3,7 +3,7 @@
   "name": "Node.js Runtime Metrics",
   "description": "Event loop delay, heap usage, CPU utilization, and V8 memory for Node.js applications",
   "tags": [
-    "Runtime Metrics"
+    "OTel Runtime Metrics"
   ],
   "tiles": [
     {

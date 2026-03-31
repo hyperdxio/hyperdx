@@ -3,7 +3,7 @@
   "name": "Go Runtime Metrics",
   "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications",
   "tags": [
-    "Runtime Metrics"
+    "OTel Runtime Metrics"
   ],
   "tiles": [
     {

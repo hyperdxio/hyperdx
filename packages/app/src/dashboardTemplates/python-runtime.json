@@ -3,7 +3,7 @@
   "name": "Python Runtime Metrics",
   "description": "Memory, CPU, GC collections, threads, and context switches for Python applications",
   "tags": [
-    "Runtime Metrics"
+    "OTel Runtime Metrics"
   ],
   "tiles": [
     {

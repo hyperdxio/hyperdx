@@ -3,7 +3,7 @@
   "name": ".NET Runtime Metrics",
   "description": "GC collections, heap fragmentation, exceptions, thread pool, and CPU metrics for .NET applications",
   "tags": [
-    "Runtime Metrics"
+    "OTel Runtime Metrics"
   ],
   "tiles": [
     {
