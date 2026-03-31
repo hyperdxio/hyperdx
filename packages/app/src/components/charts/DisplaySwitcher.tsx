@@ -10,12 +10,14 @@ interface DisplaySwitcherProps<T extends string> {
     icon: React.ReactNode;
     disabled?: boolean;
   }[];
+  suffix?: React.ReactNode;
 }
 
 function DisplaySwitcher<T extends string>({
   value,
   onChange,
   options,
+  suffix,
 }: DisplaySwitcherProps<T>) {
   return (
     <Group
@@ -40,6 +42,7 @@ function DisplaySwitcher<T extends string>({
           </ActionIcon>
         </Tooltip>
       ))}
+      {suffix}
     </Group>
   );
 }

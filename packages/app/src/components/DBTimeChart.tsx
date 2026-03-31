@@ -1,4 +1,11 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Link from 'next/link';
 import { add, differenceInSeconds } from 'date-fns';
 import {
@@ -15,6 +22,7 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Divider,
   Group,
   Popover,
@@ -23,7 +31,12 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
+import {
+  IconChartBar,
+  IconChartLine,
+  IconDeviceGamepad2,
+  IconSearch,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -48,6 +61,7 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
+import FlappyHouseGame from './FlappyHouseGame';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 type ActiveClickPayload = {
@@ -453,6 +467,9 @@ function DBTimeChartComponent({
     }
   }, [config.compareToPreviousPeriod]);
 
+  const [flappyHouseMode, setFlappyBirdMode] = useState(false);
+  const chartAreaRef = useRef<HTMLDivElement>(null);
+
   const [activeClickPayload, setActiveClickPayload] = useState<
     ActiveClickPayload | undefined
   >(undefined);
@@ -662,6 +679,29 @@ function DBTimeChartComponent({
               disabled: config.compareToPreviousPeriod,
             },
           ]}
+          suffix={
+            displayType === DisplayType.StackedBar ? (
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                onClick={() => setFlappyBirdMode(prev => !prev)}
+                title="Game Mode"
+                style={{
+                  opacity: flappyHouseMode ? 0.7 : 0,
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.opacity = '0.7';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.opacity =
+                    flappyHouseMode ? '0.7' : '0';
+                }}
+              >
+                <IconDeviceGamepad2 size={12} />
+              </ActionIcon>
+            ) : undefined
+          }
         />,
       );
     }
@@ -675,6 +715,7 @@ function DBTimeChartComponent({
     builderQueriedConfig,
     config,
     displayType,
+    flappyHouseMode,
     handleSetDisplayType,
     showDisplaySwitcher,
     source,
@@ -708,7 +749,10 @@ function DBTimeChartComponent({
           No data found within time range.
         </div>
       ) : (
-        <>
+        <div
+          ref={chartAreaRef}
+          style={{ position: 'relative', width: '100%', height: '100%' }}
+        >
           <ActiveTimeTooltip
             activeClickPayload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
@@ -734,7 +778,15 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
           />
-        </>
+          {flappyHouseMode &&
+            displayType === DisplayType.StackedBar &&
+            chartAreaRef.current && (
+              <FlappyHouseGame
+                containerRef={chartAreaRef}
+                onClose={() => setFlappyBirdMode(false)}
+              />
+            )}
+        </div>
       )}
     </ChartContainer>
   );
