@@ -10,6 +10,7 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
@@ -42,7 +43,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Card,
   Center,
@@ -135,6 +138,7 @@ import {
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
+import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
@@ -1571,6 +1575,61 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
+      {savedSearch && (
+        <Group justify="space-between" align="flex-end" mt="lg" mx="xs">
+          <Stack gap={0}>
+            <Breadcrumbs fz="sm" mb="xs">
+              <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
+                Saved Searches
+              </Anchor>
+              <Text fz="sm" c="dimmed">
+                {savedSearch.name}
+              </Text>
+            </Breadcrumbs>
+            <EditablePageName
+              key={savedSearch.id}
+              name={savedSearch?.name ?? 'Untitled Search'}
+              onSave={editedName => {
+                updateSavedSearch.mutate({
+                  id: savedSearch.id,
+                  name: editedName,
+                });
+              }}
+            />
+          </Stack>
+
+          <Group gap="xs">
+            <Tags
+              allowCreate
+              values={savedSearch.tags || []}
+              onChange={handleUpdateTags}
+            >
+              <Button
+                data-testid="tags-button"
+                variant="secondary"
+                size="xs"
+                style={{ flexShrink: 0 }}
+              >
+                <IconTags size={14} className="me-1" />
+                {savedSearch.tags?.length || 0}
+              </Button>
+            </Tags>
+
+            <SearchPageActionBar
+              onClickDeleteSavedSearch={() => {
+                deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                  onSuccess: () => {
+                    router.push('/search/list');
+                  },
+                });
+              }}
+              onClickSaveAsNew={() => {
+                setSaveSearchModalState('create');
+              }}
+            />
+          </Group>
+        </Group>
+      )}
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
@@ -1648,39 +1707,6 @@ function DBSearchPage() {
               >
                 Alerts
               </Button>
-            )}
-            {!!savedSearch && (
-              <>
-                <Tags
-                  allowCreate
-                  values={savedSearch.tags || []}
-                  onChange={handleUpdateTags}
-                >
-                  <Button
-                    data-testid="tags-button"
-                    variant="secondary"
-                    px="xs"
-                    size="xs"
-                    style={{ flexShrink: 0 }}
-                  >
-                    <IconTags size={14} className="me-1" />
-                    {savedSearch.tags?.length || 0}
-                  </Button>
-                </Tags>
-
-                <SearchPageActionBar
-                  onClickDeleteSavedSearch={() => {
-                    deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                      onSuccess: () => {
-                        router.push('/search');
-                      },
-                    });
-                  }}
-                  onClickRenameSavedSearch={() => {
-                    setSaveSearchModalState('update');
-                  }}
-                />
-              </>
             )}
           </>
         </Flex>

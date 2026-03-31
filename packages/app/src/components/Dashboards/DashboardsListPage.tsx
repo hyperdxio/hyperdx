@@ -29,6 +29,8 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import { ListingCard } from '@/components/ListingCard';
+import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
@@ -40,9 +42,6 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 
 import { withAppNav } from '../../layout';
-
-import { DashboardCard } from './DashboardCard';
-import { DashboardListRow } from './DashboardListRow';
 
 const PRESET_DASHBOARDS = [
   {
@@ -158,7 +157,7 @@ export default function DashboardsListPage() {
         </Text>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="xl">
           {PRESET_DASHBOARDS.map(p => (
-            <DashboardCard key={p.href} {...p} />
+            <ListingCard key={p.href} {...p} />
           ))}
         </SimpleGrid>
 
@@ -298,15 +297,17 @@ export default function DashboardsListPage() {
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
-                <Table.Th>Tiles</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredDashboards.map(d => (
-                <DashboardListRow
+                <ListingRow
                   key={d.id}
-                  dashboard={d}
+                  id={d.id}
+                  name={d.name}
+                  href={`/dashboards/${d.id}`}
+                  tags={d.tags}
                   onDelete={handleDelete}
                 />
               ))}
@@ -315,7 +316,7 @@ export default function DashboardsListPage() {
         ) : (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {filteredDashboards.map(d => (
-              <DashboardCard
+              <ListingCard
                 key={d.id}
                 name={d.name}
                 href={`/dashboards/${d.id}`}
