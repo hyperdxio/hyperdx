@@ -21,22 +21,31 @@ Service Descriptions:
 Pre-requisites:
 
 - Docker
-- Node.js (`>=18.12.0`)
+- Node.js (`>=22`)
 - Yarn (v4)
 
 You can get started by deploying a complete development stack in dev mode.
 
 ```bash
-yarn run dev
+yarn dev
 ```
 
 This will start the Node.js API, Next.js frontend locally and the OpenTelemetry
 collector and ClickHouse server in Docker.
 
+Each worktree automatically gets unique ports so multiple developers (or agents)
+can run `yarn dev` simultaneously without conflicts. A dev portal at
+http://localhost:9900 auto-starts and shows all running stacks with their
+assigned ports. Check the portal to find the URL for your instance.
+
+To stop the stack:
+
+```bash
+yarn dev:down
+```
+
 To enable self-instrumentation and demo logs, you can set the `HYPERDX_API_KEY`
-to your ingestion key (go to
-[http://localhost:8080/team](http://localhost:8080/team) after creating your
-account).
+to your ingestion key (visit the Team settings page after creating your account).
 
 To do this, create a `.env.local` file in the root of the project and add the
 following:
@@ -53,7 +62,9 @@ see them reflected in real-time.
 ### Volumes
 
 The development stack mounts volumes locally for persisting storage under
-`.volumes`. Clear this directory to reset ClickHouse and MongoDB storage.
+`.volumes`. Each worktree gets its own volume directory (e.g.
+`.volumes/ch_data_dev_89`). Clear the `.volumes` directory to reset ClickHouse
+and MongoDB storage.
 
 ### Windows
 
@@ -68,34 +79,38 @@ To develop from WSL, follow instructions
 
 ## Testing
 
+All test environments use slot-based port isolation, so they can run
+simultaneously with the dev stack and across multiple worktrees.
+
 ### E2E Tests
 
-E2E tests run against a full local stack (MongoDB + ClickHouse + API). Docker must be running.
+E2E tests run against a full local stack (MongoDB + ClickHouse + API). Docker
+must be running.
 
 ```bash
 # Run all E2E tests
-./scripts/test-e2e.sh
+make e2e
 
-# Run a specific spec file
-./scripts/test-e2e.sh --quiet packages/app/tests/e2e/features/<feature>.spec.ts
+# Run a specific spec file (dev mode: hot reload, containers kept running)
+make dev-e2e FILE=search
 
-# Run a specific test by name
-./scripts/test-e2e.sh --quiet packages/app/tests/e2e/features/<feature>.spec.ts --grep "\"test name\""
+# Run with grep pattern
+make dev-e2e FILE=search GREP="filter"
+
+# Run via script directly for more control
+./scripts/test-e2e.sh --ui --last-failed
 ```
 
-Tests live in `packages/app/tests/e2e/`. Page objects are in `page-objects/`, shared components in `components/`.
+Tests live in `packages/app/tests/e2e/`. Page objects are in `page-objects/`,
+shared components in `components/`.
 
 ### Integration Tests
 
-To run the tests locally, you can run the following command:
-
 ```bash
-make dev-int
-```
+# Build dependencies (run once before first test run)
+make dev-int-build
 
-If you want to run a specific test file, you can run the following command:
-
-```bash
+# Run a specific test file
 make dev-int FILE=checkAlerts
 ```
 
