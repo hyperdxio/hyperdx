@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -150,15 +150,10 @@ export default function DBTracePanel({
   const [highlightedSpanId, setHighlightedSpanId] = useState<string | null>(
     null,
   );
-  const isInitialHighlightRef = useRef(true);
 
   const handleSpanClick = useCallback(
     (rowWhere: { id: string; type: string; aliasWith: WithClause[] }) => {
       setHighlightedSpanId(rowWhere.id);
-      if (isInitialHighlightRef.current) {
-        isInitialHighlightRef.current = false;
-        return;
-      }
       setEventRowWhere(rowWhere);
     },
     [setEventRowWhere],
@@ -308,16 +303,6 @@ export default function DBTracePanel({
             initialRowHighlightHint={initialRowHighlightHint}
           />
         )}
-
-        {traceSourceData?.kind === SourceKind.Trace &&
-          traceId &&
-          eventRowWhere == null && (
-            <Paper shadow="xs" p="xl" mt="md" style={{ alignSelf: 'center' }}>
-              <Center>
-                <Text size="sm">Select a span to view details.</Text>
-              </Center>
-            </Paper>
-          )}
       </div>
 
       {/* Resize handle */}
