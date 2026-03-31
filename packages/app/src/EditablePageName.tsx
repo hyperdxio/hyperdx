@@ -63,7 +63,16 @@ export function EditablePageName({
         </form>
       ) : (
         <div className="d-flex align-items-center" style={{ minWidth: 100 }}>
-          <Title fw={400} order={3}>
+          <Title
+            fw={400}
+            maw={500}
+            order={3}
+            style={{
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+            }}
+          >
             {name}
           </Title>
           {hovered && (

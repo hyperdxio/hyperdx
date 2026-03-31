@@ -8,14 +8,14 @@ export function ListingRow({
   href,
   tags,
   onDelete,
-  statusIcon,
+  leftSection,
 }: {
   id: string;
   name: string;
   href: string;
   tags?: string[];
-  onDelete: (id: string) => void;
-  statusIcon?: React.ReactNode;
+  onDelete?: (id: string) => void;
+  leftSection?: React.ReactNode;
 }) {
   return (
     <Table.Tr
@@ -33,12 +33,12 @@ export function ListingRow({
         }
       }}
     >
+      {leftSection != null && <Table.Td px={0}>{leftSection}</Table.Td>}
       <Table.Td>
         <Group gap={4} wrap="nowrap">
-          <Text fw={500} size="sm">
+          <Text fw={500} size="sm" maw={500} truncate="end">
             {name}
           </Text>
-          {statusIcon}
         </Group>
       </Table.Td>
       <Table.Td>
@@ -51,29 +51,31 @@ export function ListingRow({
         </Group>
       </Table.Td>
       <Table.Td>
-        <Menu position="bottom-end" withinPortal>
-          <Menu.Target>
-            <ActionIcon
-              variant="secondary"
-              size="sm"
-              onClick={e => e.stopPropagation()}
-            >
-              <IconDots size={14} />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item
-              color="red"
-              leftSection={<IconTrash size={14} />}
-              onClick={e => {
-                e.stopPropagation();
-                onDelete(id);
-              }}
-            >
-              Delete
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        {onDelete && (
+          <Menu position="bottom-end" withinPortal>
+            <Menu.Target>
+              <ActionIcon
+                variant="secondary"
+                size="sm"
+                onClick={e => e.stopPropagation()}
+              >
+                <IconDots size={14} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={e => {
+                  e.stopPropagation();
+                  onDelete(id);
+                }}
+              >
+                Delete
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
       </Table.Td>
     </Table.Tr>
   );
