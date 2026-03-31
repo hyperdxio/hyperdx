@@ -146,12 +146,21 @@ export default function DashboardsListPage() {
   );
 
   return (
-    <div data-testid="dashboards-list-page">
+    <div
+      data-testid="dashboards-list-page"
+      style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}
+    >
       <Head>
         <title>Dashboards - {brandName}</title>
       </Head>
       <PageHeader>Dashboards</PageHeader>
-      <Container maw={1200} py="lg" px="lg">
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Preset Dashboards
         </Text>
@@ -263,36 +272,41 @@ export default function DashboardsListPage() {
             Failed to load dashboards. Please try refreshing the page.
           </Text>
         ) : filteredDashboards.length === 0 ? (
-          <EmptyState
-            variant="card"
-            icon={<IconLayoutGrid size={32} />}
-            title={
-              search || tagFilter
-                ? 'No matching dashboards yet'
-                : 'No dashboards yet'
-            }
+          <Flex
+            align="center"
+            justify="center"
+            style={{ flex: 1, minHeight: 0 }}
           >
-            <Group>
-              <Button
-                component={Link}
-                href="/dashboards/import"
-                variant="secondary"
-                leftSection={<IconUpload size={16} />}
-                data-testid="empty-import-dashboard-button"
-              >
-                Import
-              </Button>
-              <Button
-                variant="primary"
-                leftSection={<IconPlus size={16} />}
-                onClick={handleCreate}
-                loading={createDashboard.isPending}
-                data-testid="empty-create-dashboard-button"
-              >
-                New Dashboard
-              </Button>
-            </Group>
-          </EmptyState>
+            <EmptyState
+              icon={<IconLayoutGrid size={32} />}
+              title={
+                search || tagFilter
+                  ? 'No matching dashboards yet'
+                  : 'No dashboards yet'
+              }
+            >
+              <Group>
+                <Button
+                  component={Link}
+                  href="/dashboards/import"
+                  variant="secondary"
+                  leftSection={<IconUpload size={16} />}
+                  data-testid="empty-import-dashboard-button"
+                >
+                  Import
+                </Button>
+                <Button
+                  variant="primary"
+                  leftSection={<IconPlus size={16} />}
+                  onClick={handleCreate}
+                  loading={createDashboard.isPending}
+                  data-testid="empty-create-dashboard-button"
+                >
+                  New Dashboard
+                </Button>
+              </Group>
+            </EmptyState>
+          </Flex>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>
