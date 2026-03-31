@@ -7,9 +7,10 @@ const TIMESERIES_PLACEHOLDER_SQL = `SELECT
   SeverityText,
   count() AS count
 FROM
-  default.otel_logs
+  $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters
 GROUP BY ts, SeverityText
 ORDER BY ts ASC;`;
 
@@ -19,9 +20,10 @@ export const SQL_PLACEHOLDERS: Record<DisplayType, string> = {
   [DisplayType.Table]: `SELECT
   count()
 FROM
-  default.otel_logs
+  $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters
 LIMIT
   200
   `,
@@ -29,16 +31,18 @@ LIMIT
   ServiceName,
   count()
 FROM
-  default.otel_logs
+  $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters
 GROUP BY ServiceName;`,
   [DisplayType.Number]: `SELECT
   count()
 FROM
-  default.otel_logs
+  $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
-  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64});`,
+  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters;`,
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',

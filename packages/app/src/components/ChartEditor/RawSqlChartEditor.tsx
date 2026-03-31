@@ -87,9 +87,9 @@ export default function RawSqlChartEditor({
     }));
 
     const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, argCount }) => ({
+      ({ name, minArgs }) => ({
         label: `$__${name}`,
-        apply: argCount > 0 ? `$__${name}(` : `$__${name}`,
+        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
         detail: 'macro',
         type: 'function',
       }),
