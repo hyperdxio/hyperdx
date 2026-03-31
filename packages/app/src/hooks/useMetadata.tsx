@@ -226,7 +226,7 @@ export function useMultipleGetKeyValues(
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
-  const { data: me } = api.useMe();
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
   const maxKeys =
@@ -262,7 +262,7 @@ export function useMultipleGetKeyValues(
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
     ...options,
-    enabled: !!enabled && !!keys.length && !isLoadingSources,
+    enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });
 
   return {
