@@ -151,14 +151,16 @@ test.describe(
       });
 
       await test.step('Verify the sidebar shows the favorited dashboard', async () => {
-        const sidebarLink = page
+        const sidebar = page.getByTestId('app-nav');
+        const sidebarLink = sidebar
           .locator('a[href^="/dashboards/"]')
           .filter({ hasText: name });
         await expect(sidebarLink).toBeVisible();
       });
 
       await test.step('Click the sidebar link and verify navigation', async () => {
-        const sidebarLink = page
+        const sidebar = page.getByTestId('app-nav');
+        const sidebarLink = sidebar
           .locator('a[href^="/dashboards/"]')
           .filter({ hasText: name });
         await sidebarLink.click();
@@ -278,14 +280,16 @@ test.describe(
       });
 
       await test.step('Verify the sidebar shows the favorited saved search', async () => {
-        const sidebarLink = page
+        const sidebar = page.getByTestId('app-nav');
+        const sidebarLink = sidebar
           .locator('a[href^="/search/"]')
           .filter({ hasText: name });
         await expect(sidebarLink).toBeVisible();
       });
 
       await test.step('Click the sidebar link and verify navigation', async () => {
-        const sidebarLink = page
+        const sidebar = page.getByTestId('app-nav');
+        const sidebarLink = sidebar
           .locator('a[href^="/search/"]')
           .filter({ hasText: name });
         await sidebarLink.click();

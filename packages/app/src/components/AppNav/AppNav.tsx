@@ -325,6 +325,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         onHide={closeInstallInstructions}
       />
       <div
+        data-testid="app-nav"
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
           [styles.navCollapsed]: isCollapsed,
