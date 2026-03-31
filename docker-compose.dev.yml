@@ -1,26 +1,27 @@
-name: hdx-oss-dev
-x-hyperdx-logging: &hyperdx-logging
-  driver: fluentd
-  options:
-    fluentd-address: tcp://localhost:24225
-    fluentd-async: 'true'
-    labels: 'service.name'
+name: ${HDX_DEV_PROJECT:-hdx-oss-dev}
+x-hdx-labels: &hdx-labels
+  hdx.dev.slot: '${HDX_DEV_SLOT:-0}'
+  hdx.dev.branch: '${HDX_DEV_BRANCH:-unknown}'
+  hdx.dev.worktree: '${HDX_DEV_WORKTREE:-unknown}'
 services:
   db:
-    logging: *hyperdx-logging
     labels:
-      service.name: 'hdx-oss-dev-db'
+      <<: *hdx-labels
+      hdx.dev.service: mongodb
+      hdx.dev.port: '${HDX_DEV_MONGO_PORT:-27017}'
     image: mongo:5.0.32-focal
     volumes:
-      - .volumes/db_dev:/data/db
+      - .volumes/db_dev_${HDX_DEV_SLOT:-0}:/data/db
     ports:
-      - 27017:27017
+      - '${HDX_DEV_MONGO_PORT:-27017}:27017'
     networks:
       - internal
-    depends_on:
-      - otel-collector
   otel-collector:
-    # image: otel/opentelemetry-collector-contrib:0.120.0
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: otel-collector
+      hdx.dev.port: '${HDX_DEV_OTEL_HTTP_PORT:-4318}'
+      hdx.dev.url: 'http://localhost:${HDX_DEV_OTEL_HTTP_PORT:-4318}'
     build:
       context: .
       dockerfile: docker/otel-collector/Dockerfile
@@ -31,7 +32,7 @@ services:
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
+      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT:-4320}'
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
       OTEL_SUPERVISOR_LOGS: 'true'
@@ -42,11 +43,10 @@ services:
       # Add a custom config file
       - ./docker/otel-collector/custom.config.yaml:/etc/otelcol-contrib/custom.config.yaml
     ports:
-      - '13133:13133' # health_check extension
-      - '24225:24225' # fluentd receiver
-      - '4317:4317' # OTLP gRPC receiver
-      - '4318:4318' # OTLP http receiver
-      - '8888:8888' # metrics extension
+      - '${HDX_DEV_OTEL_HEALTH_PORT:-13133}:13133' # health_check extension
+      - '${HDX_DEV_OTEL_GRPC_PORT:-4317}:4317' # OTLP gRPC receiver
+      - '${HDX_DEV_OTEL_HTTP_PORT:-4318}:4318' # OTLP http receiver
+      - '${HDX_DEV_OTEL_METRICS_PORT:-8888}:8888' # metrics extension
     restart: always
     networks:
       - internal
@@ -54,7 +54,11 @@ services:
       ch-server:
         condition: service_healthy
   otel-collector-json:
-    # image: otel/opentelemetry-collector-contrib:0.120.0
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: otel-collector-json
+      hdx.dev.port: '${HDX_DEV_OTEL_JSON_HTTP_PORT:-14318}'
+      hdx.dev.url: 'http://localhost:${HDX_DEV_OTEL_JSON_HTTP_PORT:-14318}'
     build:
       context: .
       dockerfile: docker/otel-collector/Dockerfile
@@ -66,7 +70,7 @@ services:
       HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA: 'true'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
+      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT:-4320}'
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
       OTEL_SUPERVISOR_LOGS: 'true'
@@ -77,7 +81,7 @@ services:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
     ports:
-      - '14318:4318' # OTLP http receiver
+      - '${HDX_DEV_OTEL_JSON_HTTP_PORT:-14318}:4318' # OTLP http receiver
     restart: always
     networks:
       - internal
@@ -85,10 +89,15 @@ services:
       ch-server:
         condition: service_healthy
   ch-server:
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: clickhouse
+      hdx.dev.port: '${HDX_DEV_CH_HTTP_PORT:-8123}'
+      hdx.dev.url: 'http://localhost:${HDX_DEV_CH_HTTP_PORT:-8123}'
     image: clickhouse/clickhouse-server:26.1-alpine
     ports:
-      - 8123:8123 # http api
-      - 9000:9000 # native
+      - '${HDX_DEV_CH_HTTP_PORT:-8123}:8123' # http api
+      - '${HDX_DEV_CH_NATIVE_PORT:-9000}:9000' # native
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
@@ -99,13 +108,12 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data_dev:/var/lib/clickhouse
-      - .volumes/ch_logs_dev:/var/log/clickhouse-server
+      - .volumes/ch_data_dev_${HDX_DEV_SLOT:-0}:/var/lib/clickhouse
+      - .volumes/ch_logs_dev_${HDX_DEV_SLOT:-0}:/var/log/clickhouse-server
     restart: on-failure
     networks:
       - internal
     healthcheck:
-      # "clickhouse", "client", "-u ${CLICKHOUSE_USER}", "--password ${CLICKHOUSE_PASSWORD}", "-q 'SELECT 1'"
       test:
         wget -O /dev/null --no-verbose --tries=1 http://127.0.0.1:8123/ping ||
         exit 1

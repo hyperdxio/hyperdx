@@ -61,7 +61,7 @@ const env = {
 };
 
 // Port configuration from HDX_E2E_* env vars (set by scripts/test-e2e.sh)
-const chPort = env.HDX_E2E_CH_PORT || '18123';
+const chPort = env.HDX_E2E_CH_PORT || '20500';
 
 // Ensure CLICKHOUSE_HOST is set for seed-clickhouse.ts (used by both modes)
 env.CLICKHOUSE_HOST = `http://localhost:${chPort}`;
