@@ -87,8 +87,9 @@ export default function SavedSearchesListPage() {
     if (tagFilter) {
       result = result.filter(s => s.tags.includes(tagFilter));
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) {
+      const q = trimmedSearch.toLowerCase();
       result = result.filter(
         s =>
           s.name.toLowerCase().includes(q) ||
