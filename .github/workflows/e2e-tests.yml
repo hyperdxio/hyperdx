@@ -14,16 +14,16 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
 
-    # E2E port configuration (slot 0 defaults)
+    # E2E port configuration (slot 0 defaults — must match scripts/test-e2e.sh)
     env:
       HDX_E2E_SLOT: '0'
-      HDX_E2E_OPAMP_PORT: '14320'
-      HDX_E2E_CH_PORT: '18123'
-      HDX_E2E_CH_NATIVE_PORT: '18223'
-      HDX_E2E_API_PORT: '19000'
-      HDX_E2E_MONGO_PORT: '39999'
-      HDX_E2E_APP_LOCAL_PORT: '48001'
-      HDX_E2E_APP_PORT: '48081'
+      HDX_E2E_OPAMP_PORT: '20320'
+      HDX_E2E_CH_PORT: '20500'
+      HDX_E2E_CH_NATIVE_PORT: '20600'
+      HDX_E2E_API_PORT: '21000'
+      HDX_E2E_MONGO_PORT: '21100'
+      HDX_E2E_APP_LOCAL_PORT: '21200'
+      HDX_E2E_APP_PORT: '21300'
 
     steps:
       - name: Checkout

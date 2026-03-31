@@ -36,9 +36,9 @@ const DEFAULT_TEST_USER = {
 } as const;
 
 // Port configuration from HDX_E2E_* env vars (set by scripts/test-e2e.sh)
-const API_PORT = process.env.HDX_E2E_API_PORT || '19000';
-const APP_PORT = process.env.HDX_E2E_APP_PORT || '48081';
-const MONGO_PORT = process.env.HDX_E2E_MONGO_PORT || '39999';
+const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
+const APP_PORT = process.env.HDX_E2E_APP_PORT || '21300';
+const MONGO_PORT = process.env.HDX_E2E_MONGO_PORT || '21100';
 
 const API_URL = process.env.E2E_API_URL || `http://localhost:${API_PORT}`;
 const APP_URL = process.env.E2E_APP_URL || `http://localhost:${APP_PORT}`;
