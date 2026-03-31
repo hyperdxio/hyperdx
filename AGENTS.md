@@ -29,7 +29,7 @@ yarn setup          # Install dependencies
 yarn dev            # Start full stack with worktree-isolated ports
 ```
 
-The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
 
 **This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
