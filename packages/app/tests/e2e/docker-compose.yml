@@ -2,9 +2,8 @@ name: hdx-e2e
 services:
   db:
     image: mongo:5.0.32-focal
-    command: --port 29998
     ports:
-      - 29998:29998
+      - ${HDX_E2E_MONGO_PORT:-39999}:27017
     networks:
       - internal
     deploy:
@@ -18,8 +17,8 @@ services:
   ch-server:
     image: clickhouse/clickhouse-server:26.1-alpine
     ports:
-      - 8123:8123 # http api
-      - 9000:9000 # native
+      - ${HDX_E2E_CH_PORT:-18123}:8123 # http api
+      - ${HDX_E2E_CH_NATIVE_PORT:-18223}:9000 # native
     environment:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
@@ -44,4 +43,3 @@ services:
       start_period: 30s
 networks:
   internal:
-    name: 'hyperdx-e2e-internal-network'

@@ -3,7 +3,7 @@ import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
 
-import DBRowTableIconButton from './DBRowTableIconButton';
+import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 

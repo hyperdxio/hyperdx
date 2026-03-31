@@ -5137,7 +5137,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
+    it('should issue one aggregation per alert ID (per-alert queries)', async () => {
       const alert1Id = new mongoose.Types.ObjectId();
       await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
       await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
@@ -5148,16 +5148,22 @@ describe('checkAlerts', () => {
 
       const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
 
+      const fakeAlertIds = Array(150)
+        .fill(null)
+        .map(() => new mongoose.Types.ObjectId().toString());
+      const allIds = [
+        alert1Id.toString(),
+        ...fakeAlertIds,
+        alert2Id.toString(),
+      ];
+
       const result = await getPreviousAlertHistories(
-        [
-          alert1Id.toString(),
-          ...Array(150).fill(new mongoose.Types.ObjectId().toString()),
-          alert2Id.toString(),
-        ],
+        allIds,
         new Date('2025-01-01T00:20:00Z'),
       );
 
-      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
+      // One aggregation per alert ID (no chunking)
+      expect(aggregateSpy).toHaveBeenCalledTimes(allIds.length);
       expect(result.size).toBe(2);
       expect(result.get(alert1Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:05:00Z'),

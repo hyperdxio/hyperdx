@@ -187,7 +187,7 @@ export class DashboardPage {
     await defaultNameHeading.dblclick();
 
     // Fill in new name
-    const nameInput = this.page.locator('input[placeholder="Dashboard Name"]');
+    const nameInput = this.page.locator('input[placeholder="Name"]');
     await nameInput.fill(newName);
     await this.page.keyboard.press('Enter');
 

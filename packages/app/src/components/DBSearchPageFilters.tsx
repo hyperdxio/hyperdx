@@ -30,13 +30,13 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToLeft,
   IconChartBar,
   IconChartBarOff,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
-  IconLayoutSidebarLeftCollapse,
   IconMinus,
   IconPin,
   IconPinFilled,
@@ -100,6 +100,7 @@ export function cleanedFacetName(key: string): string {
 }
 
 type FilterCheckboxProps = {
+  columnName: string;
   label: string;
   value?: 'included' | 'excluded' | false;
   pinned: boolean;
@@ -112,7 +113,7 @@ type FilterCheckboxProps = {
   isPercentageLoading?: boolean;
 };
 
-export const TextButton = ({
+const TextButton = ({
   onClick,
   label,
   ms,
@@ -159,7 +160,8 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-export const FilterCheckbox = ({
+const FilterCheckbox = ({
+  columnName,
   value,
   label,
   pinned,
@@ -171,10 +173,11 @@ export const FilterCheckbox = ({
   percentage,
   isPercentageLoading,
 }: FilterCheckboxProps) => {
+  const testIdPrefix = `filter-checkbox-${columnName}-${label}`;
   return (
     <div
       className={cx(classes.filterCheckbox, className)}
-      data-testid={`filter-checkbox-${label}`}
+      data-testid={testIdPrefix}
     >
       <Group
         gap={8}
@@ -189,7 +192,7 @@ export const FilterCheckbox = ({
             // taken care by the onClick in the group
           }}
           indeterminate={value === 'excluded'}
-          data-testid={`filter-checkbox-input-${label}`}
+          data-testid={`${testIdPrefix}-input`}
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -234,14 +237,14 @@ export const FilterCheckbox = ({
           <TextButton
             onClick={onClickOnly}
             label="Only"
-            data-testid={`filter-only-${label}`}
+            data-testid={`${testIdPrefix}-only`}
           />
         )}
         {onClickExclude && (
           <TextButton
             onClick={onClickExclude}
             label="Exclude"
-            data-testid={`filter-exclude-${label}`}
+            data-testid={`${testIdPrefix}-exclude`}
           />
         )}
         <ActionIcon
@@ -252,14 +255,14 @@ export const FilterCheckbox = ({
           aria-label={pinned ? 'Unpin field' : 'Pin field'}
           role="checkbox"
           aria-checked={pinned}
-          data-testid={`filter-pin-${label}`}
+          data-testid={`${testIdPrefix}-pin`}
         >
           {pinned ? <IconPinFilled size={12} /> : <IconPin size={12} />}
         </ActionIcon>
       </div>
       {pinned && (
         <Center me="1px">
-          <IconPinFilled size={12} data-testid={`filter-pin-${label}-pinned`} />
+          <IconPinFilled size={12} data-testid={`${testIdPrefix}-pin-pinned`} />
         </Center>
       )}
     </div>
@@ -755,6 +758,7 @@ export const FilterGroup = ({
                 {displayedOptions.map(option => (
                   <FilterCheckbox
                     key={option.value.toString()}
+                    columnName={name}
                     label={option.label}
                     pinned={isPinned(option.value)}
                     className={
@@ -960,12 +964,17 @@ const DBSearchPageFiltersComponent = ({
         // todo: add number type with sliders :D
       )
       .map(({ path, type }) => {
-        return { type, path: mergePath(path, jsonColumns ?? []) };
+        return {
+          type,
+          path: mergePath(path, jsonColumns ?? []),
+          isMapSubField: path.length > 1,
+        };
       })
       .filter(
         field =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
+          field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
           Object.keys(filterState).includes(field.path) || // keep selected fields
           isFieldPinned(field.path), // keep pinned fields
       )
@@ -1218,7 +1227,7 @@ const DBSearchPageFiltersComponent = ({
                   onClick={onCollapse}
                   aria-label="Hide filters"
                 >
-                  <IconLayoutSidebarLeftCollapse size={14} />
+                  <IconArrowBarToLeft size={14} />
                 </ActionIcon>
               </Tooltip>
             )}
@@ -1505,10 +1514,7 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
-export function isFieldPrimary(
-  tableMetadata: TableMetadata | undefined,
-  key: string,
-) {
+function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
   return tableMetadata?.primary_key?.includes(key);
 }
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);

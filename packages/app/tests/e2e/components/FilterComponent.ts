@@ -49,50 +49,59 @@ export class FilterComponent {
   }
 
   /**
-   * Get checkbox for a specific filter value
+   * Get checkbox for a specific filter value within a column
+   * @param columnName - e.g., 'ServiceName', 'SeverityText'
    * @param valueName - e.g., 'info', 'error', 'debug'
    */
-  getFilterCheckbox(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-${valueName}`);
+  getFilterCheckbox(columnName: string, valueName: string) {
+    return this.page.getByTestId(`filter-checkbox-${columnName}-${valueName}`);
   }
 
   /**
-   * Get checkbox input element
+   * Get checkbox input element within a column
    */
-  getFilterCheckboxInput(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-input-${valueName}`);
+  getFilterCheckboxInput(columnName: string, valueName: string) {
+    return this.page.getByTestId(
+      `filter-checkbox-${columnName}-${valueName}-input`,
+    );
   }
 
   /**
    * Apply/select a filter value
    */
-  async applyFilter(valueName: string) {
-    const checkbox = this.getFilterCheckbox(valueName);
+  async applyFilter(columnName: string, valueName: string) {
+    const checkbox = this.getFilterCheckbox(columnName, valueName);
     await checkbox.click();
   }
 
   /**
    * Exclude a filter value (invert the filter)
    */
-  async excludeFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-exclude-${valueName}`);
+  async excludeFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-exclude`,
+    );
   }
 
   /**
    * Pin a filter value to persist it
    */
-  async pinFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-pin-${valueName}`);
+  async pinFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-pin`,
+    );
   }
 
   /**
    * Clear/unselect a filter
    */
-  async clearFilter(valueName: string) {
-    const input = this.getFilterCheckboxInput(valueName);
-    const checkbox = this.getFilterCheckbox(valueName);
+  async clearFilter(columnName: string, valueName: string) {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
+    const checkbox = this.getFilterCheckbox(columnName, valueName);
     await checkbox.click();
     await input.click();
   }
@@ -160,8 +169,11 @@ export class FilterComponent {
   /**
    * Check if filter checkbox is indeterminate (excluded state)
    */
-  async isFilterExcluded(valueName: string): Promise<boolean> {
-    const input = this.getFilterCheckboxInput(valueName);
+  async isFilterExcluded(
+    columnName: string,
+    valueName: string,
+  ): Promise<boolean> {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
     const indeterminate = await input.getAttribute('data-indeterminate');
     return indeterminate === 'true';
   }
@@ -170,7 +182,9 @@ export class FilterComponent {
    * Get all filter values for a specific filter group
    */
   getFilterValues(filterGroupName: string) {
-    return this.page.getByTestId(`filter-checkbox-${filterGroupName}`);
+    return this.page.getByTestId(
+      new RegExp(`^filter-checkbox-${filterGroupName}-`),
+    );
   }
 
   /**
@@ -223,7 +237,9 @@ export class FilterComponent {
     // Wait for initial facet options to load
     const group = this.getFilterGroup(filterGroupName);
     await group
-      .locator('[data-testid^="filter-checkbox-input-"]')
+      .locator(
+        `[data-testid^="filter-checkbox-${filterGroupName}-"][data-testid$="-input"]`,
+      )
       .first()
       .waitFor({ state: 'visible', timeout: 10000 });
 
@@ -232,7 +248,7 @@ export class FilterComponent {
     const visible: string[] = [];
     for (const value of candidates) {
       if (visible.length >= count) break;
-      const input = this.getFilterCheckboxInput(value);
+      const input = this.getFilterCheckboxInput(filterGroupName, value);
       if (await input.isVisible()) visible.push(value);
     }
     if (visible.length < count) {

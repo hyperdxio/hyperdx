@@ -66,7 +66,7 @@ export const SectionWrapper: React.FC<
 /**
  * Stacktrace elements
  */
-export const StacktraceValue = ({
+const StacktraceValue = ({
   label,
   value,
 }: {
@@ -103,7 +103,7 @@ const StacktraceRowExpandButton = ({
   );
 };
 
-export const StacktraceRow = ({
+const StacktraceRow = ({
   row,
   table,
 }: {
@@ -205,7 +205,7 @@ export const StacktraceRow = ({
   );
 };
 
-export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
+const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
   {
     accessorKey: 'filename',
     cell: StacktraceRow,
@@ -256,7 +256,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
   );
 });
 
-export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
+const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   {
     accessorKey: 'category',
     header: 'Category',
@@ -339,7 +339,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   },
 ];
 
-export const useShowMoreRows = <T extends object>({
+const useShowMoreRows = <T extends object>({
   rows,
   maxRows = 5,
 }: {
@@ -531,7 +531,7 @@ export const LogSidePanelKbdShortcuts = () => {
   );
 };
 
-export const SourceMapsFtux = () => {
+const SourceMapsFtux = () => {
   const [isDismissed, setIsDismissed] = useLocalStorage(
     'sourceMapsFtuxDismissed',
     false,

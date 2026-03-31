@@ -33,6 +33,7 @@ import {
   DashboardFilter,
   DisplayType,
   Filter,
+  getSampleWeightExpression,
   isLogSource,
   isTraceSource,
   SearchCondition,
@@ -112,6 +113,7 @@ import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
+import { EditablePageName } from './EditablePageName';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
@@ -235,6 +237,7 @@ const Tile = forwardRef(
             ...chart.config,
             // Populate these two columns from the source to support Lucene-based filters
             ...pick(source, ['implicitColumnExpression', 'from']),
+            sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
             filters,
@@ -269,6 +272,7 @@ const Tile = forwardRef(
               isLogSource(source) || isTraceSource(source)
                 ? source.implicitColumnExpression
                 : undefined,
+            sampleWeightExpression: getSampleWeightExpression(source),
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });
@@ -751,68 +755,6 @@ const updateLayout = (newLayout: RGL.Layout[]) => {
     }
   };
 };
-
-function DashboardName({
-  name,
-  onSave,
-}: {
-  name: string;
-  onSave: (name: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editedName, setEditedName] = useState(name);
-
-  const { hovered, ref } = useHover();
-
-  return (
-    <Box
-      ref={ref}
-      pe="md"
-      onDoubleClick={() => setEditing(true)}
-      className="cursor-pointer"
-      title="Double click to edit"
-    >
-      {editing ? (
-        <form
-          className="d-flex align-items-center"
-          onSubmit={e => {
-            e.preventDefault();
-            onSave(editedName);
-            setEditing(false);
-          }}
-        >
-          <Input
-            type="text"
-            value={editedName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setEditedName(e.target.value)
-            }
-            placeholder="Dashboard Name"
-          />
-          <Button ms="sm" variant="primary" type="submit">
-            Save Name
-          </Button>
-        </form>
-      ) : (
-        <div className="d-flex align-items-center" style={{ minWidth: 100 }}>
-          <Title fw={400} order={3}>
-            {name}
-          </Title>
-          {hovered && (
-            <Button
-              ms="xs"
-              variant="subtle"
-              size="xs"
-              onClick={() => setEditing(true)}
-            >
-              <IconPencil size={14} />
-            </Button>
-          )}
-        </div>
-      )}
-    </Box>
-  );
-}
 
 // Download an object to users computer as JSON using specified name
 function downloadObjectAsJson(object: object, fileName = 'output') {
@@ -1607,7 +1549,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Breadcrumbs>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
-        <DashboardName
+        <EditablePageName
           key={`${dashboardHash}`}
           name={dashboard?.name ?? ''}
           onSave={editedName => {

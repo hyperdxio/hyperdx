@@ -6,7 +6,7 @@
 // Recursively flattens nested objects/arrays into dot-notation keys.
 // Empty objects produce an empty {} entry; empty arrays produce an empty [] entry.
 // Based on https://stackoverflow.com/a/19101235
-export function flattenData(data: Record<string, any>) {
+function flattenData(data: Record<string, any>) {
   const result: Record<string, any> = {};
   function recurse(cur: Record<string, any>, prop: string) {
     if (Object(cur) !== cur) {

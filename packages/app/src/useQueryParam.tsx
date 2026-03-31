@@ -65,39 +65,3 @@ export const QueryParamProvider = ({
     </QueryParamContext.Provider>
   );
 };
-
-export function useQueryParam<T>(
-  key: string,
-  defaultValue: T,
-  options: {
-    queryParamConfig: {
-      encode: (
-        value: T | undefined,
-      ) => string | (string | null)[] | null | undefined;
-      decode: (
-        input: string | (string | null)[] | null | undefined,
-      ) => T | undefined;
-    };
-  } = {
-    queryParamConfig: {
-      encode: (value: T | undefined) => JSON.stringify(value),
-      decode: (input: string | (string | null)[] | null | undefined) =>
-        Array.isArray(input)
-          ? input.map(i => (i != null ? JSON.parse(i) : undefined))
-          : input != null
-            ? JSON.parse(input)
-            : undefined,
-    },
-  },
-): [T, (value: T) => void] {
-  const qParamContext = useContext(QueryParamContext);
-
-  const setValue = (value: T) => {
-    qParamContext.setState({ [key]: options.queryParamConfig.encode(value) });
-  };
-
-  const value =
-    options.queryParamConfig.decode(qParamContext[key]) ?? defaultValue;
-
-  return [value, setValue];
-}

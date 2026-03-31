@@ -28,32 +28,28 @@ describe('useDefaultOrderBy', () => {
           expected: 'Timestamp DESC',
         },
         {
-          // Traces Table
           sortingKey: 'ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: 'Timestamp DESC',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Optimized Traces Table
           sortingKey:
             'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: '(toStartOfHour(Timestamp), toDateTime(Timestamp)) DESC',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Unsupported for now as it's not a great sort key, want to just
-          // use default behavior for this
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Unsupported prefix sort key
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Inverted sort key order, we should not try to optimize this
           sortingKey:
-            'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
-          expected: 'Timestamp DESC',
+            'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
@@ -71,14 +67,14 @@ describe('useDefaultOrderBy', () => {
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp), Timestamp) DESC',
         },
         {
           // test variation of toUnixTimestamp
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey:
@@ -89,6 +85,24 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
           timestampValueExpression: 'Timestamp, toStartOfMinute(Timestamp)',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
           expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
         },
         {
@@ -103,7 +117,6 @@ describe('useDefaultOrderBy', () => {
         },
         {
           sortingKey: 'Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: 'Timestamp DESC',
         },
         {
@@ -141,20 +154,16 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'TimestampTime, Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: '(TimestampTime, Timestamp) DESC',
         },
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: 'Timestamp',
-          expected: 'Timestamp DESC',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
         {
-          sortingKey: '',
-          timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: '',
-          expected: 'Timestamp DESC',
+          sortingKey: 'ServiceName, TimestampTime, Timestamp',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
       ];
       for (const testCase of testCases) {

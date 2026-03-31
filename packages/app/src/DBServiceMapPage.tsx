@@ -26,7 +26,7 @@ import { useSources } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
 // The % of requests sampled is 1 / sampling factor
-export const SAMPLING_FACTORS = [
+const SAMPLING_FACTORS = [
   {
     value: 100,
     label: '1%',
