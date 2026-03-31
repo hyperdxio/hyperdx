@@ -3,17 +3,10 @@ import dynamic from 'next/dynamic';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Button,
-  Flex,
-  Group,
-  Modal,
-  Slider,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Box, Button, Group, Modal, Slider, Text } from '@mantine/core';
+import { IconConnection } from '@tabler/icons-react';
 
+import EmptyState from '@/components/EmptyState';
 import { IS_LOCAL_MODE } from '@/config';
 import { withAppNav } from '@/layout';
 
@@ -128,20 +121,13 @@ function DBServiceMapPage() {
             />
           </Modal>
         )}
-        <Flex
-          direction="column"
-          align="center"
-          justify="center"
-          gap="sm"
+        <EmptyState
           style={{ flex: 1 }}
+          icon={<IconConnection size={32} />}
+          title="No trace sources configured"
+          description="The Service Map visualizes relationships between your services using trace data. Configure a trace source to get started."
+          maw={600}
         >
-          <Title size="sm" ta="center" c="var(--color-text-muted)">
-            No trace sources configured
-          </Title>
-          <Text size="xs" ta="center" c="var(--color-text-muted)" maw={400}>
-            The Service Map visualizes relationships between your services using
-            trace data. Configure a trace source to get started.
-          </Text>
           {IS_LOCAL_MODE ? (
             <Button
               variant="primary"
@@ -162,7 +148,7 @@ function DBServiceMapPage() {
               Go to Team Settings
             </Button>
           )}
-        </Flex>
+        </EmptyState>
       </Box>
     );
   }

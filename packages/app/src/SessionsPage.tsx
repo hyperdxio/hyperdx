@@ -16,12 +16,11 @@ import {
   Anchor,
   Box,
   Button,
-  Card,
   Code,
   Divider,
   Flex,
   Group,
-  Stack,
+  Paper,
   Stepper,
 } from '@mantine/core';
 import {
@@ -387,7 +386,11 @@ export default function SessionsPage() {
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
-    <div className="SessionsPage" data-testid="sessions-page">
+    <div
+      className="SessionsPage"
+      data-testid="sessions-page"
+      style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+    >
       <Head>
         <title>Client Sessions - {brandName}</title>
       </Head>
@@ -421,7 +424,7 @@ export default function SessionsPage() {
             }
           />
         )}
-      <Box p="sm">
+      <Box p="sm" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <form
           data-testid="sessions-search-form"
           onSubmit={e => {
@@ -473,7 +476,13 @@ export default function SessionsPage() {
         ) : (
           <>
             {!sessions.length ? (
-              <SessionSetupInstructions />
+              <Flex
+                align="center"
+                justify="center"
+                style={{ flex: 1, minHeight: 0 }}
+              >
+                <SessionSetupInstructions />
+              </Flex>
             ) : (
               <div style={{ minHeight: 0 }} className="mt-4">
                 <SessionCardList
@@ -497,19 +506,19 @@ SessionsPage.getLayout = withAppNav;
 function SessionSetupInstructions() {
   const brandName = useBrandDisplayName();
   return (
-    <Card w={500} mx="auto" mt="xl" p="xl" withBorder>
-      <Stack gap="lg">
-        <EmptyState
-          icon={<IconDeviceLaptop size={32} />}
-          title="Set up session replays"
-          description={
-            <>
-              Follow these steps to start recording and viewing session replays
-              with the {brandName} Otel Collector.
-            </>
-          }
-        />
-        <Divider />
+    <EmptyState
+      icon={<IconDeviceLaptop size={32} />}
+      title="Set up session replays"
+      description={
+        <>
+          Follow these steps to start recording and viewing session replays with{' '}
+          <br />
+          the {brandName} Otel Collector.
+        </>
+      }
+      maw={600}
+    >
+      <Paper withBorder radius="md" p="xl">
         <Stepper active={-1} orientation="vertical" size="md">
           <Stepper.Step
             label={
@@ -546,6 +555,7 @@ function SessionSetupInstructions() {
                   href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
                   target="_blank"
                   rel="noopener noreferrer"
+                  size="xs"
                 >
                   {brandName} Browser Integration
                 </Anchor>{' '}
@@ -554,7 +564,7 @@ function SessionSetupInstructions() {
             }
           />
         </Stepper>
-      </Stack>
-    </Card>
+      </Paper>
+    </EmptyState>
   );
 }

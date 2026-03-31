@@ -38,7 +38,6 @@ import {
   ActionIcon,
   Box,
   Button,
-  Center,
   Divider,
   Flex,
   Group,
@@ -87,6 +86,7 @@ import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import EmptyState from '@/components/EmptyState';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -1566,14 +1566,11 @@ export default function EditTimeChartForm({
         </Flex>
       </ErrorBoundary>
       {!queryReady && activeTab !== 'markdown' ? (
-        <Paper shadow="xs" p="xl">
-          <Center mih={400}>
-            <Text size="sm">
-              Please start by selecting a database, table, and timestamp column
-              above and then click the play button to query data.
-            </Text>
-          </Center>
-        </Paper>
+        <EmptyState
+          description="Please start by selecting a database, table, and timestamp column above and then click the play button to query data."
+          variant="card"
+          fullWidth
+        />
       ) : undefined}
       {queryReady && queriedConfig != null && activeTab === 'table' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>

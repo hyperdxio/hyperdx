@@ -12,7 +12,6 @@ import {
   Menu,
   Select,
   SimpleGrid,
-  Stack,
   Table,
   Text,
   TextInput,
@@ -29,6 +28,7 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
@@ -264,13 +264,15 @@ export default function DashboardsListPage() {
             Failed to load dashboards. Please try refreshing the page.
           </Text>
         ) : filteredDashboards.length === 0 ? (
-          <Stack align="center" gap="sm" py="xl">
-            <IconLayoutGrid size={40} opacity={0.3} />
-            <Text size="sm" c="dimmed" ta="center">
-              {search || tagFilter
-                ? `No matching dashboards yet.`
-                : 'No dashboards yet.'}
-            </Text>
+          <EmptyState
+            variant="card"
+            icon={<IconLayoutGrid size={32} />}
+            title={
+              search || tagFilter
+                ? 'No matching dashboards yet'
+                : 'No dashboards yet'
+            }
+          >
             <Group>
               <Button
                 component={Link}
@@ -291,7 +293,7 @@ export default function DashboardsListPage() {
                 New Dashboard
               </Button>
             </Group>
-          </Stack>
+          </EmptyState>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>

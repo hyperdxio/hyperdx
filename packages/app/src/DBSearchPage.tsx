@@ -66,6 +66,7 @@ import {
   IconLayoutSidebarLeftExpand,
   IconPlayerPlay,
   IconPlus,
+  IconStack2,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -1788,13 +1789,12 @@ function DBSearchPage() {
         className="bg-body"
       >
         {!queryReady ? (
-          <Paper shadow="xs" p="xl" h="100%">
-            <EmptyState
-              icon={<IconPlayerPlay size={32} />}
-              title="No data to display"
-              description="Select a source and click the play button to query data."
-            />
-          </Paper>
+          <EmptyState
+            h="100%"
+            icon={<IconStack2 size={32} />}
+            title="No data to display"
+            description="Select a source and click the play button to query data."
+          />
         ) : (
           <>
             <div
