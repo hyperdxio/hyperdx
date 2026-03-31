@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -82,6 +82,51 @@ export function useSearchTotalCount(
   };
 }
 
+function isAprilFools(): boolean {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('aprilFools')
+    ) {
+      return true;
+    }
+    const now = new Date();
+    return now.getMonth() === 3 && now.getDate() === 1;
+  } catch {
+    return false;
+  }
+}
+
+let _sessionHighScore = 0;
+
+function useHighScore(totalCount: number | undefined) {
+  const [highScore, setHighScore] = useState(_sessionHighScore);
+  const [celebrating, setCelebrating] = useState(false);
+  const prevCountRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (totalCount == null || totalCount <= 0) return;
+    if (totalCount === prevCountRef.current) return;
+    prevCountRef.current = totalCount;
+
+    if (totalCount > _sessionHighScore) {
+      _sessionHighScore = totalCount;
+      setHighScore(totalCount);
+      if (_sessionHighScore > 0) {
+        setCelebrating(true);
+      }
+    }
+  }, [totalCount]);
+
+  useEffect(() => {
+    if (!celebrating) return;
+    const t = setTimeout(() => setCelebrating(false), 2000);
+    return () => clearTimeout(t);
+  }, [celebrating]);
+
+  return { highScore, celebrating };
+}
+
 export default function SearchTotalCountChart({
   config,
   queryKeyPrefix,
@@ -102,12 +147,40 @@ export default function SearchTotalCountChart({
     },
   );
 
+  const aprilFools = useMemo(() => isAprilFools(), []);
+  const { highScore, celebrating } = useHighScore(
+    aprilFools ? totalCount : undefined,
+  );
+
   return (
     <Text size="xs" lh="normal">
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
-        `${totalCount?.toLocaleString()} Results`
+        <>
+          {`${totalCount?.toLocaleString()} Results`}
+          {aprilFools && highScore > 0 && (
+            <span
+              style={{
+                marginLeft: 8,
+                fontSize: 10,
+                opacity: 0.75,
+                transition: 'all 0.3s ease',
+                ...(celebrating
+                  ? {
+                      opacity: 1,
+                      color: '#ffd700',
+                      textShadow: '0 0 6px rgba(255, 215, 0, 0.6)',
+                    }
+                  : {}),
+              }}
+              title="Session high score"
+            >
+              {celebrating ? '🏆 NEW HIGH SCORE: ' : '🏆 '}
+              {highScore.toLocaleString()}
+            </span>
+          )}
+        </>
       ) : (
         '0 Results'
       )}
