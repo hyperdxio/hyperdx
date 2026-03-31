@@ -9,7 +9,7 @@ type AggFnValues = (typeof AGG_FNS)[number]['value'];
 type OnChangeValue =
   | { aggFn?: AggFnValues }
   | { aggFn: 'quantile'; level: number };
-export default function AggFnSelect({
+function AggFnSelect({
   value,
   defaultValue,
   onChange,

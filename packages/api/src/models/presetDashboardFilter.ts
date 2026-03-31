@@ -7,8 +7,7 @@ import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 
-export interface IPresetDashboardFilter
-  extends Omit<PresetDashboardFilter, 'source'> {
+interface IPresetDashboardFilter extends Omit<PresetDashboardFilter, 'source'> {
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;

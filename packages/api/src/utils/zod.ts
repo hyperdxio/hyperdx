@@ -17,13 +17,13 @@ export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
 });
 
-export const sourceTableSchema = z.union([
+const sourceTableSchema = z.union([
   z.literal('logs'),
   z.literal('rrweb'),
   z.literal('metrics'),
 ]);
 
-export type SourceTable = z.infer<typeof sourceTableSchema>;
+type SourceTable = z.infer<typeof sourceTableSchema>;
 
 // ================================
 // Charts & Dashboards (old format)
@@ -93,7 +93,7 @@ const searchChartSeriesSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
-export type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
+type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
 
 const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
@@ -124,7 +124,7 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
   markdownChartSeriesSchema,
 ]);
 
-export type ChartSeries = z.infer<typeof chartSeriesSchema>;
+type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 
@@ -150,7 +150,7 @@ export const externalDashboardSavedFilterValueSchema = z.object({
   condition: z.string().max(10000),
 });
 
-export type ExternalDashboardSavedFilterValue = z.infer<
+type ExternalDashboardSavedFilterValue = z.infer<
   typeof externalDashboardSavedFilterValueSchema
 >;
 
@@ -318,7 +318,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   ],
 );
 
-export type ExternalDashboardBuilderTileConfig = z.infer<
+type ExternalDashboardBuilderTileConfig = z.infer<
   typeof externalDashboardBuilderTileConfigSchema
 >;
 
@@ -441,7 +441,7 @@ export const externalDashboardTileSchema = z
 
 export type ExternalDashboardTile = z.infer<typeof externalDashboardTileSchema>;
 
-export const externalDashboardTileSchemaWithOptionalId =
+const externalDashboardTileSchemaWithOptionalId =
   externalDashboardTileSchema.and(
     z.object({
       // User defined ID
@@ -449,7 +449,7 @@ export const externalDashboardTileSchemaWithOptionalId =
     }),
   );
 
-export type ExternalDashboardTileWithOptionalId = z.infer<
+type ExternalDashboardTileWithOptionalId = z.infer<
   typeof externalDashboardTileSchemaWithOptionalId
 >;
 
@@ -485,18 +485,18 @@ export const externalDashboardTileListSchema = z
 // ==============================
 // Alerts
 // ==============================
-export const zChannel = z.object({
+const zChannel = z.object({
   type: z.literal('webhook'),
   webhookId: z.string().min(1),
 });
 
-export const zSavedSearchAlert = z.object({
+const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().optional(),
   savedSearchId: z.string().min(1),
 });
 
-export const zTileAlert = z.object({
+const zTileAlert = z.object({
   source: z.literal(AlertSource.TILE),
   tileId: z.string().min(1),
   dashboardId: z.string().min(1),
