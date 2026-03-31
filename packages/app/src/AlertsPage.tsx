@@ -488,7 +488,7 @@ export default function AlertsPage() {
     <div
       data-testid="alerts-page"
       className="AlertsPage"
-      style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
         <title>Alerts - {brandName}</title>

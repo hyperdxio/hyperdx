@@ -148,7 +148,7 @@ export default function DashboardsListPage() {
   return (
     <div
       data-testid="dashboards-list-page"
-      style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}
+      style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
         <title>Dashboards - {brandName}</title>

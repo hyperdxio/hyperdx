@@ -128,7 +128,7 @@ export default function SavedSearchesListPage() {
   return (
     <div
       data-testid="saved-searches-list-page"
-      style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
         <title>Saved Searches - {brandName}</title>

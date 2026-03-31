@@ -389,7 +389,7 @@ export default function SessionsPage() {
     <div
       className="SessionsPage"
       data-testid="sessions-page"
-      style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
         <title>Client Sessions - {brandName}</title>
