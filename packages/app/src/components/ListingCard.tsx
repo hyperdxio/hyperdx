@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { ActionIcon, Badge, Card, Group, Menu, Text } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
+import { FavoriteButton } from '@/components/FavoriteButton';
+import { Favorite } from '@/favorites';
+
 export function ListingCard({
   name,
   href,
@@ -9,6 +12,8 @@ export function ListingCard({
   tags,
   onDelete,
   statusIcon,
+  resourceId,
+  resourceType,
 }: {
   name: string;
   href: string;
@@ -16,6 +21,8 @@ export function ListingCard({
   tags?: string[];
   onDelete?: () => void;
   statusIcon?: React.ReactNode;
+  resourceId?: string;
+  resourceType?: Favorite['resourceType'];
 }) {
   return (
     <Card
@@ -27,7 +34,7 @@ export function ListingCard({
       style={{ cursor: 'pointer', textDecoration: 'none' }}
     >
       <Group justify="space-between" mb="xs" wrap="nowrap">
-        <Group gap={4} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+        <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
           <Text
             fw={500}
             lineClamp={1}
@@ -37,6 +44,13 @@ export function ListingCard({
             {name}
           </Text>
           {statusIcon}
+          {resourceId && resourceType && (
+            <FavoriteButton
+              resourceType={resourceType}
+              resourceId={resourceId}
+              size="xs"
+            />
+          )}
         </Group>
         {onDelete && (
           <Menu position="bottom-end" withinPortal>
