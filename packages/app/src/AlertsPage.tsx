@@ -495,8 +495,12 @@ export default function AlertsPage() {
       </Head>
       <PageHeader>Alerts</PageHeader>
       <div className="my-4" style={{ flex: 1 }}>
-        <Container maw={600} h="100%">
-          {alerts?.length ? (
+        {isLoading ? (
+          <div className="text-center my-4 fs-8">Loading...</div>
+        ) : isError ? (
+          <div className="text-center my-4 fs-8">Error</div>
+        ) : alerts?.length ? (
+          <Container maw={1500}>
             <Alert
               icon={<IconInfoCircleFilled size={16} />}
               color="gray"
@@ -513,30 +517,22 @@ export default function AlertsPage() {
               </a>{' '}
               from dashboard charts and saved searches.
             </Alert>
-          ) : null}
-          {isLoading ? (
-            <div className="text-center my-4 fs-8">Loading...</div>
-          ) : isError ? (
-            <div className="text-center my-4 fs-8">Error</div>
-          ) : alerts?.length ? (
-            <>
-              <AlertCardList alerts={alerts} />
-            </>
-          ) : (
-            <EmptyState
-              h="100%"
-              icon={<IconBell size={32} />}
-              title="No alerts created yet"
-              description={
-                <>
-                  Alerts can be created from{' '}
-                  <Link href="/dashboards">dashboard charts</Link> and{' '}
-                  <Link href="/search">saved searches</Link>.
-                </>
-              }
-            />
-          )}
-        </Container>
+            <AlertCardList alerts={alerts} />
+          </Container>
+        ) : (
+          <EmptyState
+            h="100%"
+            icon={<IconBell size={32} />}
+            title="No alerts created yet"
+            description={
+              <>
+                Alerts can be created from{' '}
+                <Link href="/dashboards">dashboard charts</Link> and{' '}
+                <Link href="/search">saved searches</Link>.
+              </>
+            }
+          />
+        )}
       </div>
     </div>
   );
