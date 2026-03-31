@@ -235,8 +235,12 @@ const Tile = forwardRef(
         } else if (source != null) {
           setQueriedConfig({
             ...chart.config,
-            // Populate these two columns from the source to support Lucene-based filters
-            ...pick(source, ['implicitColumnExpression', 'from']),
+            // Populate these columns from the source to support Lucene-based filters and metric table macros
+            ...pick(source, [
+              'implicitColumnExpression',
+              'from',
+              'metricTables',
+            ]),
             sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
@@ -315,6 +319,9 @@ const Tile = forwardRef(
       const doFiltersExist = !!filters?.filter(
         f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
       )?.length;
+      const doLuceneFiltersExist = !!filters?.filter(
+        f => f.type === 'lucene' && f.condition.trim(),
+      )?.length;
 
       if (
         !doFiltersExist ||
@@ -326,19 +333,28 @@ const Tile = forwardRef(
       const isMissingSourceForFiltering = !queriedConfig.source;
       const isMissingFiltersMacro =
         !queriedConfig.sqlTemplate.includes('$__filters');
+      const isMetricsSourceWithLuceneFilter =
+        source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
-      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
+      if (
+        !isMissingSourceForFiltering &&
+        !isMissingFiltersMacro &&
+        !isMetricsSourceWithLuceneFilter
+      )
+        return null;
 
       const message = isMissingFiltersMacro
         ? 'Filters are not applied because the SQL does not include the required $__filters macro'
-        : 'Filters are not applied because no Source is set for this chart';
+        : isMetricsSourceWithLuceneFilter
+          ? 'Lucene filters are not applied because they are not supported for metrics sources.'
+          : 'Filters are not applied because no Source is set for this chart';
 
       return (
         <Tooltip multiline maw={500} label={message} key="filter-warning">
           <IconZoomExclamation size={16} color="var(--color-text-danger)" />
         </Tooltip>
       );
-    }, [filters, queriedConfig]);
+    }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
       return (
