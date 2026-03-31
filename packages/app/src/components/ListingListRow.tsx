@@ -2,17 +2,21 @@ import Router from 'next/router';
 import { ActionIcon, Badge, Group, Menu, Table, Text } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
-import type { Dashboard } from '../../dashboard';
-
-export function DashboardListRow({
-  dashboard,
+export function ListingRow({
+  id,
+  name,
+  href,
+  tags,
   onDelete,
+  statusIcon,
 }: {
-  dashboard: Dashboard;
+  id: string;
+  name: string;
+  href: string;
+  tags?: string[];
   onDelete: (id: string) => void;
+  statusIcon?: React.ReactNode;
 }) {
-  const href = `/dashboards/${dashboard.id}`;
-
   return (
     <Table.Tr
       style={{ cursor: 'pointer' }}
@@ -30,23 +34,21 @@ export function DashboardListRow({
       }}
     >
       <Table.Td>
-        <Text fw={500} size="sm">
-          {dashboard.name}
-        </Text>
+        <Group gap={4} wrap="nowrap">
+          <Text fw={500} size="sm">
+            {name}
+          </Text>
+          {statusIcon}
+        </Group>
       </Table.Td>
       <Table.Td>
         <Group gap={4}>
-          {dashboard.tags.map(tag => (
+          {tags?.map(tag => (
             <Badge key={tag} variant="light" size="xs">
               {tag}
             </Badge>
           ))}
         </Group>
-      </Table.Td>
-      <Table.Td>
-        <Text size="xs" c="dimmed">
-          {dashboard.tiles.length}
-        </Text>
       </Table.Td>
       <Table.Td>
         <Menu position="bottom-end" withinPortal>
@@ -65,7 +67,7 @@ export function DashboardListRow({
               leftSection={<IconTrash size={14} />}
               onClick={e => {
                 e.stopPropagation();
-                onDelete(dashboard.id);
+                onDelete(id);
               }}
             >
               Delete

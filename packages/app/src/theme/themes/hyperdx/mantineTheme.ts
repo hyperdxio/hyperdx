@@ -16,7 +16,7 @@ import focusClasses from '../../../../styles/focus.module.scss';
 import variantClasses from '../../../../styles/variants.module.scss';
 import componentClasses from '../components.module.scss';
 
-export const makeTheme = ({
+const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
 }: {
   fontFamily?: string;
@@ -126,8 +126,13 @@ export const makeTheme = ({
           '--slider-color': 'var(--color-slider-bar)',
         },
       }),
+      styles: {
+        thumb: {
+          backgroundColor: 'var(--color-slider-thumb)',
+          borderColor: 'var(--color-slider-thumb-border)',
+        },
+      },
       classNames: {
-        thumb: componentClasses.sliderThumb,
         mark: componentClasses.sliderMark,
       },
     }),

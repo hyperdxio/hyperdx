@@ -23,15 +23,18 @@ import {
 import {
   BuilderChartConfigWithOptDateRange,
   DisplayType,
+  getSampleWeightExpression,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import { chunk, isString } from 'lodash';
+import { isString } from 'lodash';
 import { ObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
+import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
@@ -107,6 +110,7 @@ export async function computeAliasWithClauses(
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.implicitColumnExpression
         : undefined,
+    ...pickSampleWeightExpressionProps(source),
     timestampValueExpression: source.timestampValueExpression,
   };
   const query = await renderChartConfig(config, metadata, source.querySettings);
@@ -453,6 +457,7 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined,
+      ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
     };
   } else if (details.taskType === AlertTaskType.TILE) {
@@ -474,6 +479,7 @@ const getChartConfigFromAlert = (
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
           : undefined;
+      const sampleWeightExpression = getSampleWeightExpression(source);
       const metricTables =
         source.kind === SourceKind.Metric ? source.metricTables : undefined;
       return {
@@ -486,6 +492,7 @@ const getChartConfigFromAlert = (
         granularity: `${windowSizeInMins} minute`,
         groupBy: tile.config.groupBy,
         implicitColumnExpression,
+        sampleWeightExpression,
         metricTables,
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,
@@ -974,8 +981,13 @@ export interface AggregatedAlertHistory {
  * Fetch the most recent AlertHistory value for each of the given alert IDs.
  * For group-by alerts, returns the latest history for each group within each alert.
  *
+ * Uses per-alert queries instead of batched $in to leverage the compound index
+ * {alert: 1, group: 1, createdAt: -1} for index-backed sorting. With a single
+ * alert value, the index delivers results already sorted by {group, createdAt desc},
+ * so the $sort is a no-op and $group + $first can short-circuit per group.
+ *
  * @param alertIds The list of alert IDs to query the latest history for.
- * @param now The current date and time. AlertHistory documents that have a createdBy > now are ignored.
+ * @param now The current date and time. AlertHistory documents that have a createdAt > now are ignored.
  * @returns A map from Alert IDs (or Alert ID + group) to their most recent AlertHistory.
  *  For non-grouped alerts, the key is just the alert ID.
  *  For grouped alerts, the key is "alertId||group" to track per-group state.
@@ -984,58 +996,66 @@ export const getPreviousAlertHistories = async (
   alertIds: string[],
   now: Date,
 ) => {
-  // Group the alert IDs into chunks of 50 to avoid exceeding MongoDB's recommendation that $in lists be on the order of 10s of items
-  const chunkedIds = chunk(
-    alertIds.map(id => new mongoose.Types.ObjectId(id)),
-    50,
-  );
-
   const lookbackDate = new Date(now.getTime() - ms('7d'));
 
-  const resultChunks = await Promise.all(
-    chunkedIds.map(async ids =>
-      AlertHistory.aggregate<AggregatedAlertHistory>([
-        {
-          $match: {
-            alert: { $in: ids },
-            createdAt: { $lte: now, $gte: lookbackDate },
-          },
-        },
-        {
-          $sort: { alert: 1, group: 1, createdAt: -1 },
-        },
-        // Group by alert ID AND group (if present), taking the first (latest) document for each combination
-        {
-          $group: {
-            _id: {
-              alert: '$alert',
-              group: '$group',
+  // Use a concurrency-limited queue to avoid overwhelming the connection pool
+  // when there are many alerts (e.g., 200+ alert IDs).
+  const queue = new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
+
+  const results = await Promise.all(
+    alertIds.map(alertId =>
+      queue.add(async () => {
+        const id = new mongoose.Types.ObjectId(alertId);
+        return AlertHistory.aggregate<AggregatedAlertHistory>([
+          {
+            $match: {
+              alert: id,
+              createdAt: { $lte: now, $gte: lookbackDate },
             },
-            latestDoc: { $first: '$$ROOT' },
           },
-        },
-        // Reshape and extract fields from the latest document
-        {
-          $project: {
-            _id: '$_id.alert',
-            createdAt: '$latestDoc.createdAt',
-            state: '$latestDoc.state',
-            group: '$_id.group',
+          // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
+          // delivers results already in this sort order — this is an index-backed no-op sort.
+          {
+            $sort: { alert: 1, group: 1, createdAt: -1 },
           },
-        },
-      ]),
+          // Group by {alert, group}, taking the first (latest) document's fields.
+          // Using $first on individual fields instead of $first: '$$ROOT' allows
+          // DocumentDB to avoid fetching full documents when not needed.
+          {
+            $group: {
+              _id: {
+                alert: '$alert',
+                group: '$group',
+              },
+              createdAt: { $first: '$createdAt' },
+              state: { $first: '$state' },
+            },
+          },
+          {
+            $project: {
+              _id: '$_id.alert',
+              createdAt: 1,
+              state: 1,
+              group: '$_id.group',
+            },
+          },
+        ]);
+      }),
     ),
   );
 
   // Create a map with composite keys for grouped alerts (alertId||group) or simple keys for non-grouped alerts
   return new Map<string, AggregatedAlertHistory>(
-    resultChunks.flat().map(history => {
-      const key = computeHistoryMapKey(
-        history._id.toString(),
-        history.group || '',
-      );
-      return [key, history];
-    }),
+    results
+      .flat()
+      .filter((h): h is AggregatedAlertHistory => h !== undefined)
+      .map(history => {
+        const key = computeHistoryMapKey(
+          history._id.toString(),
+          history.group || '',
+        );
+        return [key, history];
+      }),
   );
 };
 

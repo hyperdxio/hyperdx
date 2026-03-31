@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
-import { sql } from '@codemirror/lang-sql';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { Button, Paper, Text } from '@mantine/core';
+import { Button, Paper, Text, useMantineColorScheme } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
+import { clickhouseSql } from '@/utils/codeMirror';
 
 function tryFormat(data?: string) {
   try {
@@ -64,13 +64,14 @@ export function SQLPreview({
   enableLineWrapping?: boolean;
 }) {
   const displayed = formatData ? tryFormat(data) : data;
+  const { colorScheme } = useMantineColorScheme();
 
   return (
     <div className="position-relative">
       <CodeMirror
         indentWithTab={false}
         value={displayed}
-        theme="dark"
+        theme={colorScheme === 'dark' ? 'dark' : 'light'}
         basicSetup={{
           lineNumbers: false,
           foldGutter: false,
@@ -78,7 +79,7 @@ export function SQLPreview({
           highlightActiveLineGutter: false,
         }}
         extensions={[
-          sql(),
+          clickhouseSql(),
           ...(enableLineWrapping ? [EditorView.lineWrapping] : []),
         ]}
         editable={false}

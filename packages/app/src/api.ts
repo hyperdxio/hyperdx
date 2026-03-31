@@ -40,7 +40,7 @@ type ServicesResponse = {
   >;
 };
 
-export function loginHook(request: Request, options: any, response: Response) {
+function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
     '/',
@@ -60,7 +60,7 @@ export function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
-export const server = ky.create({
+const server = ky.create({
   prefixUrl: '/api',
   credentials: 'include',
   hooks: {

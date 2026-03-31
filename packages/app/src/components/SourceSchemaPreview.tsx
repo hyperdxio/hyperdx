@@ -123,7 +123,7 @@ const TableSchemaPreview = ({
   );
 };
 
-export interface SourceSchemaPreviewSource {
+interface SourceSchemaPreviewSource {
   connection: TSource['connection'];
   from: TSource['from'];
   metricTables?: TMetricSource['metricTables'];
@@ -132,7 +132,7 @@ export interface SourceSchemaPreviewSource {
   materializedViews?: TLogSource['materializedViews'];
 }
 
-export interface SourceSchemaPreviewProps {
+interface SourceSchemaPreviewProps {
   source?: SourceSchemaPreviewSource;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
   variant?: 'icon' | 'text';
