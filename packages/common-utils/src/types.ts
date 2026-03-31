@@ -786,6 +786,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
