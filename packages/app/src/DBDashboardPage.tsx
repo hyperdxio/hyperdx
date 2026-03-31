@@ -86,6 +86,7 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import SectionHeader from '@/components/SectionHeader';
 import { TimePicker } from '@/components/TimePicker';
@@ -1543,7 +1544,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
             Dashboards
           </Anchor>
-          <Text fz="sm" c="dimmed">
+          <Text fz="sm" c="dimmed" maw={500} truncate="end">
             {dashboard?.name ?? 'Untitled'}
           </Text>
         </Breadcrumbs>
@@ -1562,6 +1563,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
         />
         <Group gap="xs">
+          {!isLocalDashboard && dashboard?.id && (
+            <FavoriteButton
+              resourceType="dashboard"
+              resourceId={dashboard.id}
+            />
+          )}
           {!isLocalDashboard && dashboard?.id && (
             <Tags
               allowCreate
