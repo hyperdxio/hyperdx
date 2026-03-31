@@ -1523,17 +1523,23 @@ async function renderFiltersToSql(
   const conditions = (
     await Promise.all(
       chartConfig.filters.map(async filter => {
+        const hasSourceTable =
+          chartConfig.from &&
+          chartConfig.from.tableName && // tableName is falsy for metric sources
+          chartConfig.source;
+
         if (filter.type === 'sql_ast') {
           return `(${filter.left} ${filter.operator} ${filter.right})`;
+        } else if (filter.type === 'sql' && !hasSourceTable) {
+          return `(${filter.condition})`; // Don't pass to renderWhereExpressionStr since it requires source table metadata
         } else if (
           (filter.type === 'lucene' || filter.type === 'sql') &&
           filter.condition.trim() &&
-          chartConfig.from &&
-          chartConfig.source
+          hasSourceTable
         ) {
           const condition = await renderWhereExpressionStr({
             condition: filter.condition,
-            from: chartConfig.from,
+            from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
             metadata,
@@ -1555,10 +1561,7 @@ export async function renderRawSqlChartConfig(
   const displayType = chartConfig.displayType ?? DisplayType.Table;
 
   const filtersSQL = await renderFiltersToSql(chartConfig, metadata);
-  const sqlWithMacrosReplaced = replaceMacros(
-    chartConfig.sqlTemplate,
-    filtersSQL,
-  );
+  const sqlWithMacrosReplaced = replaceMacros(chartConfig, filtersSQL);
 
   // eslint-disable-next-line security/detect-object-injection
   const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
