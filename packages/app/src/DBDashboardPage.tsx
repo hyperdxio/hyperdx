@@ -1977,7 +1977,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                             onToggleDefaultCollapsed={() =>
                               handleToggleDefaultCollapsed(container.id)
                             }
-                            tileCount={containerTiles.length}
                             onDelete={() => handleDeleteContainer(container.id)}
                             onAddTile={() =>
                               onAddTile(

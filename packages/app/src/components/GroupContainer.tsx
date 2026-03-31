@@ -27,7 +27,6 @@ type GroupContainerProps = {
   defaultCollapsed: boolean;
   onToggle: () => void;
   onToggleDefaultCollapsed?: () => void;
-  tileCount: number;
   onDelete?: () => void;
   onAddTile?: () => void;
   activeTabId?: string;
@@ -46,7 +45,6 @@ export default function GroupContainer({
   defaultCollapsed,
   onToggle,
   onToggleDefaultCollapsed,
-  tileCount,
   onDelete,
   onAddTile,
   activeTabId,
@@ -358,11 +356,6 @@ export default function GroupContainer({
               >
                 {headerTitle}
               </Text>
-              {collapsed && tileCount > 0 && (
-                <Text size="xs" c="dimmed">
-                  ({tileCount} {tileCount === 1 ? 'tile' : 'tiles'})
-                </Text>
-              )}
             </Flex>
           )}
           {addMenu}
