@@ -710,74 +710,40 @@ function useSearchedConfigToChartConfig(
   ]);
 }
 
+const implicitDateTimePrefixes = [
+  'toStartOf',
+  'toUnixTimestamp',
+  'toDateTime',
+  'Timestamp',
+] as const;
+
 function optimizeDefaultOrderBy(
   timestampExpr: string,
   displayedTimestampExpr: string | undefined,
   sortingKey: string | undefined,
 ) {
-  const defaultModifier = 'DESC';
-  const firstTimestampValueExpression =
-    getFirstTimestampValueExpression(timestampExpr ?? '') ?? '';
-  const defaultOrderByItems = [firstTimestampValueExpression];
-  const trimmedDisplayedTimestampExpr = displayedTimestampExpr?.trim();
+  const orderByArr: string[] = [];
 
-  if (
-    trimmedDisplayedTimestampExpr &&
-    trimmedDisplayedTimestampExpr !== firstTimestampValueExpression
-  ) {
-    defaultOrderByItems.push(trimmedDisplayedTimestampExpr);
+  const timestampExprParts = splitAndTrimWithBracket(timestampExpr);
+  const keys = splitAndTrimWithBracket(sortingKey ?? '');
+  keys.push(...timestampExprParts);
+  if (displayedTimestampExpr) {
+    keys.push(displayedTimestampExpr.trim());
   }
-
-  const fallbackOrderBy =
-    defaultOrderByItems.length > 1
-      ? `(${defaultOrderByItems.join(', ')}) ${defaultModifier}`
-      : `${defaultOrderByItems[0]} ${defaultModifier}`;
-
-  if (!sortingKey) return fallbackOrderBy;
-
-  const orderByArr = [];
-  const sortKeys = splitAndTrimWithBracket(sortingKey);
-  for (let i = 0; i < sortKeys.length; i++) {
-    const sortKey = sortKeys[i];
+  for (const key of keys) {
     if (
-      sortKey.includes('toStartOf') &&
-      sortKey.includes(firstTimestampValueExpression)
+      !orderByArr.includes(key) &&
+      (implicitDateTimePrefixes.some(v => key.startsWith(v)) ||
+        timestampExprParts.includes(key) ||
+        displayedTimestampExpr?.trim() === key)
     ) {
-      orderByArr.push(sortKey);
-    } else if (
-      sortKey === firstTimestampValueExpression ||
-      (sortKey.startsWith('toUnixTimestamp') &&
-        sortKey.includes(firstTimestampValueExpression)) ||
-      (sortKey.startsWith('toDateTime') &&
-        sortKey.includes(firstTimestampValueExpression))
-    ) {
-      if (orderByArr.length === 0) {
-        // fallback if the first sort key is the timestamp sort key
-        return fallbackOrderBy;
-      } else {
-        orderByArr.push(sortKey);
-        break;
-      }
-    } else if (sortKey === trimmedDisplayedTimestampExpr) {
-      orderByArr.push(sortKey);
+      orderByArr.push(key);
     }
   }
 
-  // If we can't find an optimized order by, use the fallback/default
-  if (orderByArr.length === 0) {
-    return fallbackOrderBy;
-  }
-
-  if (
-    trimmedDisplayedTimestampExpr &&
-    !orderByArr.includes(trimmedDisplayedTimestampExpr)
-  ) {
-    orderByArr.push(trimmedDisplayedTimestampExpr);
-  }
-
   return orderByArr.length > 1
-    ? `(${orderByArr.join(', ')}) ${defaultModifier}`
-    : `${orderByArr[0]} ${defaultModifier}`;
+    ? `(${orderByArr.join(', ')}) DESC`
+    : `${orderByArr[0]} DESC`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
