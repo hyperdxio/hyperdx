@@ -1476,6 +1476,7 @@ function DBSqlRowTableComponent({
   onSortingChange,
   initialSortBy,
   variant = 'default',
+  enableSmallFirstWindow,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1499,6 +1500,7 @@ function DBSqlRowTableComponent({
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
   variant?: DBRowTableVariant;
+  enableSmallFirstWindow?: boolean;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1564,6 +1566,7 @@ function DBSqlRowTableComponent({
         enabled && mergedConfig != null && getSelectLength(config.select) > 0,
       isLive,
       queryKeyPrefix,
+      enableSmallFirstWindow,
     });
 
   // The first N columns are the select columns from the user
