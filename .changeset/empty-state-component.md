@@ -2,4 +2,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: Use EmptyState component across pages for consistent empty/no-data states
+feat: Add reusable EmptyState component and adopt it across pages for consistent empty/no-data states
