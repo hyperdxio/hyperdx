@@ -383,6 +383,7 @@ const FilterGroupBody = ({
   distributionKey,
   showDistributions,
   onDistributionError,
+  onFetchingDistributionChange,
 }: {
   name: string;
   options: { value: string | boolean; label: string }[];
@@ -405,6 +406,7 @@ const FilterGroupBody = ({
   distributionKey?: string;
   showDistributions: boolean;
   onDistributionError: () => void;
+  onFetchingDistributionChange: (isFetching: boolean) => void;
 }) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -448,6 +450,10 @@ const FilterGroupBody = ({
       enabled: showDistributions,
     },
   );
+
+  useEffect(() => {
+    onFetchingDistributionChange(isFetchingDistribution);
+  }, [isFetchingDistribution, onFetchingDistributionChange]);
 
   useEffect(() => {
     if (distributionError) {
@@ -701,6 +707,7 @@ type FilterGroupActionsProps = {
   name: string;
   hasRange: boolean;
   showDistributions: boolean;
+  isFetchingDistribution: boolean;
   isColumnDisplayed: boolean;
   isFieldPinned: boolean;
   totalAppliedFiltersSize: number;
@@ -713,6 +720,7 @@ function FilterGroupActions({
   name,
   hasRange,
   showDistributions,
+  isFetchingDistribution,
   isColumnDisplayed,
   isFieldPinned,
   totalAppliedFiltersSize,
@@ -743,7 +751,11 @@ function FilterGroupActions({
               aria-checked={showDistributions}
               role="checkbox"
             >
-              {showDistributions ? (
+              {isFetchingDistribution ? (
+                <Center>
+                  <IconRefresh className="spin-animate" size={12} />
+                </Center>
+              ) : showDistributions ? (
                 <IconChartBarOff size={14} />
               ) : (
                 <IconChartBar size={14} />
@@ -846,6 +858,7 @@ export const FilterGroup = ({
 }: FilterGroupProps) => {
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
   const [showDistributions, setShowDistributions] = useState(false);
+  const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
   const hasRange = selectedValues.range != null;
 
@@ -918,6 +931,7 @@ export const FilterGroup = ({
               name={name}
               hasRange={hasRange}
               showDistributions={showDistributions}
+              isFetchingDistribution={isFetchingDistribution}
               isColumnDisplayed={isColumnDisplayed ?? false}
               isFieldPinned={isFieldPinned ?? false}
               totalAppliedFiltersSize={totalAppliedFiltersSize}
@@ -960,6 +974,7 @@ export const FilterGroup = ({
                   distributionKey={distributionKey}
                   showDistributions={showDistributions}
                   onDistributionError={onDistributionError}
+                  onFetchingDistributionChange={setIsFetchingDistribution}
                 />
               )
             )}
