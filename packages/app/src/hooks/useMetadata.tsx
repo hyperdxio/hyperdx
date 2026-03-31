@@ -21,6 +21,7 @@ import {
 import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
+import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -225,7 +226,11 @@ export function useMultipleGetKeyValues(
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
+  const { data: me } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
+
+  const maxKeys =
+    me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
 
   const query = useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
@@ -233,6 +238,7 @@ export function useMultipleGetKeyValues(
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
+      maxKeys,
     ],
     queryFn: async ({ signal }) => {
       return (
@@ -243,7 +249,7 @@ export function useMultipleGetKeyValues(
               : undefined;
             return metadata.getKeyValuesWithMVs({
               chartConfig,
-              keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+              keys: keys.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
