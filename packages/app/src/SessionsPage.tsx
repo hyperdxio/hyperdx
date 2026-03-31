@@ -511,8 +511,7 @@ function SessionSetupInstructions() {
       title="Set up session replays"
       description={
         <>
-          Follow these steps to start recording and viewing session replays with{' '}
-          <br />
+          Follow these steps to start recording and viewing session replays with
           the {brandName} Otel Collector.
         </>
       }

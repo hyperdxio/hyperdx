@@ -78,7 +78,7 @@ export default function EmptyState({
 
   const boxProps = restProps as Omit<BoxProps, 'children'>;
   return (
-    <Center mih={100} mx={boxProps.maw ? 'auto' : undefined} {...boxProps}>
+    <Center mih={100} mx="auto" {...boxProps}>
       {inner}
     </Center>
   );
