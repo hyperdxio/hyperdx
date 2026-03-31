@@ -1,5 +1,4 @@
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
 import { ObjectId } from 'mongodb';
@@ -7,7 +6,6 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboardAlerts } from '@/controllers/alerts';
-import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
@@ -18,86 +16,23 @@ import {
 } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
-  ExternalDashboardFilter,
-  externalDashboardFilterSchema,
-  externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
-  externalDashboardSavedFilterValueSchema,
-  externalDashboardTileListSchema,
   ExternalDashboardTileWithId,
   objectIdSchema,
-  tagsSchema,
 } from '@/utils/zod';
 
 import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
+  createDashboardBodySchema,
+  getMissingConnections,
+  getMissingSources,
   isConfigTile,
   isRawSqlExternalTileConfig,
   isSeriesTile,
+  resolveSavedQueryLanguage,
+  updateDashboardBodySchema,
 } from './utils/dashboards';
-
-/** Returns an array of source IDs that are referenced in the tiles/filters but do not exist in the team's sources */
-async function getMissingSources(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
-  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
-): Promise<string[]> {
-  const sourceIds = new Set<string>();
-
-  for (const tile of tiles) {
-    if (isSeriesTile(tile)) {
-      for (const series of tile.series) {
-        if ('sourceId' in series) {
-          sourceIds.add(series.sourceId);
-        }
-      }
-    } else if (isConfigTile(tile)) {
-      if ('sourceId' in tile.config && tile.config.sourceId) {
-        sourceIds.add(tile.config.sourceId);
-      }
-    }
-  }
-
-  if (filters?.length) {
-    for (const filter of filters) {
-      if ('sourceId' in filter) {
-        sourceIds.add(filter.sourceId);
-      }
-    }
-  }
-
-  const existingSources = await getSources(team.toString());
-  const existingSourceIds = new Set(
-    existingSources.map(source => source._id.toString()),
-  );
-  return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
-}
-
-/** Returns an array of connection IDs that are referenced in the tiles but do not belong to the team */
-async function getMissingConnections(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
-): Promise<string[]> {
-  const connectionIds = new Set<string>();
-
-  for (const tile of tiles) {
-    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
-      connectionIds.add(tile.config.connectionId);
-    }
-  }
-
-  if (connectionIds.size === 0) return [];
-
-  const existingConnections = await getConnectionsByTeam(team.toString());
-  const existingConnectionIds = new Set(
-    existingConnections.map(connection => connection._id.toString()),
-  );
-
-  return [...connectionIds].filter(
-    connectionId => !existingConnectionIds.has(connectionId),
-  );
-}
 
 async function getSourceConnectionMismatches(
   team: string | mongoose.Types.ObjectId,
@@ -122,62 +57,6 @@ async function getSourceConnectionMismatches(
 
   return sourcesWithInvalidConnections;
 }
-
-type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
-
-function resolveSavedQueryLanguage(params: {
-  savedQuery: string | null | undefined;
-  savedQueryLanguage: SavedQueryLanguage | null | undefined;
-}): SavedQueryLanguage | null | undefined {
-  const { savedQuery, savedQueryLanguage } = params;
-  if (savedQueryLanguage !== undefined) return savedQueryLanguage;
-  if (savedQuery === null) return null;
-  if (savedQuery) return 'lucene';
-
-  return undefined;
-}
-
-const dashboardBodyBaseShape = {
-  name: z.string().max(1024),
-  tiles: externalDashboardTileListSchema,
-  tags: tagsSchema,
-  savedQuery: z.string().nullable().optional(),
-  savedQueryLanguage: whereLanguageSchema.nullable().optional(),
-  savedFilterValues: z
-    .array(externalDashboardSavedFilterValueSchema)
-    .optional(),
-};
-
-function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
-  z.ZodObject<
-    typeof dashboardBodyBaseShape & {
-      filters: z.ZodOptional<z.ZodArray<z.ZodTypeAny>>;
-    }
-  >
-> {
-  return z
-    .object({
-      ...dashboardBodyBaseShape,
-      filters: z.array(filterSchema).optional(),
-    })
-    .superRefine((data, ctx) => {
-      if (data.savedQuery != null && data.savedQueryLanguage === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'savedQueryLanguage cannot be null when savedQuery is provided',
-          path: ['savedQueryLanguage'],
-        });
-      }
-    });
-}
-
-const createDashboardBodySchema = buildDashboardBodySchema(
-  externalDashboardFilterSchema,
-);
-const updateDashboardBodySchema = buildDashboardBodySchema(
-  externalDashboardFilterSchemaWithId,
-);
 
 /**
  * @openapi

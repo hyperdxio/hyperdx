@@ -5,6 +5,7 @@ import session from 'express-session';
 import onHeaders from 'on-headers';
 
 import * as config from './config';
+import mcpRouter from './mcp/app';
 import { isUserAuthenticated } from './middleware/auth';
 import defaultCors from './middleware/cors';
 import { appErrorHandler } from './middleware/error';
@@ -83,6 +84,7 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // PUBLIC ROUTES
 app.use('/', routers.rootRouter);
+app.use('/mcp', mcpRouter);
 
 // PRIVATE ROUTES
 app.use('/ai', isUserAuthenticated, routers.aiRouter);

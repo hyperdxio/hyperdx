@@ -6,19 +6,30 @@ import {
   RawSqlSavedChartConfig,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
+import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
 import _ from 'lodash';
+import mongoose from 'mongoose';
+import { z } from 'zod';
 
+import { getConnectionsByTeam } from '@/controllers/connection';
+import { getSources } from '@/controllers/sources';
 import { DashboardDocument } from '@/models/dashboard';
 import { translateFilterToExternalFilter } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
+  ExternalDashboardFilter,
+  externalDashboardFilterSchema,
+  externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
   ExternalDashboardRawSqlTileConfig,
+  externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
   ExternalDashboardTileConfig,
+  externalDashboardTileListSchema,
   ExternalDashboardTileWithId,
   externalQuantileLevelSchema,
+  tagsSchema,
 } from '@/utils/zod';
 
 // --------------------------------------------------------------------------------
@@ -467,7 +478,7 @@ export function convertToInternalTileConfig(
   // Omit keys that are null/undefined, so that they're not saved as null in Mongo.
   // We know that the resulting object will conform to SavedChartConfig since we're just
   // removing null properties and anything that is null will just be undefined instead.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
   const strippedConfig = _.omitBy(internalConfig, _.isNil) as SavedChartConfig;
 
   return {
@@ -475,3 +486,125 @@ export function convertToInternalTileConfig(
     config: strippedConfig,
   };
 }
+
+// --------------------------------------------------------------------------------
+// Shared dashboard validation helpers (used by both the REST router and MCP tools)
+// --------------------------------------------------------------------------------
+
+/** Returns source IDs referenced in tiles/filters that do not exist for the team */
+export async function getMissingSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
+): Promise<string[]> {
+  const sourceIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isSeriesTile(tile)) {
+      for (const series of tile.series) {
+        if ('sourceId' in series) {
+          sourceIds.add(series.sourceId);
+        }
+      }
+    } else if (isConfigTile(tile)) {
+      if ('sourceId' in tile.config && tile.config.sourceId) {
+        sourceIds.add(tile.config.sourceId);
+      }
+    }
+  }
+
+  if (filters?.length) {
+    for (const filter of filters) {
+      if ('sourceId' in filter) {
+        sourceIds.add(filter.sourceId);
+      }
+    }
+  }
+
+  const existingSources = await getSources(team.toString());
+  const existingSourceIds = new Set(
+    existingSources.map(source => source._id.toString()),
+  );
+  return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/** Returns connection IDs referenced in tiles that do not belong to the team */
+export async function getMissingConnections(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const connectionIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
+      connectionIds.add(tile.config.connectionId);
+    }
+  }
+
+  if (connectionIds.size === 0) return [];
+
+  const existingConnections = await getConnectionsByTeam(team.toString());
+  const existingConnectionIds = new Set(
+    existingConnections.map(connection => connection._id.toString()),
+  );
+
+  return [...connectionIds].filter(
+    connectionId => !existingConnectionIds.has(connectionId),
+  );
+}
+
+type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
+
+export function resolveSavedQueryLanguage(params: {
+  savedQuery: string | null | undefined;
+  savedQueryLanguage: SavedQueryLanguage | null | undefined;
+}): SavedQueryLanguage | null | undefined {
+  const { savedQuery, savedQueryLanguage } = params;
+  if (savedQueryLanguage !== undefined) return savedQueryLanguage;
+  if (savedQuery === null) return null;
+  if (savedQuery) return 'lucene';
+
+  return undefined;
+}
+
+const dashboardBodyBaseShape = {
+  name: z.string().max(1024),
+  tiles: externalDashboardTileListSchema,
+  tags: tagsSchema,
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: whereLanguageSchema.nullable().optional(),
+  savedFilterValues: z
+    .array(externalDashboardSavedFilterValueSchema)
+    .optional(),
+};
+
+function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
+  z.ZodObject<
+    typeof dashboardBodyBaseShape & {
+      filters: z.ZodOptional<z.ZodArray<z.ZodTypeAny>>;
+    }
+  >
+> {
+  return z
+    .object({
+      ...dashboardBodyBaseShape,
+      filters: z.array(filterSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.savedQuery != null && data.savedQueryLanguage === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'savedQueryLanguage cannot be null when savedQuery is provided',
+          path: ['savedQueryLanguage'],
+        });
+      }
+    });
+}
+
+export const createDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchema,
+);
+export const updateDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchemaWithId,
+);
