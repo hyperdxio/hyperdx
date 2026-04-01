@@ -1,5 +1,13 @@
 # @hyperdx/otel-collector
 
+## 2.22.1
+
+### Patch Changes
+
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+
+## 2.22.0
+
 ## 2.21.0
 
 ### Patch Changes

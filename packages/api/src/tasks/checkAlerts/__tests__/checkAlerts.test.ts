@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   AlertState,
+  SourceKind,
   Tile,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
@@ -354,16 +355,17 @@ describe('checkAlerts', () => {
         interval: '1m',
       },
       source: {
-        id: 'fake-source-id' as any,
-        kind: 'log' as any,
-        team: 'team-123' as any,
+        id: 'fake-source-id',
+        kind: SourceKind.Log,
+        team: 'team-123',
         from: {
           databaseName: 'default',
           tableName: 'otel_logs',
         },
         timestampValueExpression: 'Timestamp',
-        connection: 'connection-123' as any,
+        connection: 'connection-123',
         name: 'Logs',
+        defaultTableSelectExpression: 'Timestamp, Body',
       },
       savedSearch: {
         _id: 'fake-saved-search-id' as any,
@@ -376,6 +378,8 @@ describe('checkAlerts', () => {
         orderBy: 'timestamp',
         source: 'fake-source-id' as any,
         tags: ['test'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
       attributes: {},
       granularity: '1m',
@@ -406,6 +410,8 @@ describe('checkAlerts', () => {
         tiles: [testTile],
         team: 'team-123' as any,
         tags: ['test'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
@@ -5192,7 +5198,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
+    it('should issue one aggregation per alert ID (per-alert queries)', async () => {
       const alert1Id = new mongoose.Types.ObjectId();
       await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
       await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
@@ -5203,16 +5209,22 @@ describe('checkAlerts', () => {
 
       const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
 
+      const fakeAlertIds = Array(150)
+        .fill(null)
+        .map(() => new mongoose.Types.ObjectId().toString());
+      const allIds = [
+        alert1Id.toString(),
+        ...fakeAlertIds,
+        alert2Id.toString(),
+      ];
+
       const result = await getPreviousAlertHistories(
-        [
-          alert1Id.toString(),
-          ...Array(150).fill(new mongoose.Types.ObjectId().toString()),
-          alert2Id.toString(),
-        ],
+        allIds,
         new Date('2025-01-01T00:20:00Z'),
       );
 
-      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
+      // One aggregation per alert ID (no chunking)
+      expect(aggregateSpy).toHaveBeenCalledTimes(allIds.length);
       expect(result.size).toBe(2);
       expect(result.get(alert1Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:05:00Z'),

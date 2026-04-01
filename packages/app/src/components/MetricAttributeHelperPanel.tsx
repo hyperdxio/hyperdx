@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
   Box,
@@ -36,7 +36,7 @@ interface MetricAttributeHelperPanelProps {
   databaseName: string;
   metricType: string;
   metricName: string;
-  tableSource: TSource | undefined;
+  tableSource: TMetricSource | undefined;
   attributeKeys: AttributeKey[];
   isLoading?: boolean;
   language: 'sql' | 'lucene';
@@ -165,7 +165,7 @@ interface AttributeValueListProps {
   databaseName: string;
   metricType: string;
   metricName: string;
-  tableSource: TSource | undefined;
+  tableSource: TMetricSource | undefined;
   attribute: AttributeKey;
   language: 'sql' | 'lucene';
   onAddToWhere: (clause: string) => void;

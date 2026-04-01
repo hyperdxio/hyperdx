@@ -8,11 +8,7 @@ export const HDX_LOCAL_DEFAULT_CONNECTIONS = env(
 export const HDX_LOCAL_DEFAULT_SOURCES = env(
   'NEXT_PUBLIC_HDX_LOCAL_DEFAULT_SOURCES',
 );
-export const HDX_DISABLE_METADATA_FIELD_FETCH = env(
-  'NEXT_PUBLIC_HDX_DISABLE_METADATA_FIELD_FETCH',
-);
-
-export const NODE_ENV = process.env.NODE_ENV as string;
+const NODE_ENV = process.env.NODE_ENV as string;
 export const HDX_API_KEY = process.env.HYPERDX_API_KEY as string; // for nextjs server
 export const HDX_SERVICE_NAME =
   process.env.NEXT_PUBLIC_OTEL_SERVICE_NAME ?? 'hdx-oss-dev-app';
@@ -20,10 +16,9 @@ export const HDX_EXPORTER_ENABLED =
   (process.env.HDX_EXPORTER_ENABLED ?? 'true') === 'true';
 export const HDX_COLLECTOR_URL =
   process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
   'http://localhost:4318';
-export const IS_CI = NODE_ENV === 'ci';
 export const IS_DEV = NODE_ENV === 'development';
-export const IS_PROD = NODE_ENV === 'production';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 export const IS_LOCAL_MODE = //true;
@@ -31,6 +26,10 @@ export const IS_LOCAL_MODE = //true;
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
+
+/** Time captured at module load, use this a stable fallback/default time value instead of Date.now() defined in each React component file */
+// eslint-disable-next-line no-restricted-syntax
+export const NOW = Date.now();
 
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;

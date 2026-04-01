@@ -10,6 +10,8 @@ import {
   AlertChannelType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  pickSampleWeightExpressionProps,
+  SourceKind,
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -124,7 +126,7 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-export const notifyChannel = async ({
+const notifyChannel = async ({
   channel,
   message,
 }: {
@@ -603,6 +605,11 @@ ${targetTemplate}`;
     if (source == null) {
       throw new Error(`Source ID is ${alert.source} but source is null`);
     }
+    if (source.kind !== SourceKind.Log && source.kind !== SourceKind.Trace) {
+      throw new Error(
+        `Expecting SourceKind 'trace' or 'log', got ${source.kind}`,
+      );
+    }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
     const resolvedSelect =
@@ -616,6 +623,7 @@ ${targetTemplate}`;
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
+      ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {

@@ -4,8 +4,9 @@ import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  pickSampleWeightExpressionProps,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
@@ -129,6 +130,7 @@ import { externalQueryChartSeriesSchema } from '@/utils/zod';
  *       properties:
  *         data:
  *           type: array
+ *           description: Array of data points for the series
  *           items:
  *             $ref: '#/components/schemas/SeriesDataPoint'
  */
@@ -260,7 +262,7 @@ const buildChartConfigFromRequest = async (
       databaseName: source.from.databaseName,
       tableName: !isMetricSource ? source.from.tableName : '',
     },
-    ...(isMetricSource && {
+    ...(source.kind === SourceKind.Metric && {
       metricTables: source.metricTables,
     }),
     select: [
@@ -279,6 +281,7 @@ const buildChartConfigFromRequest = async (
     ],
     where: '',
     timestampValueExpression: source.timestampValueExpression,
+    ...pickSampleWeightExpressionProps(source),
     dateRange: [new Date(params.startTime), new Date(params.endTime)] as [
       Date,
       Date,

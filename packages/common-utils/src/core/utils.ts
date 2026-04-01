@@ -19,7 +19,7 @@ import {
   QuerySettings,
   SQLInterval,
   TileTemplateSchema,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
@@ -460,18 +460,19 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 
 export function convertToDashboardTemplate(
   input: Dashboard,
-  sources: TSourceUnion[],
+  sources: TSource[],
   connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
+    tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
   };
 
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
-    sources: TSourceUnion[],
+    sources: TSource[],
     connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
@@ -497,7 +498,7 @@ export function convertToDashboardTemplate(
 
   const convertToFilterTemplate = (
     input: DashboardFilter,
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found
@@ -517,8 +518,8 @@ export function convertToDashboardTemplate(
     }
   }
 
-  if (input.sections) {
-    output.sections = structuredClone(input.sections);
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
   }
 
   return output;
@@ -530,7 +531,7 @@ export function convertToDashboardDocument(
   const output: DashboardWithoutId = {
     name: input.name,
     tiles: [],
-    tags: [],
+    tags: input.tags ?? [],
   };
 
   // expecting that input.tiles[0-n].config.source fields are already converted to ids
@@ -556,8 +557,8 @@ export function convertToDashboardDocument(
     }
   }
 
-  if (input.sections) {
-    output.sections = structuredClone(input.sections);
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
   }
 
   return output;
@@ -816,7 +817,10 @@ export function parseTokenizerFromTextIndex({
     return { key, value };
   });
 
-  const tokenizerArg = args.find(arg => arg.key === 'tokenizer')?.value;
+  const tokenizerArgRaw = args.find(arg => arg.key === 'tokenizer')?.value;
+
+  // Strip surrounding quotes if present (e.g., 'splitByNonAlpha' -> splitByNonAlpha)
+  const tokenizerArg = stripQuotes(tokenizerArgRaw ?? '');
   if (!tokenizerArg) {
     console.error(
       `Invalid tokenizer argument in index type ${typeFull}: ${tokenizerArg}`,
@@ -986,23 +990,25 @@ export function aliasMapToWithClauses(
   return withClauses.length > 0 ? withClauses : undefined;
 }
 
-/** Parses and returns the local table and database name from the given distributed table metadata */
-export function getLocalTableFromDistributedTable(
+const stripQuotes = (s: string) => s.replace(/^["'`]|["'`]$/g, '');
+
+/** Parses and returns the cluster, database, and table from the given distributed table metadata */
+export function getDistributedTableArgs(
   tableMetadata: TableMetadata,
-): { database: string; table: string } | undefined {
+): { cluster: string; database: string; table: string } | undefined {
   const args = tableMetadata.engine_full.match(/Distributed\((.+)\)$/)?.[1];
   const splitArgs = splitAndTrimWithBracket(args ?? '');
 
   if (splitArgs.length < 3) {
     console.error(
-      `Failed to parse engine_full for Distributed table: ${tableMetadata.engine_full}`,
+      `Failed to parse engine arguments for Distributed table: ${tableMetadata.engine_full}`,
     );
     return undefined;
   }
 
-  // Remove surrounding quotes
-  const localDatabase = splitArgs[1].replace(/^["'`]|["'`]$/g, '');
-  const localTable = splitArgs[2].replace(/^["'`]|["'`]$/g, '');
-
-  return { database: localDatabase, table: localTable };
+  return {
+    cluster: stripQuotes(splitArgs[0]),
+    database: stripQuotes(splitArgs[1]),
+    table: stripQuotes(splitArgs[2]),
+  };
 }

@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.16.0",
+  "version": "0.16.2",
   "license": "MIT",
   "private": true,
   "files": [
@@ -20,11 +20,8 @@
     "lodash": "^4.17.23",
     "node-sql-parser": "^5.3.5",
     "object-hash": "^3.0.0",
-    "semver": "^7.5.3",
-    "sql-formatter": "^15.4.11",
+    "sql-formatter": "^15.7.2",
     "sqlstring": "^2.3.3",
-    "store2": "^2.14.4",
-    "uuid": "^8.3.2",
     "zod": "3.25"
   },
   "devDependencies": {
@@ -32,19 +29,11 @@
     "@types/jest": "^28.1.1",
     "@types/lodash": "^4.14.198",
     "@types/object-hash": "^2.2.1",
-    "@types/semver": "^7.3.12",
     "@types/sqlstring": "^2.3.0",
-    "@types/supertest": "^2.0.12",
-    "@types/uuid": "^8.3.4",
     "dotenv": "^17.2.3",
     "jest": "^28.1.1",
     "nodemon": "^2.0.20",
-    "rimraf": "^4.4.1",
-    "supertest": "^6.3.1",
     "ts-jest": "^29.4.5",
-    "ts-node": "^10.8.1",
-    "tsc-alias": "^1.8.8",
-    "tsconfig-paths": "^4.2.0",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3"
   },

@@ -28,6 +28,7 @@ export const useDashboardRefresh = ({
     const timeDiff =
       searchedTimeRange[1].getTime() - searchedTimeRange[0].getTime();
     const timeDiffRoundedToSecond = Math.round(timeDiff / 1000) * 1000;
+    // eslint-disable-next-line no-restricted-syntax
     const newEnd = new Date();
     const newStart = new Date(newEnd.getTime() - timeDiffRoundedToSecond);
     onTimeRangeSelect(newStart, newEnd);

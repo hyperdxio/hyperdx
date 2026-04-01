@@ -6,7 +6,12 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  isLogSource,
+  isMetricSource,
+  isTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconHelpCircle } from '@tabler/icons-react';
 
@@ -17,6 +22,7 @@ import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
+import SourceSchemaPreview from '../SourceSchemaPreview';
 import { SourceSelectControlled } from '../SourceSelect';
 
 import { SQL_PLACEHOLDERS } from './constants';
@@ -43,6 +49,7 @@ export default function RawSqlChartEditor({
   const displayType = useWatch({ control, name: 'displayType' });
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
+  const sourceObject = sources?.find(s => s.id === source);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -82,9 +89,9 @@ export default function RawSqlChartEditor({
     }));
 
     const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, argCount }) => ({
+      ({ name, minArgs }) => ({
         label: `$__${name}`,
-        apply: argCount > 0 ? `$__${name}(` : `$__${name}`,
+        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
         detail: 'macro',
         type: 'function',
       }),
@@ -93,6 +100,10 @@ export default function RawSqlChartEditor({
     return [...paramCompletions, ...macroCompletions];
   }, [displayType]);
 
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={sourceObject} variant="text" />;
+  }, [sourceObject]);
+
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
     return sources
@@ -100,11 +111,14 @@ export default function RawSqlChartEditor({
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 
-        if (source.kind !== SourceKind.Metric) {
+        if (!isMetricSource(source)) {
           tables.push(tcFromSource(source));
         }
 
-        if (source.materializedViews) {
+        if (
+          (isLogSource(source) || isTraceSource(source)) &&
+          source.materializedViews
+        ) {
           tables.push(
             ...source.materializedViews.map(mv => ({
               databaseName: mv.databaseName,
@@ -149,12 +163,10 @@ export default function RawSqlChartEditor({
           size="xs"
           clearable
           placeholder="None"
+          sourceSchemaPreview={sourceSchemaPreview}
         />
       </Group>
-      <RawSqlChartInstructions
-        displayType={displayType ?? DisplayType.Table}
-        isDashboardForm={isDashboardForm}
-      />
+      <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
       <Box style={{ position: 'relative' }}>
         <SQLEditorControlled
           control={control}

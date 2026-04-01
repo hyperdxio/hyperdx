@@ -36,6 +36,7 @@ export function intervalToMinutes(interval: AlertInterval): number {
 }
 
 export function intervalToDateRange(interval: AlertInterval): [Date, Date] {
+  // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
   if (interval === '1m') return [sub(now, { minutes: 15 }), now];
   if (interval === '5m') return [sub(now, { hours: 1 }), now];
@@ -149,6 +150,7 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
 export function isAlertSilenceExpired(silenced?: {
   until: string | Date;
 }): boolean {
+  // eslint-disable-next-line no-restricted-syntax
   return silenced ? new Date() > new Date(silenced.until) : false;
 }
 

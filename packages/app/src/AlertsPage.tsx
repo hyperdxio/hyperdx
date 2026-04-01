@@ -59,6 +59,8 @@ function AlertHistoryCard({
   alertUrl: string;
 }) {
   const start = new Date(history.createdAt.toString());
+
+  // eslint-disable-next-line no-restricted-syntax
   const today = React.useMemo(() => new Date(), []);
 
   const href = React.useMemo(() => {
@@ -146,6 +148,7 @@ function AckAlert({ alert }: { alert: AlertsPageItem }) {
 
   const handleSilenceAlert = React.useCallback(
     (duration: Duration) => {
+      // eslint-disable-next-line no-restricted-syntax
       const mutedUntil = add(new Date(), duration);
       silenceAlert.mutate(
         {

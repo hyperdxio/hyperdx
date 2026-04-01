@@ -31,7 +31,6 @@ import {
   CteChartConfig,
   DateRange,
   DisplayType,
-  Filter,
   MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
@@ -181,6 +180,12 @@ export function isNonEmptyWhereExpr(where?: string): where is string {
   return where != null && where.trim() != '';
 }
 
+function hasSubqueryCte(
+  withClauses: BuilderChartConfigWithDateRange['with'],
+): boolean {
+  return withClauses?.some(w => w.isSubquery !== false) ?? false;
+}
+
 const fastifySQL = ({
   materializedFields,
   rawSQL,
@@ -320,11 +325,13 @@ const aggFnExpr = ({
   expr,
   level,
   where,
+  sampleWeightExpression,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
   level?: number;
   where?: string;
+  sampleWeightExpression?: string;
 }) => {
   const isAny = fn === 'any';
   const isNone = fn === 'none';
@@ -364,6 +371,79 @@ const aggFnExpr = ({
     return chSql`${fn}(${unsafeExpr}${
       isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''
     })`;
+  }
+
+  // Sample-weighted aggregations: when sampleWeightExpression is set,
+  // each row carries a weight (defaults to 1 for unsampled spans).
+  // Corrected formulas account for upstream sampling (1-in-N).
+  // The greatest(..., 1) ensures unsampled rows (missing/empty/zero)
+  // are counted at weight 1 rather than dropped.
+  if (
+    sampleWeightExpression &&
+    !fn.endsWith('Merge') &&
+    !fn.endsWith('State')
+  ) {
+    const sampleWeightExpr = `greatest(toUInt64OrZero(toString(${sampleWeightExpression})), 1)`;
+    const w = { UNSAFE_RAW_SQL: sampleWeightExpr };
+
+    if (fn === 'count') {
+      return isWhereUsed
+        ? chSql`sumIf(${w}, ${{ UNSAFE_RAW_SQL: where }})`
+        : chSql`sum(${w})`;
+    }
+
+    if (fn === 'none') {
+      return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
+    }
+
+    if (expr != null) {
+      if (fn === 'count_distinct' || fn === 'min' || fn === 'max') {
+        // These cannot be corrected for sampling; pass through unchanged
+        if (fn === 'count_distinct') {
+          return chSql`count${isWhereUsed ? 'If' : ''}(DISTINCT ${{
+            UNSAFE_RAW_SQL: expr,
+          }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
+        }
+        return chSql`${{ UNSAFE_RAW_SQL: fn }}${isWhereUsed ? 'If' : ''}(
+          ${unsafeExpr}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''}
+        )`;
+      }
+
+      if (fn === 'avg') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        const nullCheck = `${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
+        if (isWhereUsed) {
+          const cond = { UNSAFE_RAW_SQL: `${where} AND ${nullCheck}` };
+          return chSql`sumIf(${weightedVal}, ${cond}) / nullIf(sumIf(${w}, ${cond}), 0)`;
+        }
+        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / nullIf(sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }}), 0)`;
+      }
+
+      if (fn === 'sum') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        if (isWhereUsed) {
+          return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`sum(${weightedVal})`;
+      }
+
+      if (level != null && fn.startsWith('quantile')) {
+        const levelStr = Number.isFinite(level) ? `${level}` : '0';
+        const weightArg = {
+          UNSAFE_RAW_SQL: `toUInt32(${sampleWeightExpr})`,
+        };
+        if (isWhereUsed) {
+          return chSql`quantileTDigestWeightedIf(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`quantileTDigestWeighted(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg})`;
+      }
+
+      // For any other fn (last_value, any, etc.), fall through to default
+    }
   }
 
   if (fn === 'count') {
@@ -422,13 +502,14 @@ async function renderSelectList(
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when chartConfig.from.databaseName is not set.
     materializedFields =
-      chartConfig.with?.length || !chartConfig.from.databaseName
+      hasSubqueryCte(chartConfig.with) || !chartConfig.from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId: chartConfig.connection,
@@ -478,12 +559,14 @@ async function renderSelectList(
           // @ts-expect-error (TS doesn't know that we've already checked for quantile)
           level: select.level,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       } else {
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       }
 
@@ -577,14 +660,14 @@ export async function timeFilterExpr({
   try {
     // Not all of these will be available when selecting from a CTE
     if (databaseName && tableName && connectionId) {
-      const { primary_key } = await metadata.getTableMetadata({
+      const tableMetadata = await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
       });
       optimizedTimestampValueExpression = optimizeTimestampValueExpression(
         timestampValueExpression,
-        primary_key,
+        tableMetadata?.primary_key,
       );
     }
   } catch (e) {
@@ -635,19 +718,15 @@ export async function timeFilterExpr({
           ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
+      // toStartOf* filters must stay inclusive — strict < on a rounded value drops a whole interval
+      const startOp = dateRangeStartInclusive || toStartOf ? '>=' : '>';
+      const endOp = dateRangeEndInclusive || toStartOf ? '<=' : '<';
+
       // If it's a date type
       if (columnMeta?.type === 'Date') {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } toDate(${endTimeCond}))`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
       } else {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } ${startTimeCond} AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } ${endTimeCond})`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
       }
     }),
   );
@@ -731,14 +810,14 @@ async function renderWhereExpressionStr({
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
-
+  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
+  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
   let materializedFields: Map<string, string> | undefined;
   try {
     // This will likely error when referencing a CTE, which is assumed
     // to be the case when from.databaseName is not set.
     materializedFields =
-      withClauses?.length || !from.databaseName
+      hasSubqueryCte(withClauses) || !from.databaseName
         ? undefined
         : await metadata.getMaterializedColumnsLookupTable({
             connectionId,
@@ -1123,7 +1202,12 @@ async function translateMetricChartConfig(
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
-  if (metricType === MetricsDataType.Gauge && metricName) {
+  if (
+    metricType === MetricsDataType.Gauge &&
+    metricName &&
+    MetricsDataType.Gauge in metricTables &&
+    metricTables[MetricsDataType.Gauge]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
@@ -1210,7 +1294,12 @@ async function translateMetricChartConfig(
       timestampValueExpression: timeBucketCol,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
-  } else if (metricType === MetricsDataType.Sum && metricName) {
+  } else if (
+    metricType === MetricsDataType.Sum &&
+    metricName &&
+    MetricsDataType.Sum in metricTables &&
+    metricTables[MetricsDataType.Sum]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const valueHighCol = '`__hdx_value_high`';
     const valueHighPrevCol = '`__hdx_value_high_prev`';
@@ -1332,7 +1421,12 @@ async function translateMetricChartConfig(
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (metricType === MetricsDataType.Histogram && metricName) {
+  } else if (
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram]
+  ) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -1359,7 +1453,7 @@ async function translateMetricChartConfig(
         Array.isArray(chartConfig.dateRange)
           ? convertDateRangeToGranularityString(chartConfig.dateRange)
           : chartConfig.granularity,
-    } as BuilderChartConfigWithOptDateRangeEx;
+    } satisfies BuilderChartConfigWithOptDateRangeEx;
 
     const timeBucketSelect = isUsingGranularity(cteChartConfig)
       ? timeBucketExpr({
@@ -1429,17 +1523,23 @@ async function renderFiltersToSql(
   const conditions = (
     await Promise.all(
       chartConfig.filters.map(async filter => {
+        const hasSourceTable =
+          chartConfig.from &&
+          chartConfig.from.tableName && // tableName is falsy for metric sources
+          chartConfig.source;
+
         if (filter.type === 'sql_ast') {
           return `(${filter.left} ${filter.operator} ${filter.right})`;
+        } else if (filter.type === 'sql' && !hasSourceTable) {
+          return `(${filter.condition})`; // Don't pass to renderWhereExpressionStr since it requires source table metadata
         } else if (
           (filter.type === 'lucene' || filter.type === 'sql') &&
           filter.condition.trim() &&
-          chartConfig.from &&
-          chartConfig.source
+          hasSourceTable
         ) {
           const condition = await renderWhereExpressionStr({
             condition: filter.condition,
-            from: chartConfig.from,
+            from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
             metadata,
@@ -1461,10 +1561,7 @@ export async function renderRawSqlChartConfig(
   const displayType = chartConfig.displayType ?? DisplayType.Table;
 
   const filtersSQL = await renderFiltersToSql(chartConfig, metadata);
-  const sqlWithMacrosReplaced = replaceMacros(
-    chartConfig.sqlTemplate,
-    filtersSQL,
-  );
+  const sqlWithMacrosReplaced = replaceMacros(chartConfig, filtersSQL);
 
   // eslint-disable-next-line security/detect-object-injection
   const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];

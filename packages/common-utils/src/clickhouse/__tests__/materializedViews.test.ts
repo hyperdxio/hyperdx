@@ -10,7 +10,8 @@ import { isBuilderChartConfig } from '@/guards';
 import {
   ChartConfigWithOptDateRange,
   MaterializedViewConfiguration,
-  TSource,
+  SourceKind,
+  TLogSource,
 } from '@/types';
 
 import { ColumnMeta } from '..';
@@ -83,7 +84,7 @@ describe('materializedViews', () => {
   const SOURCE = {
     from: { databaseName: 'default', tableName: 'otel_spans' },
     materializedViews: [MV_CONFIG_METRIC_ROLLUP_1M],
-  } as TSource;
+  } as TLogSource;
 
   describe('tryConvertConfigToMaterializedViewSelect', () => {
     it('should return empty object if selecting a string instead of an array of aggregates', async () => {
@@ -1094,7 +1095,7 @@ describe('materializedViews', () => {
         {} as any,
         {
           from: { databaseName: 'default', tableName: 'table_without_mv' },
-        } as TSource,
+        } as TLogSource,
       );
 
       expect(actual).toEqual(chartConfig);
@@ -1509,7 +1510,7 @@ describe('materializedViews', () => {
           {} as any,
           {
             from: { databaseName: 'default', tableName: 'table_without_mv' },
-          } as TSource,
+          } as TLogSource,
         );
 
       expect(result).toEqual({
@@ -1916,6 +1917,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment', 'service', 'status_code'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_LOGS_1M],
       };
@@ -1958,6 +1960,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment', 'service', 'region'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_LOGS_1M, MV_CONFIG_LOGS_1H],
       };
@@ -2022,6 +2025,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment', 'unsupported_key'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_LOGS_1M],
       };
@@ -2121,6 +2125,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_LOGS_1M, MV_CONFIG_LOGS_1H],
       };
@@ -2345,6 +2350,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment', 'service', 'status_code'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_LOGS_1M],
       };
@@ -2398,6 +2404,7 @@ describe('materializedViews', () => {
 
       const keys = ['environment', 'service'];
       const source = {
+        kind: SourceKind.Log,
         from: { databaseName: 'default', tableName: 'logs' },
         materializedViews: [MV_CONFIG_WITH_DIFFERENT_TIMESTAMP],
         timestampValueExpression: 'source_timestamp',

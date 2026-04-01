@@ -5,10 +5,13 @@ import {
   AlertConditionType,
   AlertInterval,
   Filter,
+  getSampleWeightExpression,
+  isLogSource,
+  isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -17,7 +20,7 @@ import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
 
-export type AlertPreviewChartProps = {
+type AlertPreviewChartProps = {
   source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
@@ -45,7 +48,9 @@ export const AlertPreviewChart = ({
   const resolvedSelect =
     (select && select.trim().length > 0
       ? select
-      : source.defaultTableSelectExpression) ?? '';
+      : isLogSource(source) || isTraceSource(source)
+        ? source.defaultTableSelectExpression
+        : undefined) ?? '';
 
   const { data: aliasMap } = useAliasMapFromChartConfig({
     select: resolvedSelect,
@@ -70,7 +75,11 @@ export const AlertPreviewChart = ({
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
           filters: filters || undefined,
-          implicitColumnExpression: source.implicitColumnExpression,
+          implicitColumnExpression:
+            isLogSource(source) || isTraceSource(source)
+              ? source.implicitColumnExpression
+              : undefined,
+          sampleWeightExpression: getSampleWeightExpression(source),
           groupBy,
           with: aliasWith,
           select: [

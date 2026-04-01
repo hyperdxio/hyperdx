@@ -13,38 +13,26 @@ permissions:
   pull-requests: write
   actions: read
 jobs:
-  release:
-    name: Release
-    runs-on: ubuntu-24.04
+  # ---------------------------------------------------------------------------
+  # OTel Collector Nightly
+  # ---------------------------------------------------------------------------
+  build-otel-collector-nightly:
+    name: Build OTel Collector Nightly (${{ matrix.arch }})
     strategy:
       fail-fast: true
       matrix:
-        release:
-          - release-all-in-one-nightly
-          - release-app-nightly
-          - release-local-nightly
-          - release-otel-collector-nightly
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-latest-arm64
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
-          tool-cache: false
-          docker-images: false
-
-          # all of these default to true, but feel free to set to
-          # "false" if necessary for your workflow
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -59,17 +47,309 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
-      - name: Publish Images
-        run: make ${{ matrix.release }}
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/otel-collector/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: prod
+          tags: |
+            ${{ env.OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          push: true
+          cache-from: type=gha,scope=otel-collector-nightly-${{ matrix.arch }}
+          cache-to:
+            type=gha,mode=max,scope=otel-collector-nightly-${{ matrix.arch }}
 
+  publish-otel-collector-nightly:
+    name: Publish OTel Collector Nightly Manifest
+    needs: build-otel-collector-nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
+        run: |
+          TAG="${{ env.IMAGE_NIGHTLY_TAG }}"
+          for IMAGE in "${{ env.OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${TAG}" \
+              "${IMAGE}:${TAG}-amd64" \
+              "${IMAGE}:${TAG}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # App Nightly
+  # ---------------------------------------------------------------------------
+  build-app-nightly:
+    name: Build App Nightly (${{ matrix.arch }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: prod
+          build-contexts: |
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.IMAGE_NIGHTLY_TAG }}
+          tags: |
+            ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=app-nightly-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=app-nightly-${{ matrix.arch }}
+
+  publish-app-nightly:
+    name: Publish App Nightly Manifest
+    needs: build-app-nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifest
+        run: |
+          TAG="${{ env.IMAGE_NIGHTLY_TAG }}"
+          IMAGE="${{ env.IMAGE_NAME_DOCKERHUB }}"
+          docker buildx imagetools create \
+            -t "${IMAGE}:${TAG}" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
+
+  # ---------------------------------------------------------------------------
+  # Local Nightly (all-in-one-noauth)
+  # ---------------------------------------------------------------------------
+  build-local-nightly:
+    name: Build Local Nightly (${{ matrix.arch }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: all-in-one-noauth
+          build-contexts: |
+            clickhouse=./docker/clickhouse
+            otel-collector=./docker/otel-collector
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.IMAGE_NIGHTLY_TAG }}
+          tags: |
+            ${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=local-nightly-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=local-nightly-${{ matrix.arch }}
+
+  publish-local-nightly:
+    name: Publish Local Nightly Manifest
+    needs: build-local-nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
+        run: |
+          TAG="${{ env.IMAGE_NIGHTLY_TAG }}"
+          for IMAGE in "${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_LOCAL_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${TAG}" \
+              "${IMAGE}:${TAG}-amd64" \
+              "${IMAGE}:${TAG}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # All-in-One Nightly (all-in-one-auth)
+  # ---------------------------------------------------------------------------
+  build-all-in-one-nightly:
+    name: Build All-in-One Nightly (${{ matrix.arch }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: Large-Runner-x64-32
+          - arch: arm64
+            platform: linux/arm64
+            runner: Large-Runner-ARM64-32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/hyperdx/Dockerfile
+          platforms: ${{ matrix.platform }}
+          target: all-in-one-auth
+          build-contexts: |
+            clickhouse=./docker/clickhouse
+            otel-collector=./docker/otel-collector
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=${{ env.IMAGE_NIGHTLY_TAG }}
+          tags: |
+            ${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=all-in-one-nightly-${{ matrix.arch }}
+          cache-to:
+            type=gha,mode=max,scope=all-in-one-nightly-${{ matrix.arch }}
+
+  publish-all-in-one-nightly:
+    name: Publish All-in-One Nightly Manifest
+    needs: build-all-in-one-nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Create multi-arch manifests
+        run: |
+          TAG="${{ env.IMAGE_NIGHTLY_TAG }}"
+          for IMAGE in "${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${TAG}" \
+              "${IMAGE}:${TAG}-amd64" \
+              "${IMAGE}:${TAG}-arm64"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Failure notification + OTel
+  # ---------------------------------------------------------------------------
   slack-notify-failure:
-    needs: release
+    needs:
+      [
+        publish-otel-collector-nightly,
+        publish-app-nightly,
+        publish-local-nightly,
+        publish-all-in-one-nightly,
+      ]
     runs-on: ubuntu-24.04
     if: failure() && always()
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Get failed jobs
         id: get_failed_jobs
         uses: actions/github-script@v7
@@ -88,7 +368,6 @@ jobs:
               .join(', ');
 
             core.setOutput('failed_jobs', failedJobs);
-
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         with:
@@ -96,7 +375,7 @@ jobs:
           fields: repo,workflow,commit,author
           custom_payload: |
             {
-              "text": "Release Nightly Failed 😔",
+              "text": "Release Nightly Failed",
               "attachments": [{
                 "color": "danger",
                 "fields": [
@@ -122,48 +401,18 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_ENG_NOTIFS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # notify_downstream:
-  #   name: Notify Downstream
-  #   needs: [publish_common_utils, release]
-  #   runs-on: ubuntu-24.04
-  #   if:
-  #     needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
-  #     'false'
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     - name: Load Environment Variables from .env
-  #       uses: xom9ikk/dotenv@v2
-  #     - name: Get Downstream App Installation Token
-  #       id: auth
-  #       uses: actions/create-github-app-token@v2
-  #       with:
-  #         app-id: ${{ secrets.DOWNSTREAM_CH_APP_ID }}
-  #         private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
-  #         owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
-  #     - name: Notify Downstream
-  #       uses: actions/github-script@v7
-  #       env:
-  #         TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
-  #       with:
-  #         github-token: ${{ steps.auth.outputs.token }}
-  #         script: |
-  #           const { TAG } = process.env;
-  #           const result = await github.rest.actions.createWorkflowDispatch({
-  #             owner: '${{ secrets.DOWNSTREAM_CH_OWNER }}',
-  #             repo: '${{ secrets.DOWNSTREAM_DP_REPO }}',
-  #             workflow_id: '${{ secrets.DOWNSTREAM_DP_WORKFLOW_ID }}',
-  #             ref: 'main',
-  #             inputs: {
-  #               tag: TAG
-  #             }
-  #           });
-
   otel-cicd-action:
     if: always()
     name: OpenTelemetry Export Trace
     runs-on: ubuntu-latest
-    needs: [release, slack-notify-failure]
+    needs:
+      [
+        publish-otel-collector-nightly,
+        publish-app-nightly,
+        publish-local-nightly,
+        publish-all-in-one-nightly,
+        slack-notify-failure,
+      ]
     steps:
       - name: Export workflow
         uses: corentinmusard/otel-cicd-action@v4

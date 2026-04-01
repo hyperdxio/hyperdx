@@ -270,6 +270,3 @@ export function getTheme(name: ThemeName = DEFAULT_THEME): ThemeConfig {
 
 // Re-export types
 export type { ThemeConfig, ThemeName } from './types';
-
-// Re-export for backwards compatibility
-export { makeTheme, theme } from './themes/hyperdx/mantineTheme';

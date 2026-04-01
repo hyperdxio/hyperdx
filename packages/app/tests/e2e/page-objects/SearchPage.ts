@@ -25,8 +25,6 @@ export class SearchPage {
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
-  readonly editSourceMenuItem: Locator;
-
   private readonly alertsButtonLocator: Locator;
 
   // Page-specific locators
@@ -39,8 +37,6 @@ export class SearchPage {
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
-  private readonly sourceSettingsMenu: Locator;
-  private readonly createNewSourceMenuItem: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
     this.page = page;
@@ -71,19 +67,14 @@ export class SearchPage {
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
     this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
-    this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
-    this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
-    this.createNewSourceMenuItem = page.getByTestId(
-      'create-new-source-menu-item',
-    );
-  }
-
-  get sourceMenu() {
-    return this.sourceSettingsMenu;
   }
 
   get createNewSourceItem() {
-    return this.createNewSourceMenuItem;
+    return this.page.getByRole('option', { name: 'Create New Source' });
+  }
+
+  get editSourcesItem() {
+    return this.page.getByRole('option', { name: 'Edit Sources' });
   }
 
   /**
@@ -103,8 +94,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSettingsMenu.click();
-    await this.editSourceMenuItem.click();
+    await this.sourceSelector.click();
+    await this.editSourcesItem.click();
   }
 
   async sourceModalShowOptionalFields() {
@@ -193,6 +184,18 @@ export class SearchPage {
       : this.saveSearchButton;
     await button.scrollIntoViewIfNeeded();
     await button.click();
+  }
+
+  /**
+   * Click "Save as New Search" from the action bar menu on an existing saved search.
+   * Opens the save search modal in "create" mode for duplicating the current search.
+   */
+  async clickSaveAsNew() {
+    // Click the action bar menu trigger (three dots icon next to the saved search name)
+    await this.page.getByTestId('search-page-action-bar').click();
+    await this.page
+      .getByRole('menuitem', { name: 'Save as New Search' })
+      .click();
   }
 
   /**

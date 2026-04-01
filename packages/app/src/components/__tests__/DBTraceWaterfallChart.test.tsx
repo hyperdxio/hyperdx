@@ -1,5 +1,9 @@
 import React from 'react';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TLogSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 
@@ -10,6 +14,7 @@ import useRowWhere from '@/hooks/useRowWhere';
 import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
+  getDescendantIds,
   SpanRow,
   useEventsAroundFocus,
 } from '../DBTraceWaterfallChart';
@@ -49,30 +54,34 @@ const MockTimelineChart = TimelineChart as any;
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
-  const mockTraceTableSource: TSource = {
+  const mockTraceTableSource: TTraceSource = {
     id: 'trace-source-id',
     kind: SourceKind.Trace,
     name: 'trace-source',
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',
   };
 
-  const mockLogTableSource: TSource = {
+  const mockLogTableSource: TLogSource = {
     id: 'log-source-id',
     kind: SourceKind.Log,
     name: 'log-source',
     from: { databaseName: 'test_db', tableName: 'log_table' },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     implicitColumnExpression: 'Body',
     connection: 'conn2',
   };
@@ -267,19 +276,22 @@ describe('DBTraceWaterfallChartContainer', () => {
 
 describe('useEventsAroundFocus', () => {
   // Test data
-  const mockTableSource: TSource = {
+  const mockTableSource: TTraceSource = {
     id: 'test-table-source-id',
     kind: SourceKind.Trace,
     name: 'trace-source',
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',
@@ -373,5 +385,64 @@ describe('useEventsAroundFocus', () => {
   it('does not fetch when disabled', () => {
     const result = testEventsAroundFocus({ enabled: false });
     expect(result.rows.length).toBe(0);
+  });
+});
+
+describe('getDescendantIds', () => {
+  it('returns empty array for node with no children', () => {
+    expect(getDescendantIds({ id: 'root' })).toEqual([]);
+    expect(getDescendantIds({ id: 'root', children: [] })).toEqual([]);
+  });
+
+  it('returns empty array for node with undefined or missing children', () => {
+    expect(getDescendantIds({ id: 'root', children: undefined })).toEqual([]);
+  });
+
+  it('returns direct children ids for a single level', () => {
+    const node = {
+      id: 'root',
+      children: [
+        { id: 'a', children: [] },
+        { id: 'b', children: [] },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['a', 'b']);
+  });
+
+  it('returns all descendant ids for nested children', () => {
+    const node = {
+      id: 'root',
+      children: [
+        {
+          id: 'a',
+          children: [
+            { id: 'a1', children: [] },
+            { id: 'a2', children: [] },
+          ],
+        },
+        { id: 'b', children: [] },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['a', 'a1', 'a2', 'b']);
+  });
+
+  it('skips children without id but still recurses into their descendants', () => {
+    const node = {
+      id: 'root',
+      children: [
+        {
+          children: [{ id: 'grandchild', children: [] }],
+        },
+      ],
+    };
+    expect(getDescendantIds(node)).toEqual(['grandchild']);
+  });
+
+  it('returns single descendant for one child', () => {
+    const node = {
+      id: 'root',
+      children: [{ id: 'only', children: [] }],
+    };
+    expect(getDescendantIds(node)).toEqual(['only']);
   });
 });

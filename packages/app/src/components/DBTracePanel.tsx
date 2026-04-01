@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Center,
@@ -24,6 +28,7 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const eventRowWhereParser = parseAsJsonEncoded<{
@@ -112,14 +117,22 @@ export default function DBTracePanel({
     setValue: traceIdSetValue,
   } = useForm<{ traceIdExpression: string }>({
     defaultValues: {
-      traceIdExpression: parentSourceData?.traceIdExpression ?? '',
+      traceIdExpression:
+        (parentSourceData &&
+          (isLogSource(parentSourceData) || isTraceSource(parentSourceData)) &&
+          parentSourceData.traceIdExpression) ||
+        '',
     },
   });
   useEffect(() => {
-    if (parentSourceData?.traceIdExpression) {
+    if (
+      parentSourceData &&
+      (isLogSource(parentSourceData) || isTraceSource(parentSourceData)) &&
+      parentSourceData.traceIdExpression
+    ) {
       traceIdSetValue('traceIdExpression', parentSourceData.traceIdExpression);
     }
-  }, [parentSourceData?.traceIdExpression, traceIdSetValue]);
+  }, [parentSourceData, traceIdSetValue]);
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
@@ -131,14 +144,21 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={childSourceData} variant="text" />;
+  }, [childSourceData]);
+
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
     <div data-testid={dataTestId}>
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text size="xs" me="xs">
-            {parentSourceData?.traceIdExpression}:{' '}
-            {traceId || 'No trace id found for event'}
+            {parentSourceData &&
+            (isLogSource(parentSourceData) || isTraceSource(parentSourceData))
+              ? parentSourceData.traceIdExpression
+              : ''}
+            : {traceId || 'No trace id found for event'}
           </Text>
           {traceId != null && (
             <Button
@@ -156,7 +176,12 @@ export default function DBTracePanel({
               ? 'Trace Source'
               : 'Correlated Log Source'}
           </Text>
-          <SourceSelectControlled control={control} name="source" size="xs" />
+          <SourceSelectControlled
+            control={control}
+            name="source"
+            size="xs"
+            sourceSchemaPreview={sourceSchemaPreview}
+          />
         </Group>
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
@@ -175,7 +200,11 @@ export default function DBTracePanel({
               ms="sm"
               variant="primary"
               onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
-                if (parentSourceData != null) {
+                if (
+                  parentSourceData &&
+                  (isLogSource(parentSourceData) ||
+                    isTraceSource(parentSourceData))
+                ) {
                   updateTableSource({
                     source: {
                       ...parentSourceData,

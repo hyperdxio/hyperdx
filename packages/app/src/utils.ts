@@ -4,9 +4,14 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
+import { NOW } from './config';
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
@@ -20,43 +25,6 @@ export function omit<T extends object, K extends keyof T>(
       obj as object,
     ),
   } as Omit<T, K>;
-}
-
-export function generateSearchUrl({
-  query,
-  dateRange,
-  lineId,
-  isUTC,
-  savedSearchId,
-}: {
-  savedSearchId?: string;
-  query?: string;
-  dateRange?: [Date, Date];
-  lineId?: string;
-  isUTC?: boolean;
-}) {
-  const fromDate = dateRange ? dateRange[0] : new Date();
-  const toDate = dateRange ? dateRange[1] : new Date();
-  const qparams = new URLSearchParams({
-    q: query ?? '',
-    from: fromDate.getTime().toString(),
-    to: toDate.getTime().toString(),
-    tq: dateRangeToString([fromDate, toDate], isUTC ?? false),
-    ...(lineId ? { lid: lineId } : {}),
-  });
-  return `/search${
-    savedSearchId != null ? `/${savedSearchId}` : ''
-  }?${qparams.toString()}`;
-}
-
-export function useFirstNonNullValue<T>(value: T): T {
-  const [firstNonNullValue, setFirstNonNullValue] = useState<T>(value);
-  useEffect(() => {
-    if (value != null) {
-      setFirstNonNullValue(v => (v == null ? value : v));
-    }
-  }, [value]);
-  return firstNonNullValue;
 }
 
 // From: https://usehooks.com/useWindowSize/
@@ -94,15 +62,6 @@ export const isValidUrl = (input: string) => {
     new URL(input);
     return true;
   } catch (err) {
-    return false;
-  }
-};
-
-export const isValidJson = (input: string) => {
-  try {
-    JSON.parse(input);
-    return true;
-  } catch {
     return false;
   }
 };
@@ -184,7 +143,7 @@ export const QUERY_LOCAL_STORAGE = {
   LIMIT: 10, // cache up to 10
 };
 
-export function getLocalStorageValue<T>(key: string): T | null {
+function getLocalStorageValue<T>(key: string): T | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -409,7 +368,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 // Chart color palette - single source of truth
 // Colors from Observable categorical palette, with custom brand green
 // https://observablehq.com/@d3/color-schemes
-export const CHART_PALETTE = {
+const CHART_PALETTE = {
   green: '#00c28a', // Brand green (Mantine green.5) - used as primary chart color
   blue: '#4269d0',
   orange: '#efb118',
@@ -428,7 +387,7 @@ export const CHART_PALETTE = {
 
 // ClickStack theme chart color palette - Observable 10 categorical palette
 // https://observablehq.com/@d3/color-schemes
-export const CLICKSTACK_CHART_PALETTE = {
+const CLICKSTACK_CHART_PALETTE = {
   blue: '#437EEF', // Primary color for ClickStack
   orange: '#efb118',
   red: '#ff725c',
@@ -492,7 +451,7 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
  * This is expected behavior - charts typically render after data fetching (client-side),
  * so hydration mismatches are rare. If needed, wrap chart components with suppressHydrationWarning.
  */
-export function getColorFromCSSVariable(index: number): string {
+function getColorFromCSSVariable(index: number): string {
   const colorArrayLength = COLORS.length;
 
   if (typeof window === 'undefined') {
@@ -680,21 +639,6 @@ export const truncateMiddle = (str: string, maxLen = 10) => {
   )}`;
 };
 
-export const useIsBlog = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/blog');
-};
-
-export const useIsDocs = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/docs');
-};
-
-export const useIsTerms = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/terms');
-};
-
 export const usePrevious = <T>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
   useEffect(() => {
@@ -760,15 +704,6 @@ export const formatUptime = (seconds: number) => {
 };
 
 // FIXME: eventually we want to separate metric name into two fields
-export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
-  const [mName, mDataType] = (metricName ?? '').split(' - ');
-
-  return {
-    name: mName,
-    dataType: mDataType as MetricsDataType,
-  };
-};
-
 // Date formatting
 export const mergePath = (path: string[], jsonColumns: string[] = []) => {
   const [key, ...rest] = path;
@@ -787,7 +722,7 @@ export const mergePath = (path: string[], jsonColumns: string[] = []) => {
     : `${key}['${rest.join("']['")}']`;
 };
 
-export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output = null;
   let error = null;
   try {
@@ -829,11 +764,15 @@ export function getMetricTableName(
   source: TSource,
   metricType?: string,
 ): string | undefined {
-  return metricType == null
-    ? source.from.tableName
-    : source.metricTables?.[
-        metricType.toLowerCase() as keyof typeof source.metricTables
-      ];
+  if (metricType == null) {
+    return source.from.tableName;
+  }
+  if (source.kind === SourceKind.Metric) {
+    return source.metricTables?.[
+      metricType.toLowerCase() as keyof typeof source.metricTables
+    ];
+  }
+  return undefined;
 }
 
 export function getAllMetricTables(source: TSource): TableConnection[] {
@@ -842,15 +781,17 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
   return Object.values(MetricsDataType)
     .filter(
       metricType =>
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        !!source.metricTables![metricType as keyof TSource['metricTables']],
+        !!source.metricTables[
+          metricType as unknown as keyof TMetricSource['metricTables']
+        ],
     )
     .map(
       metricType =>
         ({
           tableName:
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            source.metricTables![metricType as keyof TSource['metricTables']],
+            source.metricTables[
+              metricType as unknown as keyof TMetricSource['metricTables']
+            ],
           databaseName: source.from.databaseName,
           connectionId: source.connection,
         }) satisfies TableConnection,

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Button, Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -31,8 +32,8 @@ export default function SessionSidePanel({
   generateChartUrl,
   zIndex = 100,
 }: {
-  traceSource: TSource;
-  sessionSource: TSource;
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
   sessionId: string;
   session: Session;
   dateRange: DateRange['dateRange'];
@@ -62,15 +63,12 @@ export default function SessionSidePanel({
     },
   );
 
-  // console.log({ logId: sessionId, subDrawerOpen });
-  const maxTime =
-    session != null ? new Date(session?.maxTimestamp) : new Date();
-  // const minTime =
-  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
-  const timeAgo = formatDistanceToNowStrictShort(maxTime);
-  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
-  //   .toISOString()
-  //   .slice(11, 19);
+  const timeAgo = useMemo(() => {
+    const maxTime =
+      // eslint-disable-next-line no-restricted-syntax
+      session != null ? new Date(session?.maxTimestamp) : new Date();
+    return formatDistanceToNowStrictShort(maxTime);
+  }, [session]);
 
   return (
     <Drawer

@@ -2,6 +2,7 @@ import type {
   BuilderChartConfig,
   BuilderSavedChartConfig,
   RawSqlSavedChartConfig,
+  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -38,14 +39,14 @@ const logSource: TSource = {
   implicitColumnExpression: 'Body',
 };
 
-const metricSource: TSource = {
+const metricSource: TMetricSource = {
   id: 'source-metric',
   name: 'Metric Source',
   kind: SourceKind.Metric,
   connection: 'conn-1',
   from: { databaseName: 'db', tableName: '' },
   timestampValueExpression: 'TimeUnix',
-  metricTables: { gauge: 'gauge_table' } as TSource['metricTables'],
+  metricTables: { gauge: 'gauge_table' } as TMetricSource['metricTables'],
   resourceAttributesExpression: 'ResourceAttributes',
 };
 
@@ -717,6 +718,23 @@ describe('validateChartForm', () => {
         series: [{ ...seriesItem, aggFn: 'sum', valueExpression: '' }],
       }),
       logSource,
+      setError,
+    );
+    expect(
+      errors.filter(
+        e => typeof e.path === 'string' && e.path.includes('valueExpression'),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('does not validate valueExpression for metric sources', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-metric',
+        series: [{ ...seriesItem, aggFn: 'sum', valueExpression: '' }],
+      }),
+      metricSource,
       setError,
     );
     expect(

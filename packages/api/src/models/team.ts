@@ -6,6 +6,8 @@ type ObjectId = mongoose.Types.ObjectId;
 
 export interface ITeam extends Team {
   _id: ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type TeamDocument = mongoose.HydratedDocument<ITeam>;
@@ -39,6 +41,7 @@ export default mongoose.model<ITeam>(
       queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
+      filterKeysFetchLimit: Number,
     },
     {
       timestamps: true,

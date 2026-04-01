@@ -10,6 +10,11 @@ export class TeamPage {
   readonly page: Page;
 
   private readonly pageContainer: Locator;
+  private readonly dataTabButton: Locator;
+  private readonly teamTabButton: Locator;
+  private readonly accessTabButton: Locator;
+  private readonly integrationsTabButton: Locator;
+  private readonly advancedTabButton: Locator;
 
   // Section containers
   private readonly sourcesSection: Locator;
@@ -18,6 +23,8 @@ export class TeamPage {
   private readonly teamNameSection: Locator;
   private readonly apiKeysSection: Locator;
   private readonly teamMembersSection: Locator;
+  private readonly securityPoliciesHeading: Locator;
+  private readonly querySettingsHeading: Locator;
 
   // Team name elements
   private readonly teamNameDisplay: Locator;
@@ -49,6 +56,23 @@ export class TeamPage {
   constructor(page: Page) {
     this.page = page;
     this.pageContainer = page.getByTestId('team-page');
+    this.dataTabButton = page.getByRole('tab', { name: 'Data', exact: true });
+    this.teamTabButton = page.getByRole('tab', {
+      name: 'Members',
+      exact: true,
+    });
+    this.accessTabButton = page.getByRole('tab', {
+      name: 'Access',
+      exact: true,
+    });
+    this.integrationsTabButton = page.getByRole('tab', {
+      name: 'Integrations',
+      exact: true,
+    });
+    this.advancedTabButton = page.getByRole('tab', {
+      name: 'Query Settings',
+      exact: true,
+    });
 
     this.sourcesSection = page.getByTestId('sources-section');
     this.connectionsSection = page.getByTestId('connections-section');
@@ -56,6 +80,12 @@ export class TeamPage {
     this.teamNameSection = page.getByTestId('team-name-section');
     this.apiKeysSection = page.getByTestId('api-keys-section');
     this.teamMembersSection = page.getByTestId('team-members-section');
+    this.securityPoliciesHeading = page.getByText('Security Policies', {
+      exact: true,
+    });
+    this.querySettingsHeading = page.getByText('ClickHouse Client Settings', {
+      exact: true,
+    });
 
     this.teamNameDisplay = page.getByTestId('team-name-display');
     this.teamNameChangeButton = page.getByTestId('team-name-change-button');
@@ -83,6 +113,35 @@ export class TeamPage {
   async goto() {
     await this.page.goto('/team');
     await this.pageContainer.waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  private async openTab(tab: Locator, section: Locator) {
+    await tab.click();
+    await section.waitFor({ state: 'visible' });
+  }
+
+  async openDataTab() {
+    await this.openTab(this.dataTabButton, this.sourcesSection);
+  }
+
+  async openTeamTab() {
+    await this.openTab(this.teamTabButton, this.teamMembersSection);
+  }
+
+  async openIntegrationsTab() {
+    await this.openTab(this.integrationsTabButton, this.integrationsSection);
+  }
+
+  async openAdvancedTab() {
+    await this.openTab(this.advancedTabButton, this.querySettingsHeading);
+  }
+
+  async openAccessTab() {
+    await this.openTab(this.accessTabButton, this.securityPoliciesHeading);
+  }
+
+  async hasAccessTab() {
+    return this.accessTabButton.isVisible();
   }
 
   // --- Team Name ---
@@ -249,6 +308,26 @@ export class TeamPage {
     return this.pageContainer;
   }
 
+  get dataTab() {
+    return this.dataTabButton;
+  }
+
+  get teamTab() {
+    return this.teamTabButton;
+  }
+
+  get accessTab() {
+    return this.accessTabButton;
+  }
+
+  get integrationsTab() {
+    return this.integrationsTabButton;
+  }
+
+  get advancedTab() {
+    return this.advancedTabButton;
+  }
+
   get sources() {
     return this.sourcesSection;
   }
@@ -307,6 +386,14 @@ export class TeamPage {
 
   get addConnection() {
     return this.addConnectionButton;
+  }
+
+  get securityPolicies() {
+    return this.securityPoliciesHeading;
+  }
+
+  get querySettings() {
+    return this.querySettingsHeading;
   }
 
   get connectionForm() {

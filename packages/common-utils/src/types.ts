@@ -9,6 +9,8 @@ export enum MetricsDataType {
   ExponentialHistogram = 'exponential histogram',
 }
 
+export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -558,6 +560,7 @@ const SharedChartDisplaySettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
@@ -627,6 +630,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -725,7 +729,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
-  sectionId: z.string().optional(),
+  containerId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -737,13 +741,14 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
-export const DashboardSectionSchema = z.object({
+export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
+  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
 });
 
-export type DashboardSection = z.infer<typeof DashboardSectionSchema>;
+export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -754,6 +759,8 @@ export const DashboardFilterSchema = z.object({
   expression: z.string().min(1),
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+  where: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -777,14 +784,14 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
-  sections: z
-    .array(DashboardSectionSchema)
+  containers: z
+    .array(DashboardContainerSchema)
     .refine(
-      sections => {
-        const ids = sections.map(s => s.id);
+      containers => {
+        const ids = containers.map(c => c.id);
         return new Set(ids).size === ids.length;
       },
-      { message: 'Section IDs must be unique' },
+      { message: 'Container IDs must be unique' },
     )
     .optional(),
 });
@@ -795,9 +802,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   tiles: z.array(TileTemplateSchema),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),
@@ -820,6 +830,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
@@ -858,8 +869,12 @@ const QuerySettingsSchema = z
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
 
+const RequiredTimestampColumnSchema = z
+  .string()
+  .min(1, 'Timestamp Column is required');
+
 // Base schema with fields common to all source types
-const SourceBaseSchema = z.object({
+export const BaseSourceSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
@@ -869,11 +884,8 @@ const SourceBaseSchema = z.object({
     tableName: z.string().min(1, 'Table is required'),
   }),
   querySettings: QuerySettingsSchema.optional(),
+  timestampValueExpression: RequiredTimestampColumnSchema,
 });
-
-const RequiredTimestampColumnSchema = z
-  .string()
-  .min(1, 'Timestamp Column is required');
 
 const HighlightedAttributeExpressionsSchema = z.array(
   z.object({
@@ -917,13 +929,11 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 // Log source form schema
-const LogSourceAugmentation = {
+export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
-  defaultTableSelectExpression: z.string({
-    message: 'Default Table Select Expression is required',
-  }),
-  timestampValueExpression: RequiredTimestampColumnSchema,
-
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
@@ -944,13 +954,14 @@ const LogSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   orderByExpression: z.string().optional(),
-};
+});
 
 // Trace source form schema
-const TraceSourceAugmentation = {
+export const TraceSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Trace),
-  defaultTableSelectExpression: z.string().optional(),
-  timestampValueExpression: RequiredTimestampColumnSchema,
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
 
   // Required fields for traces
   durationExpression: z.string().min(1, 'Duration Expression is required'),
@@ -964,6 +975,7 @@ const TraceSourceAugmentation = {
   spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
 
   // Optional fields for traces
+  sampleRateExpression: z.string().optional(),
   logSourceId: z.string().optional().nullable(),
   sessionSourceId: z.string().optional(),
   metricSourceId: z.string().optional(),
@@ -981,26 +993,25 @@ const TraceSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   orderByExpression: z.string().optional(),
-};
+});
 
 // Session source form schema
-const SessionSourceAugmentation = {
+export const SessionSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Session),
-
-  // Optional to support legacy sources, which did not require this field.
-  // Will be defaulted to `TimestampTime` when queried, if undefined.
-  timestampValueExpression: z.string().optional(),
 
   // Required fields for sessions
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
     .min(1, 'Correlated Trace Source is required'),
-};
+
+  // Optional fields for sessions
+  resourceAttributesExpression: z.string().optional(),
+});
 
 // Metric source form schema
-const MetricSourceAugmentation = {
+export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
-  // override from SourceBaseSchema
+  // override from BaseSourceSchema
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string(),
@@ -1008,87 +1019,73 @@ const MetricSourceAugmentation = {
 
   // Metric tables - at least one should be provided
   metricTables: MetricTableSchema,
-  timestampValueExpression: RequiredTimestampColumnSchema,
   resourceAttributesExpression: z
     .string()
     .min(1, 'Resource Attributes is required'),
 
   // Optional fields for metrics
+  serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
-};
+});
 
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
-  SourceBaseSchema.extend(LogSourceAugmentation),
-  SourceBaseSchema.extend(TraceSourceAugmentation),
-  SourceBaseSchema.extend(SessionSourceAugmentation),
-  SourceBaseSchema.extend(MetricSourceAugmentation),
+  LogSourceSchema,
+  TraceSourceSchema,
+  SessionSourceSchema,
+  MetricSourceSchema,
 ]);
-export type TSourceUnion = z.infer<typeof SourceSchema>;
+export type TSource = z.infer<typeof SourceSchema>;
 
-// This function exists to perform schema validation with omission of a certain
-// value. It is not possible to do on the discriminatedUnion directly
-export function sourceSchemaWithout(
-  omissions: { [k in keyof z.infer<typeof SourceBaseSchema>]?: true } = {},
-) {
-  // TODO: Make these types work better if possible
-  return z.discriminatedUnion('kind', [
-    SourceBaseSchema.omit(omissions).extend(LogSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(TraceSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(SessionSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(MetricSourceAugmentation),
-  ]);
+export const SourceSchemaNoId = z.discriminatedUnion('kind', [
+  LogSourceSchema.omit({ id: true }),
+  TraceSourceSchema.omit({ id: true }),
+  SessionSourceSchema.omit({ id: true }),
+  MetricSourceSchema.omit({ id: true }),
+]);
+export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
+
+// Per-kind source types extracted from the Zod discriminated union
+export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
+export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
+export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
+export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+
+// Type guards for narrowing TSource by kind
+export function isLogSource(source: TSource): source is TLogSource {
+  return source.kind === SourceKind.Log;
+}
+export function isTraceSource(source: TSource): source is TTraceSource {
+  return source.kind === SourceKind.Trace;
+}
+export function isSessionSource(source: TSource): source is TSessionSource {
+  return source.kind === SourceKind.Session;
+}
+export function isMetricSource(source: TSource): source is TMetricSource {
+  return source.kind === SourceKind.Metric;
 }
 
-// Helper types for better union flattening
-type AllKeys<T> = T extends any ? keyof T : never;
-// This is Claude Opus's explanation of this type magic to extract the required
-// parameters:
-//
-// 1. [K in keyof T]-?:
-//   Maps over all keys in T. The -? removes the optional modifier, making all
-//   properties required in this mapped type
-// 2. {} extends Pick<T, K> ? never : K
-//   Pick<T, K> creates a type with just property K from T.
-//   {} extends Pick<T, K> checks if an empty object can satisfy the picked property.
-//   If the property is optional, {} can extend it (returns never)
-//   If the property is required, {} cannot extend it (returns K)
-// 3. [keyof T]
-//    Indexes into the mapped type to get the union of all non-never values
-type NonOptionalKeysPresentInEveryUnionBranch<T> = {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
-}[keyof T];
-
-// Helper to check if a key is required in ALL branches of the union
-type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
-  ? K extends NonOptionalKeysPresentInEveryUnionBranch<T>
-    ? true
-    : false
-  : never;
-
-// This type gathers the Required Keys across the discriminated union TSourceUnion
-// and keeps them as required in a non-unionized type, and also gathers all possible
-// optional keys from the union branches and brings them into one unified flattened type.
-// This is done to maintain compatibility with the legacy zod schema.
-type FlattenUnion<T> = {
-  // If a key is required in all branches of a union, make it a required key
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? K
-    : never]: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
-} & {
-  // If a key is not required in all branches of a union, make it an optional
-  // key and join the possible types
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? never
-    : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+type SourceLikeForSampleWeight = {
+  kind: SourceKind;
+  sampleRateExpression?: string | null;
 };
-type TSourceWithoutDefaults = FlattenUnion<z.infer<typeof SourceSchema>>;
 
-// Type representing a TSourceWithoutDefaults object which has been augmented with default values
-export type TSource = TSourceWithoutDefaults & {
-  timestampValueExpression: string;
-};
+/** Trace sample rate expression for chart sampleWeightExpression when set. */
+export function getSampleWeightExpression(
+  source: SourceLikeForSampleWeight,
+): string | undefined {
+  return source.kind === SourceKind.Trace && source.sampleRateExpression
+    ? source.sampleRateExpression
+    : undefined;
+}
+
+/** For object spread: { ...pickSampleWeightExpressionProps(source) } */
+export function pickSampleWeightExpressionProps(
+  source: SourceLikeForSampleWeight,
+): { sampleWeightExpression: string } | undefined {
+  const w = getSampleWeightExpression(source);
+  return w ? { sampleWeightExpression: w } : undefined;
+}
 
 export const AssistantLineTableConfigSchema = z.object({
   displayType: z.enum([DisplayType.Line, DisplayType.Table]),
@@ -1205,7 +1202,7 @@ export const AlertsPageItemSchema = z.object({
   thresholdType: z.nativeEnum(AlertThresholdType),
   conditionType: z.nativeEnum(AlertConditionType).optional(),
   changeType: z.nativeEnum(AlertChangeType).optional(),
-  channel: z.object({ type: z.string().optional() }),
+  channel: z.object({ type: z.string().optional().nullable() }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),

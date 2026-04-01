@@ -1,5 +1,28 @@
 # @hyperdx/common-utils
 
+## 0.16.2
+
+### Patch Changes
+
+- 4f7dd9ef: fix: Correctly detect text index with quoted tokenizer argument
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 6936ef8e: fix: Enable materialized column optimization for expression alias CTEs
+
+## 0.16.1
+
+### Patch Changes
+
+- 2fab76bf: fix: Keep toStartOf\* time filter bounds inclusive when dateRangeEndInclusive is false, preventing data from being dropped past hour/minute boundaries in time histograms
+- e18f88c8: feat: Set enable_full_text_index=1 when available
+- e09c8c0e: fix: query settings length validation
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- 1d83bebb: feat: Add support for dashboard filters on Raw SQL Charts
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 243e3baa: feat: Support fetching distributed table metadata with cluster()
+- 4cee5d69: feat: Support ClickHouse datasource plugin macros in Raw SQL chart configs
+
 ## 0.16.0
 
 ### Minor Changes

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -26,7 +26,7 @@ import { useSources } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
 // The % of requests sampled is 1 / sampling factor
-export const SAMPLING_FACTORS = [
+const SAMPLING_FACTORS = [
   {
     value: 100,
     label: '1%',
@@ -70,12 +70,13 @@ function DBServiceMapPage() {
   });
 
   const defaultSource = sources?.find(
-    source => source.kind === SourceKind.Trace,
+    (source): source is TTraceSource => source.kind === SourceKind.Trace,
   );
   const source =
     sourceId && sources
       ? (sources.find(
-          source => source.id === sourceId && source.kind === SourceKind.Trace,
+          (source): source is TTraceSource =>
+            source.id === sourceId && source.kind === SourceKind.Trace,
         ) ?? defaultSource)
       : defaultSource;
 

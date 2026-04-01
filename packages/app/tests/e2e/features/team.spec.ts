@@ -11,39 +11,75 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     await teamPage.goto();
   });
 
-  test('should load team page with all sections visible', async () => {
+  test('should load team page tabs and show all sections', async () => {
     await test.step('Verify page container is visible', async () => {
       await expect(teamPage.container).toBeVisible();
     });
 
-    await test.step('Verify all major sections are visible', async () => {
-      await expect(teamPage.sources).toBeVisible();
-      await expect(teamPage.connections).toBeVisible();
-      await expect(teamPage.integrations).toBeVisible();
-      await expect(teamPage.teamName).toBeVisible();
-      await expect(teamPage.apiKeys).toBeVisible();
-      await expect(teamPage.members).toBeVisible();
+    await test.step('Verify team settings tabs are visible', async () => {
+      await expect(teamPage.dataTab).toBeVisible();
+      await expect(teamPage.teamTab).toBeVisible();
+      await expect(teamPage.integrationsTab).toBeVisible();
+      await expect(teamPage.advancedTab).toBeVisible();
     });
 
-    await test.step('Verify section headings exist', async () => {
+    await test.step('Verify data tab sections are visible', async () => {
+      await teamPage.openDataTab();
+      await expect(teamPage.sources).toBeVisible();
+      await expect(teamPage.connections).toBeVisible();
+    });
+
+    await test.step('Verify data tab headings exist', async () => {
       await expect(
         teamPage.sources.getByText('Sources', { exact: true }),
       ).toBeVisible();
       await expect(
         teamPage.connections.getByText('Connections', { exact: true }),
       ).toBeVisible();
+    });
+
+    await test.step('Verify team name is in header', async () => {
+      await expect(teamPage.teamNameValue).toBeVisible();
+      await expect(teamPage.teamNameEditButton).toBeVisible();
+    });
+
+    await test.step('Verify members tab sections are visible', async () => {
+      await teamPage.openTeamTab();
+      await expect(teamPage.members).toBeVisible();
+    });
+
+    await test.step('Verify members tab heading exists', async () => {
+      await expect(
+        teamPage.members.getByText('Team Members', { exact: true }).first(),
+      ).toBeVisible();
+    });
+
+    await test.step('Verify access tab content when available', async () => {
+      if (await teamPage.hasAccessTab()) {
+        await expect(teamPage.accessTab).toBeVisible();
+        await teamPage.openAccessTab();
+        await expect(teamPage.securityPolicies).toBeVisible();
+      }
+    });
+
+    await test.step('Verify integrations tab sections are visible', async () => {
+      await teamPage.openIntegrationsTab();
+      await expect(teamPage.integrations).toBeVisible();
+      await expect(teamPage.apiKeys).toBeVisible();
+    });
+
+    await test.step('Verify integrations tab headings exist', async () => {
       await expect(
         teamPage.integrations.getByText('Integrations', { exact: true }),
       ).toBeVisible();
       await expect(
-        teamPage.teamName.getByText('Team Name', { exact: true }),
-      ).toBeVisible();
-      await expect(
         teamPage.apiKeys.getByText('API Keys', { exact: true }),
       ).toBeVisible();
-      await expect(
-        teamPage.members.getByText('Team', { exact: true }),
-      ).toBeVisible();
+    });
+
+    await test.step('Verify advanced tab content is visible', async () => {
+      await teamPage.openAdvancedTab();
+      await expect(teamPage.querySettings).toBeVisible();
     });
   });
 
@@ -105,6 +141,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
   test('should display API keys', async () => {
     await test.step('Scroll to API keys section', async () => {
+      await teamPage.openIntegrationsTab();
       await teamPage.apiKeys.scrollIntoViewIfNeeded();
     });
 
@@ -124,6 +161,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
   test('should open and cancel rotate API key modal', async () => {
     await test.step('Open rotate API key modal', async () => {
+      await teamPage.openIntegrationsTab();
       await teamPage.clickRotateApiKey();
     });
 
@@ -144,6 +182,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     const webhookUrl = `https://example.com/e2e-webhook-${ts}`;
 
     await test.step('Scroll to integrations and create webhook', async () => {
+      await teamPage.openIntegrationsTab();
       await teamPage.integrations.scrollIntoViewIfNeeded();
       await teamPage.createWebhook({
         serviceType: 'Generic',
@@ -178,6 +217,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     const email = `e2e-test-${Date.now()}@example.com`;
 
     await test.step('Verify current user is displayed', async () => {
+      await teamPage.openTeamTab();
       await teamPage.members.scrollIntoViewIfNeeded();
       await expect(teamPage.members.getByText('You')).toBeVisible();
     });
@@ -213,6 +253,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
   test('should display connection information', async () => {
     await test.step('Verify connections section is visible', async () => {
+      await teamPage.openDataTab();
       await expect(teamPage.connections).toBeVisible();
     });
 

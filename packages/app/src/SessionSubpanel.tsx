@@ -8,9 +8,11 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
+  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -55,7 +57,7 @@ function useSessionChartConfigs({
   end,
   tab,
 }: {
-  traceSource: TSource;
+  traceSource: TTraceSource;
   rumSessionId: string;
   where: string;
   whereLanguage?: SearchConditionLanguage;
@@ -187,6 +189,7 @@ function useSessionChartConfigs({
       where,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
+      ...pickSampleWeightExpressionProps(traceSource),
       connection: traceSource.connection,
       orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {
@@ -244,8 +247,8 @@ export default function SessionSubpanel({
   whereLanguage = 'lucene',
   onLanguageChange,
 }: {
-  traceSource: TSource;
-  sessionSource: TSource;
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
   session: { serviceName: string };
   generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl?: (config: {

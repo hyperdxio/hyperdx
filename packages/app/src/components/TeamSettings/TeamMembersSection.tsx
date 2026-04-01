@@ -206,9 +206,8 @@ export default function TeamMembersSection() {
 
   return (
     <Box id="team_members" data-testid="team-members-section">
-      <Text size="md">Team</Text>
+      <Text size="md">Team Members</Text>
       <Divider my="md" />
-
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">

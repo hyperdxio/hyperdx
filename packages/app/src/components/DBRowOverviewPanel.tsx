@@ -53,7 +53,10 @@ export function RowOverviewPanel({
 
   const jsonColumns = getJSONColumnNames(data?.meta);
 
-  const eventAttributesExpr = source.eventAttributesExpression;
+  const eventAttributesExpr =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+      ? source.eventAttributesExpression
+      : undefined;
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
@@ -192,6 +195,7 @@ export function RowOverviewPanel({
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             severityText={firstRow?.__hdx_severity_text}
+            rowData={firstRow}
           />
         </Box>
       )}

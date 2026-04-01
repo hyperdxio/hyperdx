@@ -1,5 +1,73 @@
 # @hyperdx/app
 
+## 2.22.1
+
+### Patch Changes
+
+- 6c347a52: fix: ClickStack and HyperDX color token improvements
+
+  - Fix link colors in ClickStack (blue in light mode, yellow in dark mode)
+  - Override checkbox and radio button colors to use accent color with contrasting icons
+  - Restyle slider marks as solid 6px dots with semantic color tokens
+  - Add subtle Button variant to both themes
+
+- a6a83d59: feat: Add collapsible filter sidebar toggle to search page
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+- cdc29d5a: fix: Fix query error on ClickHouse Query latency chart
+- 8b629385: fix: Preserve default select when saving search
+- 7ab7f6de: feat: allow collapsing child spans
+- c9d1dda3: feat: Add column toggle button to filter panel in DBSearchPage
+- 45755260: fix: Prevent duplicate demo sources in Play Environment source select
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 1fb8e355: fix: Improve auto-complete behavior for aliases and maps
+- 2207edbf: docs: Link to the SQL-based visualization docs
+- dd313f77: fix: Fix intermittently-missing SQL autocomplete suggestions
+- e21811cc: feat: Add dashboard listing page
+- Updated dependencies [4f7dd9ef]
+- Updated dependencies [275dc941]
+- Updated dependencies [6936ef8e]
+  - @hyperdx/common-utils@0.16.2
+
+## 2.22.0
+
+### Minor Changes
+
+- a8216d7e: feat: allow scroll to zoom and panning to trace timeline viewer
+- b5c371e9: Add careers page (/careers) with Greenhouse job listings filtered to HyperDX/ClickStack roles, GitHub commit activity feed, and a CTA in the AppNav sidebar for local mode
+
+### Patch Changes
+
+- 60d1bbaf: feat: always-on attribute distribution mode for Event Deltas
+- 26759f79: feat: improved attribute sorting with entropy scoring and proportional comparison
+- 3d15b3de: feat: Enhance data source select with context-aware icons and inline actions
+- 134f1dca: fix: escape service filter values on Services page to handle quoted names safely
+- 068f72c7: fix: Add zero state to service map if no trace source is defined
+- 72d4642b: feat: Add `link` variant for Button and ActionIcon components
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 2e30c0e0: feat: Improve chart editor validations
+- 69cf33cb: feat: show inline span durations in trace timeline
+- e1cf4bca: fix: Override --mantine-color-text with semantic --color-text token
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- 33edc7e5: feat: Improve auto-completion for SQLEditor\
+- 1e0f8ec7: feat: enable horizontal scrolling on search results table for small screens
+- e355995c: fix: pass sidebar filters to alert preview chart
+- 1d83bebb: feat: Add support for dashboard filters on Raw SQL Charts
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 9682eb4d: fix: Fix filter value saving
+- 25a3291f: feat: Attach service version to all internal telemetry
+- Updated dependencies [2fab76bf]
+- Updated dependencies [e18f88c8]
+- Updated dependencies [e09c8c0e]
+- Updated dependencies [1381782b]
+- Updated dependencies [74d92594]
+- Updated dependencies [1d83bebb]
+- Updated dependencies [ce850647]
+- Updated dependencies [359b5874]
+- Updated dependencies [243e3baa]
+- Updated dependencies [4cee5d69]
+  - @hyperdx/common-utils@0.16.1
+
 ## 2.21.0
 
 ### Minor Changes

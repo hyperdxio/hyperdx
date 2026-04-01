@@ -5,29 +5,48 @@ WORKDIR /app
 
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./tsconfig.base.json ./
-COPY ./packages/common-utils ./packages/common-utils
+# Only copy package.json for workspace resolution during yarn install;
+# full source is copied in the build stages that need it.
+COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
 COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/tsconfig.build.json ./packages/api/package.json ./packages/api/
-RUN yarn install --mode=skip-build && yarn cache clean
+COPY ./packages/api/bin ./packages/api/bin
+# Use BuildKit cache mount to persist Yarn download cache across builds,
+# so unchanged packages aren't re-downloaded even when yarn.lock changes.
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    yarn install --mode=skip-build && yarn cache clean
 
 
 ## dev #############################################################################################
 
 FROM base AS dev
 
+COPY ./packages/common-utils ./packages/common-utils
+
 EXPOSE 8000
 
 ENTRYPOINT ["npx", "nx", "run", "@hyperdx/api:dev"]
+
+
+## common-utils-builder ############################################################################
+# Separate stage so common-utils build is cached independently of API source changes.
+
+FROM base AS common-utils-builder
+
+COPY ./packages/common-utils ./packages/common-utils
+RUN yarn workspace @hyperdx/common-utils run build
 
 
 ## builder #########################################################################################
 
 FROM base AS builder
 
-ENV NX_DAEMON false
+# Copy pre-built common-utils from its dedicated build stage
+COPY --from=common-utils-builder /app/packages/common-utils ./packages/common-utils
 
 COPY ./packages/api/src ./packages/api/src
-RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
+RUN yarn workspace @hyperdx/api run build
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+    rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
 ## prod ############################################################################################
@@ -58,9 +77,10 @@ WORKDIR /app
 
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
+COPY --chown=node:node --from=builder /app/packages/api/bin ./packages/api/bin
 COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD node -e "require('http').get('http://localhost:'+(process.env.PORT||8000)+'/health',r=>r.statusCode===200?process.exit(0):process.exit(1)).on('error',()=>process.exit(1))"
 
-ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./packages/api/build/index.js"]
+ENTRYPOINT ["./packages/api/bin/hyperdx", "api"]

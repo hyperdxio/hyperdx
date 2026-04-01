@@ -1,6 +1,5 @@
 import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
 type ObjectId = mongoose.Types.ObjectId;
@@ -10,6 +9,8 @@ export interface ISavedSearch
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export const SavedSearch = mongoose.model<ISavedSearch>(

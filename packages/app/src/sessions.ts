@@ -5,9 +5,11 @@ import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
+  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -43,8 +45,8 @@ export function useSessions(
     where,
     whereLanguage,
   }: {
-    traceSource?: TSource;
-    sessionSource?: TSource;
+    traceSource?: TTraceSource;
+    sessionSource?: TSessionSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;
     whereLanguage?: SearchConditionLanguage;
@@ -161,6 +163,7 @@ export function useSessions(
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
+            ...pickSampleWeightExpressionProps(traceSource),
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
           },
@@ -171,16 +174,24 @@ export function useSessions(
           {
             select: [
               {
-                valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')}`,
+                valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(
+                  sessionSource.resourceAttributesExpression ??
+                    'ResourceAttributes',
+                  'rum.sessionId',
+                )}`,
                 alias: 'sessionId',
               },
             ],
             from: sessionSource.from,
             dateRange,
-            where: `${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
+            where: `${getSessionsSourceFieldExpression(
+              sessionSource.resourceAttributesExpression ??
+                'ResourceAttributes',
+              'rum.sessionId',
+            )} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
             whereLanguage: 'sql',
             timestampValueExpression: sessionSource.timestampValueExpression,
-            implicitColumnExpression: sessionSource.implicitColumnExpression,
+            implicitColumnExpression: undefined,
             connection: sessionSource.connection,
           },
           metadata,

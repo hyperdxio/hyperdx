@@ -12,7 +12,15 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isSessionSource,
+  isTraceSource,
+  SourceKind,
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
@@ -66,7 +74,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TSource;
+  source?: TLogSource | TTraceSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -145,14 +153,21 @@ const DBRowSidePanel = ({
   );
 
   const hasOverviewPanel = useMemo(() => {
-    if (
-      source.resourceAttributesExpression ||
-      source.eventAttributesExpression
+    if (isLogSource(source) || isTraceSource(source)) {
+      if (
+        source.resourceAttributesExpression ||
+        source.eventAttributesExpression
+      ) {
+        return true;
+      }
+    } else if (
+      source.kind === SourceKind.Metric &&
+      source.resourceAttributesExpression
     ) {
       return true;
     }
     return false;
-  }, [source.eventAttributesExpression, source.resourceAttributesExpression]);
+  }, [source]);
 
   const defaultTab =
     source.kind === 'trace'
@@ -195,8 +210,9 @@ const DBRowSidePanel = ({
     normalizedRow?.['__hdx_severity_text'];
 
   const highlightedAttributeValues = useMemo(() => {
-    const attributeExpressions: TSource['highlightedRowAttributeExpressions'] =
-      [];
+    const attributeExpressions: NonNullable<
+      (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
+    > = [];
     if (
       (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
       source.highlightedRowAttributeExpressions
@@ -206,7 +222,10 @@ const DBRowSidePanel = ({
 
     // Add service name expression to all sources, to maintain compatibility with
     // the behavior prior to the addition of highlightedRowAttributeExpressions
-    if (source.serviceNameExpression) {
+    if (
+      (isLogSource(source) || isTraceSource(source)) &&
+      source.serviceNameExpression
+    ) {
       attributeExpressions.push({
         sqlExpression: source.serviceNameExpression,
       });
@@ -240,15 +259,19 @@ const DBRowSidePanel = ({
   const focusDate = timestampDate;
   const traceId: string | undefined = normalizedRow?.['__hdx_trace_id'];
 
-  const childSourceId =
-    source.kind === 'log'
-      ? source.traceSourceId
-      : source.kind === 'trace'
-        ? source.logSourceId
-        : undefined;
+  const childSourceId = isLogSource(source)
+    ? source.traceSourceId
+    : isTraceSource(source)
+      ? source.logSourceId
+      : undefined;
 
-  const traceSourceId =
-    source.kind === 'trace' ? source.id : source.traceSourceId;
+  const traceSourceId = isTraceSource(source)
+    ? source.id
+    : isLogSource(source)
+      ? source.traceSourceId
+      : isSessionSource(source)
+        ? source.traceSourceId
+        : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -303,6 +326,7 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
         />

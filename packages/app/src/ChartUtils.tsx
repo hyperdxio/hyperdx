@@ -30,36 +30,24 @@ import {
   MetricsDataType as MetricsDataTypeV2,
   SourceKind,
   SQLInterval,
+  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import { getMetricNameSql } from './otelSemanticConventions';
-import {
-  AggFn,
-  ChartSeries,
-  MetricsDataType,
-  SourceTable,
-  TableChartSeries,
-  TimeChartSeries,
-} from './types';
+import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
 import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
 
-export const SORT_ORDER = [
+const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
   { value: 'desc' as const, label: 'Descending' },
 ];
 
-export type SortOrder = (typeof SORT_ORDER)[number]['value'];
-
-export const TABLES = [
-  { value: 'logs' as const, label: 'Logs / Spans' },
-  { value: 'metrics' as const, label: 'Metrics' },
-];
+type SortOrder = (typeof SORT_ORDER)[number]['value'];
 
 export const AGG_FNS = [
   { value: 'count' as const, label: 'Count of Events', isAttributable: false },
@@ -80,37 +68,6 @@ export const AGG_FNS = [
   { value: 'none' as const, label: 'Custom' },
 ];
 
-export const getMetricAggFns = (
-  dataType: MetricsDataType,
-): { value: AggFn; label: string }[] => {
-  if (dataType === MetricsDataType.Histogram) {
-    return [
-      { value: 'p99', label: '99th Percentile' },
-      { value: 'p95', label: '95th Percentile' },
-      { value: 'p90', label: '90th Percentile' },
-      { value: 'p50', label: 'Median' },
-    ];
-  } else if (dataType === MetricsDataType.Summary) {
-    return [
-      { value: 'sum', label: 'Sum' },
-      { value: 'max', label: 'Maximum' },
-      { value: 'min', label: 'Minimum' },
-      { value: 'count', label: 'Sample Count' },
-    ];
-  }
-
-  return [
-    { value: 'sum', label: 'Sum' },
-    { value: 'p99', label: '99th Percentile' },
-    { value: 'p95', label: '95th Percentile' },
-    { value: 'p90', label: '90th Percentile' },
-    { value: 'p50', label: 'Median' },
-    { value: 'avg', label: 'Average' },
-    { value: 'max', label: 'Maximum' },
-    { value: 'min', label: 'Minimum' },
-  ];
-};
-
 export const DEFAULT_CHART_CONFIG: Omit<
   BuilderSavedChartConfig,
   'source' | 'connection'
@@ -129,10 +86,6 @@ export const DEFAULT_CHART_CONFIG: Omit<
   displayType: DisplayType.Line,
   granularity: 'auto',
   alignDateRangeToGranularity: true,
-};
-
-export const isGranularity = (value: string): value is Granularity => {
-  return Object.values(Granularity).includes(value as Granularity);
 };
 
 function getTimeChartGranularity(
@@ -213,82 +166,6 @@ export function useTimeChartSettings(
       granularity,
     };
   }, [config]);
-}
-
-export function seriesToSearchQuery({
-  series,
-  groupByValue,
-}: {
-  series: ChartSeries[];
-  groupByValue?: string;
-}) {
-  const queries = series
-    .map((s, i) => {
-      if (s.type === 'time' || s.type === 'table' || s.type === 'number') {
-        const { where, aggFn, field } = s;
-        return `${where.trim()}${
-          aggFn !== 'count' && field ? ` ${field}:*` : ''
-        }${
-          'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
-            ? ` ${s.groupBy}:${groupByValue ?? '*'}`
-            : ''
-        }`.trim();
-      }
-    })
-    .filter(q => q != null && q.length > 0);
-
-  const q =
-    queries.length > 1
-      ? queries.map(q => `(${q})`).join(' OR ')
-      : queries.join('');
-
-  return q;
-}
-
-export function seriesToUrlSearchQueryParam({
-  series,
-  dateRange,
-  groupByValue = '*',
-}: {
-  series: ChartSeries[];
-  dateRange: [Date, Date];
-  groupByValue?: string | undefined;
-}) {
-  const q = seriesToSearchQuery({ series, groupByValue });
-
-  return new URLSearchParams({
-    q,
-    from: `${dateRange[0].getTime()}`,
-    to: `${dateRange[1].getTime()}`,
-  });
-}
-
-export function TableToggle({
-  table,
-  setTableAndAggFn,
-}: {
-  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
-  table: string;
-}) {
-  return (
-    <SegmentedControl
-      value={table}
-      onChange={(value: string) => {
-        const val = value ?? 'logs';
-        if (val === 'logs') {
-          setTableAndAggFn('logs', 'count');
-        } else if (val === 'metrics') {
-          // TODO: This should set rate if metric field is a sum
-          // or we should just reset the field if changing tables
-          setTableAndAggFn('metrics', 'max');
-        }
-      }}
-      data={[
-        { label: 'Logs/Spans', value: 'logs' },
-        { label: 'Metrics', value: 'metrics' },
-      ]}
-    />
-  );
 }
 
 export const ChartKeyJoiner = ' · ';
@@ -482,13 +359,6 @@ export const INTEGER_NUMBER_FORMAT: NumberFormat = {
   thousandSeparated: true,
 };
 
-export const SINGLE_DECIMAL_NUMBER_FORMAT: NumberFormat = {
-  factor: 1,
-  output: 'number',
-  mantissa: 1,
-  thousandSeparated: true,
-};
-
 export const MS_NUMBER_FORMAT: NumberFormat = {
   factor: 1,
   output: 'number',
@@ -512,10 +382,6 @@ export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {
 };
 
 export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
-  output: 'byte',
-};
-
-export const K8S_NETWORK_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
 };
 
@@ -630,14 +496,14 @@ function firstGroupColumnIsLogLevel(
   source: TSource | undefined,
   groupColumns: ColumnMetaType[],
 ) {
-  return (
-    source &&
-    groupColumns.length === 1 &&
-    groupColumns[0].name ===
-      (source.kind === SourceKind.Log
-        ? source.severityTextExpression
-        : source.statusCodeExpression)
-  );
+  if (!source || groupColumns.length !== 1) return false;
+  if (source.kind === SourceKind.Log) {
+    return groupColumns[0].name === source.severityTextExpression;
+  }
+  if (source.kind === SourceKind.Trace) {
+    return groupColumns[0].name === source.statusCodeExpression;
+  }
+  return false;
 }
 
 function addResponseToFormattedData({
@@ -858,7 +724,7 @@ export function formatResponseForTimeChart({
 }
 
 // Define a mapping from app AggFn to common-utils AggregateFunction
-export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
+const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   if (aggFn == null) {
     return aggFn;
   }
@@ -904,8 +770,8 @@ export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
 };
 
-export const convertV1GroupByToV2 = (
-  metricSource: TSource,
+const convertV1GroupByToV2 = (
+  metricSource: TMetricSource,
   groupBy: string[],
 ): string => {
   return groupBy
@@ -932,7 +798,7 @@ export const convertV1ChartConfigToV2 = (
   },
   source: {
     log?: TSource;
-    metric?: TSource;
+    metric?: TMetricSource;
     trace?: TSource;
   },
 ): BuilderChartConfigWithDateRange => {
@@ -1020,12 +886,18 @@ export function buildEventsSearchUrl({
   }
 
   const isMetricChart = isMetricChartConfig(config);
-  if (isMetricChart && source?.logSourceId == null) {
-    notifications.show({
-      color: 'yellow',
-      message: 'No log source is associated with the selected metric source.',
-    });
-    return null;
+  if (isMetricChart) {
+    const logSourceId =
+      source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined;
+    if (logSourceId == null) {
+      notifications.show({
+        color: 'yellow',
+        message: 'No log source is associated with the selected metric source.',
+      });
+      return null;
+    }
   }
 
   let where = config.where;
@@ -1089,7 +961,10 @@ export function buildEventsSearchUrl({
     params.where = '';
     params.whereLanguage = 'lucene';
     params.filters = JSON.stringify([]);
-    params.source = source?.logSourceId ?? '';
+    params.source =
+      (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined) ?? '';
   }
 
   // Include the select parameter if provided to preserve custom columns

@@ -31,6 +31,9 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import SourceSchemaPreview from './components/SourceSchemaPreview';
@@ -40,7 +43,7 @@ import { getMetricTableName } from './utils';
 
 import styles from '../styles/DashboardFiltersModal.module.scss';
 
-const MODAL_SIZE = 'sm';
+const MODAL_SIZE = 'md';
 
 interface CustomInputWrapperProps {
   children: React.ReactNode;
@@ -97,11 +100,19 @@ const DashboardFilterEditForm = ({
 }: DashboardFilterEditFormProps) => {
   const { handleSubmit, register, formState, control, reset } =
     useForm<DashboardFilter>({
-      defaultValues: filter,
+      defaultValues: {
+        ...filter,
+        where: filter.where ?? '',
+        whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
+      },
     });
 
   useEffect(() => {
-    reset(filter);
+    reset({
+      ...filter,
+      where: filter.where ?? '',
+      whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
+    });
   }, [filter, reset]);
 
   const sourceId = useWatch({ control, name: 'source' });
@@ -118,8 +129,8 @@ const DashboardFilterEditForm = ({
     : undefined;
 
   const sourceIsMetric = source?.kind === SourceKind.Metric;
-  const metricTypes = Object.values(MetricsDataType).filter(
-    type => source?.metricTables?.[type],
+  const metricTypes = Object.values(MetricsDataType).filter(type =>
+    source?.kind === SourceKind.Metric ? source.metricTables?.[type] : false,
   );
 
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
@@ -134,7 +145,18 @@ const DashboardFilterEditForm = ({
       size={MODAL_SIZE}
     >
       <div ref={setModalContentRef}>
-        <form onSubmit={handleSubmit(onSave)}>
+        <form
+          onSubmit={handleSubmit(values => {
+            const trimmedWhere = values.where?.trim() ?? '';
+            onSave({
+              ...values,
+              where: trimmedWhere || undefined,
+              whereLanguage: trimmedWhere
+                ? (values.whereLanguage ?? 'sql')
+                : undefined,
+            });
+          })}
+        >
           <Stack>
             <CustomInputWrapper label="Name" error={formState.errors.name}>
               <TextInput
@@ -201,6 +223,22 @@ const DashboardFilterEditForm = ({
                 enableHotkey
                 rules={{ required: true }}
                 parentRef={modalContentRef}
+              />
+            </CustomInputWrapper>
+
+            <CustomInputWrapper
+              label="Dropdown values filter"
+              tooltipText="Optional condition used to filter the rows from which available filter values are queried"
+            >
+              <SearchWhereInput
+                tableConnection={tableConnection}
+                control={control}
+                name="where"
+                languageName="whereLanguage"
+                showLabel={false}
+                allowMultiline={true}
+                sqlPlaceholder="Filter for dropdown values"
+                lucenePlaceholder="Filter for dropdown values"
               />
             </CustomInputWrapper>
 
@@ -394,6 +432,8 @@ const DashboardFiltersModal = ({
       name: '',
       expression: '',
       source: source?.id ?? '',
+      where: '',
+      whereLanguage: getStoredLanguage() ?? 'sql',
     });
   };
 

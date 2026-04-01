@@ -12,7 +12,6 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
@@ -65,6 +64,16 @@ type AppNavUserMenuProps = {
   onClickUserPreferences?: () => void;
 };
 
+const getUserInitials = (userName: string) => {
+  const nameParts = userName.trim().split(/\s+/).filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return 'U';
+  }
+
+  return nameParts.map(name => name.charAt(0).toUpperCase()).join('');
+};
+
 export const AppNavUserMenu = ({
   userName = 'User',
   teamName,
@@ -72,13 +81,11 @@ export const AppNavUserMenu = ({
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
   const { isCollapsed } = React.useContext(AppNavContext);
+  const resolvedUserName = userName.trim() || 'User';
 
-  const initials = userName
-    .split(' ')
-    .map(name => name[0].toUpperCase())
-    .join('');
+  const initials = getUserInitials(resolvedUserName);
 
-  const displayName = IS_LOCAL_MODE ? 'Local mode' : userName;
+  const displayName = IS_LOCAL_MODE ? 'Local mode' : resolvedUserName;
 
   return (
     <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>
@@ -171,69 +178,62 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.useContext(AppNavContext);
 
   return (
-    <>
-      <Paper
-        className={cx(styles.helpButton, {
-          [styles.helpButtonCollapsed]: isCollapsed,
-        })}
-      >
-        <Menu
-          withArrow
-          position="top-start"
-          transitionProps={{ transition: 'fade-up' }}
-          defaultOpened={false}
+    <Menu position="right-start" transitionProps={{ transition: 'fade-right' }}>
+      <Menu.Target>
+        <UnstyledButton
+          data-testid="help-menu-trigger"
+          className={styles.navItem}
         >
-          <Menu.Target>
-            <UnstyledButton data-testid="help-menu-trigger" w="100%">
-              <Group align="center" justify="center" h={28}>
-                <IconHelp size={16} />
-              </Group>
-            </UnstyledButton>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label>
-              Help{' '}
-              {version && (
-                <Text size="xs" component="span">
-                  v{version}
-                </Text>
-              )}
-            </Menu.Label>
+          <span className={styles.navItemContent}>
+            <span className={styles.navItemIcon}>
+              <IconHelp size={16} />
+            </span>
+            {!isCollapsed && <span>Help</span>}
+          </span>
+        </UnstyledButton>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>
+          Help{' '}
+          {version && (
+            <Text size="xs" component="span">
+              v{version}
+            </Text>
+          )}
+        </Menu.Label>
 
-            <Menu.Item
-              data-testid="documentation-menu-item"
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack"
-              component="a"
-              target="_blank"
-              rel="noopener noreferrer"
-              leftSection={<IconBook size={16} />}
-            >
-              Documentation
-            </Menu.Item>
-            <Menu.Item
-              data-testid="discord-menu-item"
-              leftSection={<IconBrandDiscord size={16} />}
-              component="a"
-              href="https://hyperdx.io/discord"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Discord Community
-            </Menu.Item>
-            <Menu.Item
-              data-testid="setup-instructions-menu-item"
-              leftSection={<IconBulb size={16} />}
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
-              component="a"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Setup Instructions
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </Paper>
-    </>
+        <Menu.Item
+          data-testid="documentation-menu-item"
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+          component="a"
+          target="_blank"
+          rel="noopener noreferrer"
+          leftSection={<IconBook size={16} />}
+        >
+          Documentation
+        </Menu.Item>
+        <Menu.Item
+          data-testid="discord-menu-item"
+          leftSection={<IconBrandDiscord size={16} />}
+          component="a"
+          href="https://hyperdx.io/discord"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Discord Community
+        </Menu.Item>
+        <Menu.Item
+          data-testid="setup-instructions-menu-item"
+          leftSection={<IconBulb size={16} />}
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+          component="a"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Setup Instructions
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 };
 
@@ -245,6 +245,7 @@ export const AppNavLink = ({
   isExpanded,
   onToggle,
   isBeta,
+  isActive,
 }: {
   className?: string;
   label: React.ReactNode;
@@ -253,6 +254,7 @@ export const AppNavLink = ({
   isExpanded?: boolean;
   onToggle?: () => void;
   isBeta?: boolean;
+  isActive?: boolean;
 }) => {
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
@@ -268,7 +270,8 @@ export const AppNavLink = ({
 
   // Check if current path matches this nav item
   // Use exact match or startsWith to avoid partial matches (e.g., /search matching /search-settings)
-  const isActive = pathname === href || pathname?.startsWith(href + '/');
+  const defaultIsActive = pathname === href || pathname?.startsWith(href + '/');
+  const isActiveResolved = isActive ?? defaultIsActive;
 
   return (
     <Link
@@ -276,7 +279,7 @@ export const AppNavLink = ({
       href={href}
       className={cx(
         styles.navItem,
-        { [styles.navItemActive]: isActive },
+        { [styles.navItemActive]: isActiveResolved },
         className,
       )}
     >
@@ -295,18 +298,23 @@ export const AppNavLink = ({
         </Badge>
       )}
       {!isCollapsed && onToggle && (
-        <button
-          type="button"
-          data-testid={`${testId}-toggle`}
-          className={styles.navItemToggle}
-          onClick={handleToggleClick}
+        <Tooltip
+          label={isExpanded ? 'Hide Favorites' : 'Show Favorites'}
+          position="right"
         >
-          {isExpanded ? (
-            <IconChevronUp size={14} className="text-muted-hover" />
-          ) : (
-            <IconChevronDown size={14} className="text-muted-hover" />
-          )}
-        </button>
+          <button
+            type="button"
+            data-testid={`${testId}-toggle`}
+            className={styles.navItemToggle}
+            onClick={handleToggleClick}
+          >
+            {isExpanded ? (
+              <IconChevronUp size={14} className="text-muted-hover" />
+            ) : (
+              <IconChevronDown size={14} className="text-muted-hover" />
+            )}
+          </button>
+        </Tooltip>
       )}
     </Link>
   );

@@ -8,6 +8,10 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
+  getSampleWeightExpression,
+  isLogSource,
+  isMetricSource,
+  isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -118,6 +122,13 @@ export function convertFormStateToChartConfig(
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
+      from: source?.from,
+      implicitColumnExpression:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.implicitColumnExpression
+          : undefined,
+      metricTables:
+        source && isMetricSource(source) ? source.metricTables : undefined,
     };
 
     return { ...rawSqlConfig, dateRange };
@@ -135,11 +146,17 @@ export function convertFormStateToChartConfig(
       timestampValueExpression: source.timestampValueExpression,
       dateRange,
       connection: source.connection,
-      implicitColumnExpression: source.implicitColumnExpression,
-      metricTables: source.metricTables,
+      implicitColumnExpression:
+        isLogSource(source) || isTraceSource(source)
+          ? source.implicitColumnExpression
+          : undefined,
+      sampleWeightExpression: getSampleWeightExpression(source),
+      metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
       select: isSelectEmpty
-        ? source.defaultTableSelectExpression || ''
+        ? ((isLogSource(source) || isTraceSource(source)) &&
+            source.defaultTableSelectExpression) ||
+          ''
         : mergedSelect,
     };
 
@@ -197,6 +214,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
+    source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {
