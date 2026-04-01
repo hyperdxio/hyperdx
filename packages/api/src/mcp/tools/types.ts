@@ -6,3 +6,5 @@ export type McpContext = {
 };
 
 export type ToolDefinition = (server: McpServer, context: McpContext) => void;
+
+export type PromptDefinition = (server: McpServer, context: McpContext) => void;

@@ -181,6 +181,55 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpNumberFormatSchema = z
+  .object({
+    output: z
+      .enum(['currency', 'percent', 'byte', 'time', 'number'])
+      .describe(
+        'Format category. "time" auto-formats durations (use factor for input unit). ' +
+          '"byte" formats as KB/MB/GB. "currency" prepends a symbol. "percent" appends %.',
+      ),
+    mantissa: z
+      .number()
+      .int()
+      .optional()
+      .describe('Decimal places (0–10). Not used for "time" output.'),
+    thousandSeparated: z
+      .boolean()
+      .optional()
+      .describe('Separate thousands (e.g. 1,234,567)'),
+    average: z
+      .boolean()
+      .optional()
+      .describe('Abbreviate large numbers (e.g. 1.2m)'),
+    decimalBytes: z
+      .boolean()
+      .optional()
+      .describe(
+        'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
+      ),
+    factor: z
+      .number()
+      .optional()
+      .describe(
+        'Input unit factor for "time" output. ' +
+          '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
+      ),
+    currencySymbol: z
+      .string()
+      .optional()
+      .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
+    unit: z
+      .string()
+      .optional()
+      .describe('Suffix appended to the value (e.g. " req/s")'),
+  })
+  .describe(
+    'Controls how the number value is formatted for display. ' +
+      'Most useful: { output: "time", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+      'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
+  );
+
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
@@ -189,6 +238,12 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .array(mcpTileSelectItemSchema)
       .length(1)
       .describe('Exactly one metric to display'),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(
+        'Display formatting for the number value. Example: { output: "time", factor: 0.000000001 } ' +
+          'to auto-format nanosecond durations as human-readable time.',
+      ),
   }),
 });
 
@@ -290,7 +345,10 @@ const mcpTilesParam = z
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
       '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, { "aggFn": "avg", "valueExpression": "Duration" }] } }\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "count" }] } }',
+      '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
+      '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
+      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"numberFormat": { "output": "time", "factor": 0.000000001 } } }',
   );
 
 // ─── Tool registrations ──────────────────────────────────────────────────────
