@@ -1,4 +1,4 @@
-# @hyperdx/tui
+# @hyperdx/cli
 
 A terminal UI for searching and tailing events (logs and traces) from HyperDX.
 
@@ -17,36 +17,33 @@ yarn install
 `yarn dev` runs `tsx src/cli.tsx` — no compile step needed.
 
 ```bash
-cd packages/tui
+cd packages/cli
 
 # Interactive event viewer (default command)
 yarn dev
 
 # Pass flags after --
-yarn dev -- events -s http://localhost:8000
-yarn dev -- events -q "level:error" --source "Logs" -f
-yarn dev -- stream --source "Logs" -f
-yarn dev -- logout
+yarn dev -- tui -s http://localhost:8000
+yarn dev -- tui -s http://localhost:8000 -q "level:error" --source "Logs" -f
+yarn dev -- stream -s http://localhost:8000 --source "Logs" -f
+yarn dev -- auth login -s http://localhost:8000
+yarn dev -- auth logout
 
 # Enable verbose output for debugging
-yarn dev -- events --verbose
+yarn dev -- tui -s http://localhost:8000 --verbose
 ```
-
-On first run you'll be prompted to log in with your HyperDX email and password.
-The session is saved to `~/.hyperdx/session.json`.
 
 ## Commands
 
-### `hdx events` (default)
+### `hdx tui` (default)
 
 Interactive event viewer with table, search, and row detail panel.
 
 ```bash
-hdx events                              # Interactive mode
-hdx events -s http://localhost:8000     # Custom API server
-hdx events -q "level:error"            # Start with a Lucene query
-hdx events --source "Logs"             # Skip source picker
-hdx events -f                          # Start in follow/live tail mode
+hdx tui -s http://localhost:8000                    # Interactive mode
+hdx tui -s http://localhost:8000 -q "level:error"  # Start with a Lucene query
+hdx tui -s http://localhost:8000 --source "Logs"   # Skip source picker
+hdx tui -s http://localhost:8000 -f                # Start in follow/live tail mode
 ```
 
 ### `hdx stream`
@@ -54,15 +51,31 @@ hdx events -f                          # Start in follow/live tail mode
 Non-interactive streaming mode. Pipe-friendly, outputs to stdout.
 
 ```bash
-hdx stream --source "Logs"                          # Stream events
-hdx stream --source "Logs" -q "level:error" -f      # Filter + follow
-hdx stream --source "Logs" --since 30m              # Last 30 minutes
-hdx stream --source "Logs" -n 50                    # Limit 50 rows
+hdx stream -s http://localhost:8000 --source "Logs"                     # Stream events
+hdx stream -s http://localhost:8000 --source "Logs" -q "level:error" -f # Filter + follow
+hdx stream -s http://localhost:8000 --source "Logs" --since 30m         # Last 30 minutes
 ```
 
-### `hdx logout`
+### `hdx sources`
 
-Clear the saved session.
+List available sources.
+
+```bash
+hdx sources -s http://localhost:8000
+```
+
+### `hdx auth`
+
+Manage authentication.
+
+```bash
+hdx auth login -s http://localhost:8000                          # Interactive login
+hdx auth login -s http://localhost:8000 -e user@example.com -p pass  # Non-interactive login
+hdx auth status                                                  # Show authentication status
+hdx auth logout                                                  # Log out
+```
+
+The session is saved to `~/.config/hyperdx/cli/session.json`.
 
 ## Keybindings
 
@@ -78,6 +91,7 @@ Clear the saved session.
 | `Esc`         | Blur search bar                        |
 | `Tab`         | Cycle through sources / saved searches |
 | `Shift+Tab`   | Cycle backwards                        |
+| `s`           | Edit select clause in $EDITOR          |
 | `f`           | Toggle follow mode (live tail)         |
 | `w`           | Toggle line wrap                       |
 | `q`           | Quit                                   |
@@ -132,12 +146,12 @@ yarn compile:linux        # Linux x64
 
 ## Options
 
-| Flag                   | Description                                 | Default                 |
-| ---------------------- | ------------------------------------------- | ----------------------- |
-| `-s, --server <url>`   | HyperDX API server URL                      | `http://localhost:8000` |
-| `-q, --query <query>`  | Lucene search query                         |                         |
-| `--source <name>`      | Source name (skips picker)                  |                         |
-| `-f, --follow`         | Start in follow/live tail mode              |                         |
-| `--verbose`            | Enable debug output from internal libraries |                         |
-| `--since <duration>`   | How far back to look (stream mode)          | `1h`                    |
-| `-n, --limit <number>` | Max rows per fetch (stream mode)            | `100`                   |
+| Flag                   | Description                                 | Default |
+| ---------------------- | ------------------------------------------- | ------- |
+| `-s, --server <url>`   | HyperDX API server URL (required)           |         |
+| `-q, --query <query>`  | Lucene search query                         |         |
+| `--source <name>`      | Source name (skips picker)                  |         |
+| `-f, --follow`         | Start in follow/live tail mode              |         |
+| `--verbose`            | Enable debug output from internal libraries |         |
+| `--since <duration>`   | How far back to look (stream mode)          | `1h`    |
+| `-n, --limit <number>` | Max rows per fetch (stream mode)            | `100`   |

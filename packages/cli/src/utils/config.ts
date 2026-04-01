@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.hyperdx');
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'hyperdx', 'cli');
 const SESSION_FILE = path.join(CONFIG_DIR, 'session.json');
 
 export interface SessionConfig {

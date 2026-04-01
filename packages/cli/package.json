@@ -1,5 +1,5 @@
 {
-  "name": "@hyperdx/tui",
+  "name": "@hyperdx/cli",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,

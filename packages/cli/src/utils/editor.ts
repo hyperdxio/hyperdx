@@ -113,6 +113,67 @@ function parseFileContent(content: string): TimeRange | null {
  * This is a blocking call — Ink's render loop pauses while the editor
  * is open, which is the desired behavior (like git commit).
  */
+// ---- Select clause editor ------------------------------------------
+
+function buildSelectFileContent(currentSelect: string): string {
+  return [
+    '# HyperDX Select Clause',
+    '# Edit the SELECT columns below.',
+    '# One expression per line, or comma-separated on a single line.',
+    '# Examples:',
+    '#   TimestampTime, Body, SeverityText',
+    '#   SpanName, ServiceName, Duration',
+    '#   toString(LogAttributes) AS attrs',
+    '#',
+    '# Lines starting with # are ignored.',
+    '',
+    currentSelect,
+    '',
+  ].join('\n');
+}
+
+function parseSelectFileContent(content: string): string | null {
+  const lines: string[] = [];
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#') || trimmed === '') continue;
+    lines.push(trimmed);
+  }
+
+  const result = lines.join(', ').trim();
+  return result || null;
+}
+
+/**
+ * Opens $EDITOR with the current SELECT clause.
+ * Returns the edited select string, or null if cancelled / empty.
+ */
+export function openEditorForSelect(currentSelect: string): string | null {
+  const editor = process.env.EDITOR || process.env.VISUAL || 'vi';
+  const tmpFile = path.join(os.tmpdir(), `hdx-select-${Date.now()}.sql`);
+
+  try {
+    fs.writeFileSync(tmpFile, buildSelectFileContent(currentSelect), 'utf-8');
+
+    execSync(`${editor} ${tmpFile}`, {
+      stdio: 'inherit',
+    });
+
+    const edited = fs.readFileSync(tmpFile, 'utf-8');
+    return parseSelectFileContent(edited);
+  } catch {
+    return null;
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// ---- Time range editor ---------------------------------------------
+
 export function openEditorForTimeRange(
   currentRange: TimeRange,
 ): TimeRange | null {

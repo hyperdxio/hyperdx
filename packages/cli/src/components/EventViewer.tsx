@@ -17,7 +17,11 @@ import type {
   ProxyClickhouseClient,
 } from '@/api/client';
 import { buildEventSearchQuery, buildFullRowSql } from '@/api/eventQuery';
-import { openEditorForTimeRange, type TimeRange } from '@/utils/editor';
+import {
+  openEditorForSelect,
+  openEditorForTimeRange,
+  type TimeRange,
+} from '@/utils/editor';
 import ColumnValues from '@/components/ColumnValues';
 import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
@@ -43,27 +47,64 @@ const TAIL_INTERVAL_MS = 2000;
 
 interface Column {
   header: string;
-  /** Width as percentage string, e.g. "20%" */
+  /** Percentage width string, e.g. "20%" */
   width: string;
 }
 
 function getColumns(source: SourceResponse): Column[] {
   if (source.kind === 'trace') {
     return [
-      { header: 'Timestamp', width: '22%' },
+      { header: 'Timestamp', width: '20%' },
       { header: 'Service', width: '15%' },
       { header: 'Span', width: '25%' },
       { header: 'Duration', width: '10%' },
       { header: 'Status', width: '8%' },
-      { header: 'Trace ID', width: '20%' },
+      { header: 'Trace ID', width: '22%' },
     ];
   }
   // Log source
   return [
-    { header: 'Timestamp', width: '22%' },
+    { header: 'Timestamp', width: '20%' },
     { header: 'Severity', width: '8%' },
-    { header: 'Body', width: '70%' },
+    { header: 'Body', width: '72%' },
   ];
+}
+
+/**
+ * Derive columns dynamically from the row data.
+ * Distributes percentage widths: last column gets the remaining space.
+ */
+function getDynamicColumns(events: EventRow[]): Column[] {
+  if (events.length === 0) return [];
+  const keys = Object.keys(events[0]);
+  if (keys.length === 0) return [];
+
+  const count = keys.length;
+  if (count === 1) return [{ header: keys[0], width: '100%' }];
+
+  // Give the last column (usually Body) more space
+  const otherWidth = Math.floor(60 / (count - 1));
+  const lastWidth = 100 - otherWidth * (count - 1);
+
+  return keys.map((key, i) => ({
+    header: key,
+    width: `${i === count - 1 ? lastWidth : otherWidth}%`,
+  }));
+}
+
+/**
+ * Format a row generically — just stringify each value in column order.
+ * Used when the user has a custom select clause.
+ */
+function formatDynamicRow(row: EventRow, columns: Column[]): FormattedRow {
+  return {
+    cells: columns.map(col => {
+      const val = row[col.header];
+      if (val == null) return '';
+      if (typeof val === 'object') return flatten(JSON.stringify(val));
+      return flatten(String(val));
+    }),
+  };
 }
 
 interface FormattedRow {
@@ -318,6 +359,7 @@ const HelpScreen = React.memo(function HelpScreen() {
     ['Tab', 'Next source / saved search'],
     ['Shift+Tab', 'Previous source / saved search'],
     ['t', 'Edit time range in $EDITOR'],
+    ['s', 'Edit select clause in $EDITOR'],
     ['f', 'Toggle follow mode (live tail)'],
     ['w', 'Toggle line wrap'],
     ['?', 'Toggle this help'],
@@ -354,10 +396,10 @@ const TableHeader = React.memo(function TableHeader({
   columns: Column[];
 }) {
   return (
-    <Box>
+    <Box overflowX="hidden">
       {columns.map((col, i) => (
-        <Box key={i} width={col.width}>
-          <Text bold dimColor>
+        <Box key={i} width={col.width} overflowX="hidden">
+          <Text bold dimColor wrap="truncate">
             {col.header}
           </Text>
         </Box>
@@ -391,9 +433,13 @@ export default function EventViewer({
   const [isFollowing, setIsFollowing] = useState(follow);
   const wasFollowingRef = React.useRef(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [focusSearch, setFocusSearch] = useState(true);
+  const [focusSearch, setFocusSearch] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [wrapLines, setWrapLines] = useState(false);
+  const [customSelectMap, setCustomSelectMap] = useState<
+    Record<string, string>
+  >({});
+  const customSelect = customSelectMap[source.id] as string | undefined;
   const [selectedRow, setSelectedRow] = useState(0);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [expandedRowData, setExpandedRowData] = useState<Record<
@@ -421,7 +467,10 @@ export default function EventViewer({
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
 
   const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
-  const columns = useMemo(() => getColumns(source), [source]);
+  const columns = useMemo(
+    () => (events.length > 0 ? getDynamicColumns(events) : getColumns(source)),
+    [source, events],
+  );
 
   // Build switchable items list
   const switchItems = useMemo<SwitchItem[]>(() => {
@@ -473,7 +522,14 @@ export default function EventViewer({
       setError(null);
       try {
         const chSql = await buildEventSearchQuery(
-          { source, searchQuery: query, startTime, endTime, limit: PAGE_SIZE },
+          {
+            source,
+            selectOverride: customSelect,
+            searchQuery: query,
+            startTime,
+            endTime,
+            limit: PAGE_SIZE,
+          },
           metadata,
         );
         const resultSet = await clickhouseClient.query({
@@ -502,7 +558,7 @@ export default function EventViewer({
         setLoading(false);
       }
     },
-    [clickhouseClient, metadata, source, tsExpr],
+    [clickhouseClient, metadata, source, tsExpr, customSelect],
   );
 
   const fetchNextPage = useCallback(async () => {
@@ -513,6 +569,7 @@ export default function EventViewer({
       const chSql = await buildEventSearchQuery(
         {
           source,
+          selectOverride: customSelect,
           searchQuery: submittedQuery,
           startTime: start,
           endTime: end,
@@ -545,6 +602,7 @@ export default function EventViewer({
     loadingMore,
     events.length,
     submittedQuery,
+    customSelect,
     source,
     metadata,
     clickhouseClient,
@@ -837,16 +895,33 @@ export default function EventViewer({
       }, 50);
       return;
     }
+    // s = edit select clause in $EDITOR
+    if (input === 's') {
+      setTimeout(() => {
+        const currentSelect =
+          customSelect ?? source.defaultTableSelectExpression ?? '';
+        const result = openEditorForSelect(currentSelect);
+        if (result != null) {
+          setCustomSelectMap(prev => ({
+            ...prev,
+            [source.id]: result,
+          }));
+          setScrollOffset(0);
+          setSelectedRow(0);
+        }
+      }, 50);
+      return;
+    }
     if (input === 'q') process.exit(0);
   });
 
   // Pre-format visible rows (keep raw data for expanded view)
   const visibleRows = useMemo(() => {
     return events.slice(scrollOffset, scrollOffset + maxRows).map(row => ({
-      ...formatEventRow(row, source),
+      ...formatDynamicRow(row, columns),
       raw: row,
     }));
-  }, [events, scrollOffset, maxRows, source]);
+  }, [events, scrollOffset, maxRows, columns]);
 
   const errorLine = error ? error.slice(0, 200) : '';
 
@@ -1049,14 +1124,18 @@ export default function EventViewer({
           {visibleRows.map((row, i) => {
             const isSelected = i === selectedRow && !focusSearch;
             return (
-              <Box key={i}>
+              <Box key={i} overflowX="hidden">
                 <Box width={2}>
                   <Text color="cyan" bold>
                     {isSelected ? '▸' : ' '}
                   </Text>
                 </Box>
                 {row.cells.map((cell, ci) => (
-                  <Box key={ci} width={columns[ci]?.width ?? '10%'}>
+                  <Box
+                    key={ci}
+                    width={columns[ci]?.width ?? '10%'}
+                    overflowX={wrapLines ? undefined : 'hidden'}
+                  >
                     <Text
                       wrap={wrapLines ? 'wrap' : 'truncate'}
                       color={

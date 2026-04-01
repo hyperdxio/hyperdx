@@ -200,14 +200,12 @@ export default function RowOverview({
           <Text bold>Resource Attributes</Text>
           <Text dimColor>{'─'.repeat(40)}</Text>
           {filteredResourceAttrs ? (
-            <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               {filteredResourceAttrs.map(([key, value]) => (
-                <Text key={key} backgroundColor="gray">
+                <Text key={key} backgroundColor="#3a3a3a">
                   {' '}
-                  <Text color="whiteBright" dimColor>
-                    {key}
-                  </Text>
-                  <Text color="white">: {value}</Text>{' '}
+                  <Text color="cyan">{key}</Text>
+                  <Text color="whiteBright">: {value}</Text>{' '}
                 </Text>
               ))}
             </Box>

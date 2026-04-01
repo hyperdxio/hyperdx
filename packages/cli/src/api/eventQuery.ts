@@ -15,6 +15,8 @@ import type { SourceResponse } from './client';
 
 export interface SearchQueryOptions {
   source: SourceResponse;
+  /** Override the SELECT clause (user-edited via $EDITOR) */
+  selectOverride?: string;
   /** Lucene search string */
   searchQuery?: string;
   /** Date range */
@@ -56,6 +58,7 @@ export async function buildEventSearchQuery(
 ): Promise<ChSql> {
   const {
     source,
+    selectOverride,
     searchQuery = '',
     startTime,
     endTime,
@@ -67,8 +70,8 @@ export async function buildEventSearchQuery(
   const firstTsExpr = getFirstTimestampValueExpression(tsExpr) ?? tsExpr;
   const orderBy = source.orderByExpression ?? `${firstTsExpr} DESC`;
 
-  // Use the source's select expression, or build one for traces
-  let selectExpr = source.defaultTableSelectExpression ?? '';
+  // Use the override if provided, otherwise the source's default
+  let selectExpr = selectOverride ?? source.defaultTableSelectExpression ?? '';
   if (!selectExpr && source.kind === 'trace') {
     selectExpr = buildTraceSelectExpression(source);
   }

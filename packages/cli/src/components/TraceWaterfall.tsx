@@ -71,16 +71,6 @@ interface TraceWaterfallProps {
 
 // ---- Duration formatting -------------------------------------------
 
-function formatDuration(
-  durationRaw: number,
-  precision: number | undefined,
-): string {
-  const p = precision ?? 3;
-  if (p === 9) return `${(durationRaw / 1_000_000).toFixed(1)}ms`;
-  if (p === 6) return `${(durationRaw / 1_000).toFixed(1)}ms`;
-  return `${durationRaw.toFixed(1)}ms`;
-}
-
 function durationMs(
   durationRaw: number,
   precision: number | undefined,
@@ -89,6 +79,18 @@ function durationMs(
   if (p === 9) return durationRaw / 1_000_000;
   if (p === 6) return durationRaw / 1_000;
   return durationRaw;
+}
+
+function formatDuration(
+  durationRaw: number,
+  precision: number | undefined,
+): string {
+  const ms = durationMs(durationRaw, precision);
+  if (ms === 0) return '0ms';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  if (ms >= 1) return `${ms.toFixed(1)}ms`;
+  if (ms >= 0.001) return `${(ms * 1000).toFixed(1)}μs`;
+  return `${(ms * 1_000_000).toFixed(0)}ns`;
 }
 
 // ---- Status helpers ------------------------------------------------
@@ -141,77 +143,71 @@ function getBarColor(node: SpanNode): string {
  * - Children appear in insertion order (already chronological
  *   because input is time-sorted), so DFS produces a timeline
  */
+/**
+ * Build a tree from trace spans and (optionally) correlated log events.
+ *
+ * This is a direct port of DBTraceWaterfallChart's DAG builder.
+ */
 function buildTree(
   traceSpans: TaggedSpanRow[],
   logEvents: TaggedSpanRow[],
 ): SpanNode[] {
-  // Only trace spans define valid SpanIds for the tree structure
   const validSpanIds = new Set(
     traceSpans.filter(s => s.SpanId).map(s => s.SpanId),
   );
 
-  const roots: SpanNode[] = [];
-  // Maps a unique node id (result.id or placeholder-xxx) → Node
-  const nodesMap = new Map<string, SpanNode>();
-  // Maps SpanId → unique node id of the FIRST trace node with that SpanId
-  const spanIdMap = new Map<string, string>();
+  const rootNodes: SpanNode[] = [];
+  const nodesMap = new Map<string, SpanNode>(); // Maps nodeId → Node
+  const spanIdMap = new Map<string, string>(); // Maps SpanId → nodeId of FIRST node
 
-  // Merge all rows and sort by timestamp, matching the web frontend's
-  // rows.sort() in DBTraceWaterfallChartContainer.
+  // Merge and sort by timestamp (matches web frontend)
   const allRows: TaggedSpanRow[] = [...traceSpans, ...logEvents];
   allRows.sort(
     (a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime(),
   );
 
-  let nodeIdCounter = 0;
+  let idCounter = 0;
   for (const row of allRows) {
     const { kind, SpanId, ParentSpanId } = row;
     if (!SpanId) continue;
 
-    // Log events get a suffixed key to avoid overwriting the trace span
     const nodeSpanId = kind === 'log' ? `${SpanId}-log` : SpanId;
-    // Log events attach as children of the span with matching SpanId
     const nodeParentSpanId = kind === 'log' ? SpanId : ParentSpanId || '';
 
-    const nodeId = `node-${nodeIdCounter++}`;
+    const nodeId = `n-${idCounter++}`;
     const curNode: SpanNode = { ...row, children: [], level: 0 };
 
     if (kind === 'span') {
       if (!spanIdMap.has(nodeSpanId)) {
-        // First occurrence — canonical node for this SpanId
         spanIdMap.set(nodeSpanId, nodeId);
 
-        // Inherit children from any placeholder created earlier
+        // Inherit children from placeholder if one was created earlier
         const placeholderId = `placeholder-${nodeSpanId}`;
         const placeholder = nodesMap.get(placeholderId);
         if (placeholder) {
-          curNode.children = placeholder.children;
+          curNode.children = placeholder.children || [];
           nodesMap.delete(placeholderId);
         }
       }
+      // Always add to nodesMap with unique nodeId
       nodesMap.set(nodeId, curNode);
     }
 
-    // Root if: trace span with no parent or parent not in valid set
-    const isRoot =
+    const isRootNode =
       kind === 'span' &&
       (!nodeParentSpanId || !validSpanIds.has(nodeParentSpanId));
 
-    if (isRoot) {
-      roots.push(curNode);
+    if (isRootNode) {
+      rootNodes.push(curNode);
     } else {
-      // Look up parent by SpanId
       const parentNodeId = spanIdMap.get(nodeParentSpanId);
       let parentNode = parentNodeId ? nodesMap.get(parentNodeId) : undefined;
 
       if (!parentNode) {
-        // Parent doesn't exist yet — create or reuse placeholder
         const placeholderId = `placeholder-${nodeParentSpanId}`;
         parentNode = nodesMap.get(placeholderId);
         if (!parentNode) {
-          parentNode = {
-            children: [],
-          } as unknown as SpanNode;
+          parentNode = { children: [] } as unknown as SpanNode;
           nodesMap.set(placeholderId, parentNode);
         }
       }
@@ -220,8 +216,7 @@ function buildTree(
     }
   }
 
-  // Flatten via DFS — children are already in chronological order
-  // from the time-sorted insertion, so no re-sorting needed
+  // Flatten via in-order DFS traversal
   const flattenNode = (node: SpanNode, result: SpanNode[], level: number) => {
     node.level = level;
     result.push(node);
@@ -231,7 +226,7 @@ function buildTree(
   };
 
   const flattened: SpanNode[] = [];
-  for (const root of roots) {
+  for (const root of rootNodes) {
     flattenNode(root, flattened, 0);
   }
 
