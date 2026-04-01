@@ -269,16 +269,15 @@ export default function DBTracePanel({
             onClick={handleSpanClick}
             initialRowHighlightHint={initialRowHighlightHint}
             headerExtra={
-              <Group gap={6}>
+              <Group gap={4} align="center">
                 <Text size="xxs" c="dimmed">
-                  {parentSourceData?.kind === SourceKind.Log
-                    ? 'Trace Source'
-                    : 'Correlated Logs'}
+                  Log source
                 </Text>
                 <SourceSelectControlled
                   control={control}
                   name="source"
                   size="xs"
+                  w={120}
                 />
               </Group>
             }
@@ -306,7 +305,7 @@ export default function DBTracePanel({
             padding: 'var(--mantine-spacing-sm)',
           }}
         >
-          <Flex align="center" justify="space-between">
+          <div style={{ position: 'relative' }}>
             <TabBar
               className="fs-8"
               items={[
@@ -336,11 +335,12 @@ export default function DBTracePanel({
                 size="sm"
                 onClick={handleCloseSpanDetails}
                 aria-label="Close span details"
+                style={{ position: 'absolute', right: 0, top: 0 }}
               >
                 <IconX size={16} />
               </ActionIcon>
             </Tooltip>
-          </Flex>
+          </div>
           {displayedTab === SpanDetailTab.Overview && selectedSpanSource && (
             <RowOverviewPanel
               source={selectedSpanSource}

@@ -33,6 +33,8 @@ import {
   IconChevronsDown,
   IconChevronsRight,
   IconLogs,
+  IconSparkles,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -404,6 +406,182 @@ function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
   );
 }
 
+function generateTraceSummary({
+  rootSpanName,
+  totalDurationMs,
+  spanCount,
+  errorCount,
+  services,
+  errorServices,
+}: {
+  rootSpanName: string;
+  totalDurationMs: number;
+  spanCount: number;
+  errorCount: number;
+  services: string[];
+  errorServices: string[];
+}): string {
+  const durationStr =
+    totalDurationMs < 1000
+      ? `${Math.round(totalDurationMs)}ms`
+      : `${(totalDurationMs / 1000).toFixed(2)}s`;
+
+  const serviceList = services.slice(0, 5).join(', ');
+  const extra = services.length > 5 ? ` and ${services.length - 5} more` : '';
+
+  let summary = `This trace spans ${durationStr} across ${services.length} service${services.length !== 1 ? 's' : ''} (${serviceList}${extra}) with ${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+
+  if (rootSpanName) {
+    summary += `. The root operation is \`${rootSpanName}\``;
+  }
+
+  if (errorCount > 0) {
+    summary += `. ${errorCount} error${errorCount !== 1 ? 's' : ''} detected`;
+    if (errorServices.length > 0) {
+      summary += ` in ${errorServices.join(', ')}`;
+    }
+  } else {
+    summary += `. No errors detected`;
+  }
+
+  summary += '.';
+  return summary;
+}
+
+function StreamingText({ text, speed = 12 }: { text: string; speed?: number }) {
+  const [charIndex, setCharIndex] = useState(0);
+
+  useEffect(() => {
+    if (!text) return;
+
+    const interval = setInterval(() => {
+      setCharIndex(prev => {
+        const next = prev + 1;
+        if (next >= text.length) {
+          clearInterval(interval);
+          return text.length;
+        }
+        return next;
+      });
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  const displayed = text.slice(0, charIndex);
+  const isStreaming = charIndex < text.length;
+
+  return (
+    <>
+      {displayed}
+      {isStreaming && (
+        <span
+          style={{
+            display: 'inline-block',
+            width: 4,
+            height: 14,
+            backgroundColor: 'var(--color-text-brand)',
+            marginLeft: 1,
+            verticalAlign: 'text-bottom',
+            animation: 'blink 0.8s step-end infinite',
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function TraceSummaryPanel({
+  rows,
+  serviceColorMap,
+  spanCount,
+  errorCount,
+  minOffset,
+  onClose,
+}: {
+  rows: any[];
+  serviceColorMap: Map<string, string>;
+  spanCount: number;
+  errorCount: number;
+  minOffset: number;
+  onClose: () => void;
+}) {
+  const summaryText = useMemo(() => {
+    if (!rows.length) return '';
+
+    const traceSpans = rows.filter(r => r.type !== SourceKind.Log);
+    const rootSpan = traceSpans.find(
+      r => !r.ParentSpanId || r.ParentSpanId === '',
+    );
+
+    const maxEnd = rows.reduce((acc, r) => {
+      const start = new Date(r.Timestamp).getTime();
+      const dur = (r.Duration || 0) * 1000;
+      return Math.max(acc, start + dur);
+    }, 0);
+    const totalDurationMs = maxEnd - minOffset;
+
+    const services = [...serviceColorMap.keys()];
+    const errorServices = [
+      ...new Set(
+        traceSpans
+          .filter(
+            r =>
+              r.StatusCode === 'Error' ||
+              r.SeverityText?.toLowerCase() === 'error',
+          )
+          .map(r => r.ServiceName)
+          .filter(Boolean) as string[],
+      ),
+    ];
+
+    return generateTraceSummary({
+      rootSpanName: rootSpan?.Body ?? '',
+      totalDurationMs,
+      spanCount,
+      errorCount,
+      services,
+      errorServices,
+    });
+  }, [rows, serviceColorMap, spanCount, errorCount, minOffset]);
+
+  return (
+    <Box
+      mx="xs"
+      mb="xs"
+      px="sm"
+      py="xs"
+      style={{
+        backgroundColor: 'var(--color-bg-muted)',
+        borderRadius: 'var(--mantine-radius-sm)',
+        border: '1px solid var(--color-border)',
+        position: 'relative',
+      }}
+    >
+      <Group gap={6} mb={4} align="center">
+        <IconSparkles size={13} style={{ color: 'var(--color-text-brand)' }} />
+        <Text size="xxs" fw={600}>
+          Trace Summary
+        </Text>
+        <ActionIcon
+          variant="subtle"
+          size="xs"
+          onClick={onClose}
+          style={{ marginLeft: 'auto' }}
+        >
+          <IconX size={12} />
+        </ActionIcon>
+      </Group>
+      <Text
+        size="xs"
+        c="dimmed"
+        style={{ fontFamily: 'var(--mantine-font-family)', lineHeight: 1.5 }}
+      >
+        <StreamingText key={summaryText} text={summaryText} />
+      </Text>
+    </Box>
+  );
+}
+
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableSource,
@@ -613,6 +791,7 @@ export function DBTraceWaterfallChartContainer({
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSummary, setShowSummary] = useState(false);
 
   const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
@@ -1163,6 +1342,16 @@ export function DBTraceWaterfallChartContainer({
           />
         </Group>
         <Group gap="sm">
+          <Tooltip label="Summarize trace" position="bottom">
+            <ActionIcon
+              variant={showSummary ? 'light' : 'subtle'}
+              size="sm"
+              onClick={() => setShowSummary(prev => !prev)}
+              aria-label="Summarize trace"
+            >
+              <IconSparkles size={14} />
+            </ActionIcon>
+          </Tooltip>
           {headerExtra}
           <span>
             <Anchor
@@ -1257,6 +1446,16 @@ export function DBTraceWaterfallChartContainer({
               <>
                 {minimap}
                 {controlsHeader}
+                {showSummary && rows && (
+                  <TraceSummaryPanel
+                    rows={rows}
+                    serviceColorMap={serviceColorMap}
+                    spanCount={spanCount}
+                    errorCount={errorCount}
+                    minOffset={minOffset}
+                    onClose={() => setShowSummary(false)}
+                  />
+                )}
               </>
             )}
           />

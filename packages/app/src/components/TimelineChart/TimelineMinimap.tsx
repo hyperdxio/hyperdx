@@ -206,6 +206,13 @@ export const TimelineMinimap = memo(function ({
     setBrushRange(null);
   }, [setScale, setOffset]);
 
+  const handleDoubleClick = useCallback(() => {
+    if (isZoomed) {
+      setScale(() => 1);
+      setOffset(() => 0);
+    }
+  }, [isZoomed, setScale, setOffset]);
+
   const getCursor = useCallback(
     (e: React.PointerEvent) => {
       if (!isZoomed) return 'crosshair';
@@ -227,6 +234,7 @@ export const TimelineMinimap = memo(function ({
       ref={containerRef}
       className={styles.container}
       style={{ height: MINIMAP_HEIGHT }}
+      onDoubleClick={handleDoubleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={e => {
         handlePointerMove(e);
