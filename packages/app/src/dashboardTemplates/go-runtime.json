@@ -1,0 +1,347 @@
+{
+  "version": "0.1.0",
+  "name": "Go Runtime Metrics",
+  "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications with the OTel Runtime (v0.62+) and Host Metrics instrumentations",
+  "tags": [
+    "OTel Runtime Metrics"
+  ],
+  "tiles": [
+    {
+      "id": "109853",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Memory Used",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "go.memory.used",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "e6a3df",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Alloc Rate",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "go.memory.allocated",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "40f62f",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "GC Heap Target",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.memory.gc.goal",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "2029f0",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "bbde66",
+      "x": 0,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Memory: Used vs Limit vs GC Target",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "go.memory.used",
+            "metricType": "sum",
+            "alias": "used"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.memory.limit",
+            "metricType": "sum",
+            "alias": "limit"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.memory.gc.goal",
+            "metricType": "sum",
+            "alias": "gc target"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "deb616",
+      "x": 12,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Memory Allocated (rate)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "go.memory.allocated",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "432607",
+      "x": 0,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "process.cpu.utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "08224d",
+      "x": 12,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Cores Used",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "process.cpu.time",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "fae8d7",
+      "x": 0,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Object Allocations",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "go.memory.allocations",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "545a68",
+      "x": 12,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Memory Used by Type",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.memory.used",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['go.memory.type']",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c0fc04",
+      "x": 0,
+      "y": 24,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "GC Target (%) & GOMAXPROCS",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.config.gogc",
+            "metricType": "sum",
+            "alias": "GC target %"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "go.processor.limit",
+            "metricType": "sum",
+            "alias": "GOMAXPROCS"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "id": "svc-filter-001",
+      "type": "QUERY_EXPRESSION",
+      "name": "ServiceName",
+      "expression": "ServiceName",
+      "source": "Metrics",
+      "sourceMetricType": "sum",
+      "where": "ResourceAttributes['telemetry.sdk.language'] = 'go'",
+      "whereLanguage": "sql"
+    }
+  ]
+}

@@ -764,9 +764,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   tiles: z.array(TileTemplateSchema),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),

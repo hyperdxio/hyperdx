@@ -14,6 +14,7 @@ export class DashboardsListPage {
   readonly tempDashboardButton: Locator;
   readonly gridViewButton: Locator;
   readonly listViewButton: Locator;
+  readonly browseTemplatesLink: Locator;
 
   private readonly emptyCreateDashboardButton: Locator;
   private readonly emptyImportDashboardButton: Locator;
@@ -29,6 +30,9 @@ export class DashboardsListPage {
     this.tempDashboardButton = page.getByTestId('temp-dashboard-button');
     this.gridViewButton = page.getByRole('button', { name: 'Grid view' });
     this.listViewButton = page.getByRole('button', { name: 'List view' });
+    this.browseTemplatesLink = page.getByRole('link', {
+      name: /Browse dashboard templates/,
+    });
     this.emptyCreateDashboardButton = page.getByTestId(
       'empty-create-dashboard-button',
     );
@@ -40,6 +44,11 @@ export class DashboardsListPage {
 
   async goto() {
     await this.page.goto('/dashboards/list', { waitUntil: 'networkidle' });
+  }
+
+  async clickBrowseTemplates() {
+    await this.browseTemplatesLink.click();
+    await this.page.waitForURL('**/dashboards/templates');
   }
 
   async searchDashboards(query: string) {
