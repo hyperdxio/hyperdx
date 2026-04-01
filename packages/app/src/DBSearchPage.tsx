@@ -82,6 +82,7 @@ import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -1582,7 +1583,7 @@ function DBSearchPage() {
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
                 Saved Searches
               </Anchor>
-              <Text fz="sm" c="dimmed">
+              <Text fz="sm" c="dimmed" maw={400} truncate="end">
                 {savedSearch.name}
               </Text>
             </Breadcrumbs>
@@ -1599,6 +1600,10 @@ function DBSearchPage() {
           </Stack>
 
           <Group gap="xs">
+            <FavoriteButton
+              resourceType="savedSearch"
+              resourceId={savedSearch.id}
+            />
             <Tags
               allowCreate
               values={savedSearch.tags || []}

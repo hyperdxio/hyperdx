@@ -61,14 +61,14 @@ export class SavedSearchesListPage {
 
   async deleteSavedSearchFromCard(name: string) {
     const card = this.getSavedSearchCard(name);
-    await card.getByRole('button').click();
+    await card.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
     await this.confirmConfirmButton.click();
   }
 
   async deleteSavedSearchFromRow(name: string) {
     const row = this.getSavedSearchRow(name);
-    await row.getByRole('button').click();
+    await row.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
     await this.confirmConfirmButton.click();
   }
@@ -93,5 +93,28 @@ export class SavedSearchesListPage {
 
   getNoMatchesState() {
     return this.pageContainer.getByText('No matching saved searches.');
+  }
+
+  getFavoritesSection() {
+    return this.page.getByTestId('favorite-saved-searches-section');
+  }
+
+  async toggleFavoriteOnCard(name: string) {
+    const card = this.getSavedSearchCard(name);
+    await card.getByTestId('favorite-button').click();
+  }
+
+  async toggleFavoriteOnRow(name: string) {
+    const row = this.getSavedSearchRow(name);
+    await row.getByTestId('favorite-button').click();
+  }
+
+  getFavoritedSearchCard(name: string) {
+    return this.getFavoritesSection().locator('a').filter({ hasText: name });
+  }
+
+  async toggleFavoriteOnFavoritedCard(name: string) {
+    const card = this.getFavoritedSearchCard(name);
+    await card.getByTestId('favorite-button').click();
   }
 }
