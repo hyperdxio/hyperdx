@@ -21,6 +21,7 @@ import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
+import { withToolTracing } from '../utils/tracing';
 import { ToolDefinition } from './types';
 
 // ─── Shared schemas ──────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ const mcpTimeRangeSchema = z.object({
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-function parseTimeRange(
+export function parseTimeRange(
   startTime?: string,
   endTime?: string,
 ): { error: string } | { startDate: Date; endDate: Date } {
@@ -158,7 +159,7 @@ function formatQueryResult(result: unknown) {
   };
 }
 
-async function runConfigTile(
+export async function runConfigTile(
   teamId: string,
   tile: ExternalDashboardTileWithId,
   startDate: Date,
@@ -253,7 +254,7 @@ async function runConfigTile(
               ),
             },
           ],
-          limit: { limit: options?.maxResults ?? 200, offset: 0 },
+          limit: { limit: options?.maxResults ?? 50, offset: 0 },
         }
       : {};
 
@@ -359,6 +360,15 @@ const builderQuerySchema = mcpTimeRangeSchema.extend({
     .string()
     .optional()
     .describe('Column to sort results by (table display only).'),
+  granularity: z
+    .string()
+    .optional()
+    .describe(
+      'Time bucket size for time-series charts (line, stacked_bar). ' +
+        'Format: "<number> <unit>" where unit is second, minute, hour, or day. ' +
+        'Examples: "1 minute", "5 minute", "1 hour", "1 day". ' +
+        'Omit to let HyperDX pick automatically based on the time range.',
+    ),
 });
 
 const searchQuerySchema = mcpTimeRangeSchema.extend({
@@ -403,20 +413,48 @@ const searchQuerySchema = mcpTimeRangeSchema.extend({
 });
 
 const sqlQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z.literal('sql').describe('Execute raw SQL against ClickHouse'),
+  displayType: z
+    .literal('sql')
+    .describe(
+      'ADVANCED: Execute raw SQL directly against ClickHouse. ' +
+        'Only use this when the builder query types (line, stacked_bar, table, number, pie, search) ' +
+        'cannot express the query you need — e.g. complex JOINs, sub-queries, CTEs, or ' +
+        'querying tables not registered as sources. ' +
+        'Prefer the builder display types for standard queries as they are safer and easier to use.',
+    ),
   connectionId: z
     .string()
     .describe(
-      'Connection ID. Call hyperdx_list_sources to find available connections.',
+      'Connection ID (not sourceId). Call hyperdx_list_sources to find available connections.',
     ),
   sql: z
     .string()
     .describe(
-      'SQL query to execute. ' +
-        'Use {{start_time}} and {{end_time}} as date-range placeholders. ' +
-        'Example: "SELECT service, count() as n FROM logs ' +
-        'WHERE timestamp >= {{start_time}} AND timestamp < {{end_time}} ' +
-        'GROUP BY service ORDER BY n DESC LIMIT 20"',
+      'Raw ClickHouse SQL query to execute. ' +
+        'Always include a LIMIT clause to avoid returning excessive data.\n\n' +
+        'QUERY PARAMETERS (ClickHouse native parameterized syntax):\n' +
+        '  {startDateMilliseconds:Int64} — start of date range in ms since epoch\n' +
+        '  {endDateMilliseconds:Int64} — end of date range in ms since epoch\n' +
+        '  {intervalSeconds:Int64} — time bucket size in seconds (time-series only)\n' +
+        '  {intervalMilliseconds:Int64} — time bucket size in milliseconds (time-series only)\n\n' +
+        'MACROS (expanded before execution):\n' +
+        '  $__timeFilter(column) — expands to: column >= <start> AND column <= <end> (DateTime precision)\n' +
+        '  $__timeFilter_ms(column) — same but with DateTime64 millisecond precision\n' +
+        '  $__dateFilter(column) — same but with Date precision\n' +
+        '  $__dateTimeFilter(dateCol, timeCol) — filters on both a Date and DateTime column\n' +
+        '  $__dt(dateCol, timeCol) — alias for $__dateTimeFilter\n' +
+        '  $__fromTime / $__toTime — start/end as DateTime values\n' +
+        '  $__fromTime_ms / $__toTime_ms — start/end as DateTime64 values\n' +
+        '  $__timeInterval(column) — time bucket expression: toStartOfInterval(toDateTime(column), INTERVAL ...)\n' +
+        '  $__timeInterval_ms(column) — same with millisecond precision\n' +
+        '  $__interval_s — raw interval in seconds\n' +
+        '  $__filters — placeholder for dashboard filter conditions (resolves to 1=1 when no filters)\n\n' +
+        'Example (time-series): "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
+        'FROM otel_logs WHERE $__timeFilter(TimestampTime) GROUP BY ServiceName, ts ORDER BY ts"\n\n' +
+        'Example (table): "SELECT ServiceName, count() AS n FROM otel_logs ' +
+        'WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
+        'AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
+        'GROUP BY ServiceName ORDER BY n DESC LIMIT 20"',
     ),
 });
 
@@ -437,15 +475,20 @@ const queryTools: ToolDefinition = (server, context) => {
       title: 'Query Data',
       description:
         'Query observability data (logs, metrics, traces) from HyperDX. ' +
-        'Supports aggregated metrics (line/bar/table/number/pie charts), ' +
-        'log search, and raw SQL. Use hyperdx_list_sources first to find ' +
-        'sourceId/connectionId values. Set displayType to control the query shape.\n\n' +
+        'Use hyperdx_list_sources first to find sourceId/connectionId values. ' +
+        'Set displayType to control the query shape.\n\n' +
+        'PREFERRED: Use the builder display types (line, stacked_bar, table, number, pie) ' +
+        'for aggregated metrics, or "search" for browsing individual log/event rows. ' +
+        'These are safer, easier to construct, and cover most use cases.\n\n' +
+        'ADVANCED: Use displayType "sql" only when you need capabilities the builder cannot express, ' +
+        'such as JOINs, sub-queries, CTEs, or querying tables not registered as sources. ' +
+        'Raw SQL requires a connectionId (not sourceId) and a hand-written ClickHouse SQL query.\n\n' +
         'Column naming: Top-level columns are PascalCase (Duration, StatusCode, SpanName). ' +
         "Map attributes use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']. " +
         'Call hyperdx_list_sources to discover available columns and attribute keys for each source.',
       inputSchema: hyperdxQuerySchema,
     },
-    async input => {
+    withToolTracing('hyperdx_query', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -510,37 +553,21 @@ const queryTools: ToolDefinition = (server, context) => {
             })),
             groupBy: input.groupBy ?? undefined,
             orderBy: input.orderBy ?? undefined,
+            ...(input.granularity ? { granularity: input.granularity } : {}),
           },
         } as unknown as ExternalDashboardTileWithId;
       }
 
-      logger.debug(
-        { teamId, displayType: input.displayType },
-        'MCP hyperdx_query',
+      return runConfigTile(
+        teamId.toString(),
+        tile,
+        startDate,
+        endDate,
+        input.displayType === 'search'
+          ? { maxResults: input.maxResults }
+          : undefined,
       );
-      try {
-        return await runConfigTile(
-          teamId.toString(),
-          tile,
-          startDate,
-          endDate,
-          input.displayType === 'search'
-            ? { maxResults: input.maxResults }
-            : undefined,
-        );
-      } catch (e) {
-        logger.error({ teamId, error: e }, 'MCP hyperdx_query error');
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Query failed: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-        };
-      }
-    },
+    }),
   );
 };
 

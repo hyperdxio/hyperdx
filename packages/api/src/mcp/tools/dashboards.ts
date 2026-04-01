@@ -16,7 +16,7 @@ import {
   getConnectionById,
   getConnectionsByTeam,
 } from '@/controllers/connection';
-import { getDashboards } from '@/controllers/dashboard';
+import { deleteDashboard, getDashboards } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import {
@@ -43,6 +43,7 @@ import type {
 } from '@/utils/zod';
 
 import { withToolTracing } from '../utils/tracing';
+import { parseTimeRange, runConfigTile } from './query';
 import { ToolDefinition } from './types';
 
 // ─── Typed tile schemas for MCP tools ───────────────────────────────────────
@@ -235,19 +236,32 @@ const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
-    configType: z.literal('sql').describe('Must be "sql" for raw SQL tiles'),
+    configType: z
+      .literal('sql')
+      .describe(
+        'Must be "sql" for raw SQL tiles. ' +
+          'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
+      ),
     displayType: z
       .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
       .describe('How to render the SQL results'),
     connectionId: z
       .string()
-      .describe('Connection ID – call hyperdx_list_sources'),
+      .describe(
+        'Connection ID (not sourceId) – call hyperdx_list_sources to find available connections',
+      ),
     sqlTemplate: z
       .string()
       .describe(
-        'SQL query. Use {{start_time}} and {{end_time}} for the date range. ' +
-          'Example: "SELECT service, count() n FROM logs ' +
-          'WHERE timestamp >= {{start_time}} GROUP BY service ORDER BY n DESC"',
+        'Raw ClickHouse SQL query. Always include a LIMIT clause to avoid excessive data.\n' +
+          'Use query parameters: {startDateMilliseconds:Int64}, {endDateMilliseconds:Int64}, ' +
+          '{intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
+          'Or use macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col), ' +
+          '$__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms, ' +
+          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters.\n' +
+          'Example: "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
+          'FROM otel_logs WHERE $__timeFilter(TimestampTime) AND $__filters ' +
+          'GROUP BY ServiceName, ts ORDER BY ts"',
       ),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
@@ -294,11 +308,13 @@ const dashboardsTools: ToolDefinition = (server, context) => {
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
         'Returns source IDs (use as sourceId in hyperdx_query and dashboard tiles) and ' +
-        'connection IDs (use as connectionId for raw SQL queries). ' +
+        'connection IDs (use as connectionId for advanced raw SQL queries). ' +
         'Each source includes its full column schema and sampled attribute keys from map columns ' +
         '(e.g. SpanAttributes, ResourceAttributes). ' +
         'Column names are PascalCase (e.g. Duration, not duration). ' +
-        "Map attributes must be accessed via bracket syntax: SpanAttributes['key'].",
+        "Map attributes must be accessed via bracket syntax: SpanAttributes['key'].\n\n" +
+        'NOTE: For most queries, use source IDs with the builder display types. ' +
+        'Connection IDs are only needed for advanced raw SQL queries (displayType "sql").',
       inputSchema: z.object({}),
     },
     withToolTracing('hyperdx_list_sources', context, async () => {
@@ -440,6 +456,11 @@ const dashboardsTools: ToolDefinition = (server, context) => {
             'Use directly in valueExpression/groupBy with PascalCase: Duration, StatusCode, SpanName',
           mapAttributes:
             "Use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']",
+          sourceIds:
+            'Use sourceId with builder display types (line, stacked_bar, table, number, pie, search) for standard queries',
+          connectionIds:
+            'ADVANCED: Use connectionId only with raw SQL queries (displayType "sql" or configType "sql"). ' +
+            'Raw SQL is for advanced use cases like JOINs, sub-queries, or querying tables not registered as sources.',
         },
       };
       return {
@@ -808,6 +829,128 @@ const dashboardsTools: ToolDefinition = (server, context) => {
             },
           ],
         };
+      },
+    ),
+  );
+
+  // ── hyperdx_delete_dashboard ──────────────────────────────────────────────
+
+  server.registerTool(
+    'hyperdx_delete_dashboard',
+    {
+      title: 'Delete Dashboard',
+      description:
+        'Permanently delete a dashboard by ID. Also removes any alerts attached to its tiles. ' +
+        'Use hyperdx_get_dashboard (without an ID) to list available dashboard IDs.',
+      inputSchema: z.object({
+        id: z.string().describe('Dashboard ID to delete.'),
+      }),
+    },
+    withToolTracing(
+      'hyperdx_delete_dashboard',
+      context,
+      async ({ id: dashboardId }) => {
+        const existing = await Dashboard.findOne({
+          _id: dashboardId,
+          team: teamId,
+        }).lean();
+        if (!existing) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+          };
+        }
+
+        await deleteDashboard(dashboardId, new mongoose.Types.ObjectId(teamId));
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ deleted: true, id: dashboardId }, null, 2),
+            },
+          ],
+        };
+      },
+    ),
+  );
+
+  // ── hyperdx_query_tile ────────────────────────────────────────────────────
+
+  server.registerTool(
+    'hyperdx_query_tile',
+    {
+      title: 'Query a Dashboard Tile',
+      description:
+        'Execute the query for a specific tile on an existing dashboard. ' +
+        'Useful for validating that a tile returns data or for spot-checking results ' +
+        'without rebuilding the query from scratch. ' +
+        'Use hyperdx_get_dashboard with an ID to find tile IDs.',
+      inputSchema: z.object({
+        dashboardId: z.string().describe('Dashboard ID.'),
+        tileId: z
+          .string()
+          .describe(
+            'Tile ID within the dashboard. ' +
+              'Obtain from hyperdx_get_dashboard.',
+          ),
+        startTime: z
+          .string()
+          .optional()
+          .describe(
+            'Start of the query window as ISO 8601. Default: 15 minutes ago. ' +
+              'If results are empty, try a wider range (e.g. 24 hours).',
+          ),
+        endTime: z
+          .string()
+          .optional()
+          .describe('End of the query window as ISO 8601. Default: now.'),
+      }),
+    },
+    withToolTracing(
+      'hyperdx_query_tile',
+      context,
+      async ({ dashboardId, tileId, startTime, endTime }) => {
+        const timeRange = parseTimeRange(startTime, endTime);
+        if ('error' in timeRange) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: timeRange.error }],
+          };
+        }
+        const { startDate, endDate } = timeRange;
+
+        const dashboard = await Dashboard.findOne({
+          _id: dashboardId,
+          team: teamId,
+        });
+        if (!dashboard) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+          };
+        }
+
+        const externalDashboard = convertToExternalDashboard(dashboard);
+        const tile = externalDashboard.tiles.find(t => t.id === tileId);
+        if (!tile) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
+              },
+            ],
+          };
+        }
+
+        return runConfigTile(
+          teamId.toString(),
+          tile as ExternalDashboardTileWithId,
+          startDate,
+          endDate,
+        );
       },
     ),
   );
