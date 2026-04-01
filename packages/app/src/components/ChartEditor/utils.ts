@@ -214,6 +214,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
+    source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {
