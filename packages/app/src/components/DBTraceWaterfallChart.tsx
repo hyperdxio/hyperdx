@@ -936,14 +936,6 @@ export function DBTraceWaterfallChartContainer({
                   </Center>
                 </Tooltip>
 
-                {!isFilterActive && (
-                  <Text span size="xxs" me="xs" pt="2px">
-                    {result.children.length > 0
-                      ? `(${result.children.length})`
-                      : ''}
-                  </Text>
-                )}
-
                 <div
                   style={{
                     width: 3,
@@ -960,6 +952,18 @@ export function DBTraceWaterfallChartContainer({
                     marginRight: 6,
                   }}
                 />
+
+                {result.children.length > 0 && (
+                  <Text
+                    span
+                    size="xxs"
+                    c="dimmed"
+                    me={4}
+                    style={{ flexShrink: 0 }}
+                  >
+                    ({result.children.length})
+                  </Text>
+                )}
 
                 {isError && (
                   <IconAlertCircleFilled
@@ -990,11 +994,13 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` ${displayText}` : ''}`}
                     role="button"
                   >
-                    {serviceName ? `${serviceName} | ` : ''}
-                    {displayText}
+                    {serviceName && <>{serviceName} </>}
+                    <Text span inherit c="dimmed">
+                      {displayText}
+                    </Text>
                   </Text>
                 </Group>
               </div>
@@ -1035,7 +1041,6 @@ export function DBTraceWaterfallChartContainer({
       flattenedNodes,
       formatTime,
       highlightedRowWhere,
-      isFilterActive,
       minOffset,
       onClick,
       serviceColorMap,
