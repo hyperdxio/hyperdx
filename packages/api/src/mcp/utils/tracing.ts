@@ -5,10 +5,7 @@ import logger from '@/utils/logger';
 
 import type { McpContext } from '../tools/types';
 
-export const mcpTracer = opentelemetry.trace.getTracer(
-  'hyperdx-mcp',
-  CODE_VERSION,
-);
+const mcpTracer = opentelemetry.trace.getTracer('hyperdx-mcp', CODE_VERSION);
 
 type ToolResult = {
   content: { type: 'text'; text: string }[];
