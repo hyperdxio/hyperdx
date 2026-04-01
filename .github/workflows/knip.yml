@@ -1,5 +1,7 @@
 name: Knip - Unused Code Analysis
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 concurrency:
@@ -32,9 +34,16 @@ jobs:
 
       - name: Report results
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          IS_FORK_PR:
+            ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.fork == true }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
             const fs = require('fs');
+            const isForkPR = process.env.IS_FORK_PR === 'true';
+            const isPR = process.env.IS_PR === 'true';
 
             const issueCategories = [
               'files', 'dependencies', 'devDependencies', 'unlisted',
@@ -86,30 +95,31 @@ jobs:
 
             const results = parseResults('/tmp/knip-results.json');
 
-            // Find existing comment
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
-            );
-
             if (results.total === 0) {
-              // No issues: delete existing comment if present, then exit successfully
-              if (existing) {
-                await github.rest.issues.deleteComment({
+              console.log('No knip issues found.');
+
+              // Clean up existing PR comment if present
+              if (isPR && !isForkPR) {
+                const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  comment_id: existing.id,
+                  issue_number: context.issue.number,
                 });
+                const existing = comments.find(c =>
+                  c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
+                );
+                if (existing) {
+                  await github.rest.issues.deleteComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: existing.id,
+                  });
+                }
               }
-              console.log('No knip issues found.');
               return;
             }
 
-            // Build comment body
+            // Build report body
             let body = `## Knip - Unused Code Analysis\n\n`;
             body += `🔴 **${results.total} issue${results.total === 1 ? '' : 's'}** found\n\n`;
 
@@ -128,20 +138,35 @@ jobs:
             body += `[Knip](https://knip.dev) finds unused files, dependencies, and exports in your codebase.\n`;
             body += `Run \`yarn knip\` locally to see full details.\n`;
 
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
+            // Always log to console (visible in Actions output for pushes and forks)
+            console.log(body);
+
+            // Comment on PR only for non-fork PRs (GITHUB_TOKEN can't write to base repo from forks)
+            if (isPR && !isForkPR) {
+              const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body,
               });
+              const existing = comments.find(c =>
+                c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body,
+                });
+              }
             }
 
             // Fail the job since there are issues
