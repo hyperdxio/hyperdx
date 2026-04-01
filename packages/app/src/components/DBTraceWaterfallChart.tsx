@@ -414,6 +414,7 @@ export function DBTraceWaterfallChartContainer({
   onClick,
   highlightedRowWhere,
   initialRowHighlightHint,
+  headerExtra,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -431,6 +432,7 @@ export function DBTraceWaterfallChartContainer({
     spanId: string;
     body: string;
   };
+  headerExtra?: React.ReactNode;
 }) {
   const formatTime = useFormatTime();
 
@@ -1160,26 +1162,29 @@ export function DBTraceWaterfallChartContainer({
             onChange={() => setShowSpanEvents(!showSpanEvents)}
           />
         </Group>
-        <span>
-          <Anchor
-            underline="always"
-            onClick={() => setIsFilterExpanded(prev => !prev)}
-            size="xs"
-          >
-            {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
-            {isFilterActive && '(active)'}
-          </Anchor>
-          {isFilterActive && (
+        <Group gap="sm">
+          {headerExtra}
+          <span>
             <Anchor
               underline="always"
-              onClick={onClearFilters}
+              onClick={() => setIsFilterExpanded(prev => !prev)}
               size="xs"
-              ms="xs"
             >
-              Clear Filters
+              {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
+              {isFilterActive && '(active)'}
             </Anchor>
-          )}
-        </span>
+            {isFilterActive && (
+              <Anchor
+                underline="always"
+                onClick={onClearFilters}
+                size="xs"
+                ms="xs"
+              >
+                Clear Filters
+              </Anchor>
+            )}
+          </span>
+        </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />

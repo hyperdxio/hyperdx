@@ -7,16 +7,12 @@ import {
   ActionIcon,
   Box,
   Button,
-  Center,
-  Divider,
   Flex,
   Group,
-  Paper,
-  Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconPencil, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -219,77 +215,48 @@ export default function DBTracePanel({
           padding: 'var(--mantine-spacing-sm)',
         }}
       >
-        <Flex align="center" justify="space-between" mb="sm">
-          <Flex align="center">
-            <Text size="xs" me="xs">
-              {parentTraceIdExpr}: {traceId || 'No trace id found for event'}
-            </Text>
-            {traceId != null && (
-              <Button
-                variant="subtle"
-                size="xs"
-                onClick={() => setShowTraceIdInput(v => !v)}
-              >
-                <IconPencil size={14} />
-              </Button>
-            )}
-          </Flex>
-          <Group gap="sm">
-            <Text size="sm">
-              {parentSourceData?.kind === SourceKind.Log
-                ? 'Trace Source'
-                : 'Correlated Log Source'}
-            </Text>
-            <SourceSelectControlled control={control} name="source" size="xs" />
-          </Group>
-        </Flex>
         {(showTraceIdInput || !traceId) && parentSourceId != null && (
-          <Stack gap="xs">
-            <Text size="xs">Trace ID Expression</Text>
-            <Flex align="center">
-              <SQLInlineEditorControlled
-                tableConnection={tcFromSource(parentSourceData)}
-                name="traceIdExpression"
-                placeholder="Log Trace ID Column (ex. trace_id)"
-                control={traceIdControl}
-                size="xs"
-                parentRef={
-                  typeof document !== 'undefined' ? document.body : null
+          <Flex align="center" gap="xs" mb="xs">
+            <Text size="xxs" c="dimmed" style={{ flexShrink: 0 }}>
+              Trace ID Expression
+            </Text>
+            <SQLInlineEditorControlled
+              tableConnection={tcFromSource(parentSourceData)}
+              name="traceIdExpression"
+              placeholder="ex. trace_id"
+              control={traceIdControl}
+              size="xs"
+              parentRef={typeof document !== 'undefined' ? document.body : null}
+            />
+            <Button
+              variant="primary"
+              onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
+                if (
+                  parentSourceData != null &&
+                  (parentSourceData.kind === SourceKind.Log ||
+                    parentSourceData.kind === SourceKind.Trace)
+                ) {
+                  updateTableSource({
+                    source: {
+                      ...parentSourceData,
+                      traceIdExpression,
+                    },
+                  });
                 }
-              />
-              <Button
-                ms="sm"
-                variant="primary"
-                onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
-                  if (
-                    parentSourceData != null &&
-                    (parentSourceData.kind === SourceKind.Log ||
-                      parentSourceData.kind === SourceKind.Trace)
-                  ) {
-                    updateTableSource({
-                      source: {
-                        ...parentSourceData,
-                        traceIdExpression,
-                      },
-                    });
-                  }
-                })}
-                size="xs"
-              >
-                Save
-              </Button>
-              <Button
-                ms="sm"
-                variant="secondary"
-                onClick={() => setShowTraceIdInput(false)}
-                size="xs"
-              >
-                Cancel
-              </Button>
-            </Flex>
-          </Stack>
+              })}
+              size="xs"
+            >
+              Save
+            </Button>
+            <ActionIcon
+              variant="subtle"
+              size="xs"
+              onClick={() => setShowTraceIdInput(false)}
+            >
+              <IconX size={14} />
+            </ActionIcon>
+          </Flex>
         )}
-        <Divider my="sm" />
 
         {traceSourceData?.kind === SourceKind.Trace && traceId && (
           <DBTraceWaterfallChartContainer
@@ -301,6 +268,20 @@ export default function DBTracePanel({
             highlightedRowWhere={highlightedSpanId ?? eventRowWhere?.id}
             onClick={handleSpanClick}
             initialRowHighlightHint={initialRowHighlightHint}
+            headerExtra={
+              <Group gap={6}>
+                <Text size="xxs" c="dimmed">
+                  {parentSourceData?.kind === SourceKind.Log
+                    ? 'Trace Source'
+                    : 'Correlated Logs'}
+                </Text>
+                <SourceSelectControlled
+                  control={control}
+                  name="source"
+                  size="xs"
+                />
+              </Group>
+            }
           />
         )}
       </div>
