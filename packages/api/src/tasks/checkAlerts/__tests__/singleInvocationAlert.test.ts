@@ -1277,4 +1277,106 @@ describe('Single Invocation Alert Test', () => {
     expect(histories[0].state).toBe('ALERT');
     expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
   });
+
+  it('should NOT trigger percentage rate-of-change alert when baseline is empty (Infinity guard)', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC Infinity Guard Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-inf-guard',
+      name: 'RoC Infinity Guard Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 50,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.PERCENTAGE,
+        savedSearchId: savedSearch.id,
+        name: 'RoC Infinity Guard Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window2Time = new Date('2023-11-16T22:07:00.000Z');
+
+    // Insert logs only in window 2 (none in baseline window 1).
+    // Percentage RoC from 0 -> N would be Infinity, which the guard should skip.
+    const window2Logs = Array.from({ length: 5 }, () => ({
+      ServiceName: 'api',
+      Timestamp: window2Time,
+      SeverityText: 'error',
+      Body: 'Window 2 error',
+    }));
+    await bulkInsertLogs(window2Logs);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    // The percentage change from 0 to 5 is Infinity, so the guard should
+    // prevent the alert from firing -- no ALERT state, no notification.
+    expect((await Alert.findById(enhancedAlert.id))!.state).not.toBe('ALERT');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    const alertingHistories = histories.filter(h => h.state === 'ALERT');
+    expect(alertingHistories.length).toBe(0);
+    expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+  });
 });

@@ -896,6 +896,16 @@ export const processAlert = async (
           );
           previousBucketValues.set('', 0);
 
+          if (!Number.isFinite(changeValue)) {
+            logger.info(
+              { alertId: alert.id, bucketStart, changeValue },
+              'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+            );
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            continue;
+          }
+
           if (
             doesExceedThreshold(
               alert.thresholdType,
@@ -987,6 +997,16 @@ export const processAlert = async (
           );
 
           const history = getOrCreateHistory(groupKey);
+
+          if (!Number.isFinite(changeValue)) {
+            logger.info(
+              { alertId: alert.id, groupKey, bucketStart, changeValue },
+              'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+            );
+            history.lastValues.push({ count: value, startTime: bucketStart });
+            continue;
+          }
+
           if (
             doesExceedThreshold(
               alert.thresholdType,
