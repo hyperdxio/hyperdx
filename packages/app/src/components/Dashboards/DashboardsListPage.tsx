@@ -211,6 +211,8 @@ export default function DashboardsListPage() {
                   onDelete={() => handleDelete(d.id)}
                   resourceId={d.id}
                   resourceType="dashboard"
+                  updatedAt={d.updatedAt}
+                  updatedBy={d.updatedBy?.name || d.updatedBy?.email}
                 />
               ))}
             </SimpleGrid>
@@ -354,6 +356,8 @@ export default function DashboardsListPage() {
                 <Table.Th w={20} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
+                <Table.Th>Created By</Table.Th>
+                <Table.Th>Last Updated</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
@@ -366,6 +370,9 @@ export default function DashboardsListPage() {
                   href={`/dashboards/${d.id}`}
                   tags={d.tags}
                   onDelete={handleDelete}
+                  createdBy={d.createdBy?.name || d.createdBy?.email}
+                  updatedAt={d.updatedAt}
+                  updatedBy={d.updatedBy?.name || d.updatedBy?.email}
                   leftSection={
                     <Box ps={4}>
                       <FavoriteButton
@@ -397,6 +404,8 @@ export default function DashboardsListPage() {
                       onDelete={() => handleDelete(d.id)}
                       resourceId={d.id}
                       resourceType="dashboard"
+                      updatedAt={d.updatedAt}
+                      updatedBy={d.updatedBy?.name || d.updatedBy?.email}
                     />
                   ))}
                 </SimpleGrid>

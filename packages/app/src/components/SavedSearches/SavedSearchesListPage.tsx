@@ -35,7 +35,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import type { SavedSearchWithEnhancedAlerts } from '@/types';
+import type { SavedSearchPopulated } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
@@ -44,7 +44,7 @@ import { withAppNav } from '../../layout';
 function AlertStatusIcon({
   alerts,
 }: {
-  alerts?: SavedSearchWithEnhancedAlerts['alerts'];
+  alerts?: SavedSearchPopulated['alerts'];
 }) {
   if (!Array.isArray(alerts) || alerts.length === 0) return null;
   const alertingCount = alerts.filter(a => a.state === AlertState.ALERT).length;
@@ -175,6 +175,8 @@ export default function SavedSearchesListPage() {
                   statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                   resourceId={s.id}
                   resourceType="savedSearch"
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                 />
               ))}
             </SimpleGrid>
@@ -269,6 +271,8 @@ export default function SavedSearchesListPage() {
                 <Table.Th w={40} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
+                <Table.Th>Created By</Table.Th>
+                <Table.Th>Last Updated</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
@@ -281,6 +285,9 @@ export default function SavedSearchesListPage() {
                   href={`/search/${s.id}`}
                   tags={s.tags}
                   onDelete={handleDelete}
+                  createdBy={s.createdBy?.name || s.createdBy?.email}
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                   leftSection={
                     <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
                       <FavoriteButton
@@ -313,6 +320,8 @@ export default function SavedSearchesListPage() {
                       statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                       resourceId={s.id}
                       resourceType="savedSearch"
+                      updatedAt={s.updatedAt}
+                      updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                     />
                   ))}
                 </SimpleGrid>

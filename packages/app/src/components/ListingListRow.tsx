@@ -1,6 +1,17 @@
 import Router from 'next/router';
-import { ActionIcon, Badge, Group, Menu, Table, Text } from '@mantine/core';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  ActionIcon,
+  Badge,
+  Group,
+  Menu,
+  Table,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
+
+import { FormatTime } from '@/useFormatTime';
 
 export function ListingRow({
   id,
@@ -9,6 +20,9 @@ export function ListingRow({
   tags,
   onDelete,
   leftSection,
+  updatedAt,
+  updatedBy,
+  createdBy,
 }: {
   id: string;
   name: string;
@@ -16,6 +30,9 @@ export function ListingRow({
   tags?: string[];
   onDelete?: (id: string) => void;
   leftSection?: React.ReactNode;
+  updatedAt?: string;
+  updatedBy?: string;
+  createdBy?: string;
 }) {
   return (
     <Table.Tr
@@ -49,6 +66,29 @@ export function ListingRow({
             </Badge>
           ))}
         </Group>
+      </Table.Td>
+      <Table.Td>
+        <Text size="xs" c="dimmed" truncate="end">
+          {createdBy ?? '-'}
+        </Text>
+      </Table.Td>
+      <Table.Td>
+        {updatedAt ? (
+          <Tooltip
+            label={
+              <>
+                <FormatTime value={updatedAt} format="short" />
+                {updatedBy ? ` by ${updatedBy}` : ''}
+              </>
+            }
+          >
+            <Text size="xs" c="dimmed" truncate="end">
+              {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
+            </Text>
+          </Tooltip>
+        ) : (
+          '-'
+        )}
       </Table.Td>
       <Table.Td>
         {onDelete && (

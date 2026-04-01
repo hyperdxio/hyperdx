@@ -30,8 +30,12 @@ export type AlertWithCreatedBy = Alert & {
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
-export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
+export type SavedSearchPopulated = Omit<SavedSearch, 'alerts'> & {
   alerts?: AlertWithCreatedBy[];
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: { email: string; name?: string };
+  updatedBy?: { email: string; name?: string };
 };
 
 export type SearchConfig = {
