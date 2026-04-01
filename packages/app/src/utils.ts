@@ -719,7 +719,14 @@ export const mergePath = (path: string[], jsonColumns: string[] = []) => {
             .join('.'),
         )
         .join('.')}`
-    : `${key}['${rest.join("']['")}']`;
+    : `${key}${rest
+        .map(v => {
+          const asNumber = Number(v);
+          const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
+          // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
+          return isArrayIndex ? `[${asNumber + 1}]` : `['${v}']`;
+        })
+        .join('')}`;
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
