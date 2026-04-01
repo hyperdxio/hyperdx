@@ -13,6 +13,7 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Center,
@@ -25,8 +26,12 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconAlertCircleFilled,
+  IconAlertTriangleFilled,
   IconChevronDown,
   IconChevronRight,
+  IconChevronsDown,
+  IconChevronsRight,
   IconLogs,
 } from '@tabler/icons-react';
 
@@ -44,12 +49,11 @@ import {
 } from '@/source';
 import { useFormatTime } from '@/useFormatTime';
 import {
+  COLORS,
   getChartColorError,
-  getChartColorErrorHighlight,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
   getChartColorWarning,
-  getChartColorWarningHighlight,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
@@ -80,33 +84,23 @@ export type SpanRow = {
   __hdx_hidden?: boolean | 1 | 0;
 };
 
-function textColor(condition: { isError: boolean; isWarn: boolean }): string {
-  const { isError, isWarn } = condition;
-  if (isError) return 'text-danger';
-  if (isWarn) return 'text-warning';
-  return '';
-}
-
 function barColor(condition: {
-  isError: boolean;
-  isWarn: boolean;
   isHighlighted: boolean;
   type: string | undefined;
+  serviceColor?: string;
 }) {
-  const { isError, isWarn, isHighlighted, type } = condition;
-
-  if (isError)
-    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
-
-  if (isWarn)
-    return isHighlighted
-      ? getChartColorWarningHighlight()
-      : getChartColorWarning();
+  const { isHighlighted, type, serviceColor } = condition;
 
   if (type === SourceKind.Log) {
     return isHighlighted
       ? getChartColorSuccessHighlight()
       : getChartColorSuccess();
+  }
+
+  if (serviceColor) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${serviceColor} 60%, white)`
+      : serviceColor;
   }
 
   return isHighlighted ? '#A9AFB7' : '#6A7077';
@@ -513,6 +507,29 @@ export function DBTraceWaterfallChartContainer({
     }
   });
 
+  const serviceColorMap = useMemo(() => {
+    const serviceNames = [
+      ...new Set(
+        rows
+          .filter(
+            r =>
+              r.ServiceName &&
+              r.type !== SourceKind.Log &&
+              typeof r.ServiceName === 'string',
+          )
+          .map(r => r.ServiceName as string),
+      ),
+    ].sort();
+
+    // Skip COLORS[0] (green) — it's reserved for correlated log entries
+    const serviceColors = COLORS.slice(1);
+    const map = new Map<string, string>();
+    serviceNames.forEach((name, i) => {
+      map.set(name, serviceColors[i % serviceColors.length]);
+    });
+    return map;
+  }, [rows]);
+
   const highlightedAttributeValues = useMemo(() => {
     const visibleTraceRowsData = traceRowsData?.filter(
       row => !row.__hdx_hidden,
@@ -595,7 +612,7 @@ export function DBTraceWaterfallChartContainer({
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
 
-  const { nodesMap, flattenedNodes } = useMemo(() => {
+  const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
     const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
     const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
@@ -663,6 +680,19 @@ export function DBTraceWaterfallChartContainer({
       }
     }
 
+    // Build a map of level → parent node IDs (nodes with children)
+    const parentIdsByLevel = new Map<number, Set<string>>();
+    const collectParents = (node: Node, level: number) => {
+      if (node.children?.length > 0 && node.id) {
+        if (!parentIdsByLevel.has(level)) {
+          parentIdsByLevel.set(level, new Set());
+        }
+        parentIdsByLevel.get(level)!.add(node.id);
+      }
+      node.children?.forEach((child: any) => collectParents(child, level + 1));
+    };
+    rootNodes.forEach(root => collectParents(root, 0));
+
     type NodeWithLevel = Node & { level: number };
     // flatten the rootnode dag into an array via in-order traversal
     const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
@@ -686,7 +716,7 @@ export function DBTraceWaterfallChartContainer({
       rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
     }
 
-    return { nodesMap, flattenedNodes };
+    return { nodesMap, flattenedNodes, parentIdsByLevel };
   }, [collapsedIds, rows, validSpanIDs]);
 
   const toggleCollapse = useCallback(
@@ -720,6 +750,55 @@ export function DBTraceWaterfallChartContainer({
     },
     [nodesMap],
   );
+
+  const expandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    const allParentIds = new Set<string>();
+    parentIdsByLevel.forEach(ids => {
+      ids.forEach(id => allParentIds.add(id));
+    });
+    setCollapsedIds(allParentIds);
+  }, [parentIdsByLevel]);
+
+  const expandOneLevel = useCallback(() => {
+    setCollapsedIds(prev => {
+      if (prev.size === 0) return prev;
+      const newSet = new Set(prev);
+      // Find the shallowest collapsed level and expand those nodes
+      const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => a - b);
+      for (const level of sortedLevels) {
+        const ids = parentIdsByLevel.get(level)!;
+        const collapsedAtLevel = [...ids].filter(id => newSet.has(id));
+        if (collapsedAtLevel.length > 0) {
+          collapsedAtLevel.forEach(id => newSet.delete(id));
+          break;
+        }
+      }
+      return newSet;
+    });
+  }, [parentIdsByLevel]);
+
+  const collapseOneLevel = useCallback(() => {
+    setCollapsedIds(prev => {
+      const newSet = new Set(prev);
+      // Find the deepest expanded level with parent nodes and collapse those
+      const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => b - a);
+      for (const level of sortedLevels) {
+        const ids = parentIdsByLevel.get(level)!;
+        const expandedAtLevel = [...ids].filter(id => !newSet.has(id));
+        if (expandedAtLevel.length > 0) {
+          expandedAtLevel.forEach(id => newSet.add(id));
+          break;
+        }
+      }
+      return newSet;
+    });
+  }, [parentIdsByLevel]);
+
+  const hasCollapsibleNodes = parentIdsByLevel.size > 0;
 
   const spanCount = flattenedNodes.length;
   const errorCount = flattenedNodes.filter(
@@ -804,7 +883,7 @@ export function DBTraceWaterfallChartContainer({
           aliasWith,
           label: (
             <div
-              className={`${textColor({ isError, isWarn })} ${
+              className={`${
                 isHighlighted && styles.traceTimelineLabelHighlighted
               } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
               role="button"
@@ -850,15 +929,9 @@ export function DBTraceWaterfallChartContainer({
                     }
                   >
                     {collapsedIds.has(id) ? (
-                      <IconChevronRight
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
+                      <IconChevronRight size={16} className="me-1" />
                     ) : (
-                      <IconChevronDown
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
+                      <IconChevronDown size={16} className="me-1" />
                     )}{' '}
                   </Center>
                 </Tooltip>
@@ -869,6 +942,40 @@ export function DBTraceWaterfallChartContainer({
                       ? `(${result.children.length})`
                       : ''}
                   </Text>
+                )}
+
+                <div
+                  style={{
+                    width: 3,
+                    minWidth: 3,
+                    height: 14,
+                    backgroundColor:
+                      type === SourceKind.Log
+                        ? getChartColorSuccess()
+                        : serviceName
+                          ? serviceColorMap.get(serviceName)
+                          : '#6A7077',
+                    borderRadius: 1,
+                    flexShrink: 0,
+                    marginRight: 6,
+                  }}
+                />
+
+                {isError && (
+                  <IconAlertCircleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorError() }}
+                    aria-label="Error"
+                  />
+                )}
+                {isWarn && !isError && (
+                  <IconAlertTriangleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorWarning() }}
+                    aria-label="Warning"
+                  />
                 )}
 
                 <Group gap={0} wrap="nowrap">
@@ -908,10 +1015,11 @@ export function DBTraceWaterfallChartContainer({
               tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
-                isError,
-                isWarn,
                 isHighlighted,
                 type,
+                serviceColor: serviceName
+                  ? serviceColorMap.get(serviceName)
+                  : undefined,
               }),
               body: <span>{displayText}</span>,
               minWidthPerc: 1,
@@ -930,6 +1038,7 @@ export function DBTraceWaterfallChartContainer({
       isFilterActive,
       minOffset,
       onClick,
+      serviceColorMap,
       showSpanEvents,
       toggleCollapse,
       collapseTooltipShown,
@@ -989,6 +1098,50 @@ export function DBTraceWaterfallChartContainer({
       )}
       <Group my="xs" justify="space-between">
         <Group gap="md">
+          {hasCollapsibleNodes && (
+            <Group gap={2}>
+              <Tooltip label="Expand +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={expandOneLevel}
+                  aria-label="Expand one level"
+                >
+                  <IconChevronDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={collapseOneLevel}
+                  aria-label="Collapse one level"
+                >
+                  <IconChevronRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Expand all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={expandAll}
+                  aria-label="Expand all"
+                >
+                  <IconChevronsDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={collapseAll}
+                  aria-label="Collapse all"
+                >
+                  <IconChevronsRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          )}
           <Text size="xs">
             {spanCountString},{' '}
             <span className={errorCount ? 'text-danger' : ''}>
