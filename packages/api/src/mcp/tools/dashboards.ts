@@ -542,7 +542,10 @@ const dashboardsTools: ToolDefinition = (server, context) => {
       title: 'Create or Update Dashboard',
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
-        'Call hyperdx_list_sources first to obtain sourceId and connectionId values.',
+        'Call hyperdx_list_sources first to obtain sourceId and connectionId values. ' +
+        'IMPORTANT: After saving a dashboard, always run hyperdx_query_tile on each tile ' +
+        'to confirm the queries work and return expected data. Tiles can silently fail ' +
+        'due to incorrect filter syntax, missing attributes, or wrong column names.',
       inputSchema: z.object({
         id: z
           .string()
