@@ -6,6 +6,7 @@ import { useQueryState } from 'nuqs';
 import {
   ActionIcon,
   Anchor,
+  Box,
   Button,
   Container,
   Flex,
@@ -30,6 +31,9 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import { FavoriteButton } from '@/components/FavoriteButton';
+import { ListingCard } from '@/components/ListingCard';
+import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
@@ -37,13 +41,11 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import { useFavorites } from '@/favorites';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 
 import { withAppNav } from '../../layout';
-
-import { DashboardCard } from './DashboardCard';
-import { DashboardListRow } from './DashboardListRow';
 
 const PRESET_DASHBOARDS = [
   {
@@ -79,6 +81,21 @@ export default function DashboardsListPage() {
     key: 'dashboardsViewMode',
     defaultValue: 'grid',
   });
+
+  const { data: favorites } = useFavorites();
+  const favoritedDashboards = useMemo(() => {
+    if (!dashboards || !favorites?.length) return [];
+
+    const favoritedDashboardIds = new Set(
+      favorites
+        .filter(f => f.resourceType === 'dashboard')
+        .map(f => f.resourceId),
+    );
+
+    return dashboards
+      .filter(d => favoritedDashboardIds.has(d.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [dashboards, favorites]);
 
   const allTags = useMemo(() => {
     if (!dashboards) return [];
@@ -159,7 +176,7 @@ export default function DashboardsListPage() {
         </Text>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="sm">
           {PRESET_DASHBOARDS.map(p => (
-            <DashboardCard key={p.href} {...p} />
+            <ListingCard key={p.href} {...p} />
           ))}
         </SimpleGrid>
         <Text ta="right" mb="sm">
@@ -167,6 +184,32 @@ export default function DashboardsListPage() {
             Browse dashboard templates &rarr;
           </Anchor>
         </Text>
+
+        {favoritedDashboards.length > 0 && (
+          <>
+            <Text fw={500} size="sm" c="dimmed" mb="sm">
+              Favorites
+            </Text>
+            <SimpleGrid
+              cols={{ base: 1, sm: 2, md: 3 }}
+              mb="xl"
+              data-testid="favorite-dashboards-section"
+            >
+              {favoritedDashboards.map(d => (
+                <ListingCard
+                  key={d.id}
+                  name={d.name}
+                  href={`/dashboards/${d.id}`}
+                  tags={d.tags}
+                  description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                  onDelete={() => handleDelete(d.id)}
+                  resourceId={d.id}
+                  resourceType="dashboard"
+                />
+              ))}
+            </SimpleGrid>
+          </>
+        )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Team Dashboards
@@ -302,18 +345,30 @@ export default function DashboardsListPage() {
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={20} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
-                <Table.Th>Tiles</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredDashboards.map(d => (
-                <DashboardListRow
+                <ListingRow
                   key={d.id}
-                  dashboard={d}
+                  id={d.id}
+                  name={d.name}
+                  href={`/dashboards/${d.id}`}
+                  tags={d.tags}
                   onDelete={handleDelete}
+                  leftSection={
+                    <Box ps={4}>
+                      <FavoriteButton
+                        resourceType="dashboard"
+                        resourceId={d.id}
+                        size="xs"
+                      />
+                    </Box>
+                  }
                 />
               ))}
             </Table.Tbody>
@@ -321,13 +376,15 @@ export default function DashboardsListPage() {
         ) : (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {filteredDashboards.map(d => (
-              <DashboardCard
+              <ListingCard
                 key={d.id}
                 name={d.name}
                 href={`/dashboards/${d.id}`}
                 tags={d.tags}
                 description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                 onDelete={() => handleDelete(d.id)}
+                resourceId={d.id}
+                resourceType="dashboard"
               />
             ))}
           </SimpleGrid>

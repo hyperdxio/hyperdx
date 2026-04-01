@@ -1,12 +1,6 @@
-import { useMemo, useState } from 'react';
-import {
-  Accordion,
-  Group,
-  Stack,
-  Text,
-  Tooltip,
-  UnstyledButton,
-} from '@mantine/core';
+import { useMemo, useRef, useState } from 'react';
+import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterState } from '@/searchFilters';
 
@@ -40,6 +34,9 @@ type NestedFilterGroupProps = {
   chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
   isLive?: boolean;
 };
+
+const VIRTUAL_ITEM_HEIGHT_ESTIMATE = 26;
+const MAX_VIRTUAL_LIST_HEIGHT = 350;
 
 export const NestedFilterGroup = ({
   name,
@@ -76,6 +73,16 @@ export const NestedFilterGroup = ({
   const [isExpanded, setExpanded] = useState(
     isDefaultExpanded ?? hasSelections,
   );
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: isExpanded ? childFilters.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => VIRTUAL_ITEM_HEIGHT_ESTIMATE,
+    overscan: 10,
+    getItemKey: index => childFilters[index]?.key ?? index,
+  });
 
   return (
     <Accordion
@@ -125,62 +132,106 @@ export const NestedFilterGroup = ({
               content: 'pl-3 pt-1 pb-0',
             }}
           >
-            <div className={classes.filterGroupPanel}>
-              <Stack gap="xs">
-                {childFilters.map(child => {
-                  const childSelectedValues = selectedValues[child.key] || {
-                    included: new Set(),
-                    excluded: new Set(),
-                  };
-                  const childHasSelections =
-                    childSelectedValues.included.size +
-                      childSelectedValues.excluded.size >
-                    0;
+            {isExpanded && (
+              <div className={classes.filterGroupPanel}>
+                {childFilters.length === 0 ? (
+                  <Group m={6} gap="xs">
+                    <Text c="dimmed" size="xs">
+                      No properties found
+                    </Text>
+                  </Group>
+                ) : (
+                  <div
+                    ref={scrollContainerRef}
+                    style={{
+                      maxHeight: MAX_VIRTUAL_LIST_HEIGHT,
+                      overflow: 'auto',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: `${rowVirtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                      }}
+                    >
+                      {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                        const child = childFilters[virtualRow.index];
+                        const childSelectedValues = selectedValues[
+                          child.key
+                        ] || {
+                          included: new Set(),
+                          excluded: new Set(),
+                        };
+                        const childHasSelections =
+                          childSelectedValues.included.size +
+                            childSelectedValues.excluded.size >
+                          0;
 
-                  return (
-                    <FilterGroup
-                      key={child.key}
-                      data-testid={`nested-filter-group-${child.key}`}
-                      name={child.propertyPath}
-                      distributionKey={child.key}
-                      options={child.value.map(value => ({
-                        value: value,
-                        label: value.toString(),
-                      }))}
-                      optionsLoading={false}
-                      selectedValues={childSelectedValues}
-                      onChange={value => onChange(child.key, value)}
-                      onClearClick={() => onClearClick(child.key)}
-                      onOnlyClick={value => onOnlyClick(child.key, value)}
-                      onExcludeClick={value => onExcludeClick(child.key, value)}
-                      onPinClick={value => onPinClick(child.key, value)}
-                      isPinned={value => isPinned(child.key, value)}
-                      onFieldPinClick={() => onFieldPinClick?.(child.key)}
-                      isFieldPinned={isFieldPinned?.(child.key)}
-                      onColumnToggle={
-                        onColumnToggle
-                          ? () => onColumnToggle(child.key)
-                          : undefined
-                      }
-                      isColumnDisplayed={displayedColumns?.includes(child.key)}
-                      onLoadMore={() => onLoadMore(child.key)}
-                      loadMoreLoading={loadMoreLoading[child.key] || false}
-                      hasLoadedMore={hasLoadedMore[child.key] || false}
-                      isDefaultExpanded={childHasSelections}
-                      chartConfig={chartConfig}
-                      isLive={isLive}
-                    />
-                  );
-                })}
-              </Stack>
-              {childFilters.length === 0 && (
-                <Group m={6} gap="xs">
-                  <Text c="dimmed" size="xs">
-                    No properties found
-                  </Text>
-                </Group>
-              )}
-            </div>
+                        return (
+                          <div
+                            key={child.key}
+                            data-index={virtualRow.index}
+                            ref={rowVirtualizer.measureElement}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              transform: `translateY(${virtualRow.start}px)`,
+                              paddingTop: 4,
+                              paddingBottom: 4,
+                            }}
+                          >
+                            <FilterGroup
+                              data-testid={`nested-filter-group-${child.key}`}
+                              name={child.propertyPath}
+                              distributionKey={child.key}
+                              options={child.value.map(value => ({
+                                value: value,
+                                label: value.toString(),
+                              }))}
+                              optionsLoading={false}
+                              selectedValues={childSelectedValues}
+                              onChange={value => onChange(child.key, value)}
+                              onClearClick={() => onClearClick(child.key)}
+                              onOnlyClick={value =>
+                                onOnlyClick(child.key, value)
+                              }
+                              onExcludeClick={value =>
+                                onExcludeClick(child.key, value)
+                              }
+                              onPinClick={value => onPinClick(child.key, value)}
+                              isPinned={value => isPinned(child.key, value)}
+                              onFieldPinClick={() =>
+                                onFieldPinClick?.(child.key)
+                              }
+                              isFieldPinned={isFieldPinned?.(child.key)}
+                              onColumnToggle={
+                                onColumnToggle
+                                  ? () => onColumnToggle(child.key)
+                                  : undefined
+                              }
+                              isColumnDisplayed={displayedColumns?.includes(
+                                child.key,
+                              )}
+                              onLoadMore={() => onLoadMore(child.key)}
+                              loadMoreLoading={
+                                loadMoreLoading[child.key] || false
+                              }
+                              hasLoadedMore={hasLoadedMore[child.key] || false}
+                              isDefaultExpanded={childHasSelections}
+                              chartConfig={chartConfig}
+                              isLive={isLive}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </Accordion.Panel>
         </div>
       </Accordion.Item>
