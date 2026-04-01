@@ -110,7 +110,11 @@ yarn dev:unit
 
 ## AI-Assisted Development
 
-The repo ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via the [Playwright MCP server](https://github.com/microsoft/playwright-mcp).
+HyperDX includes an [MCP server](https://modelcontextprotocol.io/) that lets AI assistants query observability data, manage dashboards, and
+explore data sources. See [MCP.md](/MCP.md) for setup instructions.
+
+The repo also ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via
+the [Playwright MCP server](https://github.com/microsoft/playwright-mcp).
 
 ### Claude Code
 
