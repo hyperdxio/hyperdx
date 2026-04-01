@@ -37,8 +37,12 @@ app.all('/', validateUserAccessKey, async (req, res) => {
 
   const server = createServer(context);
 
-  await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await server.close();
+  }
 });
 
 export default app;

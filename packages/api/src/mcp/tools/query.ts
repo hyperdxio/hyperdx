@@ -17,9 +17,11 @@ import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
-import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import {
+  externalDashboardTileSchemaWithId,
+  type ExternalDashboardTileWithId,
+} from '@/utils/zod';
 
 import { withToolTracing } from '../utils/tracing';
 import { ToolDefinition } from './types';
@@ -501,7 +503,7 @@ const queryTools: ToolDefinition = (server, context) => {
       let tile: ExternalDashboardTileWithId;
 
       if (input.displayType === 'sql') {
-        tile = {
+        tile = externalDashboardTileSchemaWithId.parse({
           id: new ObjectId().toString(),
           name: 'MCP SQL',
           x: 0,
@@ -514,9 +516,9 @@ const queryTools: ToolDefinition = (server, context) => {
             connectionId: input.connectionId,
             sqlTemplate: input.sql,
           },
-        } as unknown as ExternalDashboardTileWithId;
+        });
       } else if (input.displayType === 'search') {
-        tile = {
+        tile = externalDashboardTileSchemaWithId.parse({
           id: new ObjectId().toString(),
           name: 'MCP Search',
           x: 0,
@@ -530,10 +532,10 @@ const queryTools: ToolDefinition = (server, context) => {
             where: input.where ?? '',
             whereLanguage: input.whereLanguage ?? 'lucene',
           },
-        } as unknown as ExternalDashboardTileWithId;
+        });
       } else {
         // Builder query: line, stacked_bar, table, number, pie
-        tile = {
+        tile = externalDashboardTileSchemaWithId.parse({
           id: new ObjectId().toString(),
           name: 'MCP Query',
           x: 0,
@@ -555,7 +557,7 @@ const queryTools: ToolDefinition = (server, context) => {
             orderBy: input.orderBy ?? undefined,
             ...(input.granularity ? { granularity: input.granularity } : {}),
           },
-        } as unknown as ExternalDashboardTileWithId;
+        });
       }
 
       return runConfigTile(
