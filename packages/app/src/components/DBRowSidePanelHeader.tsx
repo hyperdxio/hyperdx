@@ -25,6 +25,7 @@ import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import AISummarizeButton from './AISummarizeButton';
 import {
   DBHighlightedAttributesList,
   HighlightedAttribute,
@@ -131,6 +132,7 @@ export default function DBRowSidePanelHeader({
   mainContentHeader,
   date,
   severityText,
+  rowData,
   breadcrumbPath = [],
   onBreadcrumbClick,
 }: {
@@ -139,6 +141,7 @@ export default function DBRowSidePanelHeader({
   mainContentHeader?: string;
   attributes?: HighlightedAttribute[];
   severityText?: string;
+  rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }) {
@@ -272,6 +275,7 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
+      <AISummarizeButton rowData={rowData} severityText={severityText} />
       <Box mt="xs">
         <DBHighlightedAttributesList attributes={attributes} />
       </Box>
