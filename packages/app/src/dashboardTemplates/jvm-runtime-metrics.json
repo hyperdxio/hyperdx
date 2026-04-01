@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": "JVM Runtime Metrics",
-  "description": "Heap memory, CPU utilization, threads, and GC metrics for Java applications",
+  "description": "Heap memory, CPU utilization, threads, and GC metrics for JVM applications with the OTel Java Agent v2+ wth JVM v17+",
   "tags": [
     "OTel Runtime Metrics"
   ],
@@ -309,8 +309,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "jvm.cpu.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -367,7 +366,6 @@
             "valueExpression": "",
             "metricName": "jvm.class.loaded",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "loaded/s"
           }
         ],

@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": ".NET Runtime Metrics",
-  "description": "GC collections, heap fragmentation, exceptions, thread pool, and CPU metrics for .NET applications",
+  "description": "Garbage collection, heap fragmentation, exception, thread pool, and CPU metrics for .NET v9+ applications with the OpenTelemetry.Instrumentation.Runtime package",
   "tags": [
     "OTel Runtime Metrics"
   ],
@@ -51,8 +51,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.exceptions",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -81,8 +80,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.gc.pause.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -111,8 +109,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.thread_pool.work_item.count",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -141,8 +138,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.gc.collections",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -167,8 +163,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.gc.pause.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -255,8 +250,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.exceptions",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -280,8 +274,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.gc.heap.total_allocated",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -309,8 +302,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "dotnet.process.cpu.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -335,7 +327,6 @@
             "valueExpression": "",
             "metricName": "dotnet.thread_pool.work_item.count",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "work items"
           },
           {
@@ -343,7 +334,6 @@
             "valueExpression": "",
             "metricName": "dotnet.monitor.lock_contentions",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "contentions"
           }
         ],

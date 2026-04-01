@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": "Go Runtime Metrics",
-  "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications",
+  "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications with the OTel Runtime (v0.62+) and Host Metrics instrumentations",
   "tags": [
     "OTel Runtime Metrics"
   ],
@@ -51,8 +51,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "go.memory.allocated",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -179,8 +178,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "go.memory.allocated",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -236,8 +234,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "process.cpu.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -261,8 +258,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "go.memory.allocations",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",

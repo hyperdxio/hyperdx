@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": "Python Runtime Metrics",
-  "description": "Memory, CPU, GC collections, threads, and context switches for Python applications",
+  "description": "Memory, CPU, GC collections, threads, and context switches for Python applications instrumented with OTel system metrics",
   "tags": [
     "OTel Runtime Metrics"
   ],
@@ -22,7 +22,7 @@
           {
             "aggFn": "avg",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.memory",
+            "metricName": "process.memory.usage",
             "metricType": "sum"
           }
         ],
@@ -50,7 +50,7 @@
           {
             "aggFn": "avg",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.cpu.utilization",
+            "metricName": "process.cpu.utilization",
             "metricType": "gauge"
           }
         ],
@@ -58,7 +58,7 @@
         "whereLanguage": "sql",
         "numberFormat": {
           "output": "percent",
-          "mantissa": 1
+          "mantissa": 2
         }
       }
     },
@@ -78,9 +78,8 @@
           {
             "aggFn": "sum",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.gc_count",
-            "metricType": "sum",
-            "isDelta": true
+            "metricName": "cpython.gc.collections",
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -109,8 +108,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "cpython.gc.uncollectable_objects",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -138,7 +136,7 @@
           {
             "aggFn": "avg",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.memory",
+            "metricName": "process.memory.usage",
             "metricType": "sum"
           }
         ],
@@ -166,7 +164,7 @@
           {
             "aggFn": "avg",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.cpu.utilization",
+            "metricName": "process.cpu.utilization",
             "metricType": "gauge"
           }
         ],
@@ -174,7 +172,7 @@
         "whereLanguage": "sql",
         "numberFormat": {
           "output": "percent",
-          "mantissa": 1
+          "mantissa": 2
         }
       }
     },
@@ -194,17 +192,8 @@
           {
             "aggFn": "sum",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.gc_count",
-            "metricType": "sum",
-            "isDelta": true,
-            "alias": "gc_count"
-          },
-          {
-            "aggFn": "sum",
-            "valueExpression": "",
             "metricName": "cpython.gc.collections",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "collections"
           }
         ],
@@ -230,7 +219,6 @@
             "valueExpression": "",
             "metricName": "cpython.gc.collected_objects",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "collected"
           },
           {
@@ -238,7 +226,6 @@
             "valueExpression": "",
             "metricName": "cpython.gc.uncollectable_objects",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "leaks (uncollectable)"
           }
         ],
@@ -253,7 +240,7 @@
       "w": 12,
       "h": 7,
       "config": {
-        "name": "CPU Cores Used",
+        "name": "CPU Time Used",
         "source": "Metrics",
         "displayType": "line",
         "granularity": "auto",
@@ -262,9 +249,8 @@
           {
             "aggFn": "sum",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.cpu_time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricName": "process.cpu.time",
+            "metricType": "sum"
           }
         ],
         "where": "",
@@ -287,16 +273,15 @@
           {
             "aggFn": "avg",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.thread_count",
+            "metricName": "process.thread.count",
             "metricType": "sum",
             "alias": "threads"
           },
           {
             "aggFn": "sum",
             "valueExpression": "",
-            "metricName": "process.runtime.cpython.context_switches",
+            "metricName": "process.context_switches",
             "metricType": "sum",
-            "isDelta": true,
             "alias": "ctx switches"
           }
         ],

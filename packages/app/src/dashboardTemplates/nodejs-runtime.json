@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": "Node.js Runtime Metrics",
-  "description": "Event loop delay, heap usage, CPU utilization, and V8 memory for Node.js applications",
+  "description": "Event loop delay, heap usage, CPU utilization, and V8 memory for Node.js applications with OTel Runtime and Host Metrics instrumentations",
   "tags": [
     "OTel Runtime Metrics"
   ],
@@ -301,8 +301,7 @@
             "aggFn": "sum",
             "valueExpression": "",
             "metricName": "nodejs.eventloop.time",
-            "metricType": "sum",
-            "isDelta": true
+            "metricType": "sum"
           }
         ],
         "where": "",
