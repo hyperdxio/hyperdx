@@ -59,6 +59,12 @@ HDX_DEV_OTEL_JSON_HTTP_PORT=$((31100 + HDX_DEV_SLOT))
 # --- Docker Compose project name (unique per slot) ---
 HDX_DEV_PROJECT="hdx-dev-${HDX_DEV_SLOT}"
 
+# --- Shared NX build cache across all worktrees ---
+# NX cache is content-hash based so changed files get cache misses (correct
+# behavior). Unchanged packages reuse cached output regardless of worktree.
+NX_CACHE_DIRECTORY="${HOME}/.config/hyperdx/nx-cache"
+mkdir -p "$NX_CACHE_DIRECTORY"
+
 # Export everything
 export HDX_DEV_SLOT
 export HDX_DEV_BRANCH
@@ -75,6 +81,7 @@ export HDX_DEV_OTEL_HTTP_PORT
 export HDX_DEV_OTEL_METRICS_PORT
 export HDX_DEV_OTEL_JSON_HTTP_PORT
 export HDX_DEV_PROJECT
+export NX_CACHE_DIRECTORY
 
 # --- Clean up stale Next.js state from previous sessions ---
 # Nuke the entire .next directory to avoid stale webpack bundles, lock files,
