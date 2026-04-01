@@ -30,12 +30,12 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconCopy, IconShare, IconX } from '@tabler/icons-react';
+import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
+import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
@@ -98,35 +98,56 @@ enum Tab {
 }
 
 export function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   return (
-    <Group gap={8} wrap="nowrap">
-      <CopyButton
-        value={typeof window !== 'undefined' ? window.location.href : ''}
-      >
-        {({ copied, copy }) => (
-          <Tooltip label={copied ? 'Copied!' : 'Share link'} position="bottom">
-            <ActionIcon
-              variant="subtle"
-              size="sm"
-              onClick={copy}
-              aria-label="Share"
-            >
-              <IconShare size={16} />
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </CopyButton>
-      <Tooltip label="Close" position="bottom">
-        <ActionIcon
-          variant="subtle"
-          size="sm"
-          onClick={onClose}
-          aria-label="Close"
+    <>
+      <Group gap={8} wrap="nowrap">
+        <Tooltip label="Keyboard shortcuts" position="bottom">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={() => setShortcutsOpen(true)}
+            aria-label="Keyboard shortcuts"
+          >
+            <IconKeyboard size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <CopyButton
+          value={typeof window !== 'undefined' ? window.location.href : ''}
         >
-          <IconX size={16} />
-        </ActionIcon>
-      </Tooltip>
-    </Group>
+          {({ copied, copy }) => (
+            <Tooltip
+              label={copied ? 'Copied!' : 'Share link'}
+              position="bottom"
+            >
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={copy}
+                aria-label="Share"
+              >
+                <IconShare size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </CopyButton>
+        <Tooltip label="Close" position="bottom">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <IconX size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <KeyboardShortcutsModal
+        opened={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
+    </>
   );
 }
 
@@ -897,7 +918,6 @@ export const DBRowSidePanelInner = ({
           </div>
         </ErrorBoundary>
       )}
-      <LogSidePanelKbdShortcuts />
     </>
   );
 };
