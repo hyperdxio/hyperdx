@@ -18,7 +18,7 @@ interface ClickHouseConfig {
 const DEFAULT_CONFIG: ClickHouseConfig = {
   host:
     process.env.CLICKHOUSE_HOST ||
-    `http://localhost:${process.env.HDX_E2E_CH_PORT || '18123'}`,
+    `http://localhost:${process.env.HDX_E2E_CH_PORT || '20500'}`,
   user: process.env.CLICKHOUSE_USER || 'default',
   password: process.env.CLICKHOUSE_PASSWORD || '',
 };

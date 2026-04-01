@@ -245,6 +245,7 @@ export const AppNavLink = ({
   isExpanded,
   onToggle,
   isBeta,
+  isActive,
 }: {
   className?: string;
   label: React.ReactNode;
@@ -253,6 +254,7 @@ export const AppNavLink = ({
   isExpanded?: boolean;
   onToggle?: () => void;
   isBeta?: boolean;
+  isActive?: boolean;
 }) => {
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
@@ -268,7 +270,8 @@ export const AppNavLink = ({
 
   // Check if current path matches this nav item
   // Use exact match or startsWith to avoid partial matches (e.g., /search matching /search-settings)
-  const isActive = pathname === href || pathname?.startsWith(href + '/');
+  const defaultIsActive = pathname === href || pathname?.startsWith(href + '/');
+  const isActiveResolved = isActive ?? defaultIsActive;
 
   return (
     <Link
@@ -276,7 +279,7 @@ export const AppNavLink = ({
       href={href}
       className={cx(
         styles.navItem,
-        { [styles.navItemActive]: isActive },
+        { [styles.navItemActive]: isActiveResolved },
         className,
       )}
     >
@@ -295,18 +298,23 @@ export const AppNavLink = ({
         </Badge>
       )}
       {!isCollapsed && onToggle && (
-        <button
-          type="button"
-          data-testid={`${testId}-toggle`}
-          className={styles.navItemToggle}
-          onClick={handleToggleClick}
+        <Tooltip
+          label={isExpanded ? 'Hide Favorites' : 'Show Favorites'}
+          position="right"
         >
-          {isExpanded ? (
-            <IconChevronUp size={14} className="text-muted-hover" />
-          ) : (
-            <IconChevronDown size={14} className="text-muted-hover" />
-          )}
-        </button>
+          <button
+            type="button"
+            data-testid={`${testId}-toggle`}
+            className={styles.navItemToggle}
+            onClick={handleToggleClick}
+          >
+            {isExpanded ? (
+              <IconChevronUp size={14} className="text-muted-hover" />
+            ) : (
+              <IconChevronDown size={14} className="text-muted-hover" />
+            )}
+          </button>
+        </Tooltip>
       )}
     </Link>
   );

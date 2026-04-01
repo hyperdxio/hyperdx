@@ -109,6 +109,12 @@ export function RawSqlChartInstructions({
               ))}
               <List.Item>
                 <ParamSnippet
+                  value={`$__sourceTable([metricType])`}
+                  description="Resolves to selected source table (Source must be selected)"
+                />
+              </List.Item>
+              <List.Item>
+                <ParamSnippet
                   value={`$__filters`}
                   description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
                 />

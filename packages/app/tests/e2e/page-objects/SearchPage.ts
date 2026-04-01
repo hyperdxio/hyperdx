@@ -187,6 +187,18 @@ export class SearchPage {
   }
 
   /**
+   * Click "Save as New Search" from the action bar menu on an existing saved search.
+   * Opens the save search modal in "create" mode for duplicating the current search.
+   */
+  async clickSaveAsNew() {
+    // Click the action bar menu trigger (three dots icon next to the saved search name)
+    await this.page.getByTestId('search-page-action-bar').click();
+    await this.page
+      .getByRole('menuitem', { name: 'Save as New Search' })
+      .click();
+  }
+
+  /**
    * Open the alerts creation modal for the current saved search
    */
   async openAlertsModal() {

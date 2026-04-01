@@ -11,6 +11,7 @@ import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
 import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
+import favoritesRouter from './routers/api/favorites';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
@@ -94,6 +95,7 @@ app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
+app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 

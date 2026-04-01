@@ -9,6 +9,8 @@ export enum MetricsDataType {
   ExponentialHistogram = 'exponential histogram',
 }
 
+export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -590,6 +592,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -786,6 +789,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
