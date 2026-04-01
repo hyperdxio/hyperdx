@@ -406,46 +406,108 @@ function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
   );
 }
 
-function generateTraceSummary({
-  rootSpanName,
-  totalDurationMs,
-  spanCount,
-  errorCount,
-  services,
-  errorServices,
-}: {
-  rootSpanName: string;
-  totalDurationMs: number;
-  spanCount: number;
-  errorCount: number;
-  services: string[];
-  errorServices: string[];
-}): string {
-  const durationStr =
-    totalDurationMs < 1000
-      ? `${Math.round(totalDurationMs)}ms`
-      : `${(totalDurationMs / 1000).toFixed(2)}s`;
+function fmtMs(ms: number): string {
+  if (ms < 1) return `${Math.round(ms * 1000)}µs`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
 
-  const serviceList = services.slice(0, 5).join(', ');
-  const extra = services.length > 5 ? ` and ${services.length - 5} more` : '';
+function generateTraceSummary(rows: any[], minOffset: number): string {
+  const spans = rows.filter(
+    (r: any) => r.type !== SourceKind.Log && r.Duration != null,
+  );
+  if (!spans.length) return 'No span data available.';
 
-  let summary = `This trace spans ${durationStr} across ${services.length} service${services.length !== 1 ? 's' : ''} (${serviceList}${extra}) with ${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+  const maxEnd = spans.reduce((acc: number, r: any) => {
+    const end = new Date(r.Timestamp).getTime() + (r.Duration || 0) * 1000;
+    return Math.max(acc, end);
+  }, 0);
+  const totalMs = maxEnd - minOffset;
 
-  if (rootSpanName) {
-    summary += `. The root operation is \`${rootSpanName}\``;
+  const rootSpan = spans.find(
+    (r: any) => !r.ParentSpanId || r.ParentSpanId === '',
+  );
+
+  const byService = new Map<string, { count: number; totalMs: number }>();
+  for (const s of spans) {
+    const svc = s.ServiceName || 'unknown';
+    const prev = byService.get(svc) || { count: 0, totalMs: 0 };
+    prev.count += 1;
+    prev.totalMs += (s.Duration || 0) * 1000;
+    byService.set(svc, prev);
   }
 
-  if (errorCount > 0) {
-    summary += `. ${errorCount} error${errorCount !== 1 ? 's' : ''} detected`;
-    if (errorServices.length > 0) {
-      summary += ` in ${errorServices.join(', ')}`;
+  const sorted = [...spans].sort(
+    (a: any, b: any) => (b.Duration || 0) - (a.Duration || 0),
+  );
+  const slowest = sorted[0];
+  const slowestMs = (slowest.Duration || 0) * 1000;
+  const slowestPct = totalMs > 0 ? Math.round((slowestMs / totalMs) * 100) : 0;
+
+  const errorSpans = spans.filter(
+    (r: any) =>
+      r.StatusCode === 'Error' || r.SeverityText?.toLowerCase() === 'error',
+  );
+
+  const lines: string[] = [];
+
+  if (errorSpans.length > 0) {
+    const firstErr = errorSpans[0];
+    const errSvc = firstErr.ServiceName || 'unknown';
+    const errBody = firstErr.Body || 'unknown operation';
+
+    const errMessage =
+      firstErr.SpanEvents?.find(
+        (e: any) => e.Name === 'exception' || e.Name === 'error',
+      )?.Attributes?.['exception.message'] || '';
+
+    lines.push(
+      `⚠ ${errorSpans.length} error${errorSpans.length !== 1 ? 's' : ''} detected. ` +
+        `First error in **${errSvc}** → \`${errBody}\`` +
+        (errMessage ? `: "${errMessage}"` : '') +
+        '.',
+    );
+
+    if (errorSpans.length > 1) {
+      const errServices = [
+        ...new Set(errorSpans.map((r: any) => r.ServiceName).filter(Boolean)),
+      ];
+      lines.push(
+        `Errors span across ${errServices.length} service${errServices.length !== 1 ? 's' : ''}: ${errServices.join(', ')}.`,
+      );
     }
-  } else {
-    summary += `. No errors detected`;
   }
 
-  summary += '.';
-  return summary;
+  if (slowestPct >= 30 && slowest !== rootSpan) {
+    lines.push(
+      `🐢 Bottleneck: \`${slowest.Body || 'unknown'}\` in **${slowest.ServiceName || 'unknown'}** ` +
+        `took ${fmtMs(slowestMs)} (${slowestPct}% of total trace). ` +
+        'Consider optimizing this operation.',
+    );
+  }
+
+  const slowService = [...byService.entries()].sort(
+    (a, b) => b[1].totalMs - a[1].totalMs,
+  )[0];
+  if (slowService && byService.size > 1) {
+    const ratio = totalMs > 0 ? slowService[1].totalMs / totalMs : 0;
+    const svcPct = Math.round(ratio * 100);
+    if (svcPct >= 40) {
+      lines.push(
+        `**${slowService[0]}** accounts for ~${svcPct}% of total time (${slowService[1].count} span${slowService[1].count !== 1 ? 's' : ''}).`,
+      );
+    }
+  }
+
+  if (errorSpans.length === 0 && lines.length === 0) {
+    lines.push(
+      `✓ Trace completed successfully in ${fmtMs(totalMs)}` +
+        (rootSpan ? ` for \`${rootSpan.Body}\`` : '') +
+        `. No errors or significant bottlenecks detected.`,
+    );
+  }
+
+  return lines.join(' ');
 }
 
 function StreamingText({ text, speed = 12 }: { text: string; speed?: number }) {
@@ -492,57 +554,17 @@ function StreamingText({ text, speed = 12 }: { text: string; speed?: number }) {
 
 function TraceSummaryPanel({
   rows,
-  serviceColorMap,
-  spanCount,
-  errorCount,
   minOffset,
   onClose,
 }: {
   rows: any[];
-  serviceColorMap: Map<string, string>;
-  spanCount: number;
-  errorCount: number;
   minOffset: number;
   onClose: () => void;
 }) {
-  const summaryText = useMemo(() => {
-    if (!rows.length) return '';
-
-    const traceSpans = rows.filter(r => r.type !== SourceKind.Log);
-    const rootSpan = traceSpans.find(
-      r => !r.ParentSpanId || r.ParentSpanId === '',
-    );
-
-    const maxEnd = rows.reduce((acc, r) => {
-      const start = new Date(r.Timestamp).getTime();
-      const dur = (r.Duration || 0) * 1000;
-      return Math.max(acc, start + dur);
-    }, 0);
-    const totalDurationMs = maxEnd - minOffset;
-
-    const services = [...serviceColorMap.keys()];
-    const errorServices = [
-      ...new Set(
-        traceSpans
-          .filter(
-            r =>
-              r.StatusCode === 'Error' ||
-              r.SeverityText?.toLowerCase() === 'error',
-          )
-          .map(r => r.ServiceName)
-          .filter(Boolean) as string[],
-      ),
-    ];
-
-    return generateTraceSummary({
-      rootSpanName: rootSpan?.Body ?? '',
-      totalDurationMs,
-      spanCount,
-      errorCount,
-      services,
-      errorServices,
-    });
-  }, [rows, serviceColorMap, spanCount, errorCount, minOffset]);
+  const summaryText = useMemo(
+    () => generateTraceSummary(rows, minOffset),
+    [rows, minOffset],
+  );
 
   return (
     <Box
@@ -1449,9 +1471,6 @@ export function DBTraceWaterfallChartContainer({
                 {showSummary && rows && (
                   <TraceSummaryPanel
                     rows={rows}
-                    serviceColorMap={serviceColorMap}
-                    spanCount={spanCount}
-                    errorCount={errorCount}
                     minOffset={minOffset}
                     onClose={() => setShowSummary(false)}
                   />
