@@ -326,6 +326,7 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
         />
