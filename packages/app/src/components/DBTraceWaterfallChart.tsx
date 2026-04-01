@@ -88,15 +88,22 @@ export type SpanRow = {
 
 function barColor(condition: {
   isHighlighted: boolean;
+  isError?: boolean;
   type: string | undefined;
   serviceColor?: string;
 }) {
-  const { isHighlighted, type, serviceColor } = condition;
+  const { isHighlighted, isError, type, serviceColor } = condition;
 
   if (type === SourceKind.Log) {
     return isHighlighted
       ? getChartColorSuccessHighlight()
       : getChartColorSuccess();
+  }
+
+  if (isError) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${getChartColorError()} 60%, white)`
+      : getChartColorError();
   }
 
   if (serviceColor) {
@@ -1225,6 +1232,7 @@ export function DBTraceWaterfallChartContainer({
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
                 isHighlighted,
+                isError,
                 type,
                 serviceColor: serviceName
                   ? serviceColorMap.get(serviceName)
