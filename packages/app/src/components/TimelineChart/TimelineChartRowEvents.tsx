@@ -7,6 +7,8 @@ import {
 } from './TimelineSpanEventMarker';
 import { renderMs } from './utils';
 
+import styles from './TimelineChart.module.scss';
+
 export type TTimelineEvent = {
   id: string;
   start: number;
@@ -62,8 +64,7 @@ export const TimelineChartRowEvents = memo(function ({
         const durationMs = e.end - e.start;
         const barCenter = (e.start + e.end) / 2;
         const timelineMidpoint = maxVal / 2;
-        // Duration on left when majority of bar is past halfway, otherwise on right
-        const durationOnRight = barCenter <= timelineMidpoint;
+        const onRight = barCenter <= timelineMidpoint;
 
         return (
           <Tooltip
@@ -85,25 +86,20 @@ export const TimelineChartRowEvents = memo(function ({
                 minWidth: `${percWidth.toFixed(6)}%`,
                 width: `${percWidth.toFixed(6)}%`,
                 marginLeft: `${percMarginLeft.toFixed(6)}%`,
-                // overflow: 'visible',
               }}
             >
               <div
                 onMouseEnter={() => onEventHover?.(e.id)}
-                className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
+                className="d-flex align-items-center h-100 cursor-pointer hover-opacity"
                 style={{
                   userSelect: 'none',
                   width: '100%',
                   position: 'relative',
                   borderRadius: 2,
                   fontSize: height * 0.5,
-                  color: e.color,
                   backgroundColor: e.backgroundColor,
                 }}
               >
-                <div style={{ margin: 'auto' }} className="px-2">
-                  {e.body}
-                </div>
                 {e.markers?.map((marker, idx) => (
                   <TimelineSpanEventMarker
                     key={`${e.id}-marker-${idx}`}
@@ -116,22 +112,23 @@ export const TimelineChartRowEvents = memo(function ({
               </div>
               {!!e.showDuration && (
                 <span
+                  className={styles.barDetail}
                   style={{
-                    position: 'absolute',
-                    top: 0,
                     height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
                     fontSize: height * 0.5,
-                    color: 'var(--color-text)',
-                    whiteSpace: 'nowrap',
-                    pointerEvents: 'none',
-                    ...(durationOnRight
-                      ? { left: '100%', marginLeft: 4 }
-                      : { right: '100%', marginRight: 4 }),
+                    ...(onRight
+                      ? { left: '100%', paddingLeft: 4 }
+                      : {
+                          right: '100%',
+                          paddingRight: 4,
+                          flexDirection: 'row-reverse',
+                        }),
                   }}
                 >
-                  {renderMs(durationMs)}
+                  <span style={{ color: 'var(--color-text-muted)' }}>
+                    {renderMs(durationMs)}
+                  </span>
+                  <span className={styles.barDetailBody}>{e.body}</span>
                 </span>
               )}
             </div>

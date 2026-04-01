@@ -249,6 +249,7 @@ export const TimelineChart = memo(function ({
             height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
             width: '100%',
             position: 'relative',
+            zIndex: 1,
           }}
         >
           <div

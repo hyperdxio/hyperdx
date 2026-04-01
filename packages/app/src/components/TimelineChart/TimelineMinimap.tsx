@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 
 import type { TTimelineEvent } from './TimelineChartRowEvents';
-import { calculateInterval, renderMs } from './utils';
+import { renderMs } from './utils';
 
 import styles from './TimelineMinimap.module.scss';
 
@@ -69,13 +69,19 @@ export const TimelineMinimap = memo(function ({
   const isZoomed = scale > 1.01;
 
   const ticks = useMemo(() => {
-    const interval = calculateInterval(maxVal);
-    const numTicks = Math.floor(maxVal / interval) + 1;
+    const TARGET_TICKS = 6;
+    const rawInterval = maxVal / TARGET_TICKS;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)));
+    let interval = magnitude;
+    if (rawInterval >= 2 * magnitude) interval = 2 * magnitude;
+    if (rawInterval >= 5 * magnitude) interval = 5 * magnitude;
+
     const result = [];
-    for (let i = 0; i < numTicks; i++) {
-      const frac = (i * interval) / maxVal;
+    for (let i = 0; ; i++) {
+      const val = i * interval;
+      const frac = val / maxVal;
       if (frac > 1) break;
-      result.push({ frac, label: renderMs(i * interval) });
+      result.push({ frac, label: renderMs(val) });
     }
     return result;
   }, [maxVal]);
