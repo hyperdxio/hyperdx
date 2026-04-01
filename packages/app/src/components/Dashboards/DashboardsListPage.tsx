@@ -5,6 +5,7 @@ import Router from 'next/router';
 import { useQueryState } from 'nuqs';
 import {
   ActionIcon,
+  Anchor,
   Box,
   Button,
   Container,
@@ -173,11 +174,16 @@ export default function DashboardsListPage() {
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Preset Dashboards
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="xl">
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="sm">
           {PRESET_DASHBOARDS.map(p => (
             <ListingCard key={p.href} {...p} />
           ))}
         </SimpleGrid>
+        <Text ta="right" mb="sm">
+          <Anchor component={Link} href="/dashboards/templates" fz="sm">
+            Browse dashboard templates &rarr;
+          </Anchor>
+        </Text>
 
         {favoritedDashboards.length > 0 && (
           <>

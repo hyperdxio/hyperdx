@@ -1,0 +1,389 @@
+{
+  "version": "0.1.0",
+  "name": "JVM Runtime Metrics",
+  "description": "Heap memory, CPU utilization, threads, and GC metrics for JVM applications with the OTel Java Agent v2+ wth JVM v17+",
+  "tags": [
+    "OTel Runtime Metrics"
+  ],
+  "tiles": [
+    {
+      "id": "dd919b",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Heap Used",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.used",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c847ba",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.cpu.recent_utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "777a97",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "Thread Count",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "jvm.thread.count",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "1b82ef",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 3,
+      "config": {
+        "name": "CPU Count",
+        "source": "Metrics",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.cpu.count",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "6363a5",
+      "x": 0,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Heap: Used vs Committed vs Limit",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.used",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql",
+            "alias": "used"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.committed",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql",
+            "alias": "committed"
+          },
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.limit",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql",
+            "alias": "limit"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "5abddd",
+      "x": 12,
+      "y": 3,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Retained Heap After GC (by pool)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.used_after_last_gc",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['jvm.memory.pool.name']",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "c4abeb",
+      "x": 0,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Heap Memory Used by Pool",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.used",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'heap'",
+            "aggConditionLanguage": "sql"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['jvm.memory.pool.name']",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "26aa01",
+      "x": 12,
+      "y": 10,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Non-Heap Memory (metaspace)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.memory.used",
+            "metricType": "sum",
+            "aggCondition": "Attributes['jvm.memory.type'] = 'non_heap'",
+            "aggConditionLanguage": "sql"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['jvm.memory.pool.name']",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "ea6e2d",
+      "x": 0,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.cpu.recent_utilization",
+            "metricType": "gauge"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "bf01ef",
+      "x": 12,
+      "y": 17,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Cores Used",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "jvm.cpu.time",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "f90a9e",
+      "x": 0,
+      "y": 24,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Threads by State",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.thread.count",
+            "metricType": "sum"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "Attributes['jvm.thread.state']"
+      }
+    },
+    {
+      "id": "17f41d",
+      "x": 12,
+      "y": 24,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Loaded Classes",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "valueExpression": "",
+            "metricName": "jvm.class.count",
+            "metricType": "sum",
+            "alias": "current"
+          },
+          {
+            "aggFn": "sum",
+            "valueExpression": "",
+            "metricName": "jvm.class.loaded",
+            "metricType": "sum",
+            "alias": "loaded/s"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "id": "svc-filter-001",
+      "type": "QUERY_EXPRESSION",
+      "name": "ServiceName",
+      "expression": "ServiceName",
+      "source": "Metrics",
+      "sourceMetricType": "sum",
+      "where": "ResourceAttributes['telemetry.sdk.language'] = 'java'",
+      "whereLanguage": "sql"
+    }
+  ]
+}
