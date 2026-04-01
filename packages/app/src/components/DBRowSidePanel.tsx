@@ -981,7 +981,7 @@ export default function DBRowSidePanelErrorBoundary({
       styles={{
         content: {
           border: 'none',
-          boxShadow: 'none',
+          boxShadow: 'var(--shadow-drawer)',
         },
         body: {
           padding: '0',

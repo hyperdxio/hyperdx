@@ -208,6 +208,9 @@
   --color-viz-range-brush: rgb(250 255 105 / 20%);
   --color-viz-range-brush-border: rgb(250 255 105 / 50%);
 
+  /* Shadows */
+  --shadow-drawer: -4px 0 24px rgb(0 0 0 / 25%);
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
   --mantine-color-text: var(--color-text) !important;
@@ -416,6 +419,9 @@
   --color-viz-range-overlay: rgb(0 0 0 / 4%);
   --color-viz-range-brush: rgb(67 126 239 / 20%);
   --color-viz-range-brush-border: var(--mantine-color-indigo-8);
+
+  /* Shadows */
+  --shadow-drawer: -4px 0 24px rgb(0 0 0 / 4%);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;

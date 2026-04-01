@@ -165,7 +165,7 @@ export default function SessionSidePanel({
       styles={{
         content: {
           border: 'none',
-          boxShadow: 'none',
+          boxShadow: 'var(--shadow-drawer)',
         },
         body: {
           padding: '0',
