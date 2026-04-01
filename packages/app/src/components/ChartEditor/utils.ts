@@ -122,6 +122,13 @@ export function convertFormStateToChartConfig(
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
+      from: source?.from,
+      implicitColumnExpression:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.implicitColumnExpression
+          : undefined,
+      metricTables:
+        source && isMetricSource(source) ? source.metricTables : undefined,
     };
 
     return { ...rawSqlConfig, dateRange };

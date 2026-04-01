@@ -31,7 +31,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^6.7.1",
     "express-session": "^1.17.3",
-    "handlebars": "^4.7.8",
+    "handlebars": "^4.7.9",
     "http-graceful-shutdown": "^3.1.13",
     "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.0",
