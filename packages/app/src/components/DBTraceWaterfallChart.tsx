@@ -1050,7 +1050,7 @@ export function DBTraceWaterfallChartContainer({
     return v.id === highlightedRowWhere;
   });
 
-  return (
+  const controlsHeader = (
     <>
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
@@ -1179,60 +1179,79 @@ export function DBTraceWaterfallChartContainer({
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
-      <div
-        style={{
-          position: 'relative',
-          overflowX: 'auto',
-          overflowY: 'hidden',
-          flex: 1,
-          minHeight: 0,
-        }}
-      >
-        {isFetching ? (
-          <div className="my-3">Loading Traces...</div>
-        ) : error ? (
-          <Box mt="lg">
-            <Text my="sm" size="sm">
-              An error occurred while fetching trace data:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-          </Box>
-        ) : rows == null ? (
-          <div>
-            An unknown error occurred. <ContactSupportText />
-          </div>
-        ) : flattenedNodes.length === 0 ? (
-          <div className="my-3">No matching spans or logs found</div>
-        ) : (
-          <div style={{ minWidth: 740 }}>
-            <TimelineChart
-              rowHeight={22}
-              labelWidth={300}
-              onEventClick={(event: {
-                id: string;
-                type?: string;
-                aliasWith?: WithClause[];
-              }) => {
-                onClick?.({
-                  id: event.id,
-                  type: event.type ?? '',
-                  aliasWith: event.aliasWith ?? [],
-                });
-              }}
-              cursors={[]}
-              rows={timelineRows}
-              initialScrollRowIndex={initialScrollRowIndex}
-            />
-          </div>
-        )}
-      </div>
     </>
+  );
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {isFetching ? (
+        <div className="my-3 px-1">Loading Traces...</div>
+      ) : error ? (
+        <Box mt="lg" px="xs">
+          <Text my="sm" size="sm">
+            An error occurred while fetching trace data:
+          </Text>
+          <Code
+            block
+            style={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {error.message}
+          </Code>
+        </Box>
+      ) : rows == null ? (
+        <div className="px-1">
+          An unknown error occurred. <ContactSupportText />
+        </div>
+      ) : flattenedNodes.length === 0 ? (
+        <div className="my-3 px-1">No matching spans or logs found</div>
+      ) : (
+        <div
+          style={{
+            minWidth: 740,
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          <TimelineChart
+            rowHeight={22}
+            labelWidth={300}
+            onEventClick={(event: {
+              id: string;
+              type?: string;
+              aliasWith?: WithClause[];
+            }) => {
+              onClick?.({
+                id: event.id,
+                type: event.type ?? '',
+                aliasWith: event.aliasWith ?? [],
+              });
+            }}
+            cursors={[]}
+            rows={timelineRows}
+            initialScrollRowIndex={initialScrollRowIndex}
+            renderHeader={minimap => (
+              <>
+                {minimap}
+                {controlsHeader}
+              </>
+            )}
+          />
+        </div>
+      )}
+    </div>
   );
 }

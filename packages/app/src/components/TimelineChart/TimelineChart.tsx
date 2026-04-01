@@ -20,6 +20,7 @@ import {
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
 import { TimelineCursor } from './TimelineCursor';
+import { TimelineMinimap } from './TimelineMinimap';
 import { TimelineMouseCursor } from './TimelineMouseCursor';
 import { TimelineXAxis } from './TimelineXAxis';
 
@@ -49,6 +50,7 @@ type TimelineChartProps = {
   onEventClick?: (e: Row) => void;
   labelWidth: number;
   initialScrollRowIndex?: number;
+  renderHeader?: (minimap: React.ReactNode) => React.ReactNode;
 };
 
 export const TimelineChart = memo(function ({
@@ -58,6 +60,7 @@ export const TimelineChart = memo(function ({
   onEventClick,
   labelWidth: initialLabelWidth,
   initialScrollRowIndex,
+  renderHeader,
 }: TimelineChartProps) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState(0);
@@ -184,8 +187,20 @@ export const TimelineChart = memo(function ({
     }
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
+  const minimapElement = (
+    <TimelineMinimap
+      rows={rows}
+      maxVal={maxVal}
+      scale={scale}
+      offset={offset}
+      setOffset={setOffset}
+      setScale={setScale}
+    />
+  );
+
   return (
     <>
+      {renderHeader ? renderHeader(minimapElement) : minimapElement}
       <div
         style={{
           position: 'relative',
