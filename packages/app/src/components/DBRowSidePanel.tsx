@@ -942,8 +942,7 @@ export default function DBRowSidePanelErrorBoundary({
 
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
-  const { isChildModalOpen: _isChildModalOpen } =
-    useContext(RowSidePanelContext);
+  const parentContext = useContext(RowSidePanelContext);
 
   const [_sidePanelTab, setSidePanelTab] = useQueryState(
     'sidePanelTab',
@@ -994,6 +993,7 @@ export default function DBRowSidePanelErrorBoundary({
       <ZIndexContext.Provider value={drawerZIndex}>
         <RowSidePanelContext.Provider
           value={{
+            ...parentContext,
             isChildModalOpen: false,
             source,
           }}

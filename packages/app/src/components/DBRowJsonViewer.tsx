@@ -353,12 +353,7 @@ export function DBRowJsonViewer({
       ) {
         actions.push({
           key: 'add-to-search',
-          label: (
-            <Group gap={2}>
-              <IconFilter size={14} />
-              Add to Filters
-            </Group>
-          ),
+          label: <IconFilter size={14} />,
           title: 'Add to Filters',
           onClick: () => {
             let filterFieldPath = fieldPath;
@@ -396,12 +391,7 @@ export function DBRowJsonViewer({
       if (generateSearchUrl && typeof value !== 'object') {
         actions.push({
           key: 'search',
-          label: (
-            <Group gap={2}>
-              <IconSearch size={14} />
-              Search
-            </Group>
-          ),
+          label: <IconSearch size={14} />,
           title: 'Search for this value only',
           onClick: () => {
             let searchFieldPath = fieldPath;
@@ -494,20 +484,8 @@ export function DBRowJsonViewer({
         const isIncluded = displayedColumns?.includes(columnFieldPath);
         actions.push({
           key: 'toggle-column',
-          label: isIncluded ? (
-            <Group gap={2}>
-              <IconMinus size={14} />
-              Column
-            </Group>
-          ) : (
-            <Group gap={2}>
-              <IconPlus size={14} />
-              Column
-            </Group>
-          ),
-          title: isIncluded
-            ? `Remove ${fieldPath} column from results table`
-            : `Add ${fieldPath} column to results table`,
+          label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
+          title: isIncluded ? 'Remove Column' : 'Add Column',
           onClick: () => {
             toggleColumn(columnFieldPath);
             notifications.show({
@@ -544,18 +522,15 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: <IconCopy size={14} />,
+          title: 'Copy Object',
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: (
-            <Group gap={2}>
-              <IconCopy size={14} />
-              Copy Value
-            </Group>
-          ),
+          label: <IconCopy size={14} />,
+          title: 'Copy Value',
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
