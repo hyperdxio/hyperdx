@@ -153,13 +153,14 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     const filterCheckbox = sharedSection.getByTestId(
       `filter-checkbox-${TEST_FILTER_GROUP}-${TEST_FILTER_VALUE}`,
     );
+    await expect(filterCheckbox).toBeVisible({ timeout: 10000 });
     await filterCheckbox.click();
 
     // The filter should be applied — verify the checkbox is checked
     const filterInput = sharedSection.getByTestId(
       `filter-checkbox-${TEST_FILTER_GROUP}-${TEST_FILTER_VALUE}-input`,
     );
-    await expect(filterInput).toBeChecked();
+    await expect(filterInput).toBeChecked({ timeout: 10000 });
   });
 
   test('Reset shared filters clears all pinned fields', async () => {
