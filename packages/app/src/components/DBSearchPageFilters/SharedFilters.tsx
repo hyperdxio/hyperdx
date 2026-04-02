@@ -128,6 +128,7 @@ function SharedFilterGroup({
                   variant="subtle"
                   color="gray"
                   onClick={onToggleFieldPin}
+                  title={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
                 >
                   {isFieldPinned ? (
                     <IconPinFilled size={14} />

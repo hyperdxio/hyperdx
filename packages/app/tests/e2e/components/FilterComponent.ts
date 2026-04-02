@@ -20,9 +20,12 @@ export class FilterComponent {
     );
     await locator.hover();
 
+    // The action buttons live in a CSS-hover-revealed overlay (display:none → flex).
+    // Use dispatchEvent so we don't depend on the hover state still being active
+    // at the moment Playwright attempts the click.
     const button = locator.getByTestId(testId);
-    await button.waitFor({ state: 'visible' });
-    await button.click();
+    await button.waitFor({ state: 'attached' });
+    await button.dispatchEvent('click');
   }
 
   /**

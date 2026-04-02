@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import PinnedFilter from '@/models/pinnedFilter';
 
 describe('pinnedFilters router', () => {
   const server = getServer();
@@ -152,19 +153,18 @@ describe('pinnedFilters router', () => {
 
   describe('team scoping', () => {
     it('does not leak pinned filters between teams', async () => {
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          fields: ['ServiceName'],
-          filters: { ServiceName: ['web'] },
-        })
-        .expect(200);
+      // Insert a pinned filter belonging to a different team directly in DB
+      const otherTeamId = new mongoose.Types.ObjectId();
+      await PinnedFilter.create({
+        team: otherTeamId,
+        source: new mongoose.Types.ObjectId(sourceId),
+        user: null,
+        fields: ['ServiceName'],
+        filters: { ServiceName: ['web'] },
+      });
 
-      // User B on a different team
-      const { agent: agentB } = await getLoggedInAgent(server);
-
-      const res = await agentB
+      // The logged-in user (different team) should not see the other team's pins
+      const res = await agent
         .get(`/pinned-filters?source=${sourceId}`)
         .expect(200);
 

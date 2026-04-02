@@ -799,6 +799,7 @@ function FilterGroupActions({
                 variant="subtle"
                 color="gray"
                 onClick={onFieldPinClick}
+                title={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
               >
                 {isFieldPinned ? (
                   <IconPinFilled size={14} />
