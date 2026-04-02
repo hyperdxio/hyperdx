@@ -30,6 +30,8 @@ import {
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
+import { DBRowTableIconButton } from './DBTable/DBRowTableIconButton';
+
 type JSONExtractFn =
   | 'JSONExtractString'
   | 'JSONExtractFloat'
@@ -315,6 +317,7 @@ export function DBRowJsonViewer({
 
   const [filter, setFilter] = useState<string>('');
   const [debouncedFilter] = useDebouncedValue(filter, 100);
+  const [isRowCopied, setIsRowCopied] = useState(false);
   const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   const rowData = useMemo(() => {
@@ -604,6 +607,22 @@ export function DBRowJsonViewer({
             </Button>
           )}
           <div className="flex-grow-1" />
+          {rowData != null && (
+            <DBRowTableIconButton
+              onClick={() => {
+                window.navigator.clipboard.writeText(
+                  JSON.stringify(rowData, null, 2),
+                );
+                setIsRowCopied(true);
+                setTimeout(() => setIsRowCopied(false), 2000);
+              }}
+              variant="copy"
+              isActive={isRowCopied}
+              title={isRowCopied ? 'Copied!' : 'Copy row as JSON'}
+            >
+              <IconCopy size={14} />
+            </DBRowTableIconButton>
+          )}
           <HyperJsonMenu />
         </Group>
       </Box>
