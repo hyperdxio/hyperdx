@@ -99,7 +99,11 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getFirstTimestampValueExpression, useSource } from '@/source';
+import {
+  getFirstTimestampValueExpression,
+  getTraceDurationNumberFormat,
+  useSource,
+} from '@/source';
 import {
   getMetricTableName,
   optionsToSelectData,
@@ -678,6 +682,15 @@ export default function EditTimeChartForm({
       'numberFormat',
     ],
   });
+
+  const autoDetectedNumberFormat = useMemo(
+    () =>
+      getTraceDurationNumberFormat(
+        tableSource,
+        Array.isArray(select) ? select : undefined,
+      ),
+    [tableSource, select],
+  );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
     () => ({
@@ -1737,6 +1750,7 @@ export default function EditTimeChartForm({
       <ChartDisplaySettingsDrawer
         opened={displaySettingsOpened}
         settings={displaySettings}
+        defaultNumberFormat={autoDetectedNumberFormat}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
         onChange={handleUpdateDisplaySettings}

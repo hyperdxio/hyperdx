@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -30,24 +31,28 @@ export type ChartConfigDisplaySettings = Pick<
 interface ChartDisplaySettingsDrawerProps {
   opened: boolean;
   settings: ChartConfigDisplaySettings;
+  /** Auto-detected number format (e.g. duration for trace sources).
+   *  Used as the default when no explicit numberFormat is set. */
+  defaultNumberFormat?: NumberFormat;
   displayType: DisplayType;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
 }
 
-function applyDefaultSettings({
-  numberFormat,
-  alignDateRangeToGranularity,
-  compareToPreviousPeriod,
-  fillNulls,
-}: ChartConfigDisplaySettings): ChartConfigDisplaySettings {
+function applyDefaultSettings(
+  settings: ChartConfigDisplaySettings,
+  fallbackNumberFormat?: NumberFormat,
+): ChartConfigDisplaySettings {
   return {
-    numberFormat: numberFormat ?? DEFAULT_NUMBER_FORMAT,
+    numberFormat:
+      settings.numberFormat ?? fallbackNumberFormat ?? DEFAULT_NUMBER_FORMAT,
     alignDateRangeToGranularity:
-      alignDateRangeToGranularity == null ? true : alignDateRangeToGranularity,
-    fillNulls: fillNulls ?? 0,
-    compareToPreviousPeriod: compareToPreviousPeriod ?? false,
+      settings.alignDateRangeToGranularity == null
+        ? true
+        : settings.alignDateRangeToGranularity,
+    fillNulls: settings.fillNulls ?? 0,
+    compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
   };
 }
 
@@ -55,22 +60,32 @@ export default function ChartDisplaySettingsDrawer({
   settings,
   opened,
   displayType,
+  defaultNumberFormat,
   onChange,
   onClose,
   previousDateRange,
 }: ChartDisplaySettingsDrawerProps) {
+  const appliedDefaults = useMemo(
+    () => applyDefaultSettings(settings, defaultNumberFormat),
+    [settings, defaultNumberFormat],
+  );
+
   const { control, handleSubmit, register, reset, setValue } =
     useForm<ChartConfigDisplaySettings>({
-      defaultValues: applyDefaultSettings(settings),
+      defaultValues: appliedDefaults,
     });
+
+  useEffect(() => {
+    reset(appliedDefaults);
+  }, [appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
 
   const handleClose = useCallback(() => {
-    reset(applyDefaultSettings(settings)); // Reset to default values, without saving
+    reset(appliedDefaults);
     onClose();
-  }, [onClose, reset, settings]);
+  }, [onClose, reset, appliedDefaults]);
 
   const applyChanges = useCallback(() => {
     handleSubmit(onChange)();
@@ -78,8 +93,8 @@ export default function ChartDisplaySettingsDrawer({
   }, [onChange, handleSubmit, onClose]);
 
   const resetToDefaults = useCallback(() => {
-    reset(applyDefaultSettings({}));
-  }, [reset]);
+    reset(applyDefaultSettings({}, defaultNumberFormat));
+  }, [reset, defaultNumberFormat]);
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
