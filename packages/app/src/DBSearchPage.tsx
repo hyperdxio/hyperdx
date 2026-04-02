@@ -1742,7 +1742,7 @@ function DBSearchPage() {
             style={{ flex: '0 1 auto', minWidth: 0 }}
             align="center"
           >
-            <Box style={{ flex: '0 1 auto', minWidth: 100 }}>
+            <Box style={{ flex: '0 1 350px', minWidth: 100 }}>
               <TimePicker
                 data-testid="time-picker"
                 inputValue={displayedTimeInputValue}
