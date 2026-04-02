@@ -38,6 +38,7 @@ type JSONExtractFn =
 export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
+  jsonColumns: string[] = [],
   jsonExtractFn: JSONExtractFn = 'JSONExtractString',
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
@@ -45,7 +46,7 @@ export function buildJSONExtractQuery(
     return null; // No nested path to extract
   }
 
-  const baseColumn = parsedJsonRootPath[parsedJsonRootPath.length - 1];
+  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
@@ -368,6 +369,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
@@ -419,6 +421,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
                 jsonExtractFn,
               );
 
@@ -462,6 +465,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 chartFieldPath = jsonQuery;
@@ -485,7 +489,11 @@ export function DBRowJsonViewer({
 
         // Handle parsed JSON from string columns using JSONExtractString
         if (isInParsedJson && parsedJsonRootPath) {
-          const jsonQuery = buildJSONExtractQuery(keyPath, parsedJsonRootPath);
+          const jsonQuery = buildJSONExtractQuery(
+            keyPath,
+            parsedJsonRootPath,
+            jsonColumns,
+          );
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
           }
