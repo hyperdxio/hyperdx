@@ -790,7 +790,7 @@ const formatAutoScaleData = (
 };
 
 export const formatNumber = (
-  value?: number,
+  value?: string | number,
   options?: NumberFormat,
 ): string => {
   if (!value && value !== 0) {
@@ -799,8 +799,11 @@ export const formatNumber = (
 
   // Guard against NaN only - ClickHouse can return numbers as strings, which
   // we should still format. Only truly non-numeric values (NaN) get passed through.
-  if (isNaN(value as number)) {
-    return String(value);
+  if (typeof value !== 'number') {
+    if (isNaN(Number(value))) {
+      return String(value);
+    }
+    value = Number(value);
   }
 
   if (!options) {

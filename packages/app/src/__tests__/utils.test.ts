@@ -513,6 +513,22 @@ describe('formatNumber', () => {
         '1234.57',
       );
     });
+
+    it('handles string-type numeric values', () => {
+      expect(
+        formatNumber('500', {
+          output: 'byte',
+          numericUnit: NumericUnit.Kibibytes,
+        }),
+      ).toBe('500 KiB');
+
+      expect(
+        formatNumber('1024', {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BytesSecIEC,
+        }),
+      ).toBe('1 KiB/s');
+    });
   });
 
   describe('numericUnit with throughput output', () => {
@@ -571,11 +587,9 @@ describe('formatNumber', () => {
     });
 
     it('returns a string unchanged if a number cannot be parsed from it', () => {
-      // @ts-expect-error not passing a number
       expect(formatNumber('not a number')).toBe('not a number');
 
       expect(
-        // @ts-expect-error not passing a number
         formatNumber('not a number', { output: 'number', mantissa: 2 }),
       ).toBe('not a number');
     });
