@@ -403,6 +403,52 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('parses IN clauses when values contain BETWEEN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('I AM BETWEEN THE HEDGES AND I LOVE IT HERE')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['I AM BETWEEN THE HEDGES AND I LOVE IT HERE']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still parses real BETWEEN conditions correctly', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `duration BETWEEN 100 AND 500`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 100, max: 500 },
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain NOT IN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('this is NOT IN scope')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['this is NOT IN scope']),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
