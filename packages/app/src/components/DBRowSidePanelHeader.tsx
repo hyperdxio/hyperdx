@@ -127,13 +127,13 @@ function BreadcrumbNavigation({
 }
 
 export default function DBRowSidePanelHeader({
-  attributes = [],
+  attributes,
   mainContent = '',
   mainContentHeader,
   date,
   severityText,
   rowData,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: {
   date: Date;
@@ -197,11 +197,19 @@ export default function DBRowSidePanelHeader({
     [generateSearchUrl],
   );
 
+  const breadCrumbPathWithDefault = useMemo(() => {
+    return breadcrumbPath ?? [];
+  }, [breadcrumbPath]);
+
+  const attributesWithDefault = useMemo(() => {
+    return attributes ?? [];
+  }, [attributes]);
+
   return (
     <>
       {/* Breadcrumb navigation */}
       <BreadcrumbNavigation
-        breadcrumbPath={breadcrumbPath}
+        breadcrumbPath={breadCrumbPathWithDefault}
         onNavigateToLevel={onBreadcrumbClick}
       />
 
@@ -277,7 +285,7 @@ export default function DBRowSidePanelHeader({
       )}
       <AISummarizeButton rowData={rowData} severityText={severityText} />
       <Box mt="xs">
-        <DBHighlightedAttributesList attributes={attributes} />
+        <DBHighlightedAttributesList attributes={attributesWithDefault} />
       </Box>
     </>
   );
