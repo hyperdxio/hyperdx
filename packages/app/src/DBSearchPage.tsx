@@ -1735,42 +1735,44 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
-            minWidth={600}
+            minWidth="min(600px, 100%)"
           />
-          <TimePicker
-            data-testid="time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onTimePickerSearch}
-            onRelativeSearch={onTimePickerRelativeSearch}
-            showLive={analysisMode === 'results'}
-            isLiveMode={isLive}
-            // Default to relative time mode if the user has made changes to interval and reloaded.
-            defaultRelativeTimeMode={
-              isLive && interval !== LIVE_TAIL_DURATION_MS
-            }
-          />
-          {isLive && (
-            <Tooltip label="Live tail refresh interval">
-              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
-                <Select
-                  size="sm"
-                  w="100%"
-                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                  value={String(refreshFrequency)}
-                  onChange={value =>
-                    setRefreshFrequency(value ? parseInt(value, 10) : null)
-                  }
-                  allowDeselect={false}
-                  comboboxProps={{
-                    withinPortal: true,
-                    zIndex: 1000,
-                  }}
-                />
-              </Box>
-            </Tooltip>
-          )}
-          <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          <Flex gap="sm" style={{ flexShrink: 0 }}>
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+            />
+            {isLive && (
+              <Tooltip label="Live tail refresh interval">
+                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                  <Select
+                    size="sm"
+                    w="100%"
+                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                    value={String(refreshFrequency)}
+                    onChange={value =>
+                      setRefreshFrequency(value ? parseInt(value, 10) : null)
+                    }
+                    allowDeselect={false}
+                    comboboxProps={{
+                      withinPortal: true,
+                      zIndex: 1000,
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            )}
+            <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          </Flex>
         </Flex>
       </form>
       {searchedConfig != null && searchedSource != null && (
