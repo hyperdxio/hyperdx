@@ -1725,7 +1725,7 @@ function DBSearchPage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm">
+        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
           <SearchWhereInput
             tableConnection={inputSourceTableConnection}
             control={control}
@@ -1735,6 +1735,7 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
+            minWidth={300}
           />
           <TimePicker
             data-testid="time-picker"
