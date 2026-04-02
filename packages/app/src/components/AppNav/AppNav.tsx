@@ -6,8 +6,10 @@ import HyperDX from '@hyperdx/browser';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Badge,
   Collapse,
+  Flex,
   Group,
   ScrollArea,
   Text,
@@ -213,22 +215,26 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         )}
         title={savedSearch.name}
       >
-        <Group gap={2}>
+        <Group gap={2} wrap="nowrap" align="center">
           <div className="text-truncate">{savedSearch.name}</div>
           {Array.isArray(savedSearch.alerts) &&
           savedSearch.alerts.length > 0 ? (
             savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
-              <IconBellFilled
-                size={14}
-                className="float-end text-danger ms-1"
-                aria-label="Has Alerts and is in ALERT state"
-              />
+              <Flex flex={0}>
+                <IconBellFilled
+                  size={14}
+                  className="float-end text-danger ms-1"
+                  aria-label="Has Alerts and is in ALERT state"
+                />
+              </Flex>
             ) : (
-              <IconBell
-                size={14}
-                className="float-end ms-1"
-                aria-label="Has Alerts and is in OK state"
-              />
+              <Flex flex={0}>
+                <IconBell
+                  size={14}
+                  className="float-end ms-1"
+                  aria-label="Has Alerts and is in OK state"
+                />
+              </Flex>
             )
           ) : null}
         </Group>
@@ -434,6 +440,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {favoritedDashboards.map(renderDashboardLink)}
                 </div>
               </Collapse>
+            )}
+
+            {!isCollapsed && (
+              <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
+                Saved searches and dashboards have moved! Try the{' '}
+                <Anchor component={Link} href="/search/list">
+                  Saved Searches
+                </Anchor>{' '}
+                or{' '}
+                <Anchor component={Link} href="/dashboards/list">
+                  Dashboards
+                </Anchor>{' '}
+                page.
+              </Text>
             )}
 
             {/* Help */}

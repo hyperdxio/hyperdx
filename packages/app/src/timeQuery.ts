@@ -34,7 +34,7 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
+const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], {
     isUTC,
     format: 'normal',
