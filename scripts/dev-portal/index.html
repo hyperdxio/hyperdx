@@ -412,6 +412,12 @@
           devStack &&
           devStack.services.find(s => s.name === 'app' && s.status === 'up');
         const appUrl = appService ? appService.url : null;
+        const chService =
+          devStack &&
+          devStack.services.find(
+            s => s.name === 'clickhouse' && s.status === 'up',
+          );
+        const chUrl = chService ? `http://localhost:${chService.port}` : null;
 
         // Flatten all services from every env into one table.
         // Insert a separator row before each env group.
@@ -447,6 +453,7 @@
               <div class="worktree">${escapeHtml(header.worktree)}</div>
             </div>
             <div class="stack-actions">
+              ${chUrl ? `<a href="${chUrl}" target="_blank" class="open-btn open-btn-secondary">Open ClickHouse</a>` : ''}
               ${appUrl ? `<a href="${appUrl}" target="_blank" class="open-btn">Open App</a>` : ''}
             </div>
           </div>
