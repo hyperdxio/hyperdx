@@ -14,6 +14,7 @@ export class DashboardsListPage {
   readonly tempDashboardButton: Locator;
   readonly gridViewButton: Locator;
   readonly listViewButton: Locator;
+  readonly browseTemplatesLink: Locator;
 
   private readonly emptyCreateDashboardButton: Locator;
   private readonly emptyImportDashboardButton: Locator;
@@ -29,6 +30,9 @@ export class DashboardsListPage {
     this.tempDashboardButton = page.getByTestId('temp-dashboard-button');
     this.gridViewButton = page.getByRole('button', { name: 'Grid view' });
     this.listViewButton = page.getByRole('button', { name: 'List view' });
+    this.browseTemplatesLink = page.getByRole('link', {
+      name: /Browse dashboard templates/,
+    });
     this.emptyCreateDashboardButton = page.getByTestId(
       'empty-create-dashboard-button',
     );
@@ -40,6 +44,11 @@ export class DashboardsListPage {
 
   async goto() {
     await this.page.goto('/dashboards/list', { waitUntil: 'networkidle' });
+  }
+
+  async clickBrowseTemplates() {
+    await this.browseTemplatesLink.click();
+    await this.page.waitForURL('**/dashboards/templates');
   }
 
   async searchDashboards(query: string) {
@@ -84,19 +93,15 @@ export class DashboardsListPage {
 
   async deleteDashboardFromCard(name: string) {
     const card = this.getDashboardCard(name);
-    // Click the menu button (three dots) within the card
-    await card.getByRole('button').click();
+    await card.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
-    // Confirm deletion
     await this.confirmConfirmButton.click();
   }
 
   async deleteDashboardFromRow(name: string) {
     const row = this.getDashboardRow(name);
-    // Click the menu button within the row
-    await row.getByRole('button').click();
+    await row.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
-    // Confirm deletion
     await this.confirmConfirmButton.click();
   }
 
@@ -125,5 +130,28 @@ export class DashboardsListPage {
 
   getNoMatchesState() {
     return this.pageContainer.getByText('No matching dashboards yet.');
+  }
+
+  getFavoritesSection() {
+    return this.page.getByTestId('favorite-dashboards-section');
+  }
+
+  async toggleFavoriteOnCard(name: string) {
+    const card = this.getDashboardCard(name);
+    await card.getByTestId('favorite-button').click();
+  }
+
+  async toggleFavoriteOnRow(name: string) {
+    const row = this.getDashboardRow(name);
+    await row.getByTestId('favorite-button').click();
+  }
+
+  getFavoritedDashboardCard(name: string) {
+    return this.getFavoritesSection().locator('a').filter({ hasText: name });
+  }
+
+  async toggleFavoriteOnFavoritedCard(name: string) {
+    const card = this.getFavoritedDashboardCard(name);
+    await card.getByTestId('favorite-button').click();
   }
 }

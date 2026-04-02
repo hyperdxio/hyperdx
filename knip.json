@@ -27,8 +27,10 @@
       "project": ["src/**/*.ts"]
     }
   },
+  "ignore": ["scripts/dev-portal/**"],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
+    "@dotenvx/dotenvx",
     "concurrently",
     "dotenv",
     "babel-plugin-react-compiler"

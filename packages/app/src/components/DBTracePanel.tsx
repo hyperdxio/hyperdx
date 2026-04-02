@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -28,6 +28,7 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const eventRowWhereParser = parseAsJsonEncoded<{
@@ -143,6 +144,10 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={childSourceData} variant="text" />;
+  }, [childSourceData]);
+
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
     <div data-testid={dataTestId}>
@@ -171,7 +176,12 @@ export default function DBTracePanel({
               ? 'Trace Source'
               : 'Correlated Log Source'}
           </Text>
-          <SourceSelectControlled control={control} name="source" size="xs" />
+          <SourceSelectControlled
+            control={control}
+            name="source"
+            size="xs"
+            sourceSchemaPreview={sourceSchemaPreview}
+          />
         </Group>
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (

@@ -9,6 +9,8 @@ export enum MetricsDataType {
   ExponentialHistogram = 'exponential histogram',
 }
 
+export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -529,6 +531,7 @@ const SharedChartDisplaySettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
@@ -598,6 +601,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -769,9 +773,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   tiles: z.array(TileTemplateSchema),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),
@@ -794,6 +801,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
@@ -938,6 +946,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
 
   // Optional fields for traces
+  sampleRateExpression: z.string().optional(),
   logSourceId: z.string().optional().nullable(),
   sessionSourceId: z.string().optional(),
   metricSourceId: z.string().optional(),
@@ -1025,6 +1034,28 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+
+type SourceLikeForSampleWeight = {
+  kind: SourceKind;
+  sampleRateExpression?: string | null;
+};
+
+/** Trace sample rate expression for chart sampleWeightExpression when set. */
+export function getSampleWeightExpression(
+  source: SourceLikeForSampleWeight,
+): string | undefined {
+  return source.kind === SourceKind.Trace && source.sampleRateExpression
+    ? source.sampleRateExpression
+    : undefined;
+}
+
+/** For object spread: { ...pickSampleWeightExpressionProps(source) } */
+export function pickSampleWeightExpressionProps(
+  source: SourceLikeForSampleWeight,
+): { sampleWeightExpression: string } | undefined {
+  const w = getSampleWeightExpression(source);
+  return w ? { sampleWeightExpression: w } : undefined;
 }
 
 export const AssistantLineTableConfigSchema = z.object({

@@ -25,6 +25,25 @@ HDX_CI_OPAMP_PORT:= $(shell echo $$((14320 + $(HDX_CI_SLOT))))
 
 export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
 
+# Log directory for dev-portal visibility (integration tests)
+HDX_CI_LOGS_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/logs-int
+HDX_CI_HISTORY_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/history
+
+# Archive integration logs to history (call at end of each test target)
+# Usage: $(call archive-int-logs)
+define archive-int-logs
+	if [ -d "$(HDX_CI_LOGS_DIR)" ] && [ -n "$$(ls -A $(HDX_CI_LOGS_DIR) 2>/dev/null)" ]; then \
+		_ts=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		_hist="$(HDX_CI_HISTORY_DIR)/int-$$_ts"; \
+		mkdir -p "$$_hist"; \
+		mv $(HDX_CI_LOGS_DIR)/* "$$_hist/" 2>/dev/null; \
+		_wt=$$(basename "$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"); \
+		_br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
+		printf '{"worktree":"%s","branch":"%s","worktreePath":"%s"}\n' "$$_wt" "$$_br" "$(CURDIR)" > "$$_hist/meta.json"; \
+	fi; \
+	rm -rf $(HDX_CI_LOGS_DIR) 2>/dev/null
+endef
+
 .PHONY: all
 all: install-tools
 
@@ -33,17 +52,55 @@ install-tools:
 	yarn setup
 	@echo "All tools installed"
 
+# ---------------------------------------------------------------------------
+# Dev environment with worktree isolation
+# ---------------------------------------------------------------------------
+# Ports are allocated in the 30100-31199 range (base + slot) to avoid
+# conflicts with CI (14320-40098) and E2E (20320-21399) ports.
+#
+# Port mapping (base + slot):
+#   API server        : 30100 + slot
+#   App (Next.js)     : 30200 + slot
+#   OpAMP             : 30300 + slot
+#   MongoDB           : 30400 + slot
+#   ClickHouse HTTP   : 30500 + slot
+#   ClickHouse Native : 30600 + slot
+#   OTel health       : 30700 + slot
+#   OTel gRPC         : 30800 + slot
+#   OTel HTTP         : 30900 + slot
+#   OTel metrics      : 31000 + slot
+#   OTel JSON HTTP    : 31100 + slot
+# ---------------------------------------------------------------------------
+
+.PHONY: dev
+dev:
+	yarn dev
+
 .PHONY: dev-build
 dev-build:
-	docker compose -f docker-compose.dev.yml build
+	bash -c '. ./scripts/dev-env.sh && docker compose -p "$$HDX_DEV_PROJECT" -f docker-compose.dev.yml build'
 
 .PHONY: dev-up
 dev-up:
-	npm run dev
+	yarn dev
 
 .PHONY: dev-down
 dev-down:
-	docker compose -f docker-compose.dev.yml down
+	yarn dev:down
+
+.PHONY: dev-portal
+dev-portal:
+	node scripts/dev-portal/server.js
+
+.PHONY: dev-portal-stop
+dev-portal-stop:
+	@pid=$$(lsof -ti :$${HDX_PORTAL_PORT:-9900} 2>/dev/null); \
+	if [ -n "$$pid" ]; then \
+		echo "Stopping dev portal (PID $$pid)"; \
+		kill $$pid 2>/dev/null || true; \
+	else \
+		echo "Dev portal is not running"; \
+	fi
 
 .PHONY: dev-lint
 dev-lint:
@@ -57,6 +114,35 @@ ci-build:
 ci-lint:
 	npx nx run-many -t ci:lint
 
+.PHONY: dev-int-down
+dev-int-down:
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	@for port in $(HDX_CI_API_PORT) $(HDX_CI_OPAMP_PORT); do \
+		pids=$$(lsof -ti :$$port 2>/dev/null); \
+		for pid in $$pids; do \
+			echo "Killing process $$pid on port $$port"; \
+			kill $$pid 2>/dev/null || true; \
+		done; \
+	done
+	@$(call archive-int-logs); true
+
+.PHONY: dev-e2e-down
+dev-e2e-down:
+	$(eval HDX_E2E_SLOT := $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}'))
+	docker compose -p e2e-$(HDX_E2E_SLOT) -f packages/app/tests/e2e/docker-compose.yml down -v
+	@for port in $$((21000 + $(HDX_E2E_SLOT))) $$((20320 + $(HDX_E2E_SLOT))) $$((21300 + $(HDX_E2E_SLOT))) $$((21200 + $(HDX_E2E_SLOT))); do \
+		pids=$$(lsof -ti :$$port 2>/dev/null); \
+		for pid in $$pids; do \
+			echo "Killing process $$pid on port $$port"; \
+			kill $$pid 2>/dev/null || true; \
+		done; \
+	done
+
+.PHONY: dev-clean
+dev-clean: dev-down dev-int-down dev-e2e-down dev-portal-stop
+	@rm -rf $(HOME)/.config/hyperdx/dev-slots
+	@echo "All dev services cleaned up"
+
 .PHONY: dev-int-build
 dev-int-build:
 	npx nx run-many -t ci:build
@@ -65,23 +151,33 @@ dev-int-build:
 .PHONY: dev-int
 dev-int:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
+	@mkdir -p $(HDX_CI_LOGS_DIR)
+	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/api:dev:int $(FILE); ret=$$?; \
+	bash -c 'set -o pipefail; npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	$(call archive-int-logs); \
 	exit $$ret
 
 .PHONY: dev-int-common-utils
 dev-int-common-utils:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT))"
+	@mkdir -p $(HDX_CI_LOGS_DIR)
+	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/common-utils:dev:int $(FILE)
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	bash -c 'set -o pipefail; npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	$(call archive-int-logs); \
+	exit $$ret
 
 .PHONY: ci-int
 ci-int:
+	@mkdir -p $(HDX_CI_LOGS_DIR)
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
-	npx nx run-many -t ci:int --parallel=false
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	bash -c 'set -o pipefail; npx nx run-many -t ci:int --parallel=false 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log'; ret=$$?; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	$(call archive-int-logs); \
+	exit $$ret
 
 .PHONY: dev-unit
 dev-unit:
