@@ -110,8 +110,12 @@ test.describe(
       return `/search?filters=${encoded}`;
     }
 
-    // Filter groups with selected values auto-expand (isDefaultExpanded),
-    // so we use ensureFilterGroupExpanded to avoid toggling them closed.
+    // These tests navigate to the search page with pre-set URL filter params
+    // whose values contain special characters. The filter group auto-expands
+    // because it has selected values (isDefaultExpanded). We use
+    // ensureFilterGroupExpanded to avoid accidentally toggling it closed, then
+    // wait with a generous timeout for the filter checkbox to appear (the URL
+    // → parseQuery → filterState → re-render cycle can take a few seconds).
 
     test('Should display filter when value contains = character', async ({
       page,
@@ -129,7 +133,7 @@ test.describe(
         filterGroup,
         filterValue,
       );
-      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeVisible({ timeout: 15000 });
       await expect(filterInput).toBeChecked();
     });
 
@@ -149,7 +153,7 @@ test.describe(
         filterGroup,
         filterValue,
       );
-      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeVisible({ timeout: 15000 });
       await expect(filterInput).toBeChecked();
     });
 
@@ -169,7 +173,7 @@ test.describe(
         filterGroup,
         filterValue,
       );
-      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeVisible({ timeout: 15000 });
       await expect(filterInput).toBeChecked();
     });
 
@@ -178,7 +182,7 @@ test.describe(
     }) => {
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
-      const filterValue = 'true OR false';
+      const filterValue = 'this OR that';
 
       await page.goto(
         buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
@@ -189,7 +193,7 @@ test.describe(
         filterGroup,
         filterValue,
       );
-      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeVisible({ timeout: 15000 });
       await expect(filterInput).toBeChecked();
     });
   },

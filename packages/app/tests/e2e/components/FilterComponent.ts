@@ -61,11 +61,12 @@ export class FilterComponent {
     const group = this.getFilterGroup(filterName);
     await group.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Give auto-expansion a chance to fire (URL → parseQuery → render cycle)
+    // Wait for auto-expansion. Mantine sets the boolean data-active attribute
+    // (no value) on the Accordion.Item when expanded.
     try {
       await this.page
         .getByTestId(`filter-group-${filterName}`)
-        .and(this.page.locator('[data-active="true"]'))
+        .and(this.page.locator('[data-active]'))
         .waitFor({ state: 'visible', timeout: 3000 });
       return; // Already expanded
     } catch {
