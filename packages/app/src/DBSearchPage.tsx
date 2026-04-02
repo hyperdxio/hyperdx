@@ -1739,10 +1739,10 @@ function DBSearchPage() {
           />
           <Flex
             gap="sm"
-            style={{ flex: '1 1 auto', minWidth: 0 }}
+            style={{ flex: '0 1 auto', minWidth: 0 }}
             align="center"
           >
-            <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
+            <Box style={{ flex: '0 1 auto', minWidth: 100 }}>
               <TimePicker
                 data-testid="time-picker"
                 inputValue={displayedTimeInputValue}
