@@ -32,6 +32,7 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^19.0.0",
+    "react-devtools-core": "^7.0.1",
     "sqlstring": "^2.3.3"
   },
   "devDependencies": {
