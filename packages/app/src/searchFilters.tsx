@@ -95,11 +95,34 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
     return trimmed.toLowerCase() === 'true';
   }
 
-  // Remove surrounding quotes if present
-  return trimmed.startsWith("'") && trimmed.endsWith("'")
-    ? trimmed.slice(1, -1)
-    : trimmed;
+  // Remove surrounding quotes and un-escape '' → '
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
 };
+
+// Returns true when the single-quote at position `i` is a real string delimiter
+// rather than an escape sequence.  Handles both ClickHouse/SQL '' escaping and
+// backslash \' escaping.
+function isQuoteBoundary(s: string, i: number): boolean {
+  if (s[i] !== "'") return false;
+  if (i > 0 && s[i - 1] === '\\') return false;
+  return true;
+}
+
+// If we're inside a quoted string and hit a quote, check whether the next
+// character is also a quote ('' escape).  If so, skip both and stay in the
+// string.  Returns the new index to continue iteration from.
+function handleQuoteEscape(
+  s: string,
+  i: number,
+): { skip: boolean; next: number } {
+  if (i + 1 < s.length && s[i + 1] === "'") {
+    return { skip: true, next: i + 1 };
+  }
+  return { skip: false, next: i };
+}
 
 // Helper function to split on commas while respecting quoted strings and booleans
 function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
@@ -110,7 +133,15 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   for (let i = 0; i < valuesStr.length; i++) {
     const char = valuesStr[i];
 
-    if (char === "'" && (i === 0 || valuesStr[i - 1] !== '\\')) {
+    if (isQuoteBoundary(valuesStr, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(valuesStr, i);
+        if (esc.skip) {
+          currentValue += "''";
+          i = esc.next;
+          continue;
+        }
+      }
       inString = !inString;
       currentValue += char;
       continue;
@@ -145,7 +176,14 @@ function containsOutsideQuotes(
   let inString = false;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-    if (char === "'" && (i === 0 || text[i - 1] !== '\\')) {
+    if (isQuoteBoundary(text, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
       inString = !inString;
       continue;
     }
@@ -182,7 +220,14 @@ function splitOnFirstOutsideQuotes(
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-    if (char === "'" && (i === 0 || text[i - 1] !== '\\')) {
+    if (isQuoteBoundary(text, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
       inString = !inString;
       continue;
     }
@@ -215,7 +260,15 @@ function extractInClauses(condition: string): Array<{
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
 
-    if (char === "'" && (i === 0 || condition[i - 1] !== '\\')) {
+    if (isQuoteBoundary(condition, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(condition, i);
+        if (esc.skip) {
+          currentPart += "''";
+          i = esc.next;
+          continue;
+        }
+      }
       inString = !inString;
       currentPart += char;
       continue;

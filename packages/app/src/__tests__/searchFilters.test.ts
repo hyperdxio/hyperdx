@@ -449,6 +449,55 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('handles SQL-escaped quotes (double single quotes)', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('it''s a test')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(["it's a test"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles SQL-escaped quotes with operators inside', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('value with '' = special')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(["value with ' = special"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('does not split AND-joined condition on AND inside SQL-escaped string', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('foo AND bar') AND level IN ('info')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['foo AND bar']),
+          excluded: new Set(),
+        },
+        level: {
+          included: new Set(['info']),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
