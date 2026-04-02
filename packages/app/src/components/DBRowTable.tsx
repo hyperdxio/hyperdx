@@ -136,6 +136,7 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
+const MAX_CELL_LENGTH_WRAPPED = 50_000;
 
 const getRowId = (row: Record<string, any>): string =>
   row[INTERNAL_ROW_FIELDS.ID];
@@ -554,6 +555,11 @@ export const RawLogTable = memo(
       );
     }, [displayedColumns, columnSizeOpts, showExpandButton, containerWidth]);
 
+    const [wrapLinesEnabled, setWrapLinesEnabled] = useLocalStorage<boolean>(
+      `${tableId}-wrap-lines`,
+      wrapLines ?? false,
+    );
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
         ...(showExpandButton
@@ -612,9 +618,12 @@ export const RawLogTable = memo(
                 return <LogLevel level={strValue} />;
               }
 
+              const maxLen = wrapLinesEnabled
+                ? MAX_CELL_LENGTH_WRAPPED
+                : MAX_CELL_LENGTH;
               const truncatedStrValue =
-                strValue.length > MAX_CELL_LENGTH
-                  ? `${strValue.slice(0, MAX_CELL_LENGTH)}...`
+                strValue.length > maxLen
+                  ? `${strValue.slice(0, maxLen)}...`
                   : strValue;
 
               // Apply search highlighting if there's a search query
@@ -661,6 +670,7 @@ export const RawLogTable = memo(
         showExpandButton,
         aliasMap,
         lastColumnWidth,
+        wrapLinesEnabled,
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
@@ -797,10 +807,6 @@ export const RawLogTable = memo(
     // Scroll to log id if it's not in window yet
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
-    const [wrapLinesEnabled, setWrapLinesEnabled] = useLocalStorage<boolean>(
-      `${tableId}-wrap-lines`,
-      wrapLines ?? false,
-    );
     const [showSql, setShowSql] = useState(false);
 
     const handleSqlModalOpen = (open: boolean) => {
