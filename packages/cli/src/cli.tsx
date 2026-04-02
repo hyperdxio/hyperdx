@@ -3,11 +3,7 @@
 // MUST be the first import — silences console.debug/warn/error before
 // any common-utils code runs. ESM hoists imports above inline code,
 // so this can't be done with inline statements.
-import {
-  _origError,
-  enableVerboseFileLogging,
-  DEBUG_LOG_PATH,
-} from '@/utils/silenceLogs';
+import { _origError } from '@/utils/silenceLogs';
 
 import React, { useState, useCallback } from 'react';
 import { render, Box, Text, useApp } from 'ink';
@@ -126,25 +122,11 @@ program
   .version('0.1.0')
   .enablePositionalOptions();
 
-// Helper: enable --verbose on a command (logs to file)
-function withVerbose(cmd: Command): Command {
-  return cmd
-    .option('--verbose', 'Enable debug/warning output')
-    .hook('preAction', (thisCmd: Command) => {
-      if (thisCmd.opts().verbose) {
-        enableVerboseFileLogging();
-        _origError(`[verbose] Debug logs → ${DEBUG_LOG_PATH}\n`);
-      }
-    });
-}
-
 // ---- Interactive mode (default) ------------------------------------
 
-withVerbose(
-  program
-    .command('tui')
-    .description('Interactive TUI for event search and tail'),
-)
+program
+  .command('tui')
+  .description('Interactive TUI for event search and tail')
   .option('-s, --server <url>', 'HyperDX API server URL')
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
@@ -163,11 +145,9 @@ withVerbose(
 
 // ---- Stream mode (non-interactive, pipe-friendly) ------------------
 
-withVerbose(
-  program
-    .command('stream')
-    .description('Stream events to stdout (non-interactive, pipe-friendly)'),
-)
+program
+  .command('stream')
+  .description('Stream events to stdout (non-interactive, pipe-friendly)')
   .option('-s, --server <url>', 'HyperDX API server URL')
   .requiredOption('--source <name>', 'Source name')
   .option('-q, --query <query>', 'Lucene search query', '')

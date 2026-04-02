@@ -60,25 +60,7 @@ yarn dev stream --source "Logs"
 # List available sources
 yarn dev sources
 
-# Enable debug logging (writes to ~/.config/hyperdx/cli/debug.log)
-yarn dev tui --verbose
 ```
-
-### Debug Logging
-
-When `--verbose` is enabled, debug output is written to a file (since Ink takes
-over stdout/stderr in TUI mode):
-
-```bash
-# In one terminal
-yarn dev tui --verbose
-
-# In another terminal — tail the debug log
-tail -f ~/.config/hyperdx/cli/debug.log
-```
-
-The log includes all ClickHouse queries (`Sending Query: ...`) and is truncated
-on each new `--verbose` session.
 
 ## Building & Compiling
 
@@ -310,11 +292,6 @@ adjusts the ClickHouse proxy path accordingly.
 
 The `ProxyClickhouseClient` was sending the URL path as a database name. This
 was fixed by passing `origin` only (without path) to `createClient`.
-
-### Debug log is empty with --verbose
-
-Ensure you're tailing the correct file: `~/.config/hyperdx/cli/debug.log`. The
-file is truncated on each new `--verbose` session.
 
 ### Row detail shows partial data
 

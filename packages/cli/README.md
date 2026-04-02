@@ -28,9 +28,6 @@ yarn dev -- tui -s http://localhost:8000 -q "level:error" --source "Logs" -f
 yarn dev -- stream -s http://localhost:8000 --source "Logs" -f
 yarn dev -- auth login -s http://localhost:8000
 yarn dev -- auth logout
-
-# Enable verbose output for debugging
-yarn dev -- tui -s http://localhost:8000 --verbose
 ```
 
 ## Commands
@@ -146,12 +143,11 @@ yarn compile:linux        # Linux x64
 
 ## Options
 
-| Flag                   | Description                                 | Default |
-| ---------------------- | ------------------------------------------- | ------- |
-| `-s, --server <url>`   | HyperDX API server URL (required)           |         |
-| `-q, --query <query>`  | Lucene search query                         |         |
-| `--source <name>`      | Source name (skips picker)                  |         |
-| `-f, --follow`         | Start in follow/live tail mode              |         |
-| `--verbose`            | Enable debug output from internal libraries |         |
-| `--since <duration>`   | How far back to look (stream mode)          | `1h`    |
-| `-n, --limit <number>` | Max rows per fetch (stream mode)            | `100`   |
+| Flag                   | Description                        | Default |
+| ---------------------- | ---------------------------------- | ------- |
+| `-s, --server <url>`   | HyperDX API server URL (required)  |         |
+| `-q, --query <query>`  | Lucene search query                |         |
+| `--source <name>`      | Source name (skips picker)         |         |
+| `-f, --follow`         | Start in follow/live tail mode     |         |
+| `--since <duration>`   | How far back to look (stream mode) | `1h`    |
+| `-n, --limit <number>` | Max rows per fetch (stream mode)   | `100`   |
