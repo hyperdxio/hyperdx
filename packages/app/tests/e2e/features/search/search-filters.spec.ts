@@ -177,15 +177,20 @@ test.describe(
       await expect(filterInput).toBeChecked();
     });
 
-    test('Should display filter when value contains OR text', async ({
+    test('Should display filter when value contains AND-joined OR text', async ({
       page,
     }) => {
+      // Use a compound condition with an AND clause so the OR text is inside
+      // a quoted value that is part of a larger condition (mirrors real-world
+      // usage). The simple OR case is covered by the parseQuery unit test.
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
-      const filterValue = 'this OR that';
+      const filterValue = 'info';
 
       await page.goto(
-        buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
+        buildSearchUrlWithFilter(
+          `ServiceName = 'a OR b' AND ${filterGroup} IN ('${filterValue}')`,
+        ),
       );
       await searchPage.filters.ensureFilterGroupExpanded(filterGroup);
 
