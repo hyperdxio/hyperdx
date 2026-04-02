@@ -14,7 +14,7 @@ const router = express.Router();
 
 /**
  * GET /pinned-filters?source=<sourceId>
- * Returns both team-level and personal pinned filters for the source.
+ * Returns the team-level pinned filters for the source.
  */
 router.get(
   '/',
@@ -25,28 +25,17 @@ router.get(
   }),
   async (req, res, next) => {
     try {
-      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { teamId } = getNonNullUserWithTeam(req);
       const source = req.query.source as string;
 
-      const result = await getPinnedFilters(
-        teamId.toString(),
-        source,
-        userId.toString(),
-      );
+      const doc = await getPinnedFilters(teamId.toString(), source);
 
       return res.json({
-        team: result.team
+        team: doc
           ? {
-              id: result.team._id.toString(),
-              fields: result.team.fields,
-              filters: result.team.filters,
-            }
-          : null,
-        personal: result.personal
-          ? {
-              id: result.personal._id.toString(),
-              fields: result.personal.fields,
-              filters: result.personal.filters,
+              id: doc._id.toString(),
+              fields: doc.fields,
+              filters: doc.filters,
             }
           : null,
       });
@@ -58,34 +47,28 @@ router.get(
 
 const updateBodySchema = z.object({
   source: objectIdSchema,
-  scope: z.enum(['team', 'personal']),
   fields: z.array(z.string()),
   filters: PinnedFiltersValueSchema,
 });
 
 /**
  * PUT /pinned-filters
- * Upserts pinned filters for the given source.
- * scope=team -> updates the team-wide pinned filters (user=null)
- * scope=personal -> updates this user's personal pinned filters
+ * Upserts team-level pinned filters for the given source.
  */
 router.put(
   '/',
   validateRequest({ body: updateBodySchema }),
   async (req, res, next) => {
     try {
-      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { teamId } = getNonNullUserWithTeam(req);
       const source = req.body.source as string;
-      const scope = req.body.scope as 'team' | 'personal';
       const fields = req.body.fields as string[];
       const filters = req.body.filters as Record<string, (string | boolean)[]>;
 
-      const doc = await updatePinnedFilters(
-        teamId.toString(),
-        source,
-        scope === 'personal' ? userId.toString() : null,
-        { fields, filters },
-      );
+      const doc = await updatePinnedFilters(teamId.toString(), source, {
+        fields,
+        filters,
+      });
 
       return res.json({
         id: doc._id.toString(),

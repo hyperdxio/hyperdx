@@ -105,7 +105,6 @@ export const localSavedSearches = createEntityStore<SavedSearch>(
 type LocalPinnedFilter = {
   id: string;
   source: string;
-  scope: 'team' | 'personal';
   fields: string[];
   filters: PinnedFiltersValue;
 };

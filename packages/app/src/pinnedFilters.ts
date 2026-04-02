@@ -7,11 +7,6 @@ import { localPinnedFilters } from './localStore';
 
 export type PinnedFiltersApiResponse = {
   team: { id: string; fields: string[]; filters: PinnedFiltersValue } | null;
-  personal: {
-    id: string;
-    fields: string[];
-    filters: PinnedFiltersValue;
-  } | null;
 };
 
 function pinnedFiltersQueryKey(sourceId: string | null) {
@@ -23,20 +18,10 @@ async function fetchPinnedFilters(
 ): Promise<PinnedFiltersApiResponse> {
   if (IS_LOCAL_MODE) {
     const stored = localPinnedFilters.getAll();
-    const team =
-      stored.find(s => s.source === sourceId && s.scope === 'team') ?? null;
-    const personal =
-      stored.find(s => s.source === sourceId && s.scope === 'personal') ?? null;
+    const entry = stored.find(s => s.source === sourceId) ?? null;
     return {
-      team: team
-        ? { id: team.id, fields: team.fields, filters: team.filters }
-        : null,
-      personal: personal
-        ? {
-            id: personal.id,
-            fields: personal.fields,
-            filters: personal.filters,
-          }
+      team: entry
+        ? { id: entry.id, fields: entry.fields, filters: entry.filters }
         : null,
     };
   }
@@ -53,7 +38,6 @@ export function usePinnedFiltersApi(sourceId: string | null) {
 
 type UpdatePinnedFiltersInput = {
   source: string;
-  scope: 'team' | 'personal';
   fields: string[];
   filters: PinnedFiltersValue;
 };
@@ -65,9 +49,7 @@ export function useUpdatePinnedFilters() {
     mutationFn: (data: UpdatePinnedFiltersInput) => {
       if (IS_LOCAL_MODE) {
         const stored = localPinnedFilters.getAll();
-        const existing = stored.find(
-          s => s.source === data.source && s.scope === data.scope,
-        );
+        const existing = stored.find(s => s.source === data.source);
         if (existing) {
           return Promise.resolve(
             localPinnedFilters.update(existing.id, {

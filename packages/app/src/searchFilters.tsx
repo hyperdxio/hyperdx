@@ -432,42 +432,6 @@ type PinnedFilters = {
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
 /**
- * Merge team-level and personal pinned filter data into a single view.
- * Fields and filter values are unioned (deduplicated).
- */
-function mergePinnedData(
-  team: PinnedFiltersApiResponse['team'],
-  personal: PinnedFiltersApiResponse['personal'],
-): { fields: string[]; filters: PinnedFilters } {
-  const teamFields = team?.fields ?? [];
-  const personalFields = personal?.fields ?? [];
-  const fields = [...new Set([...teamFields, ...personalFields])];
-
-  const teamFilters = team?.filters ?? {};
-  const personalFilters = personal?.filters ?? {};
-  const allKeys = new Set([
-    ...Object.keys(teamFilters),
-    ...Object.keys(personalFilters),
-  ]);
-
-  const filters: PinnedFilters = {};
-  for (const key of allKeys) {
-    const teamVals = teamFilters[key] ?? [];
-    const personalVals = personalFilters[key] ?? [];
-    // Deduplicate using string comparison (values are strings or booleans)
-    const merged = [...teamVals];
-    for (const v of personalVals) {
-      if (!merged.some(existing => existing === v)) {
-        merged.push(v);
-      }
-    }
-    filters[key] = merged;
-  }
-
-  return { fields, filters };
-}
-
-/**
  * Migrate pinned filters from localStorage to the server.
  * Reads the old localStorage keys and pushes them as team-level pins,
  * then clears the localStorage entries for that source.
@@ -512,7 +476,6 @@ function useLocalStorageMigration(
         updateMutation.mutate(
           {
             source: sourceId,
-            scope: 'team',
             fields: fieldsForSource ?? [],
             filters: filtersForSource ?? {},
           },
@@ -560,17 +523,13 @@ export function usePinnedFilters(sourceId: string | null) {
 
   // Optimistic local state so rapid toggles don't lose changes.
   // When the user toggles a pin, we update this local state immediately,
-  // then debounce the API call. The local state is the source of truth
-  // until the API response comes back and resets it.
+  // then debounce the API call. Optimistic state is cleared when the
+  // mutation settles (not on every apiData change, which would race with
+  // background refetches during the debounce window).
   const [optimisticTeam, setOptimisticTeam] = useState<{
     fields: string[];
     filters: PinnedFilters;
   } | null>(null);
-
-  // When apiData changes (server response), clear optimistic state
-  useEffect(() => {
-    setOptimisticTeam(null);
-  }, [apiData]);
 
   // The effective team state: optimistic if pending, otherwise from API
   const effectiveTeam = useMemo(
@@ -582,11 +541,13 @@ export function usePinnedFilters(sourceId: string | null) {
     [optimisticTeam, apiData],
   );
 
-  // Merge team + personal into a unified view for read operations
+  // Merge team data into a unified view for read operations
   const { fields: pinnedFields, filters: pinnedFilters } = useMemo(
-    () =>
-      mergePinnedData({ id: '', ...effectiveTeam }, apiData?.personal ?? null),
-    [effectiveTeam, apiData?.personal],
+    () => ({
+      fields: effectiveTeam.fields,
+      filters: effectiveTeam.filters,
+    }),
+    [effectiveTeam],
   );
 
   // Debounce ref to batch rapid toggles
@@ -603,12 +564,19 @@ export function usePinnedFilters(sourceId: string | null) {
         clearTimeout(pendingUpdateRef.current);
       }
       pendingUpdateRef.current = setTimeout(() => {
-        updateMutation.mutate({
-          source: sourceId,
-          scope: 'team',
-          fields: newFields,
-          filters: newFilters,
-        });
+        updateMutation.mutate(
+          {
+            source: sourceId,
+            fields: newFields,
+            filters: newFilters,
+          },
+          {
+            // Clear optimistic state only after the mutation resolves,
+            // so background refetches during the debounce window don't
+            // cause the UI to briefly flash stale server data.
+            onSettled: () => setOptimisticTeam(null),
+          },
+        );
         pendingUpdateRef.current = null;
       }, 300);
     },

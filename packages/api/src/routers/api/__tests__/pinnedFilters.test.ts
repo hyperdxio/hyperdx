@@ -5,7 +5,6 @@ import { getLoggedInAgent, getServer } from '@/fixtures';
 describe('pinnedFilters router', () => {
   const server = getServer();
   let agent: Awaited<ReturnType<typeof getLoggedInAgent>>['agent'];
-  let team: Awaited<ReturnType<typeof getLoggedInAgent>>['team'];
   let sourceId: string;
 
   beforeAll(async () => {
@@ -15,7 +14,6 @@ describe('pinnedFilters router', () => {
   beforeEach(async () => {
     const result = await getLoggedInAgent(server);
     agent = result.agent;
-    team = result.team;
     sourceId = new mongoose.Types.ObjectId().toString();
   });
 
@@ -28,13 +26,12 @@ describe('pinnedFilters router', () => {
   });
 
   describe('GET /pinned-filters', () => {
-    it('returns null for team and personal when no pinned filters exist', async () => {
+    it('returns null when no pinned filters exist', async () => {
       const res = await agent
         .get(`/pinned-filters?source=${sourceId}`)
         .expect(200);
 
       expect(res.body.team).toBeNull();
-      expect(res.body.personal).toBeNull();
     });
 
     it('rejects invalid source id', async () => {
@@ -47,12 +44,11 @@ describe('pinnedFilters router', () => {
   });
 
   describe('PUT /pinned-filters', () => {
-    it('can create team-level pinned filters', async () => {
+    it('can create pinned filters', async () => {
       const res = await agent
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName', 'SeverityText'],
           filters: { ServiceName: ['web', 'api'] },
         })
@@ -63,28 +59,12 @@ describe('pinnedFilters router', () => {
       expect(res.body.id).toBeDefined();
     });
 
-    it('can create personal pinned filters', async () => {
-      const res = await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          scope: 'personal',
-          fields: ['level'],
-          filters: { level: ['error'] },
-        })
-        .expect(200);
-
-      expect(res.body.fields).toEqual(['level']);
-      expect(res.body.filters).toEqual({ level: ['error'] });
-    });
-
-    it('upserts team-level pinned filters on repeated PUT', async () => {
+    it('upserts pinned filters on repeated PUT', async () => {
       // First write
       await agent
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName'],
           filters: { ServiceName: ['web'] },
         })
@@ -95,7 +75,6 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName', 'SeverityText'],
           filters: { ServiceName: ['web', 'api'], SeverityText: ['error'] },
         })
@@ -113,19 +92,6 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: 'not-valid',
-          scope: 'team',
-          fields: [],
-          filters: {},
-        })
-        .expect(400);
-    });
-
-    it('rejects invalid scope', async () => {
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          scope: 'global',
           fields: [],
           filters: {},
         })
@@ -134,12 +100,11 @@ describe('pinnedFilters router', () => {
   });
 
   describe('GET + PUT round-trip', () => {
-    it('returns team data after PUT with scope=team', async () => {
+    it('returns team data after PUT', async () => {
       await agent
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName'],
           filters: { ServiceName: ['web'] },
         })
@@ -152,59 +117,6 @@ describe('pinnedFilters router', () => {
       expect(res.body.team).not.toBeNull();
       expect(res.body.team.fields).toEqual(['ServiceName']);
       expect(res.body.team.filters).toEqual({ ServiceName: ['web'] });
-      expect(res.body.personal).toBeNull();
-    });
-
-    it('returns personal data after PUT with scope=personal', async () => {
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          scope: 'personal',
-          fields: ['level'],
-          filters: { level: ['info'] },
-        })
-        .expect(200);
-
-      const res = await agent
-        .get(`/pinned-filters?source=${sourceId}`)
-        .expect(200);
-
-      expect(res.body.team).toBeNull();
-      expect(res.body.personal).not.toBeNull();
-      expect(res.body.personal.fields).toEqual(['level']);
-      expect(res.body.personal.filters).toEqual({ level: ['info'] });
-    });
-
-    it('returns both team and personal data independently', async () => {
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          scope: 'team',
-          fields: ['ServiceName'],
-          filters: { ServiceName: ['web'] },
-        })
-        .expect(200);
-
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          scope: 'personal',
-          fields: ['level'],
-          filters: { level: ['error'] },
-        })
-        .expect(200);
-
-      const res = await agent
-        .get(`/pinned-filters?source=${sourceId}`)
-        .expect(200);
-
-      expect(res.body.team).not.toBeNull();
-      expect(res.body.team.fields).toEqual(['ServiceName']);
-      expect(res.body.personal).not.toBeNull();
-      expect(res.body.personal.fields).toEqual(['level']);
     });
 
     it('can reset pinned filters by sending empty fields and filters', async () => {
@@ -213,7 +125,6 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName'],
           filters: { ServiceName: ['web'] },
         })
@@ -224,7 +135,6 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: [],
           filters: {},
         })
@@ -234,7 +144,6 @@ describe('pinnedFilters router', () => {
         .get(`/pinned-filters?source=${sourceId}`)
         .expect(200);
 
-      // Still returns the document, but with empty fields/filters
       expect(res.body.team).not.toBeNull();
       expect(res.body.team.fields).toEqual([]);
       expect(res.body.team.filters).toEqual({});
@@ -243,12 +152,10 @@ describe('pinnedFilters router', () => {
 
   describe('team scoping', () => {
     it('does not leak pinned filters between teams', async () => {
-      // User A pins filters
       await agent
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName'],
           filters: { ServiceName: ['web'] },
         })
@@ -261,9 +168,7 @@ describe('pinnedFilters router', () => {
         .get(`/pinned-filters?source=${sourceId}`)
         .expect(200);
 
-      // B should not see A's pins
       expect(res.body.team).toBeNull();
-      expect(res.body.personal).toBeNull();
     });
   });
 
@@ -275,13 +180,11 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['ServiceName'],
           filters: { ServiceName: ['web'] },
         })
         .expect(200);
 
-      // Different source should have no pins
       const res = await agent
         .get(`/pinned-filters?source=${sourceId2}`)
         .expect(200);
@@ -296,7 +199,6 @@ describe('pinnedFilters router', () => {
         .put('/pinned-filters')
         .send({
           source: sourceId,
-          scope: 'team',
           fields: ['isRootSpan'],
           filters: { isRootSpan: [true, false] },
         })

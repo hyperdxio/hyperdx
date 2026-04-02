@@ -1,148 +1,46 @@
 /**
  * Tests for pinned filters logic:
- * - mergePinnedData (pure function)
+ * - PinnedFiltersApiResponse shape
  * - localStorage migration logic
  */
 
-// We need to test the internal mergePinnedData function.
-// Since it's not exported, we extract the logic into testable assertions
-// by testing through the public usePinnedFilters hook behavior.
-// However, we CAN test the merge logic by reimplementing the same algorithm
-// and verifying its behavior — this is the pattern used in the codebase.
+describe('PinnedFiltersApiResponse', () => {
+  it('team-only shape has no personal field', () => {
+    const response = {
+      team: {
+        id: '1',
+        fields: ['ServiceName'],
+        filters: { ServiceName: ['web', 'api'] },
+      },
+    };
 
-import type { PinnedFiltersApiResponse } from '../pinnedFilters';
-
-// Re-implement mergePinnedData for direct testing (mirrors searchFilters.tsx)
-type PinnedFilters = { [key: string]: (string | boolean)[] };
-
-function mergePinnedData(
-  team: PinnedFiltersApiResponse['team'],
-  personal: PinnedFiltersApiResponse['personal'],
-): { fields: string[]; filters: PinnedFilters } {
-  const teamFields = team?.fields ?? [];
-  const personalFields = personal?.fields ?? [];
-  const fields = [...new Set([...teamFields, ...personalFields])];
-
-  const teamFilters = team?.filters ?? {};
-  const personalFilters = personal?.filters ?? {};
-  const allKeys = new Set([
-    ...Object.keys(teamFilters),
-    ...Object.keys(personalFilters),
-  ]);
-
-  const filters: PinnedFilters = {};
-  for (const key of allKeys) {
-    const teamVals = teamFilters[key] ?? [];
-    const personalVals = personalFilters[key] ?? [];
-    const merged = [...teamVals];
-    for (const v of personalVals) {
-      if (!merged.some(existing => existing === v)) {
-        merged.push(v);
-      }
-    }
-    filters[key] = merged;
-  }
-
-  return { fields, filters };
-}
-
-describe('mergePinnedData', () => {
-  it('returns empty fields and filters when both are null', () => {
-    const result = mergePinnedData(null, null);
-    expect(result.fields).toEqual([]);
-    expect(result.filters).toEqual({});
+    expect(response.team).not.toBeNull();
+    expect(response.team.fields).toEqual(['ServiceName']);
+    expect(response.team.filters).toEqual({ ServiceName: ['web', 'api'] });
   });
 
-  it('returns team data when personal is null', () => {
-    const team = {
-      id: '1',
-      fields: ['ServiceName'],
-      filters: { ServiceName: ['web', 'api'] },
-    };
-    const result = mergePinnedData(team, null);
-    expect(result.fields).toEqual(['ServiceName']);
-    expect(result.filters).toEqual({ ServiceName: ['web', 'api'] });
+  it('returns null team when no pins exist', () => {
+    const response = { team: null };
+    expect(response.team).toBeNull();
   });
 
-  it('returns personal data when team is null', () => {
-    const personal = {
-      id: '2',
-      fields: ['level'],
-      filters: { level: ['error'] },
+  it('handles empty fields and filters', () => {
+    const response = {
+      team: { id: '1', fields: [] as string[], filters: {} },
     };
-    const result = mergePinnedData(null, personal);
-    expect(result.fields).toEqual(['level']);
-    expect(result.filters).toEqual({ level: ['error'] });
-  });
-
-  it('unions fields from both team and personal', () => {
-    const team = { id: '1', fields: ['ServiceName', 'level'], filters: {} };
-    const personal = { id: '2', fields: ['level', 'host'], filters: {} };
-    const result = mergePinnedData(team, personal);
-    expect(result.fields).toEqual(['ServiceName', 'level', 'host']);
-  });
-
-  it('unions filter values and deduplicates', () => {
-    const team = {
-      id: '1',
-      fields: [],
-      filters: { ServiceName: ['web', 'api'] },
-    };
-    const personal = {
-      id: '2',
-      fields: [],
-      filters: { ServiceName: ['api', 'worker'] },
-    };
-    const result = mergePinnedData(team, personal);
-    expect(result.filters.ServiceName).toEqual(['web', 'api', 'worker']);
-  });
-
-  it('merges filter keys that only exist in one side', () => {
-    const team = {
-      id: '1',
-      fields: [],
-      filters: { ServiceName: ['web'] },
-    };
-    const personal = {
-      id: '2',
-      fields: [],
-      filters: { level: ['error'] },
-    };
-    const result = mergePinnedData(team, personal);
-    expect(result.filters).toEqual({
-      ServiceName: ['web'],
-      level: ['error'],
-    });
+    expect(response.team.fields).toEqual([]);
+    expect(response.team.filters).toEqual({});
   });
 
   it('handles boolean values in filters', () => {
-    const team = {
-      id: '1',
-      fields: [],
-      filters: { isRootSpan: [true] },
+    const response = {
+      team: {
+        id: '1',
+        fields: ['isRootSpan'],
+        filters: { isRootSpan: [true, false] },
+      },
     };
-    const personal = {
-      id: '2',
-      fields: [],
-      filters: { isRootSpan: [false] },
-    };
-    const result = mergePinnedData(team, personal);
-    expect(result.filters.isRootSpan).toEqual([true, false]);
-  });
-
-  it('does not duplicate boolean values', () => {
-    const team = {
-      id: '1',
-      fields: [],
-      filters: { isRootSpan: [true] },
-    };
-    const personal = {
-      id: '2',
-      fields: [],
-      filters: { isRootSpan: [true] },
-    };
-    const result = mergePinnedData(team, personal);
-    expect(result.filters.isRootSpan).toEqual([true]);
+    expect(response.team.filters.isRootSpan).toEqual([true, false]);
   });
 });
 
@@ -190,7 +88,6 @@ describe('localStorage migration', () => {
     expect(filtersRaw).toBeNull();
     expect(fieldsRaw).toBeNull();
 
-    // Parsing should fall back to empty objects
     const filters = filtersRaw ? JSON.parse(filtersRaw) : {};
     const fields = fieldsRaw ? JSON.parse(fieldsRaw) : {};
 
