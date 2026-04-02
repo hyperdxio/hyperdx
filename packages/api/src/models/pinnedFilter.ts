@@ -3,7 +3,7 @@ import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 
-export interface IPinnedFilter {
+interface IPinnedFilter {
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
