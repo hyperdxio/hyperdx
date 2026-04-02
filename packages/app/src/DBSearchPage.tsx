@@ -1742,22 +1742,20 @@ function DBSearchPage() {
             style={{ flex: '0 1 500px', minWidth: 0 }}
             align="center"
           >
-            <Box style={{ minWidth: 100 }}>
-              <TimePicker
-                data-testid="time-picker"
-                inputValue={displayedTimeInputValue}
-                setInputValue={setDisplayedTimeInputValue}
-                onSearch={onTimePickerSearch}
-                onRelativeSearch={onTimePickerRelativeSearch}
-                showLive={analysisMode === 'results'}
-                isLiveMode={isLive}
-                // Default to relative time mode if the user has made changes to interval and reloaded.
-                defaultRelativeTimeMode={
-                  isLive && interval !== LIVE_TAIL_DURATION_MS
-                }
-                width="100%"
-              />
-            </Box>
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+              width="100%"
+            />
             {isLive && (
               <Tooltip label="Live tail refresh interval">
                 <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
