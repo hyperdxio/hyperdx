@@ -551,6 +551,7 @@ export const NumberFormatSchema = z.object({
     'percent',
     'byte', // legacy, treated as data/bytes_iec
     'time',
+    'duration',
     'number',
     'data_rate',
     'throughput',

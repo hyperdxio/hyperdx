@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
@@ -9,8 +9,11 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  ChartConfigWithOptDateRange,
   MetricsDataType,
+  NumberFormat,
   SourceKind,
   SourceSchema,
   TLogSource,
@@ -390,6 +393,77 @@ export function getDurationMsExpression(source: TTraceSource) {
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
+}
+
+/**
+ * Returns a NumberFormat for duration display if the chart config's select
+ * expressions reference a trace source's durationExpression. Returns undefined
+ * if no match is detected.
+ *
+ * The returned format uses the `duration` output with a `factor` that converts
+ * from the raw value's precision to seconds.
+ */
+export function getTraceDurationNumberFormat(
+  source: TSource | undefined,
+  selectExpressions: Array<{ valueExpression?: string }> | undefined,
+): NumberFormat | undefined {
+  if (!source || source.kind !== SourceKind.Trace || !source.durationExpression)
+    return undefined;
+  if (!selectExpressions || selectExpressions.length === 0) return undefined;
+
+  const durationExpr = source.durationExpression;
+  const durationMsExpr = getDurationMsExpression(source);
+  const durationSecondsExpr = getDurationSecondsExpression(source);
+
+  for (const sel of selectExpressions) {
+    if (!sel.valueExpression) continue;
+    const expr = sel.valueExpression;
+
+    if (expr.includes(durationMsExpr)) {
+      return {
+        output: 'duration',
+        factor: 0.001,
+      };
+    }
+
+    if (expr.includes(durationSecondsExpr)) {
+      return {
+        output: 'duration',
+        factor: 1,
+      };
+    }
+
+    if (expr.includes(durationExpr)) {
+      const precision = source.durationPrecision ?? 9;
+      return {
+        output: 'duration',
+        factor: Math.pow(10, -precision),
+      };
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Hook that resolves the effective numberFormat for a chart config.
+ * If the config already has an explicit numberFormat, it's returned as-is.
+ * Otherwise, auto-detects duration format when the chart uses a trace source
+ * with duration expressions.
+ */
+export function useResolvedNumberFormat(
+  config: ChartConfigWithOptDateRange,
+): NumberFormat | undefined {
+  const { data: source } = useSource({ id: config.source });
+
+  return useMemo(() => {
+    if (config.numberFormat) return config.numberFormat;
+
+    if (!isBuilderChartConfig(config)) return undefined;
+
+    const select = Array.isArray(config.select) ? config.select : undefined;
+    return getTraceDurationNumberFormat(source, select);
+  }, [config, source]);
 }
 
 // defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto

@@ -8,7 +8,7 @@ import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
+import { useResolvedNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { omit } from '@/utils';
 import { formatNumber, semanticKeyedColor } from '@/utils';
@@ -213,6 +213,8 @@ export default function DBListBarChart({
 
   const { data: source } = useSource({ id: config.source });
 
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -224,9 +226,9 @@ export default function DBListBarChart({
       .map(key => ({
         dataKey: key,
         displayName: key,
-        numberFormat: config.numberFormat,
+        numberFormat: resolvedNumberFormat,
       }));
-  }, [config.numberFormat, data, hiddenSeries]);
+  }, [resolvedNumberFormat, data, hiddenSeries]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
