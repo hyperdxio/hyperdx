@@ -151,7 +151,7 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '10000', label: '10s' },
   { value: '30000', label: '30s' },
 ];
-const DEFAULT_REFRESH_FREQUENCY = 4000;
+const DEFAULT_REFRESH_FREQUENCY = 10000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
@@ -2101,6 +2101,7 @@ function DBSearchPage() {
                             collapseAllRows={collapseAllRows}
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
+                            enableSmallFirstWindow
                           />
                         )}
                     </Box>

@@ -18,6 +18,31 @@ import {
 } from '../useChartConfig';
 import { useMVOptimizationExplanation } from '../useMVOptimizationExplanation';
 
+// Mock DEFAULT_TIME_WINDOWS_SECONDS to remove the 15m window
+jest.mock('@/utils/searchWindows', () => {
+  const original = jest.requireActual('@/utils/searchWindows');
+  const mockWindows = [
+    6 * 60 * 60, // 6h
+    6 * 60 * 60, // 6h
+    12 * 60 * 60, // 12h
+    24 * 60 * 60, // 24h
+  ];
+  return {
+    ...original,
+    DEFAULT_TIME_WINDOWS_SECONDS: mockWindows,
+    generateTimeWindowsDescending: (
+      startDate: Date,
+      endDate: Date,
+      windowDurationsSeconds?: number[],
+    ) =>
+      original.generateTimeWindowsDescending(
+        startDate,
+        endDate,
+        windowDurationsSeconds ?? mockWindows,
+      ),
+  };
+});
+
 // Mock the clickhouse module
 jest.mock('@/clickhouse', () => ({
   useClickhouseClient: jest.fn(),
