@@ -38,6 +38,7 @@ type JSONExtractFn =
 export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
+  jsonColumns: string[] = [],
   jsonExtractFn: JSONExtractFn = 'JSONExtractString',
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
@@ -45,7 +46,7 @@ export function buildJSONExtractQuery(
     return null; // No nested path to extract
   }
 
-  const baseColumn = parsedJsonRootPath[parsedJsonRootPath.length - 1];
+  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
@@ -210,12 +211,31 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   viewerOptionsStorage,
 );
 
-function HyperJsonMenu() {
+function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
   return (
     <Group>
+      {rowData != null && (
+        <UnstyledButton
+          onClick={() => {
+            window.navigator.clipboard.writeText(
+              typeof rowData === 'string'
+                ? rowData
+                : JSON.stringify(rowData, null, 2),
+            );
+            notifications.show({
+              color: 'green',
+              message: `Value copied to clipboard`,
+            });
+          }}
+          variant="copy"
+          title={'Copy row as JSON'}
+        >
+          <IconCopy size={14} />
+        </UnstyledButton>
+      )}
       <UnstyledButton
         color="gray"
         data-testid="json-viewer-wrap-toggle"
@@ -368,6 +388,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
@@ -419,6 +440,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
                 jsonExtractFn,
               );
 
@@ -462,6 +484,7 @@ export function DBRowJsonViewer({
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 chartFieldPath = jsonQuery;
@@ -485,7 +508,11 @@ export function DBRowJsonViewer({
 
         // Handle parsed JSON from string columns using JSONExtractString
         if (isInParsedJson && parsedJsonRootPath) {
-          const jsonQuery = buildJSONExtractQuery(keyPath, parsedJsonRootPath);
+          const jsonQuery = buildJSONExtractQuery(
+            keyPath,
+            parsedJsonRootPath,
+            jsonColumns,
+          );
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
           }
@@ -604,7 +631,7 @@ export function DBRowJsonViewer({
             </Button>
           )}
           <div className="flex-grow-1" />
-          <HyperJsonMenu />
+          <HyperJsonMenu rowData={rowData} />
         </Group>
       </Box>
       <Paper bg="transparent" mt="sm">

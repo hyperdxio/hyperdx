@@ -91,7 +91,7 @@ const TIME_CHART_EXAMPLE_SQL = `SELECT
   toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} second) AS ts, -- (Timestamp column)
   ServiceName,                                                                     -- (Group name column)
   count()                                                                          -- (Series value column)
-FROM otel_logs
+FROM $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
   AND $__filters

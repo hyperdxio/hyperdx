@@ -78,6 +78,7 @@ const TimePickerComponent = ({
   showLive = false,
   isLiveMode = false,
   defaultRelativeTimeMode = false,
+  width = 350,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -87,6 +88,7 @@ const TimePickerComponent = ({
   showLive?: boolean;
   isLiveMode?: boolean;
   defaultRelativeTimeMode?: boolean;
+  width?: number | string;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -248,7 +250,7 @@ const TimePickerComponent = ({
           onClick={toggle}
           placeholder="Time Range"
           size="sm"
-          w={350}
+          w={width}
           onKeyDown={e => {
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
               onSubmit?.(e.target.value);

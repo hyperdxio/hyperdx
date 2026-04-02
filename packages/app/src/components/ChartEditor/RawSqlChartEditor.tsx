@@ -22,6 +22,7 @@ import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
+import SourceSchemaPreview from '../SourceSchemaPreview';
 import { SourceSelectControlled } from '../SourceSelect';
 
 import { SQL_PLACEHOLDERS } from './constants';
@@ -48,6 +49,7 @@ export default function RawSqlChartEditor({
   const displayType = useWatch({ control, name: 'displayType' });
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
+  const sourceObject = sources?.find(s => s.id === source);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -87,9 +89,9 @@ export default function RawSqlChartEditor({
     }));
 
     const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, argCount }) => ({
+      ({ name, minArgs }) => ({
         label: `$__${name}`,
-        apply: argCount > 0 ? `$__${name}(` : `$__${name}`,
+        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
         detail: 'macro',
         type: 'function',
       }),
@@ -97,6 +99,10 @@ export default function RawSqlChartEditor({
 
     return [...paramCompletions, ...macroCompletions];
   }, [displayType]);
+
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={sourceObject} variant="text" />;
+  }, [sourceObject]);
 
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
@@ -157,6 +163,7 @@ export default function RawSqlChartEditor({
           size="xs"
           clearable
           placeholder="None"
+          sourceSchemaPreview={sourceSchemaPreview}
         />
       </Group>
       <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />

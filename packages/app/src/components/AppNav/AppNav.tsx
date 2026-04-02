@@ -1,12 +1,15 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
+import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
   Badge,
+  Collapse,
+  Flex,
   Group,
   ScrollArea,
   Text,
@@ -15,6 +18,7 @@ import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowBarToLeft,
   IconBell,
+  IconBellFilled,
   IconChartDots,
   IconDeviceFloppy,
   IconDeviceLaptop,
@@ -26,9 +30,13 @@ import {
 
 import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
+import { Dashboard, useDashboards } from '@/dashboard';
+import { useFavorites } from '@/favorites';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
+import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
+import type { SavedSearch } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
@@ -109,6 +117,57 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     }
   }, []);
 
+  const { data: savedSearches } = useSavedSearches();
+  const { data: dashboards } = useDashboards();
+  const { data: favorites } = useFavorites();
+
+  const favoritedSavedSearchIds = useMemo(() => {
+    if (!favorites) return new Set<string>();
+
+    return new Set(
+      favorites
+        .filter(f => f.resourceType === 'savedSearch')
+        .map(f => f.resourceId),
+    );
+  }, [favorites]);
+
+  const favoritedSavedSearches = useMemo(() => {
+    if (!savedSearches) return [];
+
+    return savedSearches
+      .filter(s => favoritedSavedSearchIds.has(s.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [favoritedSavedSearchIds, savedSearches]);
+
+  const favoritedDashboardIds = useMemo(() => {
+    if (!favorites) return new Set<string>();
+
+    return new Set(
+      favorites
+        .filter(f => f.resourceType === 'dashboard')
+        .map(f => f.resourceId),
+    );
+  }, [favorites]);
+
+  const favoritedDashboards = useMemo(() => {
+    if (!dashboards) return [];
+
+    return dashboards
+      .filter(d => favoritedDashboardIds.has(d.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [dashboards, favoritedDashboardIds]);
+
+  const [isSavedSearchExpanded, setIsSavedSearchExpanded] =
+    useLocalStorage<boolean>({
+      key: 'isSavedSearchExpanded',
+      defaultValue: true,
+    });
+  const [isDashboardsExpanded, setIsDashboardsExpanded] =
+    useLocalStorage<boolean>({
+      key: 'isDashboardsExpanded',
+      defaultValue: true,
+    });
+
   const router = useRouter();
   const { pathname, query } = router;
 
@@ -144,6 +203,62 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     }
   }, [meData]);
 
+  const renderSavedSearchLink = useCallback(
+    (savedSearch: SavedSearch) => (
+      <Link
+        href={`/search/${savedSearch.id}`}
+        key={savedSearch.id}
+        tabIndex={0}
+        className={cx(
+          styles.subMenuItem,
+          savedSearch.id === query.savedSearchId && styles.subMenuItemActive,
+        )}
+        title={savedSearch.name}
+      >
+        <Group gap={2} wrap="nowrap" align="center">
+          <div className="text-truncate">{savedSearch.name}</div>
+          {Array.isArray(savedSearch.alerts) &&
+          savedSearch.alerts.length > 0 ? (
+            savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
+              <Flex flex={0}>
+                <IconBellFilled
+                  size={14}
+                  className="float-end text-danger ms-1"
+                  aria-label="Has Alerts and is in ALERT state"
+                />
+              </Flex>
+            ) : (
+              <Flex flex={0}>
+                <IconBell
+                  size={14}
+                  className="float-end ms-1"
+                  aria-label="Has Alerts and is in OK state"
+                />
+              </Flex>
+            )
+          ) : null}
+        </Group>
+      </Link>
+    ),
+    [query.savedSearchId],
+  );
+
+  const renderDashboardLink = useCallback(
+    (dashboard: Dashboard) => (
+      <Link
+        href={`/dashboards/${dashboard.id}`}
+        key={dashboard.id}
+        tabIndex={0}
+        className={cx(styles.subMenuItem, {
+          [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
+        })}
+      >
+        <div className="text-truncate">{dashboard.name}</div>
+      </Link>
+    ),
+    [query.dashboardId],
+  );
+
   const [
     UserPreferencesOpen,
     { close: closeUserPreferences, open: openUserPreferences },
@@ -157,6 +272,48 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     showInstallInstructions,
     { open: openInstallInstructions, close: closeInstallInstructions },
   ] = useDisclosure(false);
+
+  const isSavedSearchActive = useMemo(() => {
+    if (!pathname?.startsWith('/search/')) return false;
+
+    if (
+      typeof query.savedSearchId === 'string' &&
+      favoritedSavedSearchIds.has(query.savedSearchId)
+    ) {
+      return !isSavedSearchExpanded;
+    }
+
+    return true;
+  }, [
+    favoritedSavedSearchIds,
+    isSavedSearchExpanded,
+    pathname,
+    query.savedSearchId,
+  ]);
+
+  const isDashboardsActive = useMemo(() => {
+    const isDashboardsPathname =
+      pathname?.startsWith('/dashboards/') ||
+      pathname === '/services' ||
+      pathname === '/clickhouse' ||
+      pathname === '/kubernetes';
+
+    if (!isDashboardsPathname) return false;
+
+    if (
+      typeof query.dashboardId === 'string' &&
+      favoritedDashboardIds.has(query.dashboardId)
+    ) {
+      return !isDashboardsExpanded;
+    }
+
+    return true;
+  }, [
+    pathname,
+    query.dashboardId,
+    favoritedDashboardIds,
+    isDashboardsExpanded,
+  ]);
 
   return (
     <AppNavContext.Provider value={{ isCollapsed, pathname }}>
@@ -174,6 +331,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         onHide={closeInstallInstructions}
       />
       <div
+        data-testid="app-nav"
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
           [styles.navCollapsed]: isCollapsed,
@@ -241,8 +399,18 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               label="Saved Searches"
               href="/search/list"
               icon={<IconDeviceFloppy size={16} />}
-              isActive={pathname?.startsWith('/search/')}
+              isActive={isSavedSearchActive}
+              isExpanded={isSavedSearchExpanded}
+              onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
+
+            {!isCollapsed && !!favoritedSavedSearches.length && (
+              <Collapse in={isSavedSearchExpanded}>
+                <div className={styles.subMenu}>
+                  {favoritedSavedSearches.map(renderSavedSearchLink)}
+                </div>
+              </Collapse>
+            )}
             {/* Simple nav links from config */}
             {NAV_LINKS.filter(link => !link.cloudOnly || !IS_LOCAL_MODE).map(
               link => (
@@ -261,7 +429,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               label="Dashboards"
               href="/dashboards/list"
               icon={<IconLayoutGrid size={16} />}
+              isActive={isDashboardsActive}
+              isExpanded={isDashboardsExpanded}
+              onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
             />
+
+            {!isCollapsed && !!favoritedDashboards.length && (
+              <Collapse in={isDashboardsExpanded}>
+                <div className={styles.subMenu}>
+                  {favoritedDashboards.map(renderDashboardLink)}
+                </div>
+              </Collapse>
+            )}
+
             {!isCollapsed && (
               <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
                 Saved searches and dashboards have moved! Try the{' '}
