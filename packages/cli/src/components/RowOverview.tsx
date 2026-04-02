@@ -11,6 +11,7 @@ import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 
 import type { SourceResponse } from '@/api/client';
+import { ROW_DATA_ALIASES } from '@/api/eventQuery';
 
 // ---- helpers -------------------------------------------------------
 
@@ -118,8 +119,10 @@ export default function RowOverview({
   // ---- 2. Event Attributes (Span / Log) ---------------------------
   const eventAttrExpr = source.eventAttributesExpression;
   const eventAttrs = useMemo(() => {
-    if (!eventAttrExpr) return null;
-    const raw = rowData[eventAttrExpr];
+    // Try the source expression name first, then __hdx_* alias
+    const raw =
+      (eventAttrExpr ? rowData[eventAttrExpr] : null) ??
+      rowData[ROW_DATA_ALIASES.EVENT_ATTRIBUTES];
     if (raw == null || typeof raw !== 'object') return null;
     return flattenObject(raw as Record<string, unknown>);
   }, [rowData, eventAttrExpr]);
@@ -139,8 +142,10 @@ export default function RowOverview({
   // ---- 3. Resource Attributes -------------------------------------
   const resourceAttrExpr = source.resourceAttributesExpression;
   const resourceAttrs = useMemo(() => {
-    if (!resourceAttrExpr) return null;
-    const raw = rowData[resourceAttrExpr];
+    // Try the source expression name first, then __hdx_* alias
+    const raw =
+      (resourceAttrExpr ? rowData[resourceAttrExpr] : null) ??
+      rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES];
     if (raw == null || typeof raw !== 'object') return null;
     return flattenObject(raw as Record<string, unknown>);
   }, [rowData, resourceAttrExpr]);

@@ -8,7 +8,10 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import type {
+  BuilderChartConfigWithDateRange,
+  SelectList,
+} from '@hyperdx/common-utils/dist/types';
 import SqlString from 'sqlstring';
 
 import type { SourceResponse } from './client';
@@ -96,50 +99,109 @@ export async function buildEventSearchQuery(
 // ---- Full row fetch (SELECT *) -------------------------------------
 
 /**
- * Build a WHERE clause from all the row's column values to uniquely
- * identify it for a SELECT * point lookup.
+ * Alias names for the full row fetch, matching the web frontend's
+ * ROW_DATA_ALIASES enum in DBRowDataPanel.tsx.
+ * Uses the same enum shape so it can be moved to common-utils later.
+ */
+export enum ROW_DATA_ALIASES {
+  TIMESTAMP = '__hdx_timestamp',
+  BODY = '__hdx_body',
+  TRACE_ID = '__hdx_trace_id',
+  SPAN_ID = '__hdx_span_id',
+  SEVERITY_TEXT = '__hdx_severity_text',
+  SERVICE_NAME = '__hdx_service_name',
+  RESOURCE_ATTRIBUTES = '__hdx_resource_attributes',
+  EVENT_ATTRIBUTES = '__hdx_event_attributes',
+  EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
+  SPAN_EVENTS = '__hdx_span_events',
+}
+
+/**
+ * Parse defaultTableSelectExpression to build a map of alias → expression.
+ * E.g. "Timestamp, ServiceName as service, SeverityText as level, Body"
+ * → { Timestamp: "Timestamp", service: "ServiceName", level: "SeverityText", Body: "Body" }
+ */
+function parseSelectAliasMap(
+  selectExpr: string | undefined,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  if (!selectExpr) return map;
+
+  // Split by comma, respecting parentheses (e.g. function calls)
+  let depth = 0;
+  let current = '';
+  const parts: string[] = [];
+  for (const ch of selectExpr) {
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+
+  for (const part of parts) {
+    // Match "expr AS alias" or "expr as alias"
+    const asMatch = part.match(/^(.+?)\s+[Aa][Ss]\s+(\S+)$/);
+    if (asMatch) {
+      map[asMatch[2]] = asMatch[1].trim();
+    } else {
+      // No alias — the column name is both key and expression
+      // Extract the last identifier as the key (handles dotted paths)
+      const name = part.trim();
+      const lastDot = name.lastIndexOf('.');
+      const key = lastDot >= 0 ? name.slice(lastDot + 1) : name;
+      map[key] = name;
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Build a WHERE clause to uniquely identify a row for a SELECT * lookup.
  *
- * Uses every scalar (string/number) column in the row — skips objects
- * (Maps, Arrays) since they can't be compared with simple = operators.
+ * Maps the row's aliased column names back to source table expressions
+ * using the defaultTableSelectExpression alias mapping. This ensures the
+ * WHERE clause uses actual ClickHouse column/expression names.
+ *
+ * This mirrors the web frontend's processRowToWhereClause + aliasMap.
  */
 function buildRowWhereClause(
   row: Record<string, unknown>,
   source: SourceResponse,
 ): string {
+  const aliasMap = parseSelectAliasMap(source.defaultTableSelectExpression);
   const clauses: string[] = [];
+  const tsPattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
 
   for (const [col, value] of Object.entries(row)) {
     if (value == null) continue;
-
-    // Skip complex types (Maps, Arrays, Objects) — can't do simple = comparison
     if (typeof value === 'object') continue;
 
     const strVal = String(value);
-    // Skip empty strings
     if (strVal === '') continue;
-    // Skip very long values to avoid huge WHERE clauses
     if (strVal.length > 512) continue;
 
-    // Detect timestamp columns — use parseDateTime64BestEffort for matching
-    if (
-      col === 'Timestamp' ||
-      col === (source.timestampValueExpression ?? 'TimestampTime')
-    ) {
+    // Resolve the alias to the actual expression, fall back to col name
+    const expr = aliasMap[col] ?? col;
+
+    if (tsPattern.test(strVal)) {
       clauses.push(
         SqlString.format('? = parseDateTime64BestEffort(?, 9)', [
-          SqlString.raw(col),
+          SqlString.raw(expr),
           strVal,
         ]),
       );
     } else if (typeof value === 'number') {
       clauses.push(
-        SqlString.format('? = ?', [
-          SqlString.raw(col),
-          SqlString.raw(String(value)),
-        ]),
+        SqlString.format('? = ?', [SqlString.raw(expr), SqlString.raw(strVal)]),
       );
     } else {
-      clauses.push(SqlString.format('? = ?', [SqlString.raw(col), strVal]));
+      clauses.push(SqlString.format('? = ?', [SqlString.raw(expr), strVal]));
     }
   }
 
@@ -261,8 +323,62 @@ export interface FullRowQueryOptions {
 }
 
 /**
- * Build a raw SELECT * query to fetch all fields for a single row.
- * Bypasses renderChartConfig to avoid extra time range / query wrapping.
+ * Build the SELECT list with __hdx_* aliases, matching the web frontend's
+ * useRowData in DBRowDataPanel.tsx.
+ * Same function shape so it can be moved to common-utils later.
+ */
+function buildRowDataSelectList(source: SourceResponse): SelectList {
+  const select: SelectList = [{ valueExpression: '*' }];
+
+  const add = (expr: string | undefined, alias: string) => {
+    if (expr) select.push({ valueExpression: expr, alias });
+  };
+
+  // Timestamp — use displayedTimestampValueExpression for high precision
+  const displayedTs =
+    source.displayedTimestampValueExpression ??
+    getFirstTimestampValueExpression(
+      source.timestampValueExpression ?? 'TimestampTime',
+    ) ??
+    source.timestampValueExpression ??
+    'TimestampTime';
+  add(displayedTs, ROW_DATA_ALIASES.TIMESTAMP);
+
+  add(
+    source.bodyExpression ?? source.spanNameExpression,
+    ROW_DATA_ALIASES.BODY,
+  );
+  add(source.traceIdExpression, ROW_DATA_ALIASES.TRACE_ID);
+  add(source.spanIdExpression, ROW_DATA_ALIASES.SPAN_ID);
+  add(source.serviceNameExpression, ROW_DATA_ALIASES.SERVICE_NAME);
+
+  if (source.kind === 'log') {
+    add(source.severityTextExpression, ROW_DATA_ALIASES.SEVERITY_TEXT);
+  } else if (source.kind === 'trace') {
+    add(source.statusCodeExpression, ROW_DATA_ALIASES.SEVERITY_TEXT);
+  }
+
+  add(
+    source.resourceAttributesExpression,
+    ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
+  );
+  add(source.eventAttributesExpression, ROW_DATA_ALIASES.EVENT_ATTRIBUTES);
+
+  return select;
+}
+
+/**
+ * Build a full row SQL query matching the web frontend's useRowData
+ * in DBRowDataPanel.tsx.
+ *
+ * SELECT *, <__hdx_* aliases>
+ * FROM db.table
+ * WHERE <row values matched via alias→expression mapping>
+ * LIMIT 1
+ *
+ * The WHERE clause uses buildRowWhereClause which resolves aliased
+ * column names (from defaultTableSelectExpression) back to actual
+ * table column expressions.
  */
 export function buildFullRowSql(opts: FullRowQueryOptions): {
   sql: string;
@@ -273,9 +389,23 @@ export function buildFullRowSql(opts: FullRowQueryOptions): {
   const db = source.from.databaseName;
   const table = source.from.tableName;
   const whereClause = buildRowWhereClause(row, source);
+  const selectList = buildRowDataSelectList(source);
 
-  // Do NOT include FORMAT — the ClickHouse client sets it via the HTTP protocol
-  const sql = `SELECT * FROM ${db}.${table} WHERE ${whereClause} LIMIT 1`;
+  // Build the SELECT clause: *, then each __hdx_* alias
+  const selectParts: string[] = [];
+  if (typeof selectList === 'string') {
+    selectParts.push(selectList);
+  } else {
+    for (const s of selectList) {
+      if ('valueExpression' in s) {
+        selectParts.push(
+          s.alias ? `${s.valueExpression} AS ${s.alias}` : s.valueExpression,
+        );
+      }
+    }
+  }
+
+  const sql = `SELECT ${selectParts.join(', ')} FROM ${db}.${table} WHERE ${whereClause} LIMIT 1`;
 
   return {
     sql,

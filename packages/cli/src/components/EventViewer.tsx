@@ -16,7 +16,11 @@ import type {
   SavedSearchResponse,
   ProxyClickhouseClient,
 } from '@/api/client';
-import { buildEventSearchQuery, buildFullRowSql } from '@/api/eventQuery';
+import {
+  buildEventSearchQuery,
+  buildFullRowSql,
+  ROW_DATA_ALIASES,
+} from '@/api/eventQuery';
 import {
   openEditorForSelect,
   openEditorForTimeRange,
@@ -661,24 +665,33 @@ export default function EventViewer({
           const data = fullRow ?? (row as Record<string, unknown>);
           setExpandedRowData(data);
 
-          // Extract trace ID and span ID from the full row
-          // (both trace and log sources can have these expressions)
+          // Extract trace ID and span ID from the full row.
+          // Try the source expression name first, then __hdx_* alias.
           if (source.kind === 'trace' || source.kind === 'log') {
             const traceIdExpr = source.traceIdExpression ?? 'TraceId';
-            const val = String(data[traceIdExpr] ?? '');
-            setExpandedTraceId(val || null);
+            const traceVal = String(
+              data[traceIdExpr] ?? data[ROW_DATA_ALIASES.TRACE_ID] ?? '',
+            );
+            setExpandedTraceId(traceVal || null);
 
             const spanIdExpr = source.spanIdExpression ?? 'SpanId';
-            const spanVal = String(data[spanIdExpr] ?? '');
+            const spanVal = String(
+              data[spanIdExpr] ?? data[ROW_DATA_ALIASES.SPAN_ID] ?? '',
+            );
             setExpandedSpanId(spanVal || null);
           }
         }
       } catch (err) {
         // Non-fatal — fall back to partial row data, but include error
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // Truncate HTML errors to a readable length
+        const shortErr = errMsg.startsWith('<!')
+          ? errMsg.slice(0, 200)
+          : errMsg;
         if (!cancelled) {
           setExpandedRowData({
             ...(row as Record<string, unknown>),
-            __fetch_error: err instanceof Error ? err.message : String(err),
+            __fetch_error: shortErr,
           });
         }
       } finally {
