@@ -58,15 +58,18 @@ import {
 } from '@/hooks/useMetadata';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
+import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
   usePinnedFilters,
 } from '@/searchFilters';
 import { useSource } from '@/source';
-import { mergePath } from '@/utils';
+import { mergePath, useLocalStorage } from '@/utils';
 
+import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
+import { SharedFilters } from './DBSearchPageFilters/SharedFilters';
 import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -160,7 +163,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-const FilterCheckbox = ({
+export const FilterCheckbox = ({
   columnName,
   value,
   label,
@@ -1033,7 +1036,13 @@ const DBSearchPageFiltersComponent = ({
     isFieldPinned,
     getPinnedFields,
     pinnedFilters,
+    resetPinnedFilters,
   } = usePinnedFilters(sourceId ?? null);
+  const { data: pinnedFiltersApiData } = usePinnedFiltersApi(sourceId ?? null);
+  const [isSharedFiltersVisible, setSharedFiltersVisible] = useLocalStorage(
+    'hdx-shared-filters-visible',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
@@ -1196,12 +1205,28 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, setExtraFacets, dateRange, metadata, source],
   );
 
+  // Build the set of fields already shown in the Shared Filters section,
+  // so we can avoid duplicating them in the main filters list.
+  const sharedFilterKeys = useMemo(() => {
+    if (!isSharedFiltersVisible || !pinnedFiltersApiData?.team) {
+      return new Set<string>();
+    }
+    const team = pinnedFiltersApiData.team;
+    const keys = new Set([...team.fields, ...Object.keys(team.filters)]);
+    return keys;
+  }, [isSharedFiltersVisible, pinnedFiltersApiData]);
+
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
         facet.key = `toString(${facet.key})`;
+      }
+
+      // Skip fields already shown in the Shared Filters section
+      if (sharedFilterKeys.has(facet.key)) {
+        continue;
       }
 
       // don't include empty facets, unless they are already selected or pinned
@@ -1229,7 +1254,8 @@ const DBSearchPageFiltersComponent = ({
     }
     // get remaining filterState that are not in _facets
     const remainingFilterState = Object.keys(filterState).filter(
-      key => !_facets.some(facet => facet.key === key),
+      key =>
+        !_facets.some(facet => facet.key === key) && !sharedFilterKeys.has(key),
     );
     for (const key of remainingFilterState) {
       _facets.push({
@@ -1276,6 +1302,7 @@ const DBSearchPageFiltersComponent = ({
     extraFacets,
     isFieldPinned,
     jsonColumns,
+    sharedFilterKeys,
   ]);
 
   const showClearAllButton = useMemo(
@@ -1379,6 +1406,24 @@ const DBSearchPageFiltersComponent = ({
             </Tabs.List>
           </Tabs>
 
+          {isSharedFiltersVisible && pinnedFiltersApiData?.team && (
+            <SharedFilters
+              teamData={pinnedFiltersApiData.team}
+              facets={facetsWithPinnedValues}
+              filterState={filterState}
+              onFilterChange={(key, value) => setFilterValue(key, value)}
+              onFilterOnly={(key, value) => setFilterValue(key, value, 'only')}
+              onFilterExclude={(key, value) =>
+                setFilterValue(key, value, 'exclude')
+              }
+              onFilterClear={key => clearFilter(key)}
+              onToggleFilterPin={(key, value) => toggleFilterPin(key, value)}
+              onToggleFieldPin={key => toggleFieldPin(key)}
+              isFilterPinned={(key, value) => isFilterPinned(key, value)}
+              isFieldPinned={key => isFieldPinned(key)}
+            />
+          )}
+
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>
               <Text size="xxs" c="dimmed" fw="bold">
@@ -1396,14 +1441,26 @@ const DBSearchPageFiltersComponent = ({
                 />
               )}
             </Flex>
-            {showClearAllButton && (
-              <TextButton
-                label="Clear all"
-                onClick={() => {
-                  clearAllFilters();
-                }}
+            <Group gap={0}>
+              {showClearAllButton && (
+                <TextButton
+                  label="Clear all"
+                  onClick={() => {
+                    clearAllFilters();
+                  }}
+                />
+              )}
+              <FilterSettingsPanel
+                isSharedFiltersVisible={isSharedFiltersVisible}
+                onSharedFiltersVisibilityChange={setSharedFiltersVisible}
+                hasSharedFilters={
+                  pinnedFiltersApiData?.team != null &&
+                  (pinnedFiltersApiData.team.fields.length > 0 ||
+                    Object.keys(pinnedFiltersApiData.team.filters).length > 0)
+                }
+                onResetSharedFilters={resetPinnedFilters}
               />
-            )}
+            </Group>
           </Flex>
 
           {analysisMode === 'results' && (

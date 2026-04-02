@@ -1,8 +1,12 @@
-import React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
-import { useLocalStorage } from './utils';
+import {
+  type PinnedFiltersApiResponse,
+  usePinnedFiltersApi,
+  useUpdatePinnedFilters,
+} from './pinnedFilters';
 
 export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 
@@ -304,7 +308,7 @@ export const useSearchPageFilterState = ({
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
 }) => {
-  const parsedQuery = React.useMemo(() => {
+  const parsedQuery = useMemo(() => {
     try {
       return parseQuery(searchQuery);
     } catch (e) {
@@ -313,9 +317,9 @@ export const useSearchPageFilterState = ({
     }
   }, [searchQuery]);
 
-  const [filters, setFilters] = React.useState<FilterState>({});
+  const [filters, setFilters] = useState<FilterState>({});
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!areFiltersEqual(filters, parsedQuery.filters)) {
       setFilters(parsedQuery.filters);
     }
@@ -323,14 +327,14 @@ export const useSearchPageFilterState = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
 
-  const updateFilterQuery = React.useCallback(
+  const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
       onFilterChange(filtersToQuery(newFilters));
     },
     [onFilterChange],
   );
 
-  const setFilterValue = React.useCallback(
+  const setFilterValue = useCallback(
     (
       property: string,
       value: string | boolean,
@@ -377,7 +381,7 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
-  const setFilterRange = React.useCallback(
+  const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
@@ -393,7 +397,7 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
-  const clearFilter = React.useCallback(
+  const clearFilter = useCallback(
     (property: string) => {
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
@@ -406,7 +410,7 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
-  const clearAllFilters = React.useCallback(() => {
+  const clearAllFilters = useCallback(() => {
     setFilters(() => ({}));
     updateFilterQuery({});
   }, [updateFilterQuery]);
@@ -427,128 +431,261 @@ type PinnedFilters = {
 
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
-function usePinnedFilterBySource(sourceId: string | null) {
-  // Keep the original structure for backwards compatibility
-  const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
-    [sourceId: string]: PinnedFilters;
-  }>('hdx-pinned-search-filters', {});
+/**
+ * Merge team-level and personal pinned filter data into a single view.
+ * Fields and filter values are unioned (deduplicated).
+ */
+function mergePinnedData(
+  team: PinnedFiltersApiResponse['team'],
+  personal: PinnedFiltersApiResponse['personal'],
+): { fields: string[]; filters: PinnedFilters } {
+  const teamFields = team?.fields ?? [];
+  const personalFields = personal?.fields ?? [];
+  const fields = [...new Set([...teamFields, ...personalFields])];
 
-  // Separate storage for pinned fields
-  const [_pinnedFields, _setPinnedFields] = useLocalStorage<{
-    [sourceId: string]: string[];
-  }>('hdx-pinned-fields', {});
+  const teamFilters = team?.filters ?? {};
+  const personalFilters = personal?.filters ?? {};
+  const allKeys = new Set([
+    ...Object.keys(teamFilters),
+    ...Object.keys(personalFilters),
+  ]);
 
-  const pinnedFilters = React.useMemo<PinnedFilters>(
-    () =>
-      !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
-    [_pinnedFilters, sourceId],
-  );
+  const filters: PinnedFilters = {};
+  for (const key of allKeys) {
+    const teamVals = teamFilters[key] ?? [];
+    const personalVals = personalFilters[key] ?? [];
+    // Deduplicate using string comparison (values are strings or booleans)
+    const merged = [...teamVals];
+    for (const v of personalVals) {
+      if (!merged.some(existing => existing === v)) {
+        merged.push(v);
+      }
+    }
+    filters[key] = merged;
+  }
 
-  const pinnedFields = React.useMemo<string[]>(
-    () =>
-      !sourceId || !_pinnedFields[sourceId] ? [] : _pinnedFields[sourceId],
-    [_pinnedFields, sourceId],
-  );
+  return { fields, filters };
+}
 
-  const setPinnedFilters = React.useCallback<
-    (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => void
-  >(
-    val => {
-      if (!sourceId) return;
-      _setPinnedFilters(prev =>
-        produce(prev, draft => {
-          draft[sourceId] =
-            val instanceof Function ? val(draft[sourceId] ?? {}) : val;
-        }),
+/**
+ * Migrate pinned filters from localStorage to the server.
+ * Reads the old localStorage keys and pushes them as team-level pins,
+ * then clears the localStorage entries for that source.
+ */
+function useLocalStorageMigration(
+  sourceId: string | null,
+  apiData: PinnedFiltersApiResponse | undefined,
+  updateMutation: ReturnType<typeof useUpdatePinnedFilters>,
+) {
+  const hasMigratedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!sourceId || !apiData || hasMigratedRef.current.has(sourceId)) return;
+
+    // Only migrate if server has no team-level data yet
+    if (apiData.team != null) {
+      hasMigratedRef.current.add(sourceId);
+      return;
+    }
+
+    try {
+      const storedFiltersRaw = window.localStorage.getItem(
+        'hdx-pinned-search-filters',
       );
-    },
-    [sourceId, _setPinnedFilters],
-  );
+      const storedFieldsRaw = window.localStorage.getItem('hdx-pinned-fields');
 
-  const setPinnedFields = React.useCallback<
-    (val: string[] | ((pf: string[]) => string[])) => void
-  >(
-    val => {
-      if (!sourceId) return;
-      _setPinnedFields(prev =>
-        produce(prev, draft => {
-          draft[sourceId] =
-            val instanceof Function ? val(draft[sourceId] ?? []) : val;
-        }),
-      );
-    },
-    [sourceId, _setPinnedFields],
-  );
+      const storedFilters: Record<string, PinnedFilters> = storedFiltersRaw
+        ? JSON.parse(storedFiltersRaw)
+        : {};
+      const storedFields: Record<string, string[]> = storedFieldsRaw
+        ? JSON.parse(storedFieldsRaw)
+        : {};
 
-  return { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields };
+      const filtersForSource = storedFilters[sourceId];
+      const fieldsForSource = storedFields[sourceId];
+
+      const hasLocalData =
+        (filtersForSource && Object.keys(filtersForSource).length > 0) ||
+        (fieldsForSource && fieldsForSource.length > 0);
+
+      if (hasLocalData) {
+        updateMutation.mutate(
+          {
+            source: sourceId,
+            scope: 'team',
+            fields: fieldsForSource ?? [],
+            filters: filtersForSource ?? {},
+          },
+          {
+            onSuccess: () => {
+              // Clean up localStorage for this source after successful migration
+              try {
+                if (storedFiltersRaw) {
+                  const updated = { ...storedFilters };
+                  delete updated[sourceId];
+                  window.localStorage.setItem(
+                    'hdx-pinned-search-filters',
+                    JSON.stringify(updated),
+                  );
+                }
+                if (storedFieldsRaw) {
+                  const updated = { ...storedFields };
+                  delete updated[sourceId];
+                  window.localStorage.setItem(
+                    'hdx-pinned-fields',
+                    JSON.stringify(updated),
+                  );
+                }
+              } catch {
+                // localStorage cleanup is best-effort
+              }
+            },
+          },
+        );
+      }
+    } catch {
+      // Migration is best-effort — don't block the user
+    }
+
+    hasMigratedRef.current.add(sourceId);
+  }, [sourceId, apiData, updateMutation]);
 }
 
 export function usePinnedFilters(sourceId: string | null) {
-  const { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields } =
-    usePinnedFilterBySource(sourceId);
+  const { data: apiData } = usePinnedFiltersApi(sourceId);
+  const updateMutation = useUpdatePinnedFilters();
 
-  const toggleFilterPin = React.useCallback(
+  // Migrate from localStorage on first load
+  useLocalStorageMigration(sourceId, apiData, updateMutation);
+
+  // Optimistic local state so rapid toggles don't lose changes.
+  // When the user toggles a pin, we update this local state immediately,
+  // then debounce the API call. The local state is the source of truth
+  // until the API response comes back and resets it.
+  const [optimisticTeam, setOptimisticTeam] = useState<{
+    fields: string[];
+    filters: PinnedFilters;
+  } | null>(null);
+
+  // When apiData changes (server response), clear optimistic state
+  useEffect(() => {
+    setOptimisticTeam(null);
+  }, [apiData]);
+
+  // The effective team state: optimistic if pending, otherwise from API
+  const effectiveTeam = useMemo(
+    () =>
+      optimisticTeam ?? {
+        fields: apiData?.team?.fields ?? [],
+        filters: apiData?.team?.filters ?? {},
+      },
+    [optimisticTeam, apiData],
+  );
+
+  // Merge team + personal into a unified view for read operations
+  const { fields: pinnedFields, filters: pinnedFilters } = useMemo(
+    () =>
+      mergePinnedData({ id: '', ...effectiveTeam }, apiData?.personal ?? null),
+    [effectiveTeam, apiData?.personal],
+  );
+
+  // Debounce ref to batch rapid toggles
+  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushUpdate = useCallback(
+    (newFields: string[], newFilters: PinnedFilters) => {
+      if (!sourceId) return;
+
+      // Update optimistic state immediately so the next toggle reads it
+      setOptimisticTeam({ fields: newFields, filters: newFilters });
+
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+      pendingUpdateRef.current = setTimeout(() => {
+        updateMutation.mutate({
+          source: sourceId,
+          scope: 'team',
+          fields: newFields,
+          filters: newFilters,
+        });
+        pendingUpdateRef.current = null;
+      }, 300);
+    },
+    [sourceId, updateMutation],
+  );
+
+  const toggleFilterPin = useCallback(
     (property: string, value: string | boolean) => {
-      setPinnedFilters(prevFilters =>
-        produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = [];
-          }
-          const idx = draft[property].findIndex(v => v === value);
-          if (idx >= 0) {
-            draft[property].splice(idx, 1);
-          } else {
-            draft[property].push(value);
-          }
-          return draft;
-        }),
+      const currentFilters: PinnedFilters = { ...effectiveTeam.filters };
+      const currentFields = [...effectiveTeam.fields];
+
+      if (!currentFilters[property]) {
+        currentFilters[property] = [];
+      }
+      const idx = currentFilters[property].findIndex(
+        (v: string | boolean) => v === value,
       );
+      if (idx >= 0) {
+        currentFilters[property] = currentFilters[property].filter(
+          (_: string | boolean, i: number) => i !== idx,
+        );
+        if (currentFilters[property].length === 0) {
+          delete currentFilters[property];
+        }
+      } else {
+        currentFilters[property] = [...currentFilters[property], value];
+      }
 
       // When pinning a value, also pin the field if not already pinned
-      setPinnedFields(prevFields => {
-        if (!prevFields.includes(property)) {
-          return [...prevFields, property];
-        }
-        return prevFields;
-      });
+      const newFields = currentFields.includes(property)
+        ? currentFields
+        : [...currentFields, property];
+
+      flushUpdate(newFields, currentFilters);
     },
-    [setPinnedFilters, setPinnedFields],
+    [effectiveTeam, flushUpdate],
   );
 
-  const toggleFieldPin = React.useCallback(
+  const toggleFieldPin = useCallback(
     (field: string) => {
-      setPinnedFields(prevFields => {
-        const fieldIndex = prevFields.findIndex(f => f === field);
-        if (fieldIndex >= 0) {
-          return prevFields.filter((_, i) => i !== fieldIndex);
-        } else {
-          return [...prevFields, field];
-        }
-      });
+      const currentFields = [...effectiveTeam.fields];
+      const currentFilters = { ...effectiveTeam.filters };
+      const fieldIndex = currentFields.indexOf(field);
+      const newFields =
+        fieldIndex >= 0
+          ? currentFields.filter((_, i) => i !== fieldIndex)
+          : [...currentFields, field];
+
+      flushUpdate(newFields, currentFilters);
     },
-    [setPinnedFields],
+    [effectiveTeam, flushUpdate],
   );
 
-  const isFilterPinned = React.useCallback(
+  const isFilterPinned = useCallback(
     (property: string, value: string | boolean): boolean => {
       return (
-        pinnedFilters[property] &&
+        pinnedFilters[property] != null &&
         pinnedFilters[property].some(v => v === value)
       );
     },
     [pinnedFilters],
   );
 
-  const isFieldPinned = React.useCallback(
+  const isFieldPinned = useCallback(
     (field: string): boolean => {
       return pinnedFields.includes(field);
     },
     [pinnedFields],
   );
 
-  const getPinnedFields = React.useCallback((): string[] => {
+  const getPinnedFields = useCallback((): string[] => {
     return pinnedFields;
   }, [pinnedFields]);
+
+  const resetPinnedFilters = useCallback(() => {
+    flushUpdate([], {});
+  }, [flushUpdate]);
 
   return {
     toggleFilterPin,
@@ -557,5 +694,6 @@ export function usePinnedFilters(sourceId: string | null) {
     isFieldPinned,
     getPinnedFields,
     pinnedFilters,
+    resetPinnedFilters,
   };
 }

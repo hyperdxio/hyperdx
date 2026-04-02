@@ -258,4 +258,36 @@ export class FilterComponent {
     }
     return visible;
   }
+
+  // ---- Shared Filters ----
+
+  /**
+   * Get the shared filters section container
+   */
+  getSharedFiltersSection() {
+    return this.page.getByTestId('shared-filters-section');
+  }
+
+  /**
+   * Check if the shared filters section is visible
+   */
+  async isSharedFiltersSectionVisible(): Promise<boolean> {
+    return this.getSharedFiltersSection()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  /**
+   * Pin a field (group-level pin, not a value pin).
+   * Hovers over the filter group header and clicks the pin icon.
+   */
+  async pinField(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    // The pin button is inside the filter group header actions
+    const pinButton = group.locator(
+      'button[title="Pin Field"], button[title="Unpin Field"]',
+    );
+    await pinButton.click();
+  }
 }

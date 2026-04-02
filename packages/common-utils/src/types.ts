@@ -488,6 +488,23 @@ export const SavedSearchSchema = z.object({
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
 // --------------------------
+// PINNED FILTERS
+// --------------------------
+export const PinnedFiltersValueSchema = z.record(
+  z.string(),
+  z.array(z.union([z.string(), z.boolean()])),
+);
+export type PinnedFiltersValue = z.infer<typeof PinnedFiltersValueSchema>;
+
+export const PinnedFilterSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  fields: z.array(z.string()),
+  filters: PinnedFiltersValueSchema,
+});
+export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
+
+// --------------------------
 // DASHBOARDS
 // --------------------------
 export enum NumericUnit {

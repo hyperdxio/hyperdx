@@ -1,5 +1,6 @@
 import store from 'store2';
 import { hashCode } from '@hyperdx/common-utils/dist/core/utils';
+import type { PinnedFiltersValue } from '@hyperdx/common-utils/dist/types';
 import { SavedSearch, TSource } from '@hyperdx/common-utils/dist/types';
 
 import { HDX_LOCAL_DEFAULT_SOURCES } from './config';
@@ -98,4 +99,16 @@ export const localSources = createEntityStore<TSource>(
 /** Saved searches store (alerts remain cloud-only; no alert fields persisted locally). */
 export const localSavedSearches = createEntityStore<SavedSearch>(
   'hdx-local-saved-searches',
+);
+
+/** Pinned filters store for local mode. */
+type LocalPinnedFilter = {
+  id: string;
+  source: string;
+  scope: 'team' | 'personal';
+  fields: string[];
+  filters: PinnedFiltersValue;
+};
+export const localPinnedFilters = createEntityStore<LocalPinnedFilter>(
+  'hdx-local-pinned-filters',
 );
