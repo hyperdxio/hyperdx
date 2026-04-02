@@ -78,6 +78,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -1771,6 +1772,7 @@ function DBSearchPage() {
           )}
           <SearchSubmitButton isFormStateDirty={formState.isDirty} />
         </Flex>
+        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
