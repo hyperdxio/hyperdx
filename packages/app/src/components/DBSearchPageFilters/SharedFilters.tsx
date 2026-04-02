@@ -110,7 +110,7 @@ function SharedFilterGroup({
                 fz="xxs"
                 color="gray"
               >
-                <Text size="xs" truncate="end" flex={1}>
+                <Text size="xs" fw="500" truncate="end" flex={1}>
                   {name}
                 </Text>
               </Tooltip>
@@ -274,7 +274,7 @@ function SharedFiltersComponent({
         </Flex>
       </UnstyledButton>
       <Collapse in={opened}>
-        <Stack gap={0}>
+        <Stack gap={8}>
           {sharedFacets.map(facet => (
             <SharedFilterGroup
               key={facet.key}
