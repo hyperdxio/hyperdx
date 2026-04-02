@@ -1271,6 +1271,7 @@ export function DBTraceWaterfallChartContainer({
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
           <Box
+            mt="xs"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr',
