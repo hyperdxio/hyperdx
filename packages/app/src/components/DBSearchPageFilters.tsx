@@ -985,7 +985,66 @@ export const FilterGroup = ({
   );
 };
 
-const DBSearchPageFiltersComponent = ({
+type AnalysisMode = 'results' | 'delta' | 'pattern';
+
+export const DBSearchPageAnalysisMode = ({
+  analysisMode,
+  setAnalysisMode,
+  showDelta,
+  onCollapse,
+}: {
+  analysisMode: AnalysisMode;
+  setAnalysisMode: (mode: AnalysisMode) => void;
+  showDelta: boolean;
+  onCollapse?: () => void;
+}) => {
+  return (
+    <>
+      <Flex align="center" justify="space-between">
+        <Text size="xxs" c="dimmed" fw="bold">
+          Analysis Mode
+        </Text>
+        {onCollapse && (
+          <Tooltip label="Hide filters" position="bottom">
+            <ActionIcon
+              variant="subtle"
+              size="xs"
+              onClick={onCollapse}
+              aria-label="Hide filters"
+            >
+              <IconArrowBarToLeft size={14} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Flex>
+      <Tabs
+        value={analysisMode}
+        onChange={value => setAnalysisMode(value as AnalysisMode)}
+        orientation="vertical"
+        w="100%"
+        placement="right"
+      >
+        <Tabs.List w="100%">
+          <Tabs.Tab value="results" size="xs" h="24px">
+            <Text size="xs">Results Table</Text>
+          </Tabs.Tab>
+          {showDelta && (
+            <Tabs.Tab value="delta" size="xs" h="24px">
+              <Text size="xs">Event Deltas</Text>
+            </Tabs.Tab>
+          )}
+          {!IS_CLICKHOUSE_BUILD && (
+            <Tabs.Tab value="pattern" size="xs" h="24px">
+              <Text size="xs">Event Patterns</Text>
+            </Tabs.Tab>
+          )}
+        </Tabs.List>
+      </Tabs>
+    </>
+  );
+};
+
+const DBSearchPageSidebarComponent = ({
   filters: filterState,
   clearAllFilters,
   clearFilter,
@@ -1003,8 +1062,8 @@ const DBSearchPageFiltersComponent = ({
   displayedColumns,
   onCollapse,
 }: {
-  analysisMode: 'results' | 'delta' | 'pattern';
-  setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
+  analysisMode: AnalysisMode;
+  setAnalysisMode: (mode: AnalysisMode) => void;
   isLive: boolean;
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1336,48 +1395,12 @@ const DBSearchPageFiltersComponent = ({
         }}
       >
         <Stack gap="sm" p="xs">
-          <Flex align="center" justify="space-between">
-            <Text size="xxs" c="dimmed" fw="bold">
-              Analysis Mode
-            </Text>
-            {onCollapse && (
-              <Tooltip label="Hide filters" position="bottom">
-                <ActionIcon
-                  variant="subtle"
-                  size="xs"
-                  onClick={onCollapse}
-                  aria-label="Hide filters"
-                >
-                  <IconArrowBarToLeft size={14} />
-                </ActionIcon>
-              </Tooltip>
-            )}
-          </Flex>
-          <Tabs
-            value={analysisMode}
-            onChange={value =>
-              setAnalysisMode(value as 'results' | 'delta' | 'pattern')
-            }
-            orientation="vertical"
-            w="100%"
-            placement="right"
-          >
-            <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" h="24px">
-                <Text size="xs">Results Table</Text>
-              </Tabs.Tab>
-              {showDelta && (
-                <Tabs.Tab value="delta" size="xs" h="24px">
-                  <Text size="xs">Event Deltas</Text>
-                </Tabs.Tab>
-              )}
-              {!IS_CLICKHOUSE_BUILD && (
-                <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
-                </Tabs.Tab>
-              )}
-            </Tabs.List>
-          </Tabs>
+          <DBSearchPageAnalysisMode
+            analysisMode={analysisMode}
+            setAnalysisMode={setAnalysisMode}
+            showDelta={showDelta}
+            onCollapse={onCollapse}
+          />
 
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>
@@ -1638,4 +1661,4 @@ const DBSearchPageFiltersComponent = ({
 function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
   return tableMetadata?.primary_key?.includes(key);
 }
-export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);
+export const DBSearchPageSidebar = memo(DBSearchPageSidebarComponent);

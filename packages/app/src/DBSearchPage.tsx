@@ -79,7 +79,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
+import { DBSearchPageSidebar } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -1806,7 +1806,7 @@ function DBSearchPage() {
             >
               {!isFilterSidebarCollapsed && (
                 <ErrorBoundary message="Unable to render search filters">
-                  <DBSearchPageFilters
+                  <DBSearchPageSidebar
                     denoiseResults={denoiseResults}
                     setDenoiseResults={setDenoiseResults}
                     isLive={isLive}
