@@ -122,6 +122,13 @@ export function convertFormStateToChartConfig(
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
+      from: source?.from,
+      implicitColumnExpression:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.implicitColumnExpression
+          : undefined,
+      metricTables:
+        source && isMetricSource(source) ? source.metricTables : undefined,
     };
 
     return { ...rawSqlConfig, dateRange };
@@ -207,6 +214,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
+    source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {

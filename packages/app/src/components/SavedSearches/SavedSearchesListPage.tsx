@@ -28,9 +28,11 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
+import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
+import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { SavedSearchWithEnhancedAlerts } from '@/types';
@@ -73,6 +75,21 @@ export default function SavedSearchesListPage() {
     key: 'savedSearchesViewMode',
     defaultValue: 'grid',
   });
+
+  const { data: favorites } = useFavorites();
+  const favoritedSavedSearches = useMemo(() => {
+    if (!savedSearches || !favorites?.length) return [];
+
+    const favoritedSavedSearchIds = new Set(
+      favorites
+        .filter(f => f.resourceType === 'savedSearch')
+        .map(f => f.resourceId),
+    );
+
+    return savedSearches
+      .filter(s => favoritedSavedSearchIds.has(s.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [savedSearches, favorites]);
 
   const allTags = useMemo(() => {
     if (!savedSearches) return [];
@@ -132,6 +149,36 @@ export default function SavedSearchesListPage() {
       </Head>
       <PageHeader>Saved Searches</PageHeader>
       <Container maw={1200} py="lg" px="lg">
+        {favoritedSavedSearches.length > 0 && (
+          <>
+            <Text fw={500} size="sm" c="dimmed" mb="sm">
+              Favorites
+            </Text>
+            <SimpleGrid
+              cols={{ base: 1, sm: 2, md: 3 }}
+              mb="xl"
+              data-testid="favorite-saved-searches-section"
+            >
+              {favoritedSavedSearches.map(s => (
+                <ListingCard
+                  key={s.id}
+                  name={s.name}
+                  href={`/search/${s.id}`}
+                  tags={s.tags}
+                  onDelete={() => handleDelete(s.id)}
+                  statusIcon={<AlertStatusIcon alerts={s.alerts} />}
+                  resourceId={s.id}
+                  resourceType="savedSearch"
+                />
+              ))}
+            </SimpleGrid>
+          </>
+        )}
+
+        <Text fw={500} size="sm" c="dimmed" mb="sm">
+          All Saved Searches
+        </Text>
+
         <Flex justify="space-between" align="center" mb="lg" gap="sm">
           <Group gap="xs" style={{ flex: 1 }}>
             <TextInput
@@ -213,6 +260,7 @@ export default function SavedSearchesListPage() {
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={40} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
                 <Table.Th w={50} />
@@ -227,7 +275,16 @@ export default function SavedSearchesListPage() {
                   href={`/search/${s.id}`}
                   tags={s.tags}
                   onDelete={handleDelete}
-                  statusIcon={<AlertStatusIcon alerts={s.alerts} />}
+                  leftSection={
+                    <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
+                      <FavoriteButton
+                        resourceType="savedSearch"
+                        resourceId={s.id}
+                        size="xs"
+                      />
+                      <AlertStatusIcon alerts={s.alerts} />
+                    </Group>
+                  }
                 />
               ))}
             </Table.Tbody>
@@ -242,6 +299,8 @@ export default function SavedSearchesListPage() {
                 tags={s.tags}
                 onDelete={() => handleDelete(s.id)}
                 statusIcon={<AlertStatusIcon alerts={s.alerts} />}
+                resourceId={s.id}
+                resourceType="savedSearch"
               />
             ))}
           </SimpleGrid>

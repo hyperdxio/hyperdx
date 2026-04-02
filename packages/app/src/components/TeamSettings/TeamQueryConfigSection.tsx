@@ -19,7 +19,11 @@ import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
-import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from '@/defaults';
+import {
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_QUERY_TIMEOUT,
+  DEFAULT_SEARCH_ROW_LIMIT,
+} from '@/defaults';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 type ClickhouseSettingType = 'number' | 'boolean';
@@ -261,6 +265,17 @@ export default function TeamQueryConfigSection() {
             placeholder={`default = ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited`}
             min={0}
             displayValue={displayValueWithUnit('rows')}
+          />
+          <ClickhouseSettingForm
+            settingKey="filterKeysFetchLimit"
+            label="Filter Keys Fetch Limit"
+            tooltip="The number of filter keys to fetch when clicking 'More filters' on the search page"
+            type="number"
+            defaultValue={DEFAULT_FILTER_KEYS_FETCH_LIMIT}
+            placeholder={`default = ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
+            min={1}
+            max={1000}
+            displayValue={displayValueWithUnit('keys')}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"

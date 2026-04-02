@@ -112,6 +112,7 @@ export class SearchPage {
    */
   async performSearch(query: string) {
     await this.searchInput.fill(query);
+    await this.page.keyboard.press('Escape');
     await this.searchButton.click();
     await this.page.waitForLoadState('networkidle');
     // Wait for new results to populate

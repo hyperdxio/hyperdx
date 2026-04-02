@@ -82,6 +82,7 @@ import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -1582,7 +1583,7 @@ function DBSearchPage() {
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
                 Saved Searches
               </Anchor>
-              <Text fz="sm" c="dimmed">
+              <Text fz="sm" c="dimmed" maw={400} truncate="end">
                 {savedSearch.name}
               </Text>
             </Breadcrumbs>
@@ -1599,6 +1600,10 @@ function DBSearchPage() {
           </Stack>
 
           <Group gap="xs">
+            <FavoriteButton
+              resourceType="savedSearch"
+              resourceId={savedSearch.id}
+            />
             <Tags
               allowCreate
               values={savedSearch.tags || []}
@@ -1720,7 +1725,7 @@ function DBSearchPage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm">
+        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
           <SearchWhereInput
             tableConnection={inputSourceTableConnection}
             control={control}
@@ -1730,41 +1735,49 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
+            minWidth="min(600px, 100%)"
           />
-          <TimePicker
-            data-testid="time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onTimePickerSearch}
-            onRelativeSearch={onTimePickerRelativeSearch}
-            showLive={analysisMode === 'results'}
-            isLiveMode={isLive}
-            // Default to relative time mode if the user has made changes to interval and reloaded.
-            defaultRelativeTimeMode={
-              isLive && interval !== LIVE_TAIL_DURATION_MS
-            }
-          />
-          {isLive && (
-            <Tooltip label="Live tail refresh interval">
-              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
-                <Select
-                  size="sm"
-                  w="100%"
-                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                  value={String(refreshFrequency)}
-                  onChange={value =>
-                    setRefreshFrequency(value ? parseInt(value, 10) : null)
-                  }
-                  allowDeselect={false}
-                  comboboxProps={{
-                    withinPortal: true,
-                    zIndex: 1000,
-                  }}
-                />
-              </Box>
-            </Tooltip>
-          )}
-          <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          <Flex
+            gap="sm"
+            style={{ flex: '0 1 500px', minWidth: 0 }}
+            align="center"
+          >
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+              width="100%"
+            />
+            {isLive && (
+              <Tooltip label="Live tail refresh interval">
+                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                  <Select
+                    size="sm"
+                    w="100%"
+                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                    value={String(refreshFrequency)}
+                    onChange={value =>
+                      setRefreshFrequency(value ? parseInt(value, 10) : null)
+                    }
+                    allowDeselect={false}
+                    comboboxProps={{
+                      withinPortal: true,
+                      zIndex: 1000,
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            )}
+            <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          </Flex>
         </Flex>
       </form>
       {searchedConfig != null && searchedSource != null && (
