@@ -11,14 +11,14 @@ interface SourcePickerProps {
 export default function SourcePicker({ sources, onSelect }: SourcePickerProps) {
   const [selected, setSelected] = useState(0);
 
-  useInput((_input, key) => {
-    if (key.upArrow) {
+  useInput((input, key) => {
+    if (key.upArrow || input === 'k') {
       setSelected(s => Math.max(0, s - 1));
     }
-    if (key.downArrow) {
+    if (key.downArrow || input === 'j') {
       setSelected(s => Math.min(sources.length - 1, s + 1));
     }
-    if (key.return) {
+    if (key.return || input === 'l') {
       onSelect(sources[selected]);
     }
   });
@@ -39,7 +39,7 @@ export default function SourcePicker({ sources, onSelect }: SourcePickerProps) {
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>↑/↓ to navigate, Enter to select</Text>
+      <Text dimColor>j/k to navigate, Enter/l to select</Text>
     </Box>
   );
 }

@@ -272,13 +272,14 @@ const TabBar = React.memo(function TabBar({
 }) {
   if (items.length <= 1) return null;
   return (
-    <Box>
+    <Box height={1} overflowX="hidden" overflowY="hidden">
       {items.map((item, i) => (
-        <Box key={`${item.type}-${i}`} marginRight={1}>
+        <Box key={`${item.type}-${i}`} marginRight={2}>
           <Text
             color={i === activeIdx ? 'cyan' : undefined}
             bold={i === activeIdx}
             dimColor={i !== activeIdx}
+            wrap="truncate"
           >
             {i === activeIdx ? '▸ ' : '  '}
             {item.label}
