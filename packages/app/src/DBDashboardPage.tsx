@@ -9,6 +9,7 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
@@ -32,17 +33,19 @@ import {
   DashboardFilter,
   DisplayType,
   Filter,
+  getSampleWeightExpression,
   isLogSource,
   isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
   SourceKind,
   SQLInterval,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Flex,
   Group,
@@ -83,6 +86,7 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import SectionHeader from '@/components/SectionHeader';
 import { TimePicker } from '@/components/TimePicker';
@@ -110,6 +114,7 @@ import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
+import { EditablePageName } from './EditablePageName';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
@@ -231,8 +236,13 @@ const Tile = forwardRef(
         } else if (source != null) {
           setQueriedConfig({
             ...chart.config,
-            // Populate these two columns from the source to support Lucene-based filters
-            ...pick(source, ['implicitColumnExpression', 'from']),
+            // Populate these columns from the source to support Lucene-based filters and metric table macros
+            ...pick(source, [
+              'implicitColumnExpression',
+              'from',
+              'metricTables',
+            ]),
+            sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
             filters,
@@ -267,6 +277,7 @@ const Tile = forwardRef(
               isLogSource(source) || isTraceSource(source)
                 ? source.implicitColumnExpression
                 : undefined,
+            sampleWeightExpression: getSampleWeightExpression(source),
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });
@@ -309,6 +320,9 @@ const Tile = forwardRef(
       const doFiltersExist = !!filters?.filter(
         f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
       )?.length;
+      const doLuceneFiltersExist = !!filters?.filter(
+        f => f.type === 'lucene' && f.condition.trim(),
+      )?.length;
 
       if (
         !doFiltersExist ||
@@ -320,19 +334,28 @@ const Tile = forwardRef(
       const isMissingSourceForFiltering = !queriedConfig.source;
       const isMissingFiltersMacro =
         !queriedConfig.sqlTemplate.includes('$__filters');
+      const isMetricsSourceWithLuceneFilter =
+        source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
-      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
+      if (
+        !isMissingSourceForFiltering &&
+        !isMissingFiltersMacro &&
+        !isMetricsSourceWithLuceneFilter
+      )
+        return null;
 
       const message = isMissingFiltersMacro
         ? 'Filters are not applied because the SQL does not include the required $__filters macro'
-        : 'Filters are not applied because no Source is set for this chart';
+        : isMetricsSourceWithLuceneFilter
+          ? 'Lucene filters are not applied because they are not supported for metrics sources.'
+          : 'Filters are not applied because no Source is set for this chart';
 
       return (
         <Tooltip multiline maw={500} label={message} key="filter-warning">
           <IconZoomExclamation size={16} color="var(--color-text-danger)" />
         </Tooltip>
       );
-    }, [filters, queriedConfig]);
+    }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -749,68 +772,6 @@ const updateLayout = (newLayout: RGL.Layout[]) => {
     }
   };
 };
-
-function DashboardName({
-  name,
-  onSave,
-}: {
-  name: string;
-  onSave: (name: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editedName, setEditedName] = useState(name);
-
-  const { hovered, ref } = useHover();
-
-  return (
-    <Box
-      ref={ref}
-      pe="md"
-      onDoubleClick={() => setEditing(true)}
-      className="cursor-pointer"
-      title="Double click to edit"
-    >
-      {editing ? (
-        <form
-          className="d-flex align-items-center"
-          onSubmit={e => {
-            e.preventDefault();
-            onSave(editedName);
-            setEditing(false);
-          }}
-        >
-          <Input
-            type="text"
-            value={editedName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setEditedName(e.target.value)
-            }
-            placeholder="Dashboard Name"
-          />
-          <Button ms="sm" variant="primary" type="submit">
-            Save Name
-          </Button>
-        </form>
-      ) : (
-        <div className="d-flex align-items-center" style={{ minWidth: 100 }}>
-          <Title fw={400} order={3}>
-            {name}
-          </Title>
-          {hovered && (
-            <Button
-              ms="xs"
-              variant="subtle"
-              size="xs"
-              onClick={() => setEditing(true)}
-            >
-              <IconPencil size={14} />
-            </Button>
-          )}
-        </div>
-      )}
-    </Box>
-  );
-}
 
 // Download an object to users computer as JSON using specified name
 function downloadObjectAsJson(object: object, fileName = 'output') {
@@ -1567,20 +1528,45 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {isLocalDashboard && (
-        <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-          <Flex justify="space-between" align="center">
-            <Text size="sm">
-              This is a temporary dashboard and can not be saved.
+
+      {isLocalDashboard ? (
+        <>
+          <Breadcrumbs mb="xs" mt="xs" fz="sm">
+            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+              Dashboards
+            </Anchor>
+            <Text fz="sm" c="dimmed">
+              Temporary Dashboard
             </Text>
-            <Button variant="primary" fw={400} onClick={onCreateDashboard}>
-              Create New Saved Dashboard
-            </Button>
-          </Flex>
-        </Paper>
+          </Breadcrumbs>
+          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
+            <Flex justify="space-between" align="center">
+              <Text size="sm">
+                This is a temporary dashboard and can not be saved.
+              </Text>
+              <Button
+                variant="primary"
+                fw={400}
+                onClick={onCreateDashboard}
+                data-testid="create-dashboard-button"
+              >
+                Create New Saved Dashboard
+              </Button>
+            </Flex>
+          </Paper>
+        </>
+      ) : (
+        <Breadcrumbs mb="xs" mt="xs" fz="sm">
+          <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+            Dashboards
+          </Anchor>
+          <Text fz="sm" c="dimmed" maw={500} truncate="end">
+            {dashboard?.name ?? 'Untitled'}
+          </Text>
+        </Breadcrumbs>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
-        <DashboardName
+        <EditablePageName
           key={`${dashboardHash}`}
           name={dashboard?.name ?? ''}
           onSave={editedName => {
@@ -1593,6 +1579,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
         />
         <Group gap="xs">
+          {!isLocalDashboard && dashboard?.id && (
+            <FavoriteButton
+              resourceType="dashboard"
+              resourceId={dashboard.id}
+            />
+          )}
           {!isLocalDashboard && dashboard?.id && (
             <Tags
               allowCreate

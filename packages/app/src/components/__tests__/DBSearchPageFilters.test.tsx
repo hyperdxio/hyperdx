@@ -9,6 +9,7 @@ import {
   FilterGroup,
   type FilterGroupProps,
 } from '../DBSearchPageFilters';
+import { NestedFilterGroup } from '../DBSearchPageFilters/NestedFilterGroup';
 import {
   cleanClickHouseExpression,
   groupFacetsByBaseName,
@@ -411,7 +412,7 @@ describe('FilterGroup', () => {
   it('should sort options alphabetically by default', () => {
     renderWithMantine(<FilterGroup {...defaultProps} />);
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
@@ -430,7 +431,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
@@ -459,7 +460,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('banana'); // Selected
@@ -492,7 +493,7 @@ describe('FilterGroup', () => {
     );
     await userEvent.click(showPercentages);
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/%/);
     expect(labels[0]).toHaveTextContent('~99%'); // apple
@@ -511,7 +512,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByTestId(/filter-checkbox-input/);
+    const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple'); // included first
@@ -542,7 +543,7 @@ describe('FilterGroup', () => {
     );
 
     // Should show MAX_FILTER_GROUP_ITEMS (10) by default
-    let options = screen.getAllByTestId(/filter-checkbox-input/);
+    let options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(10);
 
     // Selected items should be visible even if they would be beyond MAX_FILTER_GROUP_ITEMS
@@ -555,7 +556,7 @@ describe('FilterGroup', () => {
     await userEvent.click(showMoreButton);
 
     // Should show all items
-    options = screen.getAllByTestId(/filter-checkbox-input/);
+    options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(15);
   });
 
@@ -634,5 +635,58 @@ describe('FilterGroup', () => {
         'aria-hidden',
       ),
     ).toBe('false');
+  });
+
+  it('should not render children when collapsed', () => {
+    renderWithMantine(
+      <FilterGroup {...defaultProps} isDefaultExpanded={false} />,
+    );
+
+    // Checkboxes should not be in the DOM when collapsed
+    expect(screen.queryAllByTestId(/filter-checkbox-input/)).toHaveLength(0);
+  });
+
+  it('should render children when expanded', () => {
+    renderWithMantine(
+      <FilterGroup {...defaultProps} isDefaultExpanded={true} />,
+    );
+
+    expect(screen.getAllByTestId(/filter-checkbox-.+-input/)).toHaveLength(3);
+  });
+});
+
+describe('NestedFilterGroup', () => {
+  const defaultNestedProps = {
+    name: 'ResourceAttributes',
+    childFilters: [
+      { key: 'attr1', value: ['val1', 'val2'], propertyPath: 'service.name' },
+      { key: 'attr2', value: ['val3'], propertyPath: 'host.name' },
+    ],
+    onChange: jest.fn(),
+    onClearClick: jest.fn(),
+    onOnlyClick: jest.fn(),
+    onExcludeClick: jest.fn(),
+    onPinClick: jest.fn(),
+    isPinned: jest.fn().mockReturnValue(false),
+    onLoadMore: jest.fn(),
+    loadMoreLoading: {} as Record<string, boolean>,
+    hasLoadedMore: {} as Record<string, boolean>,
+    chartConfig: {
+      from: { databaseName: 'test_db', tableName: 'test_table' },
+      select: '',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: '',
+      connection: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    },
+  };
+
+  it('should not render child FilterGroups when collapsed', () => {
+    renderWithMantine(
+      <NestedFilterGroup {...defaultNestedProps} isDefaultExpanded={false} />,
+    );
+
+    expect(screen.queryAllByTestId(/nested-filter-group-attr/)).toHaveLength(0);
   });
 });

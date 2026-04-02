@@ -504,7 +504,7 @@ function ChartSeriesEditorComponent({
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
 
-export const ErrorNotificationMessage = ({
+const ErrorNotificationMessage = ({
   errors,
 }: {
   errors: { path: Path<ChartEditorFormState>; message: string }[];

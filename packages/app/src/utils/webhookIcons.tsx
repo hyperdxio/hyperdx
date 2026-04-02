@@ -7,14 +7,14 @@ import { IconBrandSlack, IconLink, IconMail } from '@tabler/icons-react';
 
 import { IncidentIOIcon } from '@/SVGIcons';
 
-export interface ServiceConfig {
+interface ServiceConfig {
   name: string;
   icon: React.ReactElement;
   order: number;
 }
 
 // Service type configuration with icons and display names
-export const WEBHOOK_SERVICE_CONFIG: Record<WebhookService, ServiceConfig> = {
+const WEBHOOK_SERVICE_CONFIG: Record<WebhookService, ServiceConfig> = {
   [WebhookService.Slack]: {
     name: 'Slack',
     icon: <IconBrandSlack size={16} />,
@@ -33,7 +33,7 @@ export const WEBHOOK_SERVICE_CONFIG: Record<WebhookService, ServiceConfig> = {
 } as const;
 
 // Channel icons for alert display (smaller sizes)
-export const CHANNEL_ICONS: Record<WebhookService, React.ReactElement> = {
+const CHANNEL_ICONS: Record<WebhookService, React.ReactElement> = {
   [WebhookService.Generic]: <IconLink size={16} />,
   [WebhookService.Slack]: <IconBrandSlack size={16} />,
   [WebhookService.IncidentIO]: <IncidentIOIcon width={16} />,
@@ -52,13 +52,6 @@ export const getWebhookServiceConfig = (
 /**
  * Get webhook service icon for display in lists/headers
  */
-export const getWebhookServiceIcon = (
-  serviceType: string | undefined,
-): React.ReactElement => {
-  const config = getWebhookServiceConfig(serviceType);
-  return config?.icon || WEBHOOK_SERVICE_CONFIG[WebhookService.Generic].icon;
-};
-
 /**
  * Get webhook channel icon for alert tabs/smaller displays
  */

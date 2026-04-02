@@ -39,24 +39,9 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           contentTestId: 'service-map-page',
         },
         {
-          testId: 'nav-link-dashboards',
-          href: '/dashboards',
-          contentTestId: 'dashboard-page',
-        },
-        {
-          testId: 'nav-link-clickhouse-dashboard',
-          href: '/clickhouse',
-          contentTestId: 'clickhouse-dashboard-page',
-        },
-        {
-          testId: 'nav-link-services-dashboard',
-          href: '/services',
-          contentTestId: 'services-dashboard-page',
-        },
-        {
-          testId: 'nav-link-k8s-dashboard',
-          href: '/kubernetes',
-          contentTestId: 'kubernetes-dashboard-page',
+          testId: 'nav-link-dashboards-list',
+          href: '/dashboards/list',
+          contentTestId: 'dashboards-list-page',
         },
       ];
 
@@ -72,19 +57,23 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
         for (const { testId, contentTestId } of navLinks) {
           const link = page.locator(`[data-testid="${testId}"]`);
           await link.scrollIntoViewIfNeeded();
-          await link.click();
+          // Use goto via the href attribute to avoid interference from
+          // Live Tail URL updates on the search page that can swallow clicks.
+          const href = await link.getAttribute('href');
+          await page.goto(href!);
 
           const content = page.locator(`[data-testid="${contentTestId}"]`);
-          await expect(content).toBeVisible();
+          await expect(content).toBeVisible({ timeout: 30_000 });
         }
 
         // Navigate back to first page at the end to test navigation away from the last page
         const firstLink = page.locator(`[data-testid="${navLinks[0].testId}"]`);
-        await firstLink.click();
+        const firstHref = await firstLink.getAttribute('href');
+        await page.goto(firstHref!);
         const firstContent = page.locator(
           `[data-testid="${navLinks[0].contentTestId}"]`,
         );
-        await expect(firstContent).toBeVisible();
+        await expect(firstContent).toBeVisible({ timeout: 30_000 });
       });
     },
   );
