@@ -669,6 +669,13 @@ export const processAlert = async (
 
     const isRateOfChange =
       alert.conditionType === AlertConditionType.RATE_OF_CHANGE;
+    if (isRateOfChange && !alert.changeType) {
+      logger.error(
+        { alertId: alert.id, conditionType: alert.conditionType },
+        'Rate-of-change alert is missing changeType, skipping evaluation',
+      );
+      return;
+    }
     const dateRange = getAlertEvaluationDateRange(
       details,
       hasGroupBy,
@@ -886,6 +893,10 @@ export const processAlert = async (
             if (!hasGroupBy) {
               previousBucketValues.set('', 0);
             }
+            // For grouped alerts with an empty baseline, previousBucketValues
+            // stays empty. The has-data path handles missing baselines per-group
+            // (previousValue == null → skip comparison), and an empty evaluation
+            // bucket correctly produces no alerts since there are no groups to evaluate.
             continue;
           }
 
@@ -911,7 +922,7 @@ export const processAlert = async (
                   changeValue,
                   group: groupKey,
                 },
-                'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+                'Skipping alert for non-finite rate-of-change value (zero baseline makes percentage change undefined)',
               );
               const history = getOrCreateHistory(groupKey);
               history.lastValues.push({ count: 0, startTime: bucketStart });
@@ -1012,7 +1023,7 @@ export const processAlert = async (
           if (!Number.isFinite(changeValue)) {
             logger.info(
               { alertId: alert.id, groupKey, bucketStart, changeValue },
-              'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+              'Skipping alert for non-finite rate-of-change value (zero baseline makes percentage change undefined)',
             );
             history.lastValues.push({ count: value, startTime: bucketStart });
             continue;

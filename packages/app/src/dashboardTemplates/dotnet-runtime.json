@@ -2,7 +2,9 @@
   "version": "0.1.0",
   "name": ".NET Runtime Metrics",
   "description": "Garbage collection, heap fragmentation, exception, thread pool, and CPU metrics for .NET v9+ applications with the OpenTelemetry.Instrumentation.Runtime package",
-  "tags": ["OTel Runtime Metrics"],
+  "tags": [
+    "OTel Runtime Metrics"
+  ],
   "tiles": [
     {
       "id": "6d4b7e",
