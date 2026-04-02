@@ -661,7 +661,7 @@ type FixedUnitConfig = {
 
 type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
 
-export const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
+const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
   // Data
   [NumericUnit.BytesIEC]: {
     type: 'auto_scale',
