@@ -33,7 +33,9 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v => (typeof v === 'string' ? `'${v}'` : v))
+            .map(v =>
+              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
+            )
             .join(', ')})`,
         });
       }
@@ -41,7 +43,9 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v => (typeof v === 'string' ? `'${v}'` : v))
+            .map(v =>
+              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
+            )
             .join(', ')})`,
         });
       }
@@ -87,7 +91,7 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
 };
 
 // Helper function to parse a string value as boolean if possible, or otherwise
-// return as string with surrounding quotes removed.
+// return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
 const getBooleanOrUnquotedString = (value: string): string | boolean => {
   const trimmed = value.trim();
 
@@ -124,7 +128,8 @@ function handleQuoteEscape(
   return { skip: false, next: i };
 }
 
-// Helper function to split on commas while respecting quoted strings and booleans
+// Helper function to split on commas while respecting quoted strings and booleans.
+// Handles SQL-escaped single quotes ('') inside quoted strings.
 function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   const values: (string | boolean)[] = [];
   let currentValue = '';
@@ -252,7 +257,7 @@ function extractInClauses(condition: string): Array<{
     isExclude: boolean;
   }> = [];
 
-  // Split on ' AND ' while respecting quoted strings
+  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
   const parts: string[] = [];
   let currentPart = '';
   let inString = false;

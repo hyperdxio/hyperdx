@@ -82,6 +82,51 @@ describe('searchFilters', () => {
         { type: 'sql', condition: 'another_column NOT IN (true, false)' },
       ]);
     });
+
+    it('should escape single quotes in filter values', () => {
+      const filters = {
+        message: {
+          included: new Set<string | boolean>(["my 'filter' key"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "message IN ('my ''filter'' key')",
+        },
+      ]);
+    });
+
+    it('should escape single quotes in excluded filter values', () => {
+      const filters = {
+        message: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(["it's a test"]),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "message NOT IN ('it''s a test')",
+        },
+      ]);
+    });
+
+    it('should escape single quotes with stringifyKeys', () => {
+      const filters = {
+        'json.key': {
+          included: new Set<string | boolean>(["value with 'quotes'"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
+        {
+          type: 'sql',
+          condition: "toString(json.key) IN ('value with ''quotes''')",
+        },
+      ]);
+    });
   });
 
   describe('parseQuery', () => {
@@ -450,16 +495,46 @@ describe('searchFilters', () => {
       });
     });
 
-    it('handles SQL-escaped quotes (double single quotes)', () => {
+    it('handles values with single quotes (SQL-escaped)', () => {
       const result = parseQuery([
         {
           type: 'sql',
-          condition: `Body IN ('it''s a test')`,
+          condition: `message IN ('my ''filter'' key')`,
         },
       ]);
       expect(result.filters).toEqual({
-        Body: {
-          included: new Set(["it's a test"]),
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles excluded values with single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message NOT IN ('it''s a test')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(),
+          excluded: new Set(["it's a test"]),
+        },
+      });
+    });
+
+    it('handles multiple values where some contain single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message IN ('normal value', 'it''s quoted', 'another ''one''')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(['normal value', "it's quoted", "another 'one'"]),
           excluded: new Set(),
         },
       });
@@ -480,7 +555,22 @@ describe('searchFilters', () => {
       });
     });
 
-    it('does not split AND-joined condition on AND inside SQL-escaped string', () => {
+    it('handles values with single quotes in AND conditions', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `status = 'active' AND message IN ('it''s here')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(["it's here"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('does not split AND-joined condition on AND inside quoted string', () => {
       const result = parseQuery([
         {
           type: 'sql',
@@ -569,6 +659,54 @@ describe('searchFilters', () => {
         },
       };
       expect(areFiltersEqual(a, b)).toBe(true);
+    });
+  });
+
+  describe('round-trip: filtersToQuery -> parseQuery with quotes', () => {
+    it('round-trips values containing single quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>(["my 'filter' key"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips mixed values with and without quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set<string | boolean>(["don't exclude"]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set(["don't exclude"]),
+        },
+      });
     });
   });
 
