@@ -67,23 +67,14 @@ function FilterPill({
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
 
-  const displayValue =
-    pill.value.length > 30 ? `${pill.value.slice(0, 27)}…` : pill.value;
-  const displayField =
-    pill.field.length > 25 ? `…${pill.field.slice(-22)}` : pill.field;
-
   return (
-    <Tooltip
-      label={`${pill.field}${operator}${pill.value}`}
-      disabled={pill.value.length <= 30 && pill.field.length <= 25}
-      openDelay={300}
-    >
+    <Tooltip label={`${pill.field}${operator}${pill.value}`} openDelay={300}>
       <span
         style={{
           ...pillStyle,
           backgroundColor: isExcluded
             ? 'var(--mantine-color-red-light)'
-            : 'var(--mantine-color-default-border)',
+            : 'var(--color-bg-hover)',
         }}
       >
         <Text
@@ -92,15 +83,15 @@ function FilterPill({
           c="dimmed"
           fw={500}
           style={{ flexShrink: 0, maxWidth: 100 }}
-          truncate
+          truncate="start"
         >
-          {displayField}
+          {pill.field}
         </Text>
         <Text span size="xxs" c={isExcluded ? 'red.4' : 'dimmed'}>
           {operator}
         </Text>
-        <Text span size="xxs" truncate>
-          {displayValue}
+        <Text span size="xxs" fw={500} truncate>
+          {pill.value}
         </Text>
         <ActionIcon
           size={14}
