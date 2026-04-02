@@ -395,17 +395,50 @@ export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 
+// Aggregate functions whose output preserves the unit of the input value.
+// count, count_distinct, and sum produce values in different units and
+// should not inherit the duration format.
+const DURATION_PRESERVING_AGG_FNS = new Set([
+  'avg',
+  'min',
+  'max',
+  'any',
+  'last_value',
+  'quantile',
+  'quantileMerge',
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+  'heatmap',
+  'histogram',
+  'histogramMerge',
+]);
+
+function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
+  if (!aggFn) return true; // no aggFn means raw expression — preserve unit
+  // Handle combinator forms like "avgIf", "quantileIfState"
+  const baseFn = aggFn.replace(/If(State|Merge)?$/, '');
+  return DURATION_PRESERVING_AGG_FNS.has(baseFn);
+}
+
 /**
  * Returns a NumberFormat for duration display if the chart config's select
  * expressions reference a trace source's durationExpression. Returns undefined
  * if no match is detected.
+ *
+ * Only applies when the aggregate function preserves the unit of the input
+ * (e.g. avg, min, max, p95). Functions like count, count_distinct, and sum
+ * produce values in different units and are skipped.
  *
  * The returned format uses the `duration` output with a `factor` that converts
  * from the raw value's precision to seconds.
  */
 export function getTraceDurationNumberFormat(
   source: TSource | undefined,
-  selectExpressions: Array<{ valueExpression?: string }> | undefined,
+  selectExpressions:
+    | Array<{ valueExpression?: string; aggFn?: string }>
+    | undefined,
 ): NumberFormat | undefined {
   if (!source || source.kind !== SourceKind.Trace || !source.durationExpression)
     return undefined;
@@ -417,6 +450,8 @@ export function getTraceDurationNumberFormat(
 
   for (const sel of selectExpressions) {
     if (!sel.valueExpression) continue;
+    if (!isDurationPreservingAggFn(sel.aggFn)) continue;
+
     const expr = sel.valueExpression;
 
     if (expr.includes(durationMsExpr)) {

@@ -59,7 +59,17 @@ describe('getTraceDurationNumberFormat', () => {
     expect(result).toBeUndefined();
   });
 
-  it('detects raw duration expression reference', () => {
+  it('detects raw duration expression with avg aggFn', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'avg' },
+    ]);
+    expect(result).toEqual({
+      output: 'duration',
+      factor: 1e-9,
+    });
+  });
+
+  it('detects duration expression without aggFn (raw expression)', () => {
     const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
       { valueExpression: 'avg(Duration)' },
     ]);
@@ -87,6 +97,79 @@ describe('getTraceDurationNumberFormat', () => {
       output: 'duration',
       factor: 1,
     });
+  });
+
+  it('returns undefined for count aggFn on duration', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'count' },
+    ]);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for count_distinct aggFn on duration', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'count_distinct' },
+    ]);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for sum aggFn on duration', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'sum' },
+    ]);
+    expect(result).toBeUndefined();
+  });
+
+  it('detects duration with quantile aggFn', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'quantile' },
+    ]);
+    expect(result).toEqual({
+      output: 'duration',
+      factor: 1e-9,
+    });
+  });
+
+  it('detects duration with min/max aggFn', () => {
+    expect(
+      getTraceDurationNumberFormat(TRACE_SOURCE, [
+        { valueExpression: 'Duration', aggFn: 'min' },
+      ]),
+    ).toEqual({ output: 'duration', factor: 1e-9 });
+    expect(
+      getTraceDurationNumberFormat(TRACE_SOURCE, [
+        { valueExpression: 'Duration', aggFn: 'max' },
+      ]),
+    ).toEqual({ output: 'duration', factor: 1e-9 });
+  });
+
+  it('detects duration with combinator aggFn like avgIf', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'avgIf' },
+    ]);
+    expect(result).toEqual({
+      output: 'duration',
+      factor: 1e-9,
+    });
+  });
+
+  it('skips non-preserving aggFn and detects preserving one in mixed selects', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'count' },
+      { valueExpression: 'Duration', aggFn: 'avg' },
+    ]);
+    expect(result).toEqual({
+      output: 'duration',
+      factor: 1e-9,
+    });
+  });
+
+  it('returns undefined when only non-preserving aggFns reference duration', () => {
+    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
+      { valueExpression: 'Duration', aggFn: 'count' },
+      { valueExpression: 'Duration', aggFn: 'count_distinct' },
+    ]);
+    expect(result).toBeUndefined();
   });
 
   it('returns undefined when select is empty', () => {
