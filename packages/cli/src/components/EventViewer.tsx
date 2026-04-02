@@ -16,11 +16,8 @@ import type {
   SavedSearchResponse,
   ProxyClickhouseClient,
 } from '@/api/client';
-import {
-  buildEventSearchQuery,
-  buildFullRowSql,
-  ROW_DATA_ALIASES,
-} from '@/api/eventQuery';
+import { buildEventSearchQuery, buildFullRowQuery } from '@/api/eventQuery';
+import { ROW_DATA_ALIASES } from '@/shared/rowDataPanel';
 import {
   openEditorForSelect,
   openEditorForTimeRange,
@@ -326,12 +323,14 @@ const Footer = React.memo(function Footer({
   wrapLines,
   isFollowing,
   loadingMore,
+  scrollInfo,
 }: {
   rowCount: number;
   cursorPos: number;
   wrapLines: boolean;
   isFollowing: boolean;
   loadingMore: boolean;
+  scrollInfo?: string;
 }) {
   return (
     <Box marginTop={1} justifyContent="space-between">
@@ -341,6 +340,7 @@ const Footer = React.memo(function Footer({
         {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
       </Text>
       <Text dimColor>
+        {scrollInfo ? `${scrollInfo}  ` : ''}
         {cursorPos}/{rowCount}
       </Text>
     </Box>
@@ -426,8 +426,13 @@ export default function EventViewer({
 }: EventViewerProps) {
   const { stdout } = useStdout();
   const termHeight = stdout?.rows ?? 24;
-  // Reserve: header(1) + tabbar(1) + search(1) + table-header(1) + margin(1) + footer(2) = 8
+  const termWidth = stdout?.columns ?? 80;
   const maxRows = Math.max(1, termHeight - 8);
+  // Fixed height for Event Details in Trace tab (about 1/3 of terminal)
+  const detailMaxRows = Math.max(5, Math.floor(termHeight / 3));
+  // Full-screen height for Overview/Column Values tabs
+  // (termHeight minus header, body preview, tab bar, separator, footer)
+  const fullDetailMaxRows = Math.max(5, termHeight - 9);
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
@@ -458,6 +463,8 @@ export default function EventViewer({
   );
   const [detailSearchQuery, setDetailSearchQuery] = useState('');
   const [focusDetailSearch, setFocusDetailSearch] = useState(false);
+  const [traceDetailScrollOffset, setTraceDetailScrollOffset] = useState(0);
+  const [columnValuesScrollOffset, setColumnValuesScrollOffset] = useState(0);
   const [traceSelectedIndex, setTraceSelectedIndex] = useState<number | null>(
     null,
   );
@@ -469,6 +476,13 @@ export default function EventViewer({
   });
   const lastTimestampRef = useRef<string | null>(null);
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
+  const lastTableChSqlRef = useRef<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
+  const lastTableMetaRef = useRef<Array<{ name: string; type: string }> | null>(
+    null,
+  );
 
   const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
   const columns = useMemo(
@@ -536,14 +550,21 @@ export default function EventViewer({
           },
           metadata,
         );
+        lastTableChSqlRef.current = chSql;
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
           format: 'JSON',
           connectionId: source.connection,
         });
-        const json = await resultSet.json<EventRow>();
+        const json = (await resultSet.json()) as {
+          data: EventRow[];
+          meta?: Array<{ name: string; type: string }>;
+        };
         const rows = (json.data ?? []) as EventRow[];
+        if (json.meta) {
+          lastTableMetaRef.current = json.meta;
+        }
 
         if (mode === 'prepend' && rows.length > 0) {
           setEvents(prev => [...rows, ...prev]);
@@ -650,14 +671,23 @@ export default function EventViewer({
 
     (async () => {
       try {
-        const { sql, connectionId } = buildFullRowSql({
+        const tableChSql = lastTableChSqlRef.current ?? {
+          sql: '',
+          params: {},
+        };
+        const tableMeta = lastTableMetaRef.current ?? [];
+        const chSql = await buildFullRowQuery({
           source,
           row: row as Record<string, unknown>,
+          tableChSql,
+          tableMeta,
+          metadata,
         });
         const resultSet = await clickhouseClient.query({
-          query: sql,
+          query: chSql.sql,
+          query_params: chSql.params,
           format: 'JSON',
-          connectionId,
+          connectionId: source.connection,
         });
         const json = await resultSet.json<Record<string, unknown>>();
         const fullRow = (json.data as Record<string, unknown>[])?.[0];
@@ -770,15 +800,42 @@ export default function EventViewer({
       return;
     }
     // j/k in Trace tab: navigate spans/log events in the waterfall
+    // Ctrl+D/U: scroll Event Details section
     if (expandedRow !== null && detailTab === 'trace') {
       if (input === 'j' || key.downArrow) {
         setTraceSelectedIndex(prev => (prev === null ? 0 : prev + 1));
+        setTraceDetailScrollOffset(0); // reset detail scroll on span change
         return;
       }
       if (input === 'k' || key.upArrow) {
         setTraceSelectedIndex(prev =>
           prev === null ? 0 : Math.max(0, prev - 1),
         );
+        setTraceDetailScrollOffset(0); // reset detail scroll on span change
+        return;
+      }
+      const detailHalfPage = Math.max(1, Math.floor(detailMaxRows / 2));
+      if (key.ctrl && input === 'd') {
+        setTraceDetailScrollOffset(prev => prev + detailHalfPage);
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        setTraceDetailScrollOffset(prev => Math.max(0, prev - detailHalfPage));
+        return;
+      }
+    }
+    // Ctrl+D/U in Column Values / Overview tab: scroll the detail view
+    if (
+      expandedRow !== null &&
+      (detailTab === 'columns' || detailTab === 'overview')
+    ) {
+      const detailHalfPage = Math.max(1, Math.floor(fullDetailMaxRows / 2));
+      if (key.ctrl && input === 'd') {
+        setColumnValuesScrollOffset(prev => prev + detailHalfPage);
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        setColumnValuesScrollOffset(prev => Math.max(0, prev - detailHalfPage));
         return;
       }
     }
@@ -817,6 +874,7 @@ export default function EventViewer({
         setDetailTab('overview');
         setDetailSearchQuery('');
         setFocusDetailSearch(false);
+        setColumnValuesScrollOffset(0);
         // Pause follow mode while detail panel is open
         wasFollowingRef.current = isFollowing;
         setIsFollowing(false);
@@ -875,6 +933,8 @@ export default function EventViewer({
           ? ['overview', 'columns', 'trace']
           : ['overview', 'columns'];
         setTraceSelectedIndex(null);
+        setTraceDetailScrollOffset(0);
+        setColumnValuesScrollOffset(0);
         setDetailTab(prev => {
           const idx = tabs.indexOf(prev);
           const dir = key.shift ? -1 : 1;
@@ -1039,7 +1099,11 @@ export default function EventViewer({
           {/* Tab content */}
           {detailTab === 'overview' && (
             /* ---- Overview tab ---- */
-            <>
+            <Box
+              flexDirection="column"
+              height={fullDetailMaxRows}
+              overflowY="hidden"
+            >
               {expandedRowLoading ? (
                 <Text>
                   <Spinner type="dots" /> Loading…
@@ -1050,9 +1114,11 @@ export default function EventViewer({
                   rowData={expandedRowData}
                   searchQuery={detailSearchQuery}
                   wrapLines={wrapLines}
+                  maxRows={fullDetailMaxRows}
+                  scrollOffset={columnValuesScrollOffset}
                 />
               ) : null}
-            </>
+            </Box>
           )}
 
           {detailTab === 'trace' &&
@@ -1108,13 +1174,19 @@ export default function EventViewer({
                       : undefined
                   }
                   wrapLines={wrapLines}
+                  detailScrollOffset={traceDetailScrollOffset}
+                  detailMaxRows={detailMaxRows}
                 />
               );
             })()}
 
           {detailTab === 'columns' && (
             /* ---- Column Values tab ---- */
-            <>
+            <Box
+              flexDirection="column"
+              height={fullDetailMaxRows}
+              overflowY="hidden"
+            >
               {expandedRowLoading ? (
                 <Text>
                   <Spinner type="dots" /> Loading all fields…
@@ -1124,9 +1196,11 @@ export default function EventViewer({
                   data={expandedRowData}
                   searchQuery={detailSearchQuery}
                   wrapLines={wrapLines}
+                  maxRows={fullDetailMaxRows}
+                  scrollOffset={columnValuesScrollOffset}
                 />
               ) : null}
-            </>
+            </Box>
           )}
         </Box>
       ) : (
@@ -1193,6 +1267,7 @@ export default function EventViewer({
         wrapLines={wrapLines}
         isFollowing={isFollowing}
         loadingMore={loadingMore}
+        scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
       />
     </Box>
   );

@@ -216,8 +216,17 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
     });
   }
 
-  // Silence the "Sending Query: ..." debug output from BaseClickhouseClient
-  protected override logDebugQuery(): void {}
+  // Delegate to console.debug — silenced by default, but when --verbose
+  // is enabled, enableVerboseFileLogging() redirects console.debug to a file.
+  protected override logDebugQuery(
+    query: string,
+    params: Record<string, unknown> = {},
+  ): void {
+    console.debug('Sending Query:', query);
+    if (Object.keys(params).length > 0) {
+      console.debug('Params:', JSON.stringify(params));
+    }
+  }
 
   protected async __query<Format extends DataFormat>({
     query,

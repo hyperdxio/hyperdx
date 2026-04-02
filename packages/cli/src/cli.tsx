@@ -3,7 +3,11 @@
 // MUST be the first import — silences console.debug/warn/error before
 // any common-utils code runs. ESM hoists imports above inline code,
 // so this can't be done with inline statements.
-import { _origDebug, _origWarn, _origError } from '@/utils/silenceLogs';
+import {
+  _origError,
+  enableVerboseFileLogging,
+  DEBUG_LOG_PATH,
+} from '@/utils/silenceLogs';
 
 import React, { useState, useCallback } from 'react';
 import { render, Box, Text, useApp } from 'ink';
@@ -120,21 +124,27 @@ program
   .name('hdx')
   .description('HyperDX CLI — search and tail events from the terminal')
   .version('0.1.0')
-  .option('--verbose', 'Enable debug/warning output from internal libraries')
-  .enablePositionalOptions()
-  .hook('preAction', thisCommand => {
-    if (thisCommand.opts().verbose) {
-      console.debug = _origDebug;
-      console.warn = _origWarn;
-      console.error = _origError;
-    }
-  });
+  .enablePositionalOptions();
+
+// Helper: enable --verbose on a command (logs to file)
+function withVerbose(cmd: Command): Command {
+  return cmd
+    .option('--verbose', 'Enable debug/warning output')
+    .hook('preAction', (thisCmd: Command) => {
+      if (thisCmd.opts().verbose) {
+        enableVerboseFileLogging();
+        _origError(`[verbose] Debug logs → ${DEBUG_LOG_PATH}\n`);
+      }
+    });
+}
 
 // ---- Interactive mode (default) ------------------------------------
 
-program
-  .command('tui')
-  .description('Interactive TUI for event search and tail')
+withVerbose(
+  program
+    .command('tui')
+    .description('Interactive TUI for event search and tail'),
+)
   .option('-s, --server <url>', 'HyperDX API server URL')
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
@@ -153,9 +163,11 @@ program
 
 // ---- Stream mode (non-interactive, pipe-friendly) ------------------
 
-program
-  .command('stream')
-  .description('Stream events to stdout (non-interactive, pipe-friendly)')
+withVerbose(
+  program
+    .command('stream')
+    .description('Stream events to stdout (non-interactive, pipe-friendly)'),
+)
   .option('-s, --server <url>', 'HyperDX API server URL')
   .requiredOption('--source <name>', 'Source name')
   .option('-q, --query <query>', 'Lucene search query', '')

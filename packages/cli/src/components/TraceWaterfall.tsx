@@ -63,6 +63,10 @@ interface TraceWaterfallProps {
   onSelectedIndexChange?: (index: number | null) => void;
   /** Toggle line wrap in Event Details */
   wrapLines?: boolean;
+  /** Scroll offset for Event Details */
+  detailScrollOffset?: number;
+  /** Max visible rows for Event Details */
+  detailMaxRows?: number;
   /** Available width for the chart (characters) */
   width?: number;
   /** Max visible rows before truncation */
@@ -269,6 +273,8 @@ export default function TraceWaterfall({
   selectedIndex,
   onSelectedIndexChange,
   wrapLines,
+  detailScrollOffset = 0,
+  detailMaxRows,
   width: propWidth,
   maxRows: propMaxRows,
 }: TraceWaterfallProps) {
@@ -430,8 +436,8 @@ export default function TraceWaterfall({
 
   useEffect(() => {
     if (!selectedNodeTimestamp || !selectedNodeKind) {
-      setSelectedRowData(null);
-      setSelectedRowLoading(false);
+      // Don't clear existing data — keep showing old data while
+      // transitioning between spans to avoid flashing
       return;
     }
 
@@ -648,8 +654,13 @@ export default function TraceWaterfall({
         </Text>
       )}
 
-      {/* Event Details for selected span/log */}
-      <Box flexDirection="column" marginTop={1}>
+      {/* Event Details for selected span/log — fixed height viewport */}
+      <Box
+        flexDirection="column"
+        marginTop={1}
+        height={(detailMaxRows ?? 10) + 3}
+        overflowY="hidden"
+      >
         <Text bold>Event Details</Text>
         <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
         {selectedRowLoading ? (
@@ -661,6 +672,8 @@ export default function TraceWaterfall({
             data={selectedRowData}
             searchQuery={searchQuery}
             wrapLines={wrapLines}
+            maxRows={detailMaxRows}
+            scrollOffset={detailScrollOffset}
           />
         ) : effectiveIndex == null ? (
           <Text dimColor>Use j/k to select a span or log event.</Text>

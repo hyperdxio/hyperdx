@@ -11,7 +11,7 @@ import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 
 import type { SourceResponse } from '@/api/client';
-import { ROW_DATA_ALIASES } from '@/api/eventQuery';
+import { ROW_DATA_ALIASES } from '@/shared/rowDataPanel';
 
 // ---- helpers -------------------------------------------------------
 
@@ -72,9 +72,20 @@ interface RowOverviewProps {
   rowData: Record<string, unknown>;
   searchQuery?: string;
   wrapLines?: boolean;
+  /** Max visible lines (enables fixed-height viewport) */
+  maxRows?: number;
+  /** Scroll offset into the content */
+  scrollOffset?: number;
 }
 
 /** A single key–value row. */
+function flatten(s: string): string {
+  return s
+    .replace(/\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function KVRow({
   label,
   value,
@@ -85,14 +96,20 @@ function KVRow({
   wrapLines?: boolean;
 }) {
   return (
-    <Box>
-      <Box width={25} flexShrink={0}>
+    <Box
+      height={wrapLines ? undefined : 1}
+      overflowX={wrapLines ? undefined : 'hidden'}
+      overflowY={wrapLines ? undefined : 'hidden'}
+    >
+      <Box width="25%" flexShrink={0} overflowX="hidden">
         <Text color="cyan" wrap="truncate">
           {label}
         </Text>
       </Box>
-      <Box flexGrow={1}>
-        <Text wrap={wrapLines ? 'wrap' : 'truncate'}>{value}</Text>
+      <Box width="75%" overflowX={wrapLines ? undefined : 'hidden'}>
+        <Text wrap={wrapLines ? 'wrap' : 'truncate'}>
+          {wrapLines ? value : flatten(value)}
+        </Text>
       </Box>
     </Box>
   );
@@ -103,6 +120,8 @@ export default function RowOverview({
   rowData,
   searchQuery,
   wrapLines,
+  maxRows,
+  scrollOffset = 0,
 }: RowOverviewProps) {
   // ---- 1. Top Level Attributes ------------------------------------
   const topLevelEntries = useMemo(() => {
@@ -158,71 +177,123 @@ export default function RowOverview({
     return entries.length > 0 ? entries : null;
   }, [resourceAttrs, searchQuery]);
 
-  // ---- render ------------------------------------------------------
+  // ---- build flat list of renderable rows ---------------------------
 
-  return (
-    <Box flexDirection="column">
-      {/* Top Level Attributes */}
-      {topLevelEntries.length > 0 && (
-        <Box flexDirection="column">
-          {topLevelEntries.map(([key, value]) => (
-            <KVRow key={key} label={key} value={value} wrapLines={wrapLines} />
-          ))}
-        </Box>
-      )}
+  const allRows = useMemo(() => {
+    const rows: React.ReactElement[] = [];
 
-      {/* Event Attributes */}
-      {eventAttrExpr && (
-        <Box flexDirection="column" marginTop={1}>
-          <Box>
-            <Text bold>{eventAttrLabel}</Text>
-            <Text dimColor>
-              {'  '}
-              {`{} ${totalEventAttrKeys} key${totalEventAttrKeys !== 1 ? 's' : ''}`}
-            </Text>
-          </Box>
-          <Text dimColor>{'─'.repeat(40)}</Text>
-          {filteredEventAttrs ? (
-            filteredEventAttrs.map(([key, value]) => (
-              <KVRow
-                key={key}
-                label={`  ${key}`}
-                value={value}
-                wrapLines={wrapLines}
-              />
-            ))
-          ) : (
-            <Text dimColor>
-              {searchQuery ? 'No matching attributes.' : 'No attributes.'}
-            </Text>
-          )}
-        </Box>
-      )}
+    // Top Level Attributes
+    if (topLevelEntries.length > 0) {
+      rows.push(
+        <Text key="top-header" bold color="cyan">
+          Top Level Attributes
+        </Text>,
+      );
+      for (const [key, value] of topLevelEntries) {
+        rows.push(
+          <KVRow
+            key={`top-${key}`}
+            label={key}
+            value={value}
+            wrapLines={wrapLines}
+          />,
+        );
+      }
+    }
 
-      {/* Resource Attributes */}
-      {resourceAttrExpr && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold>Resource Attributes</Text>
-          <Text dimColor>{'─'.repeat(40)}</Text>
-          {filteredResourceAttrs ? (
-            <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
-              {filteredResourceAttrs.map(([key, value]) => (
-                <Text key={key} backgroundColor="#3a3a3a">
-                  {' '}
-                  <Text color="cyan">{key}</Text>
-                  <Text color="whiteBright">: {value}</Text>{' '}
-                </Text>
-              ))}
-            </Box>
-          ) : (
-            <Text dimColor>
-              {searchQuery
-                ? 'No matching resource attributes.'
-                : 'No resource attributes.'}
-            </Text>
-          )}
-        </Box>
-      )}
-    </Box>
-  );
+    // Event Attributes section
+    if (eventAttrExpr) {
+      rows.push(<Text key="evt-spacer"> </Text>);
+      rows.push(
+        <Box key="evt-header">
+          <Text bold color="cyan">
+            {eventAttrLabel}
+          </Text>
+          <Text dimColor>
+            {'  '}
+            {`{} ${totalEventAttrKeys} key${totalEventAttrKeys !== 1 ? 's' : ''}`}
+          </Text>
+        </Box>,
+      );
+      if (filteredEventAttrs) {
+        for (const [key, value] of filteredEventAttrs) {
+          rows.push(
+            <KVRow
+              key={`evt-${key}`}
+              label={`  ${key}`}
+              value={value}
+              wrapLines={wrapLines}
+            />,
+          );
+        }
+      } else {
+        rows.push(
+          <Text key="evt-empty" dimColor>
+            {searchQuery ? 'No matching attributes.' : 'No attributes.'}
+          </Text>,
+        );
+      }
+    }
+
+    // Resource Attributes section
+    if (resourceAttrExpr) {
+      rows.push(<Text key="res-spacer"> </Text>);
+      rows.push(
+        <Text key="res-header" bold color="cyan">
+          Resource Attributes
+        </Text>,
+      );
+      if (filteredResourceAttrs) {
+        rows.push(
+          <Box
+            key="res-chips"
+            flexDirection="row"
+            flexWrap="wrap"
+            columnGap={1}
+            rowGap={1}
+          >
+            {filteredResourceAttrs.map(([key, value]) => (
+              <Text key={key} backgroundColor="#3a3a3a">
+                {' '}
+                <Text color="cyan">{key}</Text>
+                <Text color="whiteBright">
+                  : {flatten(value).slice(0, 80)}
+                </Text>{' '}
+              </Text>
+            ))}
+          </Box>,
+        );
+      } else {
+        rows.push(
+          <Text key="res-empty" dimColor>
+            {searchQuery
+              ? 'No matching resource attributes.'
+              : 'No resource attributes.'}
+          </Text>,
+        );
+      }
+    }
+
+    return rows;
+  }, [
+    topLevelEntries,
+    eventAttrExpr,
+    eventAttrLabel,
+    totalEventAttrKeys,
+    filteredEventAttrs,
+    resourceAttrExpr,
+    filteredResourceAttrs,
+    searchQuery,
+    wrapLines,
+  ]);
+
+  // ---- render with scrolling ---------------------------------------
+
+  const totalRows = allRows.length;
+  const visibleRows =
+    maxRows != null
+      ? allRows.slice(scrollOffset, scrollOffset + maxRows)
+      : allRows;
+
+  return <Box flexDirection="column">{visibleRows}</Box>;
 }
