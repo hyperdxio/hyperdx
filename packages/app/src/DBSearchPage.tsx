@@ -1735,21 +1735,24 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
-            minWidth={300}
+            minWidth={600}
           />
-          <TimePicker
-            data-testid="time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onTimePickerSearch}
-            onRelativeSearch={onTimePickerRelativeSearch}
-            showLive={analysisMode === 'results'}
-            isLiveMode={isLive}
-            // Default to relative time mode if the user has made changes to interval and reloaded.
-            defaultRelativeTimeMode={
-              isLive && interval !== LIVE_TAIL_DURATION_MS
-            }
-          />
+          <Box style={{ flex: '1 0 auto' }}>
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+              width="100%"
+            />
+          </Box>
           {isLive && (
             <Tooltip label="Live tail refresh interval">
               <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
