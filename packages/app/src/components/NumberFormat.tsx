@@ -6,7 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { NumberFormat } from '@hyperdx/common-utils/dist/types';
+import { NumberFormat, NumericUnit } from '@hyperdx/common-utils/dist/types';
 import {
   Checkbox as MCheckbox,
   NativeSelect,
@@ -48,65 +48,66 @@ export const DEFAULT_NUMBER_FORMAT: NumberFormat = {
   decimalBytes: false,
 };
 
-type UnitOption = { value: string; label: string };
-type UnitGroup = { group: string; items: UnitOption[] };
+type UnitOption = { value: NumericUnit; label: string };
+type OutputOption = { value: NumberFormat['output']; label: string };
+type OutputGroup = { group: string; items: OutputOption[] };
 
 const DATA_UNIT_OPTIONS: UnitOption[] = [
-  { value: 'bytes_iec', label: 'bytes (IEC)' },
-  { value: 'bytes_si', label: 'bytes (SI)' },
-  { value: 'bits_iec', label: 'bits (IEC)' },
-  { value: 'bits_si', label: 'bits (SI)' },
-  { value: 'kibibytes', label: 'kibibytes' },
-  { value: 'kilobytes', label: 'kilobytes' },
-  { value: 'mebibytes', label: 'mebibytes' },
-  { value: 'megabytes', label: 'megabytes' },
-  { value: 'gibibytes', label: 'gibibytes' },
-  { value: 'gigabytes', label: 'gigabytes' },
-  { value: 'tebibytes', label: 'tebibytes' },
-  { value: 'terabytes', label: 'terabytes' },
-  { value: 'pebibytes', label: 'pebibytes' },
-  { value: 'petabytes', label: 'petabytes' },
+  { value: NumericUnit.BytesIEC, label: 'bytes (IEC)' },
+  { value: NumericUnit.BytesSI, label: 'bytes (SI)' },
+  { value: NumericUnit.BitsIEC, label: 'bits (IEC)' },
+  { value: NumericUnit.BitsSI, label: 'bits (SI)' },
+  { value: NumericUnit.Kibibytes, label: 'kibibytes' },
+  { value: NumericUnit.Kilobytes, label: 'kilobytes' },
+  { value: NumericUnit.Mebibytes, label: 'mebibytes' },
+  { value: NumericUnit.Megabytes, label: 'megabytes' },
+  { value: NumericUnit.Gibibytes, label: 'gibibytes' },
+  { value: NumericUnit.Gigabytes, label: 'gigabytes' },
+  { value: NumericUnit.Tebibytes, label: 'tebibytes' },
+  { value: NumericUnit.Terabytes, label: 'terabytes' },
+  { value: NumericUnit.Pebibytes, label: 'pebibytes' },
+  { value: NumericUnit.Petabytes, label: 'petabytes' },
 ];
 
 const DATA_RATE_UNIT_OPTIONS: UnitOption[] = [
-  { value: 'packets_sec', label: 'packets/sec' },
-  { value: 'bytes_sec_iec', label: 'bytes/sec (IEC)' },
-  { value: 'bytes_sec_si', label: 'bytes/sec (SI)' },
-  { value: 'bits_sec_iec', label: 'bits/sec (IEC)' },
-  { value: 'bits_sec_si', label: 'bits/sec (SI)' },
-  { value: 'kibibytes_sec', label: 'kibibytes/sec' },
-  { value: 'kibibits_sec', label: 'kibibits/sec' },
-  { value: 'kilobytes_sec', label: 'kilobytes/sec' },
-  { value: 'kilobits_sec', label: 'kilobits/sec' },
-  { value: 'mebibytes_sec', label: 'mebibytes/sec' },
-  { value: 'mebibits_sec', label: 'mebibits/sec' },
-  { value: 'megabytes_sec', label: 'megabytes/sec' },
-  { value: 'megabits_sec', label: 'megabits/sec' },
-  { value: 'gibibytes_sec', label: 'gibibytes/sec' },
-  { value: 'gibibits_sec', label: 'gibibits/sec' },
-  { value: 'gigabytes_sec', label: 'gigabytes/sec' },
-  { value: 'gigabits_sec', label: 'gigabits/sec' },
-  { value: 'tebibytes_sec', label: 'tebibytes/sec' },
-  { value: 'tebibits_sec', label: 'tebibits/sec' },
-  { value: 'terabytes_sec', label: 'terabytes/sec' },
-  { value: 'terabits_sec', label: 'terabits/sec' },
-  { value: 'pebibytes_sec', label: 'pebibytes/sec' },
-  { value: 'pebibits_sec', label: 'pebibits/sec' },
-  { value: 'petabytes_sec', label: 'petabytes/sec' },
-  { value: 'petabits_sec', label: 'petabits/sec' },
+  { value: NumericUnit.PacketsSec, label: 'packets/sec' },
+  { value: NumericUnit.BytesSecIEC, label: 'bytes/sec (IEC)' },
+  { value: NumericUnit.BytesSecSI, label: 'bytes/sec (SI)' },
+  { value: NumericUnit.BitsSecIEC, label: 'bits/sec (IEC)' },
+  { value: NumericUnit.BitsSecSI, label: 'bits/sec (SI)' },
+  { value: NumericUnit.KibibytesSec, label: 'kibibytes/sec' },
+  { value: NumericUnit.KibibitsSec, label: 'kibibits/sec' },
+  { value: NumericUnit.KilobytesSec, label: 'kilobytes/sec' },
+  { value: NumericUnit.KilobitsSec, label: 'kilobits/sec' },
+  { value: NumericUnit.MebibytesSec, label: 'mebibytes/sec' },
+  { value: NumericUnit.MebibitsSec, label: 'mebibits/sec' },
+  { value: NumericUnit.MegabytesSec, label: 'megabytes/sec' },
+  { value: NumericUnit.MegabitsSec, label: 'megabits/sec' },
+  { value: NumericUnit.GibibytesSec, label: 'gibibytes/sec' },
+  { value: NumericUnit.GibibitsSec, label: 'gibibits/sec' },
+  { value: NumericUnit.GigabytesSec, label: 'gigabytes/sec' },
+  { value: NumericUnit.GigabitsSec, label: 'gigabits/sec' },
+  { value: NumericUnit.TebibytesSec, label: 'tebibytes/sec' },
+  { value: NumericUnit.TebibitsSec, label: 'tebibits/sec' },
+  { value: NumericUnit.TerabytesSec, label: 'terabytes/sec' },
+  { value: NumericUnit.TerabitsSec, label: 'terabits/sec' },
+  { value: NumericUnit.PebibytesSec, label: 'pebibytes/sec' },
+  { value: NumericUnit.PebibitsSec, label: 'pebibits/sec' },
+  { value: NumericUnit.PetabytesSec, label: 'petabytes/sec' },
+  { value: NumericUnit.PetabitsSec, label: 'petabits/sec' },
 ];
 
 const THROUGHPUT_UNIT_OPTIONS: UnitOption[] = [
-  { value: 'cps', label: 'counts/sec (cps)' },
-  { value: 'ops', label: 'ops/sec (ops)' },
-  { value: 'rps', label: 'requests/sec (rps)' },
-  { value: 'reads_sec', label: 'reads/sec (rps)' },
-  { value: 'wps', label: 'writes/sec (wps)' },
-  { value: 'iops', label: 'I/O ops/sec (iops)' },
-  { value: 'cpm', label: 'counts/min (cpm)' },
-  { value: 'opm', label: 'ops/min (opm)' },
-  { value: 'rpm_reads', label: 'reads/min (rpm)' },
-  { value: 'wpm', label: 'writes/min (wpm)' },
+  { value: NumericUnit.Cps, label: 'counts/sec (cps)' },
+  { value: NumericUnit.Ops, label: 'ops/sec (ops)' },
+  { value: NumericUnit.Rps, label: 'requests/sec (rps)' },
+  { value: NumericUnit.ReadsSec, label: 'reads/sec (rps)' },
+  { value: NumericUnit.Wps, label: 'writes/sec (wps)' },
+  { value: NumericUnit.Iops, label: 'I/O ops/sec (iops)' },
+  { value: NumericUnit.Cpm, label: 'counts/min (cpm)' },
+  { value: NumericUnit.Opm, label: 'ops/min (opm)' },
+  { value: NumericUnit.RpmReads, label: 'reads/min (rpm)' },
+  { value: NumericUnit.Wpm, label: 'writes/min (wpm)' },
 ];
 
 const UNIT_OPTIONS_BY_OUTPUT: Record<string, UnitOption[]> = {
@@ -115,13 +116,15 @@ const UNIT_OPTIONS_BY_OUTPUT: Record<string, UnitOption[]> = {
   throughput: THROUGHPUT_UNIT_OPTIONS,
 };
 
-const DEFAULT_NUMERIC_UNIT_BY_OUTPUT: Record<string, string> = {
-  byte: 'bytes_iec',
-  data_rate: 'bytes_sec_iec',
-  throughput: 'cps',
+const DEFAULT_NUMERIC_UNIT_BY_OUTPUT: Partial<
+  Record<NumberFormat['output'], NumericUnit>
+> = {
+  byte: NumericUnit.BytesIEC,
+  data_rate: NumericUnit.BytesSecIEC,
+  throughput: NumericUnit.Cps,
 };
 
-const OUTPUT_CATEGORY_OPTIONS: UnitGroup[] = [
+const OUTPUT_CATEGORY_OPTIONS: OutputGroup[] = [
   {
     group: 'Basic',
     items: [
@@ -184,6 +187,7 @@ export const NumberFormatForm: React.FC<{
                 style={{ flex: 1 }}
                 data={OUTPUT_CATEGORY_OPTIONS}
                 onChange={e => {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                   const newOutput = e.target.value as NumberFormat['output'];
                   onChange(newOutput);
                   setValue(

@@ -2,17 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  NumericUnit,
   SourceKind,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { NOW } from './config';
-import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
 export function omit<T extends object, K extends keyof T>(
@@ -662,79 +661,99 @@ type FixedUnitConfig = {
 
 type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
 
-const NUMERIC_UNIT_CONFIGS: Record<string, UnitFormatConfig> = {
+export const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
   // Data
-  bytes_iec: { type: 'auto_scale', base: 'iec', isBits: false, perSec: false },
-  bytes_si: { type: 'auto_scale', base: 'si', isBits: false, perSec: false },
-  bits_iec: { type: 'auto_scale', base: 'iec', isBits: true, perSec: false },
-  bits_si: { type: 'auto_scale', base: 'si', isBits: true, perSec: false },
-  kibibytes: { type: 'fixed', suffix: 'KiB' },
-  kilobytes: { type: 'fixed', suffix: 'KB' },
-  mebibytes: { type: 'fixed', suffix: 'MiB' },
-  megabytes: { type: 'fixed', suffix: 'MB' },
-  gibibytes: { type: 'fixed', suffix: 'GiB' },
-  gigabytes: { type: 'fixed', suffix: 'GB' },
-  tebibytes: { type: 'fixed', suffix: 'TiB' },
-  terabytes: { type: 'fixed', suffix: 'TB' },
-  pebibytes: { type: 'fixed', suffix: 'PiB' },
-  petabytes: { type: 'fixed', suffix: 'PB' },
+  [NumericUnit.BytesIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BytesSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BitsIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.BitsSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.Kibibytes]: { type: 'fixed', suffix: 'KiB' },
+  [NumericUnit.Kilobytes]: { type: 'fixed', suffix: 'KB' },
+  [NumericUnit.Mebibytes]: { type: 'fixed', suffix: 'MiB' },
+  [NumericUnit.Megabytes]: { type: 'fixed', suffix: 'MB' },
+  [NumericUnit.Gibibytes]: { type: 'fixed', suffix: 'GiB' },
+  [NumericUnit.Gigabytes]: { type: 'fixed', suffix: 'GB' },
+  [NumericUnit.Tebibytes]: { type: 'fixed', suffix: 'TiB' },
+  [NumericUnit.Terabytes]: { type: 'fixed', suffix: 'TB' },
+  [NumericUnit.Pebibytes]: { type: 'fixed', suffix: 'PiB' },
+  [NumericUnit.Petabytes]: { type: 'fixed', suffix: 'PB' },
   // Data Rate
-  packets_sec: { type: 'fixed', suffix: 'pkt/s' },
-  bytes_sec_iec: {
+  [NumericUnit.PacketsSec]: { type: 'fixed', suffix: 'pkt/s' },
+  [NumericUnit.BytesSecIEC]: {
     type: 'auto_scale',
     base: 'iec',
     isBits: false,
     perSec: true,
   },
-  bytes_sec_si: {
+  [NumericUnit.BytesSecSI]: {
     type: 'auto_scale',
     base: 'si',
     isBits: false,
     perSec: true,
   },
-  bits_sec_iec: {
+  [NumericUnit.BitsSecIEC]: {
     type: 'auto_scale',
     base: 'iec',
     isBits: true,
     perSec: true,
   },
-  bits_sec_si: {
+  [NumericUnit.BitsSecSI]: {
     type: 'auto_scale',
     base: 'si',
     isBits: true,
     perSec: true,
   },
-  kibibytes_sec: { type: 'fixed', suffix: 'KiB/s' },
-  kibibits_sec: { type: 'fixed', suffix: 'Kibit/s' },
-  kilobytes_sec: { type: 'fixed', suffix: 'KB/s' },
-  kilobits_sec: { type: 'fixed', suffix: 'Kbit/s' },
-  mebibytes_sec: { type: 'fixed', suffix: 'MiB/s' },
-  mebibits_sec: { type: 'fixed', suffix: 'Mibit/s' },
-  megabytes_sec: { type: 'fixed', suffix: 'MB/s' },
-  megabits_sec: { type: 'fixed', suffix: 'Mbit/s' },
-  gibibytes_sec: { type: 'fixed', suffix: 'GiB/s' },
-  gibibits_sec: { type: 'fixed', suffix: 'Gibit/s' },
-  gigabytes_sec: { type: 'fixed', suffix: 'GB/s' },
-  gigabits_sec: { type: 'fixed', suffix: 'Gbit/s' },
-  tebibytes_sec: { type: 'fixed', suffix: 'TiB/s' },
-  tebibits_sec: { type: 'fixed', suffix: 'Tibit/s' },
-  terabytes_sec: { type: 'fixed', suffix: 'TB/s' },
-  terabits_sec: { type: 'fixed', suffix: 'Tbit/s' },
-  pebibytes_sec: { type: 'fixed', suffix: 'PiB/s' },
-  pebibits_sec: { type: 'fixed', suffix: 'Pibit/s' },
-  petabytes_sec: { type: 'fixed', suffix: 'PB/s' },
-  petabits_sec: { type: 'fixed', suffix: 'Pbit/s' },
+  [NumericUnit.KibibytesSec]: { type: 'fixed', suffix: 'KiB/s' },
+  [NumericUnit.KibibitsSec]: { type: 'fixed', suffix: 'Kibit/s' },
+  [NumericUnit.KilobytesSec]: { type: 'fixed', suffix: 'KB/s' },
+  [NumericUnit.KilobitsSec]: { type: 'fixed', suffix: 'Kbit/s' },
+  [NumericUnit.MebibytesSec]: { type: 'fixed', suffix: 'MiB/s' },
+  [NumericUnit.MebibitsSec]: { type: 'fixed', suffix: 'Mibit/s' },
+  [NumericUnit.MegabytesSec]: { type: 'fixed', suffix: 'MB/s' },
+  [NumericUnit.MegabitsSec]: { type: 'fixed', suffix: 'Mbit/s' },
+  [NumericUnit.GibibytesSec]: { type: 'fixed', suffix: 'GiB/s' },
+  [NumericUnit.GibibitsSec]: { type: 'fixed', suffix: 'Gibit/s' },
+  [NumericUnit.GigabytesSec]: { type: 'fixed', suffix: 'GB/s' },
+  [NumericUnit.GigabitsSec]: { type: 'fixed', suffix: 'Gbit/s' },
+  [NumericUnit.TebibytesSec]: { type: 'fixed', suffix: 'TiB/s' },
+  [NumericUnit.TebibitsSec]: { type: 'fixed', suffix: 'Tibit/s' },
+  [NumericUnit.TerabytesSec]: { type: 'fixed', suffix: 'TB/s' },
+  [NumericUnit.TerabitsSec]: { type: 'fixed', suffix: 'Tbit/s' },
+  [NumericUnit.PebibytesSec]: { type: 'fixed', suffix: 'PiB/s' },
+  [NumericUnit.PebibitsSec]: { type: 'fixed', suffix: 'Pibit/s' },
+  [NumericUnit.PetabytesSec]: { type: 'fixed', suffix: 'PB/s' },
+  [NumericUnit.PetabitsSec]: { type: 'fixed', suffix: 'Pbit/s' },
   // Throughput
-  cps: { type: 'fixed', suffix: 'cps' },
-  ops: { type: 'fixed', suffix: 'ops' },
-  rps: { type: 'fixed', suffix: 'rps' },
-  reads_sec: { type: 'fixed', suffix: 'rps' },
-  wps: { type: 'fixed', suffix: 'wps' },
-  iops: { type: 'fixed', suffix: 'iops' },
-  cpm: { type: 'fixed', suffix: 'cpm' },
-  opm: { type: 'fixed', suffix: 'opm' },
-  rpm_reads: { type: 'fixed', suffix: 'rpm' },
-  wpm: { type: 'fixed', suffix: 'wpm' },
+  [NumericUnit.Cps]: { type: 'fixed', suffix: 'cps' },
+  [NumericUnit.Ops]: { type: 'fixed', suffix: 'ops' },
+  [NumericUnit.Rps]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.ReadsSec]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.Wps]: { type: 'fixed', suffix: 'wps' },
+  [NumericUnit.Iops]: { type: 'fixed', suffix: 'iops' },
+  [NumericUnit.Cpm]: { type: 'fixed', suffix: 'cpm' },
+  [NumericUnit.Opm]: { type: 'fixed', suffix: 'opm' },
+  [NumericUnit.RpmReads]: { type: 'fixed', suffix: 'rpm' },
+  [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
 };
 
 const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
