@@ -110,18 +110,20 @@ test.describe(
       return `/search?filters=${encoded}`;
     }
 
+    // Filter groups with selected values auto-expand (isDefaultExpanded),
+    // so we use ensureFilterGroupExpanded to avoid toggling them closed.
+
     test('Should display filter when value contains = character', async ({
       page,
     }) => {
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
       const filterValue = 'key=value';
-      const url = buildSearchUrlWithFilter(
-        `${filterGroup} IN ('${filterValue}')`,
-      );
 
-      await page.goto(url);
-      await searchPage.filters.openFilterGroup(filterGroup);
+      await page.goto(
+        buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
+      );
+      await searchPage.filters.ensureFilterGroupExpanded(filterGroup);
 
       const filterInput = searchPage.filters.getFilterCheckboxInput(
         filterGroup,
@@ -137,12 +139,11 @@ test.describe(
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
       const filterValue = 'x > y';
-      const url = buildSearchUrlWithFilter(
-        `${filterGroup} IN ('${filterValue}')`,
-      );
 
-      await page.goto(url);
-      await searchPage.filters.openFilterGroup(filterGroup);
+      await page.goto(
+        buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
+      );
+      await searchPage.filters.ensureFilterGroupExpanded(filterGroup);
 
       const filterInput = searchPage.filters.getFilterCheckboxInput(
         filterGroup,
@@ -158,12 +159,11 @@ test.describe(
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
       const filterValue = '<html>';
-      const url = buildSearchUrlWithFilter(
-        `${filterGroup} IN ('${filterValue}')`,
-      );
 
-      await page.goto(url);
-      await searchPage.filters.openFilterGroup(filterGroup);
+      await page.goto(
+        buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
+      );
+      await searchPage.filters.ensureFilterGroupExpanded(filterGroup);
 
       const filterInput = searchPage.filters.getFilterCheckboxInput(
         filterGroup,
@@ -179,12 +179,11 @@ test.describe(
       const searchPage = new SearchPage(page);
       const filterGroup = 'SeverityText';
       const filterValue = 'true OR false';
-      const url = buildSearchUrlWithFilter(
-        `${filterGroup} IN ('${filterValue}')`,
-      );
 
-      await page.goto(url);
-      await searchPage.filters.openFilterGroup(filterGroup);
+      await page.goto(
+        buildSearchUrlWithFilter(`${filterGroup} IN ('${filterValue}')`),
+      );
+      await searchPage.filters.ensureFilterGroupExpanded(filterGroup);
 
       const filterInput = searchPage.filters.getFilterCheckboxInput(
         filterGroup,

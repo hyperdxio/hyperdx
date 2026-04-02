@@ -42,10 +42,36 @@ export class FilterComponent {
   }
 
   /**
-   * Open/expand a filter group
+   * Open/expand a filter group (toggles — may close if already open)
    */
   async openFilterGroup(filterName: string) {
     await this.getFilterGroup(filterName).click();
+  }
+
+  /**
+   * Ensure a filter group is expanded. If it's already open (e.g. because it
+   * has selected values and auto-expanded), this is a no-op. Otherwise it
+   * clicks the header to open it.
+   *
+   * Uses Mantine v7 Accordion's `data-active` attribute to detect state.
+   * First waits briefly for auto-expansion (e.g. when selected values
+   * trigger isDefaultExpanded), then clicks if still collapsed.
+   */
+  async ensureFilterGroupExpanded(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Give auto-expansion a chance to fire (URL → parseQuery → render cycle)
+    try {
+      await this.page
+        .getByTestId(`filter-group-${filterName}`)
+        .and(this.page.locator('[data-active="true"]'))
+        .waitFor({ state: 'visible', timeout: 3000 });
+      return; // Already expanded
+    } catch {
+      // Not auto-expanded yet or won't be — click to expand
+      await group.click();
+    }
   }
 
   /**
