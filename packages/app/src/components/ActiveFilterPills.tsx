@@ -128,7 +128,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   const pills = useMemo(() => flattenFilters(filters), [filters]);
   const [expanded, setExpanded] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     return () => clearTimeout(confirmTimerRef.current);
