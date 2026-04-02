@@ -94,6 +94,8 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.Dynamic;
   } else if (dataType.startsWith('LowCardinality')) {
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
+  } else if (dataType.startsWith('Nullable(')) {
+    return convertCHDataTypeToJSType(dataType.slice(9, -1));
   }
 
   return null;
