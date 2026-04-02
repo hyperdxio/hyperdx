@@ -882,50 +882,61 @@ export const processAlert = async (
         );
 
         if (isRateOfChange) {
-          // Record 0 as previous value for rate-of-change baseline
           if (isBaselineBucket) {
-            previousBucketValues.set('', 0);
+            if (!hasGroupBy) {
+              previousBucketValues.set('', 0);
+            }
             continue;
           }
-          // Compute change from previous: 0 - previous
-          const previousValue = previousBucketValues.get('') ?? 0;
-          const changeValue = computeRateOfChange(
-            0,
-            previousValue,
-            alert.changeType ?? AlertChangeType.ABSOLUTE,
-          );
-          previousBucketValues.set('', 0);
 
-          if (!Number.isFinite(changeValue)) {
-            logger.info(
-              { alertId: alert.id, bucketStart, changeValue },
-              'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+          // Evaluate all known groups (or just '' for ungrouped alerts)
+          const groupsToEvaluate = hasGroupBy
+            ? Array.from(previousBucketValues.keys())
+            : [''];
+
+          for (const groupKey of groupsToEvaluate) {
+            const previousValue = previousBucketValues.get(groupKey) ?? 0;
+            const changeValue = computeRateOfChange(
+              0,
+              previousValue,
+              alert.changeType ?? AlertChangeType.ABSOLUTE,
             );
-            const history = getOrCreateHistory('');
-            history.lastValues.push({ count: 0, startTime: bucketStart });
-            continue;
-          }
+            previousBucketValues.set(groupKey, 0);
 
-          if (
-            doesExceedThreshold(
-              alert.thresholdType,
-              alert.threshold,
-              changeValue,
-            )
-          ) {
-            const history = getOrCreateHistory('');
+            if (!Number.isFinite(changeValue)) {
+              logger.info(
+                {
+                  alertId: alert.id,
+                  bucketStart,
+                  changeValue,
+                  group: groupKey,
+                },
+                'Skipping alert for non-finite rate-of-change value (insufficient baseline data)',
+              );
+              const history = getOrCreateHistory(groupKey);
+              history.lastValues.push({ count: 0, startTime: bucketStart });
+              continue;
+            }
+
+            const history = getOrCreateHistory(groupKey);
             history.lastValues.push({ count: 0, startTime: bucketStart });
-            history.state = AlertState.ALERT;
-            history.counts += 1;
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: '',
-              totalCount: changeValue,
-              startTime: bucketStart,
-            });
-          } else {
-            const history = getOrCreateHistory('');
-            history.lastValues.push({ count: 0, startTime: bucketStart });
+
+            if (
+              doesExceedThreshold(
+                alert.thresholdType,
+                alert.threshold,
+                changeValue,
+              )
+            ) {
+              history.state = AlertState.ALERT;
+              history.counts += 1;
+              await trySendNotification({
+                state: AlertState.ALERT,
+                group: groupKey,
+                totalCount: changeValue,
+                startTime: bucketStart,
+              });
+            }
           }
           continue;
         }

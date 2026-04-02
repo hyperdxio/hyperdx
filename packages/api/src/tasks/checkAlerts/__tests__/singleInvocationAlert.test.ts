@@ -1379,4 +1379,113 @@ describe('Single Invocation Alert Test', () => {
     expect(alertingHistories.length).toBe(0);
     expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
   });
+
+  it('should trigger grouped rate-of-change alert when all groups drop to zero (empty bucket)', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'RoC GroupBy Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+    }).save();
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/roc-groupby',
+      name: 'RoC GroupBy Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '5m',
+        thresholdType: AlertThresholdType.BELOW,
+        threshold: 0,
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.ABSOLUTE,
+        groupBy: 'ServiceName',
+        savedSearchId: savedSearch.id,
+        name: 'RoC GroupBy Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const window1Time = new Date('2023-11-16T22:02:00.000Z');
+
+    // Baseline window has logs for two groups; evaluation window has none
+    const window1Logs = [
+      ...Array.from({ length: 5 }, () => ({
+        ServiceName: 'api',
+        Timestamp: window1Time,
+        SeverityText: 'error',
+        Body: 'Window 1 api error',
+      })),
+      ...Array.from({ length: 3 }, () => ({
+        ServiceName: 'web',
+        Timestamp: window1Time,
+        SeverityText: 'error',
+        Body: 'Window 1 web error',
+      })),
+    ];
+    await bulkInsertLogs(window1Logs);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+    const histories = await AlertHistory.find({ alert: alert.id });
+    const alertingHistories = histories.filter(h => h.state === 'ALERT');
+    // Both groups (api and web) should fire since they each dropped to 0
+    expect(alertingHistories.length).toBeGreaterThanOrEqual(1);
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+  });
 });
