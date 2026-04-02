@@ -30,8 +30,6 @@ import {
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
-import { DBRowTableIconButton } from './DBTable/DBRowTableIconButton';
-
 type JSONExtractFn =
   | 'JSONExtractString'
   | 'JSONExtractFloat'
@@ -212,12 +210,31 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   viewerOptionsStorage,
 );
 
-function HyperJsonMenu() {
+function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
   return (
     <Group>
+      {rowData != null && (
+        <UnstyledButton
+          onClick={() => {
+            window.navigator.clipboard.writeText(
+              typeof rowData === 'string'
+                ? rowData
+                : JSON.stringify(rowData, null, 2),
+            );
+            notifications.show({
+              color: 'green',
+              message: `Value copied to clipboard`,
+            });
+          }}
+          variant="copy"
+          title={'Copy row as JSON'}
+        >
+          <IconCopy size={14} />
+        </UnstyledButton>
+      )}
       <UnstyledButton
         color="gray"
         data-testid="json-viewer-wrap-toggle"
@@ -317,7 +334,6 @@ export function DBRowJsonViewer({
 
   const [filter, setFilter] = useState<string>('');
   const [debouncedFilter] = useDebouncedValue(filter, 100);
-  const [isRowCopied, setIsRowCopied] = useState(false);
   const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   const rowData = useMemo(() => {
@@ -607,23 +623,7 @@ export function DBRowJsonViewer({
             </Button>
           )}
           <div className="flex-grow-1" />
-          {rowData != null && (
-            <DBRowTableIconButton
-              onClick={() => {
-                window.navigator.clipboard.writeText(
-                  JSON.stringify(rowData, null, 2),
-                );
-                setIsRowCopied(true);
-                setTimeout(() => setIsRowCopied(false), 2000);
-              }}
-              variant="copy"
-              isActive={isRowCopied}
-              title={isRowCopied ? 'Copied!' : 'Copy row as JSON'}
-            >
-              <IconCopy size={14} />
-            </DBRowTableIconButton>
-          )}
-          <HyperJsonMenu />
+          <HyperJsonMenu rowData={rowData} />
         </Group>
       </Box>
       <Paper bg="transparent" mt="sm">
