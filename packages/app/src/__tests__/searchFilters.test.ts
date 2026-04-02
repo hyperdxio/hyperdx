@@ -315,6 +315,94 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('parses IN clauses when values contain = character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('key=value')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['key=value']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain > character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('x > y')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['x > y']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain < character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('<html>')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['<html>']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain OR text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('true OR false')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['true OR false']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still skips real comparison operators outside quotes', () => {
+      const result = parseQuery([
+        { type: 'sql', condition: `status_code = 200` },
+        { type: 'sql', condition: `duration > 1000` },
+        { type: 'sql', condition: `count < 5` },
+        {
+          type: 'sql',
+          condition: `level IN ('error') OR severity IN ('high')`,
+        },
+      ]);
+      expect(result.filters).toEqual({});
+    });
+
+    it('extracts IN clause from AND condition with quoted = in non-IN part', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `SpanName = 'test=value' AND SpanKind IN ('Server')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        SpanKind: {
+          included: new Set(['Server']),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {

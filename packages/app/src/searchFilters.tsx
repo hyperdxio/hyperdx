@@ -135,6 +135,25 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
+// Check whether a SQL fragment contains comparison operators (=, <, >) or
+// ' OR ' outside of single-quoted strings. Values inside quotes should not
+// trigger skipping the clause.
+function containsOperatorOutsideQuotes(part: string): boolean {
+  let inString = false;
+  for (let i = 0; i < part.length; i++) {
+    const char = part[i];
+    if (char === "'" && (i === 0 || part[i - 1] !== '\\')) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (char === '=' || char === '<' || char === '>') return true;
+    if (part.slice(i, i + 4).toUpperCase() === ' OR ') return true;
+  }
+  return false;
+}
+
 // Helper function to extract simple IN/NOT IN clauses from a condition
 // This handles both simple conditions and compound conditions with AND
 function extractInClauses(condition: string): Array<{
@@ -180,13 +199,9 @@ function extractInClauses(condition: string): Array<{
 
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
-    // Skip parts that contain OR (not supported) or comparison operators
-    if (
-      part.toUpperCase().includes(' OR ') ||
-      part.includes('=') ||
-      part.includes('<') ||
-      part.includes('>')
-    ) {
+    // Skip parts that contain OR (not supported) or comparison operators,
+    // but only when those operators appear outside of quoted strings.
+    if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
 
