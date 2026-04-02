@@ -254,7 +254,7 @@ function renderBar(
 
   const leading = ' '.repeat(Math.max(0, startCol));
   const bar = '█'.repeat(Math.max(1, endCol - Math.max(0, startCol)));
-  return leading + bar;
+  return (leading + bar).slice(0, barWidth);
 }
 
 // ---- Component -----------------------------------------------------
@@ -603,8 +603,8 @@ export default function TraceWaterfall({
         const isHighlighted = effectiveIndex === i;
 
         return (
-          <Box key={`${node.SpanId}-${node.kind}-${i}`}>
-            <Box width={labelWidth}>
+          <Box key={`${node.SpanId}-${node.kind}-${i}`} overflowX="hidden">
+            <Box width={labelWidth} overflowX="hidden">
               <Text
                 wrap="truncate"
                 color={isHighlighted ? 'white' : isLog ? 'green' : statusColor}
@@ -614,12 +614,12 @@ export default function TraceWaterfall({
                 {displayLabel}
               </Text>
             </Box>
-            <Box width={barWidth + 2}>
+            <Box width={barWidth + 2} overflowX="hidden">
               <Text color={barClr} wrap="truncate">
                 {bar}
               </Text>
             </Box>
-            <Box width={durationColWidth}>
+            <Box width={durationColWidth} overflowX="hidden">
               <Text
                 dimColor={!isHighlighted}
                 color={isHighlighted ? 'white' : undefined}

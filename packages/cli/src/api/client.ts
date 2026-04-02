@@ -183,9 +183,18 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
     // The @clickhouse/client treats the path portion of `url` as the
     // database name, NOT the HTTP path. Use `pathname` to set the proxy
     // path so requests go to http://<host>/clickhouse-proxy/?query=...
+    // Derive the clickhouse-proxy pathname from the API URL.
+    // If apiUrl has a path (e.g. /api), the proxy path becomes /api/clickhouse-proxy
+    // so it works through the Next.js proxy at pages/api/[...all].ts.
+    // Pass origin-only URL to createClient to prevent the path from being
+    // interpreted as a ClickHouse database name.
+    const apiUrlObj = new URL(apiClient.getApiUrl());
+    const basePath = apiUrlObj.pathname.replace(/\/+$/, '');
+    const chProxyPath = `${basePath}/clickhouse-proxy`;
+
     this.client = createClient({
-      url: apiClient.getApiUrl(),
-      pathname: '/clickhouse-proxy',
+      url: apiUrlObj.origin,
+      pathname: chProxyPath,
       // No ClickHouse credentials — the proxy handles auth to ClickHouse.
       // We authenticate to the proxy via session cookie.
       username: '',

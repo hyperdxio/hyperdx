@@ -144,7 +144,15 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
 
     case 'pick-source':
       return (
-        <SourcePicker sources={eventSources} onSelect={handleSourceSelect} />
+        <Box flexDirection="column">
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color="#00c28a" bold>
+              HyperDX TUI
+            </Text>
+            <Text dimColor>Search and tail events from the terminal</Text>
+          </Box>
+          <SourcePicker sources={eventSources} onSelect={handleSourceSelect} />
+        </Box>
       );
 
     case 'events':

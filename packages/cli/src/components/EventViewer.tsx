@@ -1012,13 +1012,15 @@ export default function EventViewer({
               </Box>
             );
           })()}
-          {/* Detail search bar */}
-          <SearchBar
-            focused={focusDetailSearch}
-            query={detailSearchQuery}
-            onChange={setDetailSearchQuery}
-            onSubmit={() => setFocusDetailSearch(false)}
-          />
+          {/* Detail search bar — only show when focused or has a query */}
+          {(focusDetailSearch || detailSearchQuery) && (
+            <SearchBar
+              focused={focusDetailSearch}
+              query={detailSearchQuery}
+              onChange={setDetailSearchQuery}
+              onSubmit={() => setFocusDetailSearch(false)}
+            />
+          )}
           <Text dimColor>{'─'.repeat(80)}</Text>
 
           {/* Tab content */}
@@ -1069,6 +1071,11 @@ export default function EventViewer({
                 return <Text dimColor>No correlated trace source found.</Text>;
               }
 
+              // Reserve lines for: header, tab bar, search, separator,
+              // summary, col headers, separator, Event Details header +
+              // separator + content (~15 lines overhead)
+              const waterfallMaxRows = Math.max(10, termHeight - 15);
+
               return (
                 <TraceWaterfall
                   clickhouseClient={clickhouseClient}
@@ -1078,6 +1085,7 @@ export default function EventViewer({
                   searchQuery={detailSearchQuery}
                   selectedIndex={traceSelectedIndex}
                   onSelectedIndexChange={setTraceSelectedIndex}
+                  maxRows={waterfallMaxRows}
                   highlightHint={
                     expandedSpanId
                       ? {
