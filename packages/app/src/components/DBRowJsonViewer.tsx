@@ -210,12 +210,31 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   viewerOptionsStorage,
 );
 
-function HyperJsonMenu() {
+function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
   return (
     <Group>
+      {rowData != null && (
+        <UnstyledButton
+          onClick={() => {
+            window.navigator.clipboard.writeText(
+              typeof rowData === 'string'
+                ? rowData
+                : JSON.stringify(rowData, null, 2),
+            );
+            notifications.show({
+              color: 'green',
+              message: `Value copied to clipboard`,
+            });
+          }}
+          variant="copy"
+          title={'Copy row as JSON'}
+        >
+          <IconCopy size={14} />
+        </UnstyledButton>
+      )}
       <UnstyledButton
         color="gray"
         data-testid="json-viewer-wrap-toggle"
@@ -604,7 +623,7 @@ export function DBRowJsonViewer({
             </Button>
           )}
           <div className="flex-grow-1" />
-          <HyperJsonMenu />
+          <HyperJsonMenu rowData={rowData} />
         </Group>
       </Box>
       <Paper bg="transparent" mt="sm">

@@ -2,17 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  NumericUnit,
   SourceKind,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { NOW } from './config';
-import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
 export function omit<T extends object, K extends keyof T>(
@@ -648,8 +647,150 @@ export const usePrevious = <T>(value: T): T | undefined => {
   return ref.current;
 };
 
+type AutoScaleUnitConfig = {
+  type: 'auto_scale';
+  base: 'iec' | 'si';
+  isBits: boolean;
+  perSec: boolean;
+};
+
+type FixedUnitConfig = {
+  type: 'fixed';
+  suffix: string;
+};
+
+type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
+
+const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
+  // Data
+  [NumericUnit.BytesIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BytesSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BitsIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.BitsSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.Kibibytes]: { type: 'fixed', suffix: 'KiB' },
+  [NumericUnit.Kilobytes]: { type: 'fixed', suffix: 'KB' },
+  [NumericUnit.Mebibytes]: { type: 'fixed', suffix: 'MiB' },
+  [NumericUnit.Megabytes]: { type: 'fixed', suffix: 'MB' },
+  [NumericUnit.Gibibytes]: { type: 'fixed', suffix: 'GiB' },
+  [NumericUnit.Gigabytes]: { type: 'fixed', suffix: 'GB' },
+  [NumericUnit.Tebibytes]: { type: 'fixed', suffix: 'TiB' },
+  [NumericUnit.Terabytes]: { type: 'fixed', suffix: 'TB' },
+  [NumericUnit.Pebibytes]: { type: 'fixed', suffix: 'PiB' },
+  [NumericUnit.Petabytes]: { type: 'fixed', suffix: 'PB' },
+  // Data Rate
+  [NumericUnit.PacketsSec]: { type: 'fixed', suffix: 'pkt/s' },
+  [NumericUnit.BytesSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BytesSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.KibibytesSec]: { type: 'fixed', suffix: 'KiB/s' },
+  [NumericUnit.KibibitsSec]: { type: 'fixed', suffix: 'Kibit/s' },
+  [NumericUnit.KilobytesSec]: { type: 'fixed', suffix: 'KB/s' },
+  [NumericUnit.KilobitsSec]: { type: 'fixed', suffix: 'Kbit/s' },
+  [NumericUnit.MebibytesSec]: { type: 'fixed', suffix: 'MiB/s' },
+  [NumericUnit.MebibitsSec]: { type: 'fixed', suffix: 'Mibit/s' },
+  [NumericUnit.MegabytesSec]: { type: 'fixed', suffix: 'MB/s' },
+  [NumericUnit.MegabitsSec]: { type: 'fixed', suffix: 'Mbit/s' },
+  [NumericUnit.GibibytesSec]: { type: 'fixed', suffix: 'GiB/s' },
+  [NumericUnit.GibibitsSec]: { type: 'fixed', suffix: 'Gibit/s' },
+  [NumericUnit.GigabytesSec]: { type: 'fixed', suffix: 'GB/s' },
+  [NumericUnit.GigabitsSec]: { type: 'fixed', suffix: 'Gbit/s' },
+  [NumericUnit.TebibytesSec]: { type: 'fixed', suffix: 'TiB/s' },
+  [NumericUnit.TebibitsSec]: { type: 'fixed', suffix: 'Tibit/s' },
+  [NumericUnit.TerabytesSec]: { type: 'fixed', suffix: 'TB/s' },
+  [NumericUnit.TerabitsSec]: { type: 'fixed', suffix: 'Tbit/s' },
+  [NumericUnit.PebibytesSec]: { type: 'fixed', suffix: 'PiB/s' },
+  [NumericUnit.PebibitsSec]: { type: 'fixed', suffix: 'Pibit/s' },
+  [NumericUnit.PetabytesSec]: { type: 'fixed', suffix: 'PB/s' },
+  [NumericUnit.PetabitsSec]: { type: 'fixed', suffix: 'Pbit/s' },
+  // Throughput
+  [NumericUnit.Cps]: { type: 'fixed', suffix: 'cps' },
+  [NumericUnit.Ops]: { type: 'fixed', suffix: 'ops' },
+  [NumericUnit.Rps]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.ReadsSec]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.Wps]: { type: 'fixed', suffix: 'wps' },
+  [NumericUnit.Iops]: { type: 'fixed', suffix: 'iops' },
+  [NumericUnit.Cpm]: { type: 'fixed', suffix: 'cpm' },
+  [NumericUnit.Opm]: { type: 'fixed', suffix: 'opm' },
+  [NumericUnit.RpmReads]: { type: 'fixed', suffix: 'rpm' },
+  [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
+};
+
+const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];
+const SI_BIT_UNITS = ['b', 'Kbit', 'Mbit', 'Gbit', 'Tbit', 'Pbit'];
+
+const formatAutoScaleData = (
+  value: number,
+  base: 'iec' | 'si',
+  isBits: boolean,
+  perSec: boolean,
+  mantissa: number,
+): string => {
+  const divisor = base === 'iec' ? 1024 : 1000;
+  const units =
+    base === 'iec'
+      ? isBits
+        ? IEC_BIT_UNITS
+        : IEC_BYTE_UNITS
+      : isBits
+        ? SI_BIT_UNITS
+        : SI_BYTE_UNITS;
+  const rateSuffix = perSec ? '/s' : '';
+
+  let absVal = Math.abs(value);
+  let i = 0;
+  while (absVal >= divisor && i < units.length - 1) {
+    absVal /= divisor;
+    i++;
+  }
+  const scaledValue = value < 0 ? -absVal : absVal;
+  return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
+};
+
 export const formatNumber = (
-  value?: number,
+  value?: string | number,
   options?: NumberFormat,
 ): string => {
   if (!value && value !== 0) {
@@ -658,17 +799,49 @@ export const formatNumber = (
 
   // Guard against NaN only - ClickHouse can return numbers as strings, which
   // we should still format. Only truly non-numeric values (NaN) get passed through.
-  if (isNaN(value as number)) {
-    return String(value);
+  if (typeof value !== 'number') {
+    if (isNaN(Number(value))) {
+      return String(value);
+    }
+    value = Number(value);
   }
 
   if (!options) {
     return value.toString();
   }
 
+  const mantissa = options.mantissa ?? 0;
+
+  // Handle new unit categories with numericUnit
+  if (
+    options.numericUnit &&
+    (options.output === 'byte' ||
+      options.output === 'data_rate' ||
+      options.output === 'throughput')
+  ) {
+    const config = NUMERIC_UNIT_CONFIGS[options.numericUnit];
+    if (config) {
+      if (config.type === 'auto_scale') {
+        return formatAutoScaleData(
+          value,
+          config.base,
+          config.isBits,
+          config.perSec,
+          mantissa,
+        );
+      }
+      return `${value.toFixed(mantissa)} ${config.suffix}`;
+    }
+  }
+
+  // Handle data_rate / throughput without a numericUnit — fall through to number
+  if (options.output === 'data_rate' || options.output === 'throughput') {
+    return value.toFixed(mantissa);
+  }
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
-    mantissa: options.mantissa || 0,
+    mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
     ...(options.output === 'byte' && {
