@@ -152,7 +152,7 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '10000', label: '10s' },
   { value: '30000', label: '30s' },
 ];
-const DEFAULT_REFRESH_FREQUENCY = 4000;
+const DEFAULT_REFRESH_FREQUENCY = 10000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
@@ -1726,7 +1726,7 @@ function DBSearchPage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm">
+        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
           <SearchWhereInput
             tableConnection={inputSourceTableConnection}
             control={control}
@@ -1736,41 +1736,49 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
+            minWidth="min(600px, 100%)"
           />
-          <TimePicker
-            data-testid="time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onTimePickerSearch}
-            onRelativeSearch={onTimePickerRelativeSearch}
-            showLive={analysisMode === 'results'}
-            isLiveMode={isLive}
-            // Default to relative time mode if the user has made changes to interval and reloaded.
-            defaultRelativeTimeMode={
-              isLive && interval !== LIVE_TAIL_DURATION_MS
-            }
-          />
-          {isLive && (
-            <Tooltip label="Live tail refresh interval">
-              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
-                <Select
-                  size="sm"
-                  w="100%"
-                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                  value={String(refreshFrequency)}
-                  onChange={value =>
-                    setRefreshFrequency(value ? parseInt(value, 10) : null)
-                  }
-                  allowDeselect={false}
-                  comboboxProps={{
-                    withinPortal: true,
-                    zIndex: 1000,
-                  }}
-                />
-              </Box>
-            </Tooltip>
-          )}
-          <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          <Flex
+            gap="sm"
+            style={{ flex: '0 1 500px', minWidth: 0 }}
+            align="center"
+          >
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+              width="100%"
+            />
+            {isLive && (
+              <Tooltip label="Live tail refresh interval">
+                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                  <Select
+                    size="sm"
+                    w="100%"
+                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                    value={String(refreshFrequency)}
+                    onChange={value =>
+                      setRefreshFrequency(value ? parseInt(value, 10) : null)
+                    }
+                    allowDeselect={false}
+                    comboboxProps={{
+                      withinPortal: true,
+                      zIndex: 1000,
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            )}
+            <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          </Flex>
         </Flex>
         <ActiveFilterPills searchFilters={searchFilters} mt={6} />
       </form>
@@ -2095,6 +2103,7 @@ function DBSearchPage() {
                             collapseAllRows={collapseAllRows}
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
+                            enableSmallFirstWindow
                           />
                         )}
                     </Box>

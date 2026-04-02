@@ -128,7 +128,7 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        <NumberFormatForm control={control} />
+        <NumberFormatForm control={control} setValue={setValue} />
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>

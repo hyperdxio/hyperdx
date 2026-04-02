@@ -35,7 +35,7 @@
     "setup": "yarn install && husky install",
     "build:common-utils": "nx run @hyperdx/common-utils:dev:build",
     "app:dev": "concurrently -k -n 'API,APP,ALERTS-TASK,COMMON-UTILS' -c 'green.bold,blue.bold,yellow.bold,magenta' 'nx run @hyperdx/api:dev 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\"$HDX_DEV_LOGS_DIR/api.log\"}' 'nx run @hyperdx/app:dev 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\"$HDX_DEV_LOGS_DIR/app.log\"}' 'nx run @hyperdx/api:dev-task check-alerts 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\"$HDX_DEV_LOGS_DIR/alerts.log\"}' 'nx run @hyperdx/common-utils:dev 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\"$HDX_DEV_LOGS_DIR/common-utils.log\"}'",
-    "app:dev:local": "concurrently -k -n 'APP,COMMON-UTILS' -c 'blue.bold,magenta' 'nx run @hyperdx/app:dev:local' 'nx run @hyperdx/common-utils:dev'",
+    "app:dev:local": "sh -c '. ./scripts/dev-env.sh && yarn build:common-utils && concurrently -k -n \"APP,COMMON-UTILS\" -c \"blue.bold,magenta\" \"nx run @hyperdx/app:dev:local 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\\\"$HDX_DEV_LOGS_DIR/app.log\\\"}\" \"nx run @hyperdx/common-utils:dev 2>&1 | tee ${HDX_DEV_LOGS_DIR:+\\\"$HDX_DEV_LOGS_DIR/common-utils.log\\\"}\"'",
     "app:lint": "nx run @hyperdx/app:ci:lint",
     "app:storybook": "nx run @hyperdx/app:storybook",
     "build:clickhouse": "nx run @hyperdx/common-utils:build && nx run @hyperdx/app:build:clickhouse",
@@ -47,6 +47,7 @@
     "knip": "knip",
     "knip:ci": "knip --reporter json",
     "lint": "npx nx run-many -t ci:lint",
+    "lint:fix": "npx nx run-many -t lint:fix",
     "version": "make version",
     "release": "npx changeset tag && npx changeset publish"
   },
