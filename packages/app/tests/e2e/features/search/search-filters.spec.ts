@@ -99,3 +99,99 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   //   // Add methods to FilterComponent for show more/less
   // });
 });
+
+test.describe(
+  'Search Filters - Special Characters in Values (HDX-3901)',
+  { tag: ['@search'] },
+  () => {
+    function buildSearchUrlWithFilter(condition: string): string {
+      const filters = [{ type: 'sql', condition }];
+      const encoded = encodeURIComponent(JSON.stringify(filters));
+      return `/search?filters=${encoded}`;
+    }
+
+    test('Should display filter when value contains = character', async ({
+      page,
+    }) => {
+      const searchPage = new SearchPage(page);
+      const filterGroup = 'SeverityText';
+      const filterValue = 'key=value';
+      const url = buildSearchUrlWithFilter(
+        `${filterGroup} IN ('${filterValue}')`,
+      );
+
+      await page.goto(url);
+      await searchPage.filters.openFilterGroup(filterGroup);
+
+      const filterInput = searchPage.filters.getFilterCheckboxInput(
+        filterGroup,
+        filterValue,
+      );
+      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeChecked();
+    });
+
+    test('Should display filter when value contains > character', async ({
+      page,
+    }) => {
+      const searchPage = new SearchPage(page);
+      const filterGroup = 'SeverityText';
+      const filterValue = 'x > y';
+      const url = buildSearchUrlWithFilter(
+        `${filterGroup} IN ('${filterValue}')`,
+      );
+
+      await page.goto(url);
+      await searchPage.filters.openFilterGroup(filterGroup);
+
+      const filterInput = searchPage.filters.getFilterCheckboxInput(
+        filterGroup,
+        filterValue,
+      );
+      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeChecked();
+    });
+
+    test('Should display filter when value contains < character', async ({
+      page,
+    }) => {
+      const searchPage = new SearchPage(page);
+      const filterGroup = 'SeverityText';
+      const filterValue = '<html>';
+      const url = buildSearchUrlWithFilter(
+        `${filterGroup} IN ('${filterValue}')`,
+      );
+
+      await page.goto(url);
+      await searchPage.filters.openFilterGroup(filterGroup);
+
+      const filterInput = searchPage.filters.getFilterCheckboxInput(
+        filterGroup,
+        filterValue,
+      );
+      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeChecked();
+    });
+
+    test('Should display filter when value contains OR text', async ({
+      page,
+    }) => {
+      const searchPage = new SearchPage(page);
+      const filterGroup = 'SeverityText';
+      const filterValue = 'true OR false';
+      const url = buildSearchUrlWithFilter(
+        `${filterGroup} IN ('${filterValue}')`,
+      );
+
+      await page.goto(url);
+      await searchPage.filters.openFilterGroup(filterGroup);
+
+      const filterInput = searchPage.filters.getFilterCheckboxInput(
+        filterGroup,
+        filterValue,
+      );
+      await expect(filterInput).toBeVisible();
+      await expect(filterInput).toBeChecked();
+    });
+  },
+);
