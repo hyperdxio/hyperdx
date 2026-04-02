@@ -113,11 +113,14 @@ describe('getTraceDurationNumberFormat', () => {
     expect(result).toBeUndefined();
   });
 
-  it('returns undefined for sum aggFn on duration', () => {
+  it('detects duration with sum aggFn', () => {
     const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
       { valueExpression: 'Duration', aggFn: 'sum' },
     ]);
-    expect(result).toBeUndefined();
+    expect(result).toEqual({
+      output: 'duration',
+      factor: 1e-9,
+    });
   });
 
   it('detects duration with quantile aggFn', () => {

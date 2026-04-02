@@ -396,12 +396,13 @@ export function getDurationSecondsExpression(source: TTraceSource) {
 }
 
 // Aggregate functions whose output preserves the unit of the input value.
-// count, count_distinct, and sum produce values in different units and
-// should not inherit the duration format.
+// count and count_distinct produce dimensionless counts and should not
+// inherit the duration format.
 const DURATION_PRESERVING_AGG_FNS = new Set([
   'avg',
   'min',
   'max',
+  'sum',
   'any',
   'last_value',
   'quantile',
@@ -428,8 +429,8 @@ function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
  * if no match is detected.
  *
  * Only applies when the aggregate function preserves the unit of the input
- * (e.g. avg, min, max, p95). Functions like count, count_distinct, and sum
- * produce values in different units and are skipped.
+ * (e.g. avg, min, max, sum, p95). Functions like count and count_distinct
+ * produce dimensionless values and are skipped.
  *
  * The returned format uses the `duration` output with a `factor` that converts
  * from the raw value's precision to seconds.
