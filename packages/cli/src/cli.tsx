@@ -329,8 +329,9 @@ auth
 
 program
   .command('sources')
-  .description('List available sources')
+  .description('List available sources with table schemas')
   .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
   .action(async opts => {
     const server = resolveServer(opts.server);
     const client = new ApiClient({ apiUrl: server });
@@ -346,26 +347,94 @@ program
 
     const sources = await client.getSources();
     if (sources.length === 0) {
-      process.stdout.write('No sources found.\n');
+      if (opts.json) {
+        process.stdout.write('[]\n');
+      } else {
+        process.stdout.write('No sources found.\n');
+      }
       return;
     }
 
-    // Print as a table
-    const nameWidth = Math.max(6, ...sources.map(s => s.name.length));
-    const kindWidth = Math.max(5, ...sources.map(s => s.kind.length));
+    const chClient = client.createClickHouseClient();
 
-    process.stdout.write(
-      `${chalk.bold('Name'.padEnd(nameWidth))}  ${chalk.bold('Kind'.padEnd(kindWidth))}  ${chalk.bold('Table')}\n`,
-    );
-    process.stdout.write(
-      `${'─'.repeat(nameWidth)}  ${'─'.repeat(kindWidth)}  ${'─'.repeat(30)}\n`,
-    );
+    // Fetch schemas for non-metric sources
+    const schemas = new Map<string, string | null>();
+    for (const s of sources) {
+      if (s.kind === 'metric') {
+        schemas.set(s.id, null);
+        continue;
+      }
+      try {
+        const resultSet = await chClient.query({
+          query: `SHOW CREATE TABLE ${s.from.databaseName}.${s.from.tableName}`,
+          format: 'JSON',
+          connectionId: s.connection,
+        });
+        const json = await resultSet.json<{ statement: string }>();
+        const row = (json.data as { statement: string }[])?.[0];
+        schemas.set(s.id, row?.statement?.trimEnd() ?? null);
+      } catch {
+        schemas.set(s.id, null);
+      }
+    }
 
+    if (opts.json) {
+      const output = sources.map(s => ({
+        name: s.name,
+        kind: s.kind,
+        database: s.from.databaseName,
+        table: s.from.tableName,
+        connection: s.connection,
+        schema: schemas.get(s.id) ?? null,
+        expressions: {
+          timestamp: s.timestampValueExpression ?? null,
+          displayedTimestamp: s.displayedTimestampValueExpression ?? null,
+          body: s.bodyExpression ?? null,
+          severityText: s.severityTextExpression ?? null,
+          serviceName: s.serviceNameExpression ?? null,
+          traceId: s.traceIdExpression ?? null,
+          spanId: s.spanIdExpression ?? null,
+          parentSpanId: s.parentSpanIdExpression ?? null,
+          spanName: s.spanNameExpression ?? null,
+          duration: s.durationExpression ?? null,
+          durationPrecision: s.durationPrecision ?? null,
+          statusCode: s.statusCodeExpression ?? null,
+          eventAttributes: s.eventAttributesExpression ?? null,
+          resourceAttributes: s.resourceAttributesExpression ?? null,
+          implicitColumn: s.implicitColumnExpression ?? null,
+          defaultTableSelect: s.defaultTableSelectExpression ?? null,
+          orderBy: s.orderByExpression ?? null,
+        },
+        correlatedSources: {
+          log: s.logSourceId ?? null,
+          trace: s.traceSourceId ?? null,
+          metric: s.metricSourceId ?? null,
+          session: s.sessionSourceId ?? null,
+        },
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    // Human-readable output
     for (const s of sources) {
       const table = `${s.from.databaseName}.${s.from.tableName}`;
+
       process.stdout.write(
-        `${s.name.padEnd(nameWidth)}  ${chalk.dim(s.kind.padEnd(kindWidth))}  ${chalk.dim(table)}\n`,
+        `${chalk.bold.cyan(s.name)}  ${chalk.dim(s.kind)}  ${chalk.dim(table)}\n`,
       );
+
+      const schema = schemas.get(s.id);
+      if (schema) {
+        const lines = schema.split('\n');
+        for (const line of lines) {
+          process.stdout.write(chalk.dim(`  ${line}\n`));
+        }
+      } else if (s.kind !== 'metric') {
+        process.stdout.write(chalk.dim('  (schema unavailable)\n'));
+      }
+
+      process.stdout.write('\n');
     }
   });
 
