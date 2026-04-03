@@ -38,7 +38,9 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
@@ -650,7 +652,7 @@ export function DBTraceWaterfallChartContainer({
     isFilterActive,
     isFilterExpanded,
     setIsFilterExpanded,
-    onSubmit: onSubmitFilters,
+    onSubmit: submitFilters,
   } = useWaterfallSearchState({
     hasLogSource: !!logTableSource,
   });
@@ -659,8 +661,19 @@ export function DBTraceWaterfallChartContainer({
     defaultValues: {
       traceWhere: traceWhere ?? '',
       logWhere: logWhere ?? '',
+      traceWhereLanguage: getStoredLanguage() ?? 'lucene',
     },
   });
+
+  const onSubmitFilters = useCallback(
+    (data: { traceWhere: string; logWhere: string }) => {
+      submitFilters({
+        traceWhere: data.traceWhere,
+        logWhere: data.traceWhere,
+      });
+    },
+    [submitFilters],
+  );
 
   const onClearFilters = useCallback(() => {
     setValue('traceWhere', '');
@@ -1270,46 +1283,25 @@ export function DBTraceWaterfallChartContainer({
     <>
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
-          <Box
-            mt="xs"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            <Text size="xs">Spans filter</Text>
-            <SearchInputV2
+          <Box mt="xs">
+            <SearchWhereInput
               tableConnection={tcFromSource(traceTableSource)}
-              placeholder={
-                'Search trace spans w/ Lucene ex. StatusCode:"Error"'
-              }
-              language="lucene"
               name="traceWhere"
+              languageName="traceWhereLanguage"
               control={control}
               size="xs"
+              showLabel={false}
+              allowMultiline={false}
               onSubmit={handleSubmit(onSubmitFilters)}
+              onLanguageChange={lang =>
+                setValue('traceWhereLanguage', lang, {
+                  shouldDirty: true,
+                })
+              }
+              lucenePlaceholder='Filter spans & logs ex. StatusCode:"Error"'
+              sqlPlaceholder="Filter spans & logs ex. StatusCode = 'Error'"
               data-testid="trace-search-input"
             />
-
-            {logTableSource && (
-              <>
-                <Text size="xs">Logs filter</Text>
-                <SearchInputV2
-                  tableConnection={tcFromSource(logTableSource)}
-                  placeholder={
-                    'Search trace logs w/ Lucene ex. SeverityText:"error"'
-                  }
-                  language="lucene"
-                  name="logWhere"
-                  control={control}
-                  size="xs"
-                  onSubmit={handleSubmit(onSubmitFilters)}
-                  data-testid="log-search-input"
-                />
-              </>
-            )}
           </Box>
         </form>
       )}

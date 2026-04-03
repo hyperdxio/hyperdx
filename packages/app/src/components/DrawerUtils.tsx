@@ -3,8 +3,8 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { Box, CloseButton, Group, Text } from '@mantine/core';
 
 const LARGE_SCREEN_BREAKPOINT = 1440;
-const LARGE_SCREEN_WIDTH_PX = 1000;
-const SMALL_SCREEN_WIDTH_PERCENT = 80;
+const LARGE_SCREEN_WIDTH_PX = 1100;
+const SMALL_SCREEN_WIDTH_PERCENT = 85;
 
 export function getInitialDrawerWidthPercent(): number {
   if (typeof window === 'undefined') return SMALL_SCREEN_WIDTH_PERCENT;

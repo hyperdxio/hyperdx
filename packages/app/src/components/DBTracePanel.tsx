@@ -160,7 +160,7 @@ export default function DBTracePanel({
   }, [setEventRowWhere]);
 
   const { size: rightPanelSize, startResize: startHorizontalResize } =
-    useResizable(40, 'right');
+    useResizable(35, 'right');
 
   const selectedSpanSource = useMemo(() => {
     if (!eventRowWhere) return null;
@@ -299,7 +299,7 @@ export default function DBTracePanel({
           style={{
             flex: `${rightPanelSize} 1 0`,
             overflow: 'auto',
-            minWidth: 0,
+            minWidth: 300,
             borderLeft: '1px solid var(--color-border)',
             paddingLeft: 12,
             padding: 'var(--mantine-spacing-sm)',
