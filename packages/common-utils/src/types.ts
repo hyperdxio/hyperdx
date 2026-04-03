@@ -9,6 +9,8 @@ export enum MetricsDataType {
   ExponentialHistogram = 'exponential histogram',
 }
 
+export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -488,8 +490,72 @@ export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 // --------------------------
 // DASHBOARDS
 // --------------------------
+export enum NumericUnit {
+  // Data
+  BytesIEC = 'bytes_iec',
+  BytesSI = 'bytes_si',
+  BitsIEC = 'bits_iec',
+  BitsSI = 'bits_si',
+  Kibibytes = 'kibibytes',
+  Kilobytes = 'kilobytes',
+  Mebibytes = 'mebibytes',
+  Megabytes = 'megabytes',
+  Gibibytes = 'gibibytes',
+  Gigabytes = 'gigabytes',
+  Tebibytes = 'tebibytes',
+  Terabytes = 'terabytes',
+  Pebibytes = 'pebibytes',
+  Petabytes = 'petabytes',
+  // Data Rate
+  PacketsSec = 'packets_sec',
+  BytesSecIEC = 'bytes_sec_iec',
+  BytesSecSI = 'bytes_sec_si',
+  BitsSecIEC = 'bits_sec_iec',
+  BitsSecSI = 'bits_sec_si',
+  KibibytesSec = 'kibibytes_sec',
+  KibibitsSec = 'kibibits_sec',
+  KilobytesSec = 'kilobytes_sec',
+  KilobitsSec = 'kilobits_sec',
+  MebibytesSec = 'mebibytes_sec',
+  MebibitsSec = 'mebibits_sec',
+  MegabytesSec = 'megabytes_sec',
+  MegabitsSec = 'megabits_sec',
+  GibibytesSec = 'gibibytes_sec',
+  GibibitsSec = 'gibibits_sec',
+  GigabytesSec = 'gigabytes_sec',
+  GigabitsSec = 'gigabits_sec',
+  TebibytesSec = 'tebibytes_sec',
+  TebibitsSec = 'tebibits_sec',
+  TerabytesSec = 'terabytes_sec',
+  TerabitsSec = 'terabits_sec',
+  PebibytesSec = 'pebibytes_sec',
+  PebibitsSec = 'pebibits_sec',
+  PetabytesSec = 'petabytes_sec',
+  PetabitsSec = 'petabits_sec',
+  // Throughput
+  Cps = 'cps',
+  Ops = 'ops',
+  Rps = 'rps',
+  ReadsSec = 'reads_sec',
+  Wps = 'wps',
+  Iops = 'iops',
+  Cpm = 'cpm',
+  Opm = 'opm',
+  RpmReads = 'rpm_reads',
+  Wpm = 'wpm',
+}
+
 export const NumberFormatSchema = z.object({
-  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.nativeEnum(NumericUnit).optional(),
   mantissa: z.number().int().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
@@ -520,6 +586,7 @@ const SharedChartDisplaySettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
@@ -589,6 +656,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -760,9 +828,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   tiles: z.array(TileTemplateSchema),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),
@@ -785,6 +856,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
@@ -929,6 +1001,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
 
   // Optional fields for traces
+  sampleRateExpression: z.string().optional(),
   logSourceId: z.string().optional().nullable(),
   sessionSourceId: z.string().optional(),
   metricSourceId: z.string().optional(),
@@ -1016,6 +1089,28 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+
+type SourceLikeForSampleWeight = {
+  kind: SourceKind;
+  sampleRateExpression?: string | null;
+};
+
+/** Trace sample rate expression for chart sampleWeightExpression when set. */
+export function getSampleWeightExpression(
+  source: SourceLikeForSampleWeight,
+): string | undefined {
+  return source.kind === SourceKind.Trace && source.sampleRateExpression
+    ? source.sampleRateExpression
+    : undefined;
+}
+
+/** For object spread: { ...pickSampleWeightExpressionProps(source) } */
+export function pickSampleWeightExpressionProps(
+  source: SourceLikeForSampleWeight,
+): { sampleWeightExpression: string } | undefined {
+  const w = getSampleWeightExpression(source);
+  return w ? { sampleWeightExpression: w } : undefined;
 }
 
 export const AssistantLineTableConfigSchema = z.object({

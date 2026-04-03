@@ -70,6 +70,7 @@ export class TimePickerComponent {
     const isOpen = await this.pickerPopover.isVisible();
     if (isOpen) return;
     await this.page.waitForLoadState('networkidle');
+    await this.page.keyboard.press('Escape');
     await this.pickerInput.click();
     await this.pickerPopover.waitFor({ state: 'visible', timeout: 5000 });
   }

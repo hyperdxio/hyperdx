@@ -6,7 +6,7 @@ import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
-import DBRowTableIconButton from './DBRowTableIconButton';
+import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 

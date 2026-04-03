@@ -10,6 +10,7 @@ import {
   AlertChannelType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  pickSampleWeightExpressionProps,
   SourceKind,
   WebhookService,
   zAlertChannelType,
@@ -119,7 +120,7 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-export const notifyChannel = async ({
+const notifyChannel = async ({
   channel,
   message,
 }: {
@@ -598,6 +599,7 @@ ${targetTemplate}`;
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
+      ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {

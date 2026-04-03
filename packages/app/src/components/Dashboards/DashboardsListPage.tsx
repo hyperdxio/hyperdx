@@ -5,6 +5,8 @@ import Router from 'next/router';
 import { useQueryState } from 'nuqs';
 import {
   ActionIcon,
+  Anchor,
+  Box,
   Button,
   Container,
   Flex,
@@ -29,6 +31,9 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import { FavoriteButton } from '@/components/FavoriteButton';
+import { ListingCard } from '@/components/ListingCard';
+import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
@@ -36,13 +41,12 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import { useFavorites } from '@/favorites';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
+import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
-
-import { DashboardCard } from './DashboardCard';
-import { DashboardListRow } from './DashboardListRow';
 
 const PRESET_DASHBOARDS = [
   {
@@ -79,6 +83,21 @@ export default function DashboardsListPage() {
     defaultValue: 'grid',
   });
 
+  const { data: favorites } = useFavorites();
+  const favoritedDashboards = useMemo(() => {
+    if (!dashboards || !favorites?.length) return [];
+
+    const favoritedDashboardIds = new Set(
+      favorites
+        .filter(f => f.resourceType === 'dashboard')
+        .map(f => f.resourceId),
+    );
+
+    return dashboards
+      .filter(d => favoritedDashboardIds.has(d.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [dashboards, favorites]);
+
   const allTags = useMemo(() => {
     if (!dashboards) return [];
     const tags = new Set<string>();
@@ -102,6 +121,11 @@ export default function DashboardsListPage() {
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [dashboards, search, tagFilter]);
+
+  const tagGroups = useMemo(
+    () => groupByTags(filteredDashboards, tagFilter),
+    [filteredDashboards, tagFilter],
+  );
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(
@@ -156,11 +180,42 @@ export default function DashboardsListPage() {
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Preset Dashboards
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="xl">
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="sm">
           {PRESET_DASHBOARDS.map(p => (
-            <DashboardCard key={p.href} {...p} />
+            <ListingCard key={p.href} {...p} />
           ))}
         </SimpleGrid>
+        <Text ta="right" mb="sm">
+          <Anchor component={Link} href="/dashboards/templates" fz="sm">
+            Browse dashboard templates &rarr;
+          </Anchor>
+        </Text>
+
+        {favoritedDashboards.length > 0 && (
+          <>
+            <Text fw={500} size="sm" c="dimmed" mb="sm">
+              Favorites
+            </Text>
+            <SimpleGrid
+              cols={{ base: 1, sm: 2, md: 3 }}
+              mb="xl"
+              data-testid="favorite-dashboards-section"
+            >
+              {favoritedDashboards.map(d => (
+                <ListingCard
+                  key={d.id}
+                  name={d.name}
+                  href={`/dashboards/${d.id}`}
+                  tags={d.tags}
+                  description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                  onDelete={() => handleDelete(d.id)}
+                  resourceId={d.id}
+                  resourceType="dashboard"
+                />
+              ))}
+            </SimpleGrid>
+          </>
+        )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Team Dashboards
@@ -296,35 +351,58 @@ export default function DashboardsListPage() {
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={20} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
-                <Table.Th>Tiles</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredDashboards.map(d => (
-                <DashboardListRow
+                <ListingRow
                   key={d.id}
-                  dashboard={d}
+                  id={d.id}
+                  name={d.name}
+                  href={`/dashboards/${d.id}`}
+                  tags={d.tags}
                   onDelete={handleDelete}
+                  leftSection={
+                    <Box ps={4}>
+                      <FavoriteButton
+                        resourceType="dashboard"
+                        resourceId={d.id}
+                        size="xs"
+                      />
+                    </Box>
+                  }
                 />
               ))}
             </Table.Tbody>
           </Table>
         ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-            {filteredDashboards.map(d => (
-              <DashboardCard
-                key={d.id}
-                name={d.name}
-                href={`/dashboards/${d.id}`}
-                tags={d.tags}
-                description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
-                onDelete={() => handleDelete(d.id)}
-              />
+          <Stack gap="lg">
+            {tagGroups.map(group => (
+              <div key={group.tag}>
+                <Text fw={500} size="sm" c="dimmed" mb="sm">
+                  {group.tag}
+                </Text>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+                  {group.items.map(d => (
+                    <ListingCard
+                      key={d.id}
+                      name={d.name}
+                      href={`/dashboards/${d.id}`}
+                      tags={d.tags}
+                      description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                      onDelete={() => handleDelete(d.id)}
+                      resourceId={d.id}
+                      resourceType="dashboard"
+                    />
+                  ))}
+                </SimpleGrid>
+              </div>
             ))}
-          </SimpleGrid>
+          </Stack>
         )}
       </Container>
     </div>

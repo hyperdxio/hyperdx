@@ -6,7 +6,8 @@
  */
 import { Page } from '@playwright/test';
 
-const API_URL = process.env.E2E_API_URL || 'http://localhost:29000';
+const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
+const API_URL = process.env.E2E_API_URL || `http://localhost:${API_PORT}`;
 
 /**
  * Fetches the current user's access key for API authentication

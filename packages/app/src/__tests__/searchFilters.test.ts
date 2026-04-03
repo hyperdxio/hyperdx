@@ -82,6 +82,51 @@ describe('searchFilters', () => {
         { type: 'sql', condition: 'another_column NOT IN (true, false)' },
       ]);
     });
+
+    it('should escape single quotes in filter values', () => {
+      const filters = {
+        message: {
+          included: new Set<string | boolean>(["my 'filter' key"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "message IN ('my ''filter'' key')",
+        },
+      ]);
+    });
+
+    it('should escape single quotes in excluded filter values', () => {
+      const filters = {
+        message: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(["it's a test"]),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "message NOT IN ('it''s a test')",
+        },
+      ]);
+    });
+
+    it('should escape single quotes with stringifyKeys', () => {
+      const filters = {
+        'json.key': {
+          included: new Set<string | boolean>(["value with 'quotes'"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
+        {
+          type: 'sql',
+          condition: "toString(json.key) IN ('value with ''quotes''')",
+        },
+      ]);
+    });
   });
 
   describe('parseQuery', () => {
@@ -315,6 +360,234 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('parses IN clauses when values contain = character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('key=value')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['key=value']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain > character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('x > y')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['x > y']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain < character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('<html>')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['<html>']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain OR text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('true OR false')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['true OR false']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still skips real comparison operators outside quotes', () => {
+      const result = parseQuery([
+        { type: 'sql', condition: `status_code = 200` },
+        { type: 'sql', condition: `duration > 1000` },
+        { type: 'sql', condition: `count < 5` },
+        {
+          type: 'sql',
+          condition: `level IN ('error') OR severity IN ('high')`,
+        },
+      ]);
+      expect(result.filters).toEqual({});
+    });
+
+    it('extracts IN clause from AND condition with quoted = in non-IN part', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `SpanName = 'test=value' AND SpanKind IN ('Server')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        SpanKind: {
+          included: new Set(['Server']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain BETWEEN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('I AM BETWEEN THE HEDGES AND I LOVE IT HERE')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['I AM BETWEEN THE HEDGES AND I LOVE IT HERE']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still parses real BETWEEN conditions correctly', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `duration BETWEEN 100 AND 500`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 100, max: 500 },
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain NOT IN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('this is NOT IN scope')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['this is NOT IN scope']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles values with single quotes (SQL-escaped)', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message IN ('my ''filter'' key')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles excluded values with single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message NOT IN ('it''s a test')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(),
+          excluded: new Set(["it's a test"]),
+        },
+      });
+    });
+
+    it('handles multiple values where some contain single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message IN ('normal value', 'it''s quoted', 'another ''one''')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(['normal value', "it's quoted", "another 'one'"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles SQL-escaped quotes with operators inside', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('value with '' = special')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(["value with ' = special"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles values with single quotes in AND conditions', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `status = 'active' AND message IN ('it''s here')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(["it's here"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('does not split AND-joined condition on AND inside quoted string', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('foo AND bar') AND level IN ('info')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['foo AND bar']),
+          excluded: new Set(),
+        },
+        level: {
+          included: new Set(['info']),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
@@ -386,6 +659,54 @@ describe('searchFilters', () => {
         },
       };
       expect(areFiltersEqual(a, b)).toBe(true);
+    });
+  });
+
+  describe('round-trip: filtersToQuery -> parseQuery with quotes', () => {
+    it('round-trips values containing single quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>(["my 'filter' key"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips mixed values with and without quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set<string | boolean>(["don't exclude"]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set(["don't exclude"]),
+        },
+      });
     });
   });
 
