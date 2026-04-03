@@ -99,3 +99,7 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   //   // Add methods to FilterComponent for show more/less
   // });
 });
+// HDX-3901: Filter parsing with special characters (=, >, <, OR) in quoted
+// values is tested via unit tests in searchFilters.test.ts (6 dedicated test
+// cases). The parseQuery / extractInClauses / containsOperatorOutsideQuotes
+// functions are pure client-side logic that doesn't require E2E coverage.

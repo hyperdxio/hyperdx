@@ -78,6 +78,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -151,7 +152,7 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '10000', label: '10s' },
   { value: '30000', label: '30s' },
 ];
-const DEFAULT_REFRESH_FREQUENCY = 4000;
+const DEFAULT_REFRESH_FREQUENCY = 10000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
@@ -1779,6 +1780,7 @@ function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
+        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -2101,6 +2103,7 @@ function DBSearchPage() {
                             collapseAllRows={collapseAllRows}
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
+                            enableSmallFirstWindow
                           />
                         )}
                     </Box>
