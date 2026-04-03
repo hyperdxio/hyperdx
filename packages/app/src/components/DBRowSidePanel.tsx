@@ -96,6 +96,7 @@ type DBRowSidePanelProps = {
   aliasWith?: WithClause[];
   onClose: () => void;
   isNestedPanel?: boolean;
+  withOverlay?: boolean;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
 };
@@ -551,6 +552,7 @@ export default function DBRowSidePanelErrorBoundary({
   aliasWith,
   source,
   isNestedPanel,
+  withOverlay,
   breadcrumbPath = [],
   onBreadcrumbClick,
 }: DBRowSidePanelProps) {
@@ -590,7 +592,7 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withOverlay={!isNestedPanel}
+      withOverlay={withOverlay ?? !isNestedPanel}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();

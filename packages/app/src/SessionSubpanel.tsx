@@ -270,6 +270,12 @@ export default function SessionSubpanel({
   const [rowId, setRowId] = useState<string | undefined>(undefined);
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
+  useEffect(() => {
+    return () => {
+      setDrawerOpen(false);
+    };
+  }, [setDrawerOpen]);
+
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
@@ -470,6 +476,8 @@ export default function SessionSubpanel({
             source={traceSource}
             rowId={rowId}
             aliasWith={aliasWith}
+            isNestedPanel={true}
+            withOverlay={true}
             onClose={() => {
               setDrawerOpen(false);
               setRowId(undefined);
