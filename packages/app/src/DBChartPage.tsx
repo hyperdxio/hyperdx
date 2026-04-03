@@ -253,6 +253,7 @@ function DBChartExplorerPage() {
         onTimeRangeSearch={onSearch}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
+        autoRun
       />
     </Box>
   );

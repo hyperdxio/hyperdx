@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import storybook from 'eslint-plugin-storybook';
 import nextPlugin from '@next/eslint-plugin-next';
-import reactPlugin from 'eslint-plugin-react';
+import eslintReactPlugin from '@eslint-react/eslint-plugin';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
@@ -112,16 +112,19 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@next/next': nextPlugin,
-      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
       'react-hook-form': fixupPluginRules(reactHookFormPlugin), // not compatible with eslint 9 yet
+      ...eslintReactPlugin.configs.recommended.plugins,
     },
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
       'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
+      'react-hook-form/no-use-watch': 'error',
+      '@eslint-react/no-unstable-default-props': 'error',
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-empty-function': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -135,7 +138,6 @@ export default [
           varsIgnorePattern: '^_',
         },
       ],
-      'react/display-name': 'off',
       'simple-import-sort/exports': 'error',
       'simple-import-sort/imports': [
         'error',
@@ -155,9 +157,7 @@ export default [
         ...UI_SYNTAX_RESTRICTIONS,
         ...DATE_SYNTAX_RESTRICTIONS,
       ],
-      'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
-      'react-hook-form/no-use-watch': 'error',
     },
     languageOptions: {
       parser: tseslint.parser,

@@ -107,7 +107,7 @@ const DBRowSidePanel = ({
   isNestedPanel = false,
   setSubDrawerOpen,
   onClose,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
@@ -127,7 +127,7 @@ const DBRowSidePanel = ({
   const handleBreadcrumbClick = useCallback(
     (targetLevel: number) => {
       // Current panel's level in the hierarchy
-      const currentLevel = breadcrumbPath.length;
+      const currentLevel = breadcrumbPath?.length ?? 0;
 
       // The target panel level corresponds to the breadcrumb index:
       // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
@@ -149,7 +149,7 @@ const DBRowSidePanel = ({
         onBreadcrumbClick?.(targetLevel);
       }
     },
-    [breadcrumbPath.length, onBreadcrumbClick, onClose],
+    [breadcrumbPath?.length, onBreadcrumbClick, onClose],
   );
 
   const hasOverviewPanel = useMemo(() => {
@@ -551,7 +551,7 @@ export default function DBRowSidePanelErrorBoundary({
   aliasWith,
   source,
   isNestedPanel,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
