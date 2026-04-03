@@ -171,6 +171,10 @@ export default function GroupContainer({
             Add Tab
           </Menu.Item>
         )}
+        {(onToggleCollapsible ||
+          onToggleBordered ||
+          onToggleDefaultCollapsed) &&
+          onAddTab && <Menu.Divider />}
         {onToggleCollapsible && (
           <Menu.Item
             onClick={onToggleCollapsible}
@@ -179,20 +183,20 @@ export default function GroupContainer({
             {collapsible ? 'Disable Collapse' : 'Enable Collapse'}
           </Menu.Item>
         )}
-        {onToggleBordered && (
-          <Menu.Item
-            onClick={onToggleBordered}
-            data-testid={`group-toggle-bordered-${container.id}`}
-          >
-            {bordered ? 'Hide Border' : 'Show Border'}
-          </Menu.Item>
-        )}
         {collapsible && onToggleDefaultCollapsed && (
           <Menu.Item
             onClick={onToggleDefaultCollapsed}
             data-testid={`group-toggle-default-${container.id}`}
           >
             {defaultCollapsed ? 'Expand by Default' : 'Collapse by Default'}
+          </Menu.Item>
+        )}
+        {onToggleBordered && (
+          <Menu.Item
+            onClick={onToggleBordered}
+            data-testid={`group-toggle-bordered-${container.id}`}
+          >
+            {bordered ? 'Hide Border' : 'Show Border'}
           </Menu.Item>
         )}
         {onDelete && (
