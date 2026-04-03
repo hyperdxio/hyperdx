@@ -329,9 +329,65 @@ auth
 
 program
   .command('sources')
-  .description('List available sources with table schemas')
+  .description(
+    'List data sources (log, trace, session, metric) with ClickHouse table schemas',
+  )
   .option('-s, --server <url>', 'HyperDX API server URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+About:
+  A "source" in HyperDX is a named data source backed by a ClickHouse table.
+  Each source has a kind (log, trace, session, or metric) and a set of
+  expression mappings that tell HyperDX which columns hold timestamps, trace
+  IDs, span names, severity levels, etc.
+
+  This command lists all sources and fetches the ClickHouse CREATE TABLE
+  schema for each (metric sources are skipped since their schema is not
+  useful for direct queries).
+
+  Use --json for structured output suitable for LLM / agent consumption.
+
+JSON output schema (--json):
+  Array of objects, each with:
+    id                  - Source ID (use with other hdx commands)
+    name                - Human-readable source name
+    kind                - "log" | "trace" | "session" | "metric"
+    database            - ClickHouse database name
+    table               - ClickHouse table name
+    connection          - Connection ID for the ClickHouse proxy
+    schema              - Full CREATE TABLE DDL (null for metric sources)
+    expressions         - Column expression mappings:
+        timestamp             - Primary timestamp column (e.g. "TimestampTime")
+        displayedTimestamp    - High-precision display timestamp (DateTime64)
+        body                  - Log body column
+        severityText          - Severity level column (e.g. "SeverityText")
+        serviceName           - Service name column
+        traceId               - Trace ID column
+        spanId                - Span ID column
+        parentSpanId          - Parent span ID column
+        spanName              - Span name column
+        duration              - Duration column (raw value)
+        durationPrecision     - Duration unit: 3=ms, 6=μs, 9=ns
+        statusCode            - Status code column
+        eventAttributes       - Span/log attributes (Map/JSON column)
+        resourceAttributes    - Resource attributes (Map/JSON column)
+        implicitColumn        - Implicit column for Lucene search
+        defaultTableSelect    - Default SELECT clause for table view
+        orderBy               - Default ORDER BY clause
+    correlatedSources   - IDs of linked sources:
+        log                   - Correlated log source ID
+        trace                 - Correlated trace source ID
+        metric                - Correlated metric source ID
+        session               - Correlated session source ID
+
+Examples:
+  $ hdx sources                     # Human-readable table with schemas
+  $ hdx sources --json              # JSON for agents / scripts
+  $ hdx sources --json | jq '.[0]'  # Inspect first source
+`,
+  )
   .action(async opts => {
     const server = resolveServer(opts.server);
     const client = new ApiClient({ apiUrl: server });
