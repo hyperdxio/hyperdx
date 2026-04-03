@@ -787,6 +787,41 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test(
+    'should deselect and hide the Custom aggregation function when switching to a metric source',
+    { tag: '@full-stack' },
+    async () => {
+      await test.step('Navigate to dashboard and open new tile editor', async () => {
+        await dashboardPage.openNewTileEditor();
+      });
+
+      await test.step('Select the "Custom" aggregation function', async () => {
+        await dashboardPage.chartEditor.selectAggFn('Custom');
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Custom');
+      });
+
+      await test.step('Switch the source to a metric source', async () => {
+        await dashboardPage.chartEditor.selectSource(
+          DEFAULT_METRICS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Verify the aggregation function was automatically changed away from "Custom"', async () => {
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Count of Events');
+      });
+
+      await test.step('Verify the "Custom" option is NOT available in the aggregation dropdown', async () => {
+        const isCustomAvailable =
+          await dashboardPage.chartEditor.isAggFnOptionAvailable('Custom');
+        expect(isCustomAvailable).toBe(false);
+      });
+    },
+  );
+
+  test(
     'should clear saved query when WHERE input is cleared and saved',
     {},
     async () => {
