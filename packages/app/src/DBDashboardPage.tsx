@@ -1498,7 +1498,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       setDashboard(
         produce(dashboard, draft => {
           const c = draft.containers?.find(s => s.id === containerId);
-          if (c) c.collapsible = c.collapsible === false ? true : false;
+          if (c) c.collapsible = !(c.collapsible ?? true);
         }),
       );
     },
@@ -1511,7 +1511,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       setDashboard(
         produce(dashboard, draft => {
           const c = draft.containers?.find(s => s.id === containerId);
-          if (c) c.bordered = c.bordered === false ? true : false;
+          if (c) c.bordered = !(c.bordered ?? true);
         }),
       );
     },

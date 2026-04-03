@@ -213,7 +213,13 @@ export default function useDashboardContainers({
         produce(dashboard, draft => {
           const container = draft.containers?.find(c => c.id === containerId);
           const tab = container?.tabs?.find(t => t.id === tabId);
-          if (tab) tab.title = newTitle.trim();
+          if (tab) {
+            tab.title = newTitle.trim();
+            // Keep container.title in sync when renaming the first (or only) tab
+            if (container && container.tabs?.[0]?.id === tabId) {
+              container.title = newTitle.trim();
+            }
+          }
         }),
       );
     },

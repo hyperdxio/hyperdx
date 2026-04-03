@@ -201,7 +201,10 @@ export default function GroupContainer({
         )}
         {onDelete && (
           <>
-            <Menu.Divider />
+            {(onAddTab ||
+              onToggleCollapsible ||
+              onToggleBordered ||
+              onToggleDefaultCollapsed) && <Menu.Divider />}
             <Menu.Item
               leftSection={<IconTrash size={14} />}
               color="red"
