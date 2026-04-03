@@ -251,13 +251,17 @@ export default function GroupContainer({
     </div>
   );
 
-  // Collapsed summary: show all tab names when there are multiple tabs
-  const collapsedTabSummary =
-    isCollapsed && hasTabs ? (
-      <Text size="xs" c="dimmed" truncate style={{ maxWidth: 300 }}>
-        {tabs.map(t => t.title).join(' · ')}
-      </Text>
-    ) : null;
+  // Collapsed header: pipe-separated tab names (max 4, then "...")
+  const MAX_COLLAPSED_TABS = 4;
+  const collapsedTabLabel =
+    isCollapsed && hasTabs
+      ? tabs.length <= MAX_COLLAPSED_TABS
+        ? tabs.map(t => t.title).join(' | ')
+        : tabs
+            .slice(0, MAX_COLLAPSED_TABS)
+            .map(t => t.title)
+            .join(' | ') + ' | …'
+      : null;
 
   // Fixed header height to prevent jump on collapse/expand
   const headerHeight = 36;
@@ -459,10 +463,13 @@ export default function GroupContainer({
                 fw={500}
                 truncate
                 style={{
-                  cursor: onRenameTab || onRename ? 'text' : undefined,
+                  cursor:
+                    !collapsedTabLabel && (onRenameTab || onRename)
+                      ? 'text'
+                      : undefined,
                 }}
                 onClick={
-                  onRenameTab || onRename
+                  !collapsedTabLabel && (onRenameTab || onRename)
                     ? e => {
                         e.stopPropagation();
                         setEditedTitle(headerTitle);
@@ -471,9 +478,8 @@ export default function GroupContainer({
                     : undefined
                 }
               >
-                {headerTitle}
+                {collapsedTabLabel ?? headerTitle}
               </Text>
-              {collapsedTabSummary}
             </Flex>
           )}
           {addTileButton}

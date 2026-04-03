@@ -102,7 +102,7 @@ describe('GroupContainer', () => {
           ],
         },
       });
-      expect(screen.getByText('Overview · Details · Logs')).toBeInTheDocument();
+      expect(screen.getByText('Overview | Details | Logs')).toBeInTheDocument();
     });
 
     it('does not show tab summary when expanded', () => {
@@ -118,10 +118,10 @@ describe('GroupContainer', () => {
           ],
         },
       });
-      expect(screen.queryByText('Overview · Details')).not.toBeInTheDocument();
+      expect(screen.queryByText('Overview | Details')).not.toBeInTheDocument();
     });
 
-    it('does not show dot-separated tab summary for single-tab group', () => {
+    it('shows header title for single-tab collapsed group (no pipe summary)', () => {
       renderGroupContainer({
         collapsed: true,
         container: {
@@ -131,8 +131,9 @@ describe('GroupContainer', () => {
           tabs: [{ id: 'tab-1', title: 'Only Tab' }],
         },
       });
-      // Header title shows "Only Tab" but there's no dot-separated summary
-      expect(screen.queryByText(/·/)).not.toBeInTheDocument();
+      // Single tab: shows header title, no pipe-separated summary
+      expect(screen.getByText('Only Tab')).toBeInTheDocument();
+      expect(screen.queryByText(/\|/)).not.toBeInTheDocument();
     });
   });
 
