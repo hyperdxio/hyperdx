@@ -6,8 +6,8 @@
  * (e.g. auth, sources) that write directly to stderr.
  */
 
-export const _origDebug = console.debug;
-export const _origWarn = console.warn;
+const _origDebug = console.debug;
+const _origWarn = console.warn;
 export const _origError = console.error;
 
 console.debug = () => {};

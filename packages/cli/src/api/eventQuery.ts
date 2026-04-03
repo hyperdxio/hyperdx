@@ -104,9 +104,6 @@ export async function buildEventSearchQuery(
 
 // ---- Full row fetch (SELECT *) -------------------------------------
 
-// Re-export shared modules for consumers
-export { ROW_DATA_ALIASES } from '@/shared/rowDataPanel';
-
 // ---- Trace waterfall query (all spans for a traceId) ----------------
 
 export interface TraceSpansQueryOptions {

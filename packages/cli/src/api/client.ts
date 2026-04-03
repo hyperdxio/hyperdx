@@ -30,7 +30,7 @@ import { loadSession, saveSession, clearSession } from '@/utils/config';
 // API Client (session management + REST calls)
 // ------------------------------------------------------------------
 
-export interface ApiClientOptions {
+interface ApiClientOptions {
   apiUrl: string;
 }
 
@@ -266,7 +266,7 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
 // Response types (matching the internal API shapes)
 // ------------------------------------------------------------------
 
-export interface MeResponse {
+interface MeResponse {
   accessKey: string;
   createdAt: string;
   email: string;
@@ -321,7 +321,7 @@ export interface SourceResponse {
   sessionSourceId?: string;
 }
 
-export interface ConnectionResponse {
+interface ConnectionResponse {
   id: string;
   _id: string;
   name: string;
@@ -341,7 +341,7 @@ export interface SavedSearchResponse {
   orderBy?: string;
 }
 
-export interface DashboardTileConfig {
+interface DashboardTileConfig {
   name?: string;
   source?: string;
   type?: string;
@@ -350,7 +350,7 @@ export interface DashboardTileConfig {
   [key: string]: unknown;
 }
 
-export interface DashboardTile {
+interface DashboardTile {
   id: string;
   x: number;
   y: number;
@@ -360,14 +360,14 @@ export interface DashboardTile {
   containerId?: string;
 }
 
-export interface DashboardFilter {
+interface DashboardFilter {
   key: string;
   displayName?: string;
   keyExpression?: string;
   sourceId?: string;
 }
 
-export interface DashboardResponse {
+interface DashboardResponse {
   id: string;
   _id: string;
   name: string;

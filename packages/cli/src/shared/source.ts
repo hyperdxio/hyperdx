@@ -19,10 +19,6 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
-export function getSpanEventBody(eventModel: SourceResponse) {
-  return eventModel.spanNameExpression;
-}
-
 export function getDisplayedTimestampValueExpression(
   eventModel: SourceResponse,
 ) {

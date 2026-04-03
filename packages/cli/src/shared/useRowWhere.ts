@@ -27,7 +27,7 @@ const MAX_STRING_LENGTH = 512;
 export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
 
 // Internal row field names used by the table component for row tracking
-export const INTERNAL_ROW_FIELDS = {
+const INTERNAL_ROW_FIELDS = {
   ID: '__hyperdx_id',
   ALIAS_WITH: '__hyperdx_alias_with',
 } as const;
@@ -43,7 +43,7 @@ type ColumnWithMeta = ColumnMetaType & {
   jsType: JSDataType | null;
 };
 
-export function processRowToWhereClause(
+function processRowToWhereClause(
   row: Record<string, unknown>,
   columnMap: Map<string, ColumnWithMeta>,
 ): string {
@@ -159,7 +159,7 @@ export function buildColumnMap(
 /**
  * Build aliasWith array from aliasMap.
  */
-export function buildAliasWith(
+function buildAliasWith(
   aliasMap: Record<string, string | undefined> | undefined,
 ): WithClause[] {
   return aliasMapToWithClauses(aliasMap) ?? [];
