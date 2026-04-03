@@ -546,6 +546,7 @@ export default function EditTimeChartForm({
   'data-testid': dataTestId,
   submitRef,
   isDashboardForm = false,
+  autoRun = false,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -562,6 +563,7 @@ export default function EditTimeChartForm({
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
   isDashboardForm?: boolean;
+  autoRun?: boolean;
 }) {
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
@@ -826,6 +828,14 @@ export default function EditTimeChartForm({
       submitRef.current = onSubmit;
     }
   }, [onSubmit, submitRef]);
+
+  const autoRunFired = useRef(false);
+  useEffect(() => {
+    if (autoRun && !autoRunFired.current && tableSource) {
+      autoRunFired.current = true;
+      onSubmit(true);
+    }
+  }, [autoRun, tableSource, onSubmit]);
 
   const handleSave = useCallback(
     (form: ChartEditorFormState) => {
