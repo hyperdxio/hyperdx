@@ -440,7 +440,10 @@ const getAlertEvaluationDateRange = (
     ? previousCreatedAt.getTime()
     : fns.subMinutes(nowInMinsRoundDown, defaultLookback).getTime();
 
-  // For rate-of-change, ensure we always have at least 2 windows
+  // For rate-of-change, ensure we always have at least 2 windows.
+  // previousCreatedAt may be more recent than 2 windows ago (e.g. the
+  // alert was just evaluated), so take the earlier of the two to
+  // guarantee the baseline window is included in the query range.
   const minStartTime = isRateOfChange
     ? fns.subMinutes(nowInMinsRoundDown, windowSizeInMins * 2).getTime()
     : rawStartTime;
