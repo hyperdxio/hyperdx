@@ -1498,7 +1498,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       setDashboard(
         produce(dashboard, draft => {
           const c = draft.containers?.find(s => s.id === containerId);
-          if (c) c.collapsible = !(c.collapsible ?? true);
+          if (c) {
+            c.collapsible = !(c.collapsible ?? true);
+            // Ensure container is expanded when collapsing is disabled
+            if (c.collapsible === false) c.collapsed = false;
+          }
         }),
       );
     },
