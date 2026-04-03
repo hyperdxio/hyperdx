@@ -7,8 +7,7 @@ import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 
-export interface IPresetDashboardFilter
-  extends Omit<PresetDashboardFilter, 'source'> {
+interface IPresetDashboardFilter extends Omit<PresetDashboardFilter, 'source'> {
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
@@ -42,6 +41,12 @@ const PresetDashboardFilterSchema = new Schema<IPresetDashboardFilter>(
     },
     type: { type: String, required: true },
     expression: { type: String, required: true },
+    where: { type: String, required: false },
+    whereLanguage: {
+      type: String,
+      required: false,
+      enum: ['sql', 'lucene'],
+    },
   },
   {
     timestamps: true,

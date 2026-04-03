@@ -74,7 +74,7 @@
 
   /* Click UI Global Tokens - Dark Mode Values */
   --click-global-color-stroke-default: #323232;
-  --click-global-color-accent-default: #faff69;
+  --click-global-color-accent-default: var(--palette-brand-300);
   --click-global-color-background-default: #1f1f1c;
   --click-global-color-background-muted: #282828;
   --click-global-color-text-default: #fff;
@@ -151,6 +151,13 @@
   --color-outline-focus: var(--mantine-primary-color-filled);
   --input-bd-focus: var(--mantine-primary-color-filled);
 
+  /* Slider */
+  --color-slider-bar: var(--click-global-color-accent-default);
+  --color-slider-thumb: var(--click-global-color-accent-default);
+  --color-slider-thumb-border: var(--click-global-color-accent-default);
+  --color-slider-dot: var(--click-global-color-text-muted);
+  --color-slider-dot-active: var(--mantine-color-yellow-7);
+
   /* Code / Misc UI */
   --color-bg-code: #1d1e30;
   --color-border-code: #4d4f66;
@@ -195,7 +202,10 @@
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
-  --mantine-color-text: var(--color-text);
+  --mantine-color-text: var(--color-text) !important;
+  --mantine-color-anchor: var(
+    --click-global-color-text-link-default
+  ) !important;
 
   /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
   .tabler-icon {
@@ -348,6 +358,13 @@
   --color-state-focus: #ced4da;
   --color-outline-focus: var(--mantine-primary-color-filled);
 
+  /* Slider */
+  --color-slider-bar: var(--click-global-color-accent-default);
+  --color-slider-thumb: var(--click-global-color-accent-default);
+  --color-slider-thumb-border: var(--click-global-color-accent-default);
+  --color-slider-dot: var(--click-global-color-text-muted);
+  --color-slider-dot-active: var(--mantine-color-dark-3);
+
   /* Code / Misc UI */
   --color-bg-code: var(--click-global-color-background-muted);
   --color-border-code: #dee2e6;
@@ -385,8 +402,11 @@
   --color-chart-error-highlight: #ffa090;
 
   /* Mantine Overrides */
-  --mantine-color-body: var(--color-bg-body);
-  --mantine-color-text: var(--color-text);
+  --mantine-color-body: var(--color-bg-body) !important;
+  --mantine-color-text: var(--color-text) !important;
+  --mantine-color-anchor: var(
+    --click-global-color-text-link-default
+  ) !important;
 
   /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
   .tabler-icon {

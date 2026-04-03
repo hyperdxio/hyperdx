@@ -391,7 +391,7 @@ type HyperJsonProps = {
   data: object;
   normallyExpanded?: boolean;
   tabulate?: boolean;
-  lineWrap?: boolean;
+  whiteSpace?: 'pre' | 'pre-wrap';
   getLineActions?: GetLineActions;
 };
 
@@ -399,7 +399,7 @@ const HyperJson = ({
   data,
   normallyExpanded = false,
   tabulate = false,
-  lineWrap,
+  whiteSpace = 'pre-wrap',
   getLineActions,
 }: HyperJsonProps) => {
   const isEmpty = React.useMemo(() => Object.keys(data).length === 0, [data]);
@@ -410,7 +410,7 @@ const HyperJson = ({
         <div
           className={cx(styles.container, {
             [styles.withTabulate]: tabulate,
-            [styles.withLineWrap]: lineWrap,
+            [styles.withPreWrap]: whiteSpace === 'pre-wrap',
           })}
         >
           {isEmpty ? <div>Empty</div> : <TreeNode data={data} />}

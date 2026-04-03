@@ -1,0 +1,173 @@
+name: Knip - Unused Code Analysis
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  knip:
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Run Knip
+        run:
+          yarn knip --reporter json > /tmp/knip-results.json 2>/dev/null || true
+
+      - name: Report results
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          IS_FORK_PR:
+            ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.fork == true }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const isForkPR = process.env.IS_FORK_PR === 'true';
+            const isPR = process.env.IS_PR === 'true';
+
+            const issueCategories = [
+              'files', 'dependencies', 'devDependencies', 'unlisted',
+              'unresolved', 'binaries', 'exports', 'types',
+            ];
+
+            const categoryLabels = {
+              files: 'Unused files',
+              dependencies: 'Unused dependencies',
+              devDependencies: 'Unused devDependencies',
+              unlisted: 'Unlisted dependencies',
+              unresolved: 'Unresolved imports',
+              binaries: 'Unlisted binaries',
+              exports: 'Unused exports',
+              types: 'Unused exported types',
+            };
+
+            function parseResults(filePath) {
+              try {
+                const raw = fs.readFileSync(filePath, 'utf8');
+                const data = JSON.parse(raw);
+                const counts = {};
+                const items = {};
+                for (const cat of issueCategories) items[cat] = [];
+
+                for (const issue of data.issues || []) {
+                  for (const cat of issueCategories) {
+                    if (Array.isArray(issue[cat]) && issue[cat].length > 0) {
+                      counts[cat] = (counts[cat] || 0) + issue[cat].length;
+                      for (const item of issue[cat]) {
+                        // Unused files use the file path as the name; other categories prefix with the parent file
+                        const label = cat === 'files' ? item.name : `${issue.file}:${item.name}`;
+                        items[cat].push(label);
+                      }
+                    }
+                  }
+                }
+
+                let total = 0;
+                for (const v of Object.values(counts)) total += v;
+                return { counts, total, items };
+              } catch (e) {
+                console.log(`Failed to parse ${filePath}: ${e.message}`);
+                const items = {};
+                for (const cat of issueCategories) items[cat] = [];
+                return { counts: {}, total: 0, items };
+              }
+            }
+
+            const results = parseResults('/tmp/knip-results.json');
+
+            if (results.total === 0) {
+              console.log('No knip issues found.');
+
+              // Clean up existing PR comment if present
+              if (isPR && !isForkPR) {
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                });
+                const existing = comments.find(c =>
+                  c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
+                );
+                if (existing) {
+                  await github.rest.issues.deleteComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: existing.id,
+                  });
+                }
+              }
+              return;
+            }
+
+            // Build report body
+            let body = `## Knip - Unused Code Analysis\n\n`;
+            body += `🔴 **${results.total} issue${results.total === 1 ? '' : 's'}** found\n\n`;
+
+            for (const cat of issueCategories) {
+              const count = results.counts[cat] || 0;
+              if (count === 0) continue;
+              const label = categoryLabels[cat];
+              body += `### ${label} (${count})\n\n`;
+              for (const item of results.items[cat]) {
+                body += `- \`${item}\`\n`;
+              }
+              body += `\n`;
+            }
+
+            body += `---\n`;
+            body += `[Knip](https://knip.dev) finds unused files, dependencies, and exports in your codebase.\n`;
+            body += `Run \`yarn knip\` locally to see full details.\n`;
+
+            // Always log to console (visible in Actions output for pushes and forks)
+            console.log(body);
+
+            // Comment on PR only for non-fork PRs (GITHUB_TOKEN can't write to base repo from forks)
+            if (isPR && !isForkPR) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+              const existing = comments.find(c =>
+                c.user.type === 'Bot' && c.body.includes('Knip - Unused Code Analysis')
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body,
+                });
+              }
+            }
+
+            // Fail the job since there are issues
+            core.setFailed(`Knip found ${results.total} issue${results.total === 1 ? '' : 's'}. Run \`yarn knip\` locally to fix them.`);

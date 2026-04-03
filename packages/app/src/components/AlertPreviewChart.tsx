@@ -3,6 +3,7 @@ import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
   Filter,
+  getSampleWeightExpression,
   isLogSource,
   isTraceSource,
   SearchCondition,
@@ -17,7 +18,7 @@ import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
 
-export type AlertPreviewChartProps = {
+type AlertPreviewChartProps = {
   source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
@@ -74,6 +75,7 @@ export const AlertPreviewChart = ({
             isLogSource(source) || isTraceSource(source)
               ? source.implicitColumnExpression
               : undefined,
+          sampleWeightExpression: getSampleWeightExpression(source),
           groupBy,
           with: aliasWith,
           select: [

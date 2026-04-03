@@ -59,10 +59,8 @@ function ParamSnippet({
 
 export function RawSqlChartInstructions({
   displayType,
-  isDashboardForm,
 }: {
   displayType: DisplayType;
-  isDashboardForm: boolean;
 }) {
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
@@ -111,18 +109,24 @@ export function RawSqlChartInstructions({
               ))}
               <List.Item>
                 <ParamSnippet
+                  value={`$__sourceTable([metricType])`}
+                  description="Resolves to selected source table (Source must be selected)"
+                />
+              </List.Item>
+              <List.Item>
+                <ParamSnippet
                   value={`$__filters`}
                   description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
                 />
               </List.Item>
               <List.Item>
                 <Text size="xs">
-                  Macros from the{' '}
+                  Other available macros are described in the{' '}
                   <Anchor
-                    href="https://github.com/grafana/clickhouse-datasource?tab=readme-ov-file#macros"
+                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
                     target="_blank"
                   >
-                    ClickHouse Datasource Grafana Plugin
+                    ClickStack documentation.
                   </Anchor>
                 </Text>
               </List.Item>

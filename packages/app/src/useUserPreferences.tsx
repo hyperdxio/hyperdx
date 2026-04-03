@@ -194,7 +194,7 @@ const storageWithMigration = {
   },
 };
 
-export const userPreferencesAtom = atomWithStorage<UserPreferences>(
+const userPreferencesAtom = atomWithStorage<UserPreferences>(
   STORAGE_KEY,
   DEFAULT_PREFERENCES,
   storageWithMigration,

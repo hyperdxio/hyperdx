@@ -590,6 +590,78 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('materialized column optimization with expression alias CTEs', () => {
+    it('should rewrite WHERE to use materialized column when with clauses are expression aliases (isSubquery: false)', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        with: [
+          {
+            name: 'body',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: "LogAttributes['attr_key'] = 'attr_val'",
+        whereLanguage: 'sql',
+        granularity: '1 minute',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      expect(mockMetadata.getMaterializedColumnsLookupTable).toHaveBeenCalled();
+      expect(sql).toContain("attr_key = 'attr_val'");
+      expect(sql).not.toContain("LogAttributes['attr_key']");
+    });
+
+    it('should skip materialized columns when with clauses are subquery CTEs', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([["LogAttributes['attr_key']", 'attr_key']]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: '',
+          tableName: 'TestCte',
+        },
+        with: [
+          {
+            name: 'TestCte',
+            sql: chSql`SELECT * FROM otel_logs`,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await renderChartConfig(config, mockMetadata, querySettings);
+      expect(
+        mockMetadata.getMaterializedColumnsLookupTable,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('k8s semantic convention migrations', () => {
     it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
       const config: ChartConfigWithOptDateRange = {
@@ -1819,6 +1891,28 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('renders sql filters raw when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [
+            { type: 'sql', condition: 'duration > 100' },
+            { type: 'sql_ast', operator: '=', left: 'status', right: "'ok'" },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE ((duration > 100) AND (status = 'ok'))",
+      );
+    });
+
     it('skips filters without source metadata (no from)', async () => {
       const result = await renderChartConfig(
         {
@@ -1837,6 +1931,376 @@ describe('renderChartConfig', () => {
       expect(result.sql).toBe(
         'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
       );
+    });
+  });
+
+  describe('sample-weighted aggregations', () => {
+    const baseSampledConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+      },
+      select: [],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      sampleWeightExpression: 'SampleRate',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+
+    it('should rewrite count() to sum(greatest(...))', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        'greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toContain('sum(');
+      expect(actual).not.toContain('count()');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite countIf to sumIf(greatest(...), cond)', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: "StatusCode = 'Error'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        'sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).not.toContain('countIf');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite avg to weighted average', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        '* greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toContain(
+        '/ nullIf(sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL), 0)',
+      );
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite sum to weighted sum', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'sum',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        '* greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite quantile to quantileTDigestWeighted', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'quantile',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            level: 0.99,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('quantileTDigestWeighted(0.99)');
+      expect(actual).toContain(
+        'toUInt32(greatest(toUInt64OrZero(toString(SampleRate)), 1))',
+      );
+      expect(actual).not.toContain('quantile(0.99)');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should leave min/max unchanged with sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'min',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+          {
+            aggFn: 'max',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('min(');
+      expect(actual).toContain('max(');
+      expect(actual).not.toContain('SampleRate');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should leave count_distinct unchanged with sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count_distinct',
+            valueExpression: 'TraceId',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('count(DISTINCT');
+      expect(actual).not.toContain('SampleRate');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle complex sampleWeightExpression like SpanAttributes map access', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        sampleWeightExpression: "SpanAttributes['SampleRate']",
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "greatest(toUInt64OrZero(toString(SpanAttributes['SampleRate'])), 1)",
+      );
+      expect(actual).toContain('sum(');
+      expect(actual).not.toContain('count()');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite avg with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sumIf(');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite sum with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'sum',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sumIf(');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite quantile with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'quantile',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+            level: 0.95,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('quantileTDigestWeightedIf(0.95)');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).not.toContain('quantile(0.95)');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle mixed weighted and passthrough aggregations', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            alias: 'weighted_count',
+          },
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            alias: 'weighted_avg',
+          },
+          {
+            aggFn: 'min',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            alias: 'min_duration',
+          },
+          {
+            aggFn: 'count_distinct',
+            valueExpression: 'TraceId',
+            aggCondition: '',
+            alias: 'unique_traces',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sum(');
+      expect(actual).toContain('min(');
+      expect(actual).toContain('count(DISTINCT');
+      expect(actual).not.toContain('count()');
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not rewrite aggregations without sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        sampleWeightExpression: undefined,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('count()');
+      expect(actual).not.toContain('SampleRate');
     });
   });
 });

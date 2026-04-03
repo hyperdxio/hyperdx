@@ -26,11 +26,18 @@ MongoDB (configuration/metadata)
 
 ```bash
 yarn setup          # Install dependencies
-yarn dev            # Start full stack (Docker + local services)
+yarn dev            # Start full stack with worktree-isolated ports
 ```
 
-The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
+
+**This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
+`make dev-e2e` all use slot-based port isolation so multiple worktrees can run
+dev servers, integration tests, and E2E tests simultaneously without conflicts.
+A dev portal at http://localhost:9900 auto-starts and shows all running stacks.
+See [`agent_docs/development.md`](agent_docs/development.md) for the full
+multi-worktree setup, port allocation tables, and available commands.
 
 ## Working on the Codebase (HOW)
 
@@ -43,8 +50,10 @@ directory:
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
 
-**Tools handle formatting and linting automatically** via pre-commit hooks.
-Focus on implementation; don't manually format code.
+**After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
+and lint issues across all packages. Pre-commit hooks handle this when
+committing, but if you finish edits without committing, run `yarn lint:fix`
+before stopping.
 
 ## Key Principles
 
@@ -68,8 +77,6 @@ Each package has different test commands available:
 cd packages/app
 yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
-yarn test:e2e          # Run end-to-end tests
-yarn test:e2e:ci       # Run end-to-end tests in CI
 ```
 
 **packages/api** (integration tests only):
@@ -110,10 +117,15 @@ make ci-unit        # Unit tests across all packages
 # First-time setup (install Chromium browser):
 cd packages/app && yarn playwright install chromium
 
-# Run tests:
-./scripts/test-e2e.sh                                       # All E2E (full-stack)
-./scripts/test-e2e.sh --quiet <file>                        # Single file
-./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
+# Run all E2E tests:
+make e2e
+
+# Run a specific test file (dev mode: hot reload):
+make dev-e2e FILE=navigation                    # Match files containing "navigation"
+make dev-e2e FILE=navigation GREP="help menu"   # Also filter by test name
+make dev-e2e GREP="should navigate"             # Filter by test name across all files
+make dev-e2e FILE=navigation REPORT=1           # Open HTML report after run
+make dev-e2e-clean                               # Remove test artifacts
 ```
 
 ## Important Context

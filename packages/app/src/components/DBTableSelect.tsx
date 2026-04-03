@@ -7,7 +7,7 @@ import { useTablesDirect } from '@/clickhouse';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectRightSection } from './SourceSelect';
 
-export default function DBTableSelect({
+function DBTableSelect({
   database,
   setTable,
   table,

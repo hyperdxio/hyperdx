@@ -1,0 +1,39 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/app": {
+      "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
+      "ignore": [".storybook/public/**"],
+      "ignoreDependencies": [
+        "eslint-config-next",
+        "@chromatic-com/storybook",
+        "@storybook/addon-themes"
+      ]
+    },
+    "packages/api": {
+      "entry": [
+        "src/index.ts",
+        "src/tasks/index.ts",
+        "scripts/*.ts",
+        "src/fixtures.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["pino-pretty", "aws4"],
+      "ignore": ["src/opamp/**", "src/utils/logParser.ts"]
+    },
+    "packages/common-utils": {
+      "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
+      "project": ["src/**/*.ts"]
+    }
+  },
+  "ignore": ["scripts/dev-portal/**"],
+  "ignoreBinaries": ["make", "migrate", "playwright"],
+  "ignoreDependencies": [
+    "@dotenvx/dotenvx",
+    "concurrently",
+    "dotenv",
+    "babel-plugin-react-compiler"
+  ],
+  "exclude": ["enumMembers", "duplicates"]
+}

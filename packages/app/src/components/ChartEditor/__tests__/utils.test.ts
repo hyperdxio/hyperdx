@@ -727,6 +727,23 @@ describe('validateChartForm', () => {
     ).toHaveLength(0);
   });
 
+  it('does not validate valueExpression for metric sources', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-metric',
+        series: [{ ...seriesItem, aggFn: 'sum', valueExpression: '' }],
+      }),
+      metricSource,
+      setError,
+    );
+    expect(
+      errors.filter(
+        e => typeof e.path === 'string' && e.path.includes('valueExpression'),
+      ),
+    ).toHaveLength(0);
+  });
+
   it('does not validate valueExpression for Markdown displayType', () => {
     const setError = jest.fn();
     const errors = validateChartForm(

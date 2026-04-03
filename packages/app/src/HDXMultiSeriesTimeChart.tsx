@@ -206,7 +206,7 @@ function ExpandableLegendItem({
   );
 }
 
-export const LegendRenderer = memo<{
+const LegendRenderer = memo<{
   payload?: {
     dataKey: string;
     value: string;

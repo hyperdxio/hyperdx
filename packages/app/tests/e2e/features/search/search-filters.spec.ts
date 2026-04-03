@@ -4,21 +4,24 @@ import { expect, test } from '../../utils/base-test';
 test.describe('Search Filters', { tag: ['@search'] }, () => {
   let searchPage: SearchPage;
   // Using known seeded data - 'info' severity always exists in test data
+  const TEST_FILTER_GROUP = 'SeverityText';
   const TEST_FILTER_VALUE = 'info';
 
   test.beforeEach(async ({ page }) => {
     searchPage = new SearchPage(page);
     await searchPage.goto();
-    await searchPage.filters.openFilterGroup('SeverityText');
+    await searchPage.filters.openFilterGroup(TEST_FILTER_GROUP);
   });
 
   test('Should apply filters', async () => {
     // Apply the filter using component method
-    const filterInput =
-      searchPage.filters.getFilterCheckboxInput(TEST_FILTER_VALUE);
+    const filterInput = searchPage.filters.getFilterCheckboxInput(
+      TEST_FILTER_GROUP,
+      TEST_FILTER_VALUE,
+    );
     await expect(filterInput).toBeVisible();
 
-    await searchPage.filters.applyFilter(TEST_FILTER_VALUE);
+    await searchPage.filters.applyFilter(TEST_FILTER_GROUP, TEST_FILTER_VALUE);
 
     // Verify filter is checked
     await expect(filterInput).toBeChecked();
@@ -29,47 +32,56 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
 
   test('Should exclude filters', async () => {
     // Use filter component to exclude the filter
-    await searchPage.filters.excludeFilter(TEST_FILTER_VALUE);
+    await searchPage.filters.excludeFilter(
+      TEST_FILTER_GROUP,
+      TEST_FILTER_VALUE,
+    );
 
     // Verify filter shows as excluded using web-first assertion
-    const isExcluded =
-      await searchPage.filters.isFilterExcluded(TEST_FILTER_VALUE);
+    const isExcluded = await searchPage.filters.isFilterExcluded(
+      TEST_FILTER_GROUP,
+      TEST_FILTER_VALUE,
+    );
     expect(isExcluded).toBe(true);
   });
 
   test('Should clear filters', async () => {
-    await searchPage.filters.clearFilter(TEST_FILTER_VALUE);
+    await searchPage.filters.clearFilter(TEST_FILTER_GROUP, TEST_FILTER_VALUE);
 
     // Verify filter is no longer checked
-    const filterInput =
-      searchPage.filters.getFilterCheckboxInput(TEST_FILTER_VALUE);
+    const filterInput = searchPage.filters.getFilterCheckboxInput(
+      TEST_FILTER_GROUP,
+      TEST_FILTER_VALUE,
+    );
     await expect(filterInput).not.toBeChecked();
   });
 
   test('Should search for and apply filters', async () => {
-    const filterName = 'SeverityText';
-    await searchPage.filters.openFilterGroup(filterName);
-    await searchPage.filters.searchFilterValues(filterName, 'test');
-    const searchInput = searchPage.filters.getFilterSearchInput(filterName);
+    await searchPage.filters.openFilterGroup(TEST_FILTER_GROUP);
+    await searchPage.filters.searchFilterValues(TEST_FILTER_GROUP, 'test');
+    const searchInput =
+      searchPage.filters.getFilterSearchInput(TEST_FILTER_GROUP);
     await expect(searchInput).toHaveValue('test');
-    await searchPage.filters.clearFilterSearch(filterName);
+    await searchPage.filters.clearFilterSearch(TEST_FILTER_GROUP);
     await expect(searchInput).toHaveValue('');
   });
 
   test('Should pin filter and verify it persists after reload', async () => {
-    await searchPage.filters.pinFilter(TEST_FILTER_VALUE);
+    await searchPage.filters.pinFilter(TEST_FILTER_GROUP, TEST_FILTER_VALUE);
 
     // Reload page and verify filter persists
     await searchPage.page.reload();
 
     // Verify filter checkbox is still visible
-    const filterCheckbox =
-      searchPage.filters.getFilterCheckbox(TEST_FILTER_VALUE);
+    const filterCheckbox = searchPage.filters.getFilterCheckbox(
+      TEST_FILTER_GROUP,
+      TEST_FILTER_VALUE,
+    );
     await expect(filterCheckbox).toBeVisible();
 
     //verify there is a pin icon
     const pinIcon = searchPage.page.getByTestId(
-      `filter-pin-${TEST_FILTER_VALUE}-pinned`,
+      `filter-checkbox-${TEST_FILTER_GROUP}-${TEST_FILTER_VALUE}-pin-pinned`,
     );
     await expect(pinIcon).toBeVisible();
   });
@@ -87,3 +99,7 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   //   // Add methods to FilterComponent for show more/less
   // });
 });
+// HDX-3901: Filter parsing with special characters (=, >, <, OR) in quoted
+// values is tested via unit tests in searchFilters.test.ts (6 dedicated test
+// cases). The parseQuery / extractInClauses / containsOperatorOutsideQuotes
+// functions are pure client-side logic that doesn't require E2E coverage.

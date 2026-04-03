@@ -4,8 +4,42 @@ import {
   DEFAULT_TRACES_SOURCE_NAME,
 } from 'tests/e2e/utils/constants';
 
+import { SavedSearchesListPage } from '../../page-objects/SavedSearchesListPage';
 import { SearchPage } from '../../page-objects/SearchPage';
+import { getApiUrl, getSources } from '../../utils/api-helpers';
 import { expect, test } from '../../utils/base-test';
+
+/**
+ * Helper to create a saved search via the API.
+ * Fetches the log source ID from the API to use as the source reference.
+ * Returns the created saved search object (including its id).
+ */
+async function createSavedSearchViaApi(
+  page: import('@playwright/test').Page,
+  overrides: Record<string, unknown> = {},
+) {
+  const API_URL = getApiUrl();
+  const logSources = await getSources(page, 'log');
+  const sourceId = logSources[0]._id;
+  const defaults = {
+    name: `E2E Saved Search ${Date.now()}`,
+    select: 'Timestamp, Body',
+    where: '',
+    whereLanguage: 'lucene',
+    source: sourceId,
+    tags: [] as string[],
+  };
+  const body = { ...defaults, ...overrides };
+  const response = await page.request.post(`${API_URL}/saved-search`, {
+    data: body,
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `Failed to create saved search: ${response.status()} ${await response.text()}`,
+    );
+  }
+  return response.json();
+}
 
 test.describe('Saved Search Functionality', () => {
   let searchPage: SearchPage;
@@ -65,9 +99,9 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify custom SELECT is preserved', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).toContain('upper(ServiceName) as service_name');
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_name',
+        );
       });
     },
   );
@@ -107,10 +141,10 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify different source has its own default SELECT', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).not.toContain('lower(Body) as body_lower');
-        expect(selectContent).toMatch(/Timestamp/i);
+        await expect(selectEditor).not.toContainText(
+          'lower(Body) as body_lower',
+        );
+        await expect(selectEditor).toContainText('Timestamp');
       });
 
       await test.step('Navigate back to saved search', async () => {
@@ -120,11 +154,11 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify saved search SELECT is restored', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
         // Verifies the fix: SELECT restores to saved search's custom value
-        expect(selectContent).toContain('lower(Body) as body_lower');
-        expect(selectContent).toContain('Timestamp, Body, lower(Body)');
+        await expect(selectEditor).toContainText('lower(Body) as body_lower');
+        await expect(selectEditor).toContainText(
+          'Timestamp, Body, lower(Body)',
+        );
       });
     },
   );
@@ -153,12 +187,10 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify SELECT changed to the new source default', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).not.toContain(
+        await expect(selectEditor).not.toContainText(
           'lower(ServiceName) as service_name',
         );
-        expect(selectContent).toMatch(/Timestamp/i);
+        await expect(selectEditor).toContainText('Timestamp');
       });
 
       await test.step('Switch back to original source via dropdown', async () => {
@@ -170,9 +202,9 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify SELECT is search custom SELECT', async () => {
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
-
-        expect(selectContent).toContain('lower(ServiceName) as service_name');
+        await expect(selectEditor).toContainText(
+          'lower(ServiceName) as service_name',
+        );
       });
     },
   );
@@ -240,8 +272,7 @@ test.describe('Saved Search Functionality', () => {
 
         // Verify ORDER BY is restored
         const orderByEditor = searchPage.getOrderByEditor();
-        const orderByContent = await orderByEditor.textContent();
-        expect(orderByContent).toContain('ServiceName ASC');
+        await expect(orderByEditor).toContainText('ServiceName ASC');
 
         // Verify search results are visible (search executed automatically)
         await searchPage.table.waitForRowsToPopulate();
@@ -280,8 +311,8 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Navigate to dashboards page', async () => {
-        await page.goto('/dashboards');
-        await expect(page.getByTestId('dashboard-page')).toBeVisible();
+        await page.goto('/dashboards/list');
+        await expect(page.getByTestId('dashboards-list-page')).toBeVisible();
       });
 
       await test.step('Navigate back to saved search', async () => {
@@ -295,10 +326,51 @@ test.describe('Saved Search Functionality', () => {
 
         // Verify SELECT content
         const selectEditor = searchPage.getSELECTEditor();
-        const selectContent = await selectEditor.textContent();
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_name',
+        );
+        await expect(selectEditor).toContainText('Timestamp, Body');
+      });
+    },
+  );
 
-        expect(selectContent).toContain('upper(ServiceName) as service_name');
-        expect(selectContent).toContain('Timestamp, Body');
+  test(
+    'should preserve default SELECT when saving a search',
+    {},
+    async ({ page }) => {
+      let savedSearchUrl: string;
+
+      await test.step('Create saved search without setting a custom select', async () => {
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Default Select Navigation Test',
+        );
+
+        savedSearchUrl = page.url().split('?')[0];
+      });
+
+      await test.step('Verify default SELECT is loaded', async () => {
+        const selectEditor = searchPage.getSELECTEditor();
+        await expect(selectEditor).toContainText(
+          'Timestamp, ServiceName, SeverityText, Body',
+        );
+      });
+
+      await test.step('Navigate to dashboards page', async () => {
+        await page.goto('/dashboards');
+        await expect(page.getByTestId('dashboard-page')).toBeVisible();
+      });
+
+      await test.step('Navigate back to saved search', async () => {
+        await page.goto(savedSearchUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+      });
+
+      await test.step('Verify default SELECT is loaded', async () => {
+        const selectEditor = searchPage.getSELECTEditor();
+        await expect(selectEditor).toContainText(
+          'Timestamp, ServiceName, SeverityText, Body',
+        );
       });
     },
   );
@@ -431,6 +503,7 @@ test.describe('Saved Search Functionality', () => {
 
       let savedSearchUrl: string;
       let appliedFilterValue: string;
+
       await test.step('Apply filters in the sidebar', async () => {
         const [picked] = await searchPage.filters.pickVisibleFilterValues(
           'SeverityText',
@@ -440,11 +513,16 @@ test.describe('Saved Search Functionality', () => {
         appliedFilterValue = picked;
 
         // Apply the filter
-        await searchPage.filters.applyFilter(appliedFilterValue);
+        await searchPage.filters.applyFilter(
+          'SeverityText',
+          appliedFilterValue,
+        );
 
         // Verify filter is checked
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).toBeChecked();
 
         // Submit search to apply filters
@@ -472,8 +550,10 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup('SeverityText');
 
         // Verify filter is not checked
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).not.toBeChecked();
       });
 
@@ -488,8 +568,10 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup('SeverityText');
 
         // Verify filter is checked again
-        const filterInput =
-          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        const filterInput = searchPage.filters.getFilterCheckboxInput(
+          'SeverityText',
+          appliedFilterValue,
+        );
         await expect(filterInput).toBeChecked();
       });
     },
@@ -521,7 +603,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Create saved search with one filter', async () => {
         await searchPage.filters.openFilterGroup(firstFilterGroup);
-        await searchPage.filters.applyFilter(firstFilter);
+        await searchPage.filters.applyFilter(firstFilterGroup, firstFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
 
@@ -534,7 +616,7 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Update saved search with second filter', async () => {
         await searchPage.filters.openFilterGroup(secondFilterGroup);
-        await searchPage.filters.applyFilter(secondFilter);
+        await searchPage.filters.applyFilter(secondFilterGroup, secondFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
 
@@ -556,11 +638,311 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.openFilterGroup(firstFilterGroup);
         await searchPage.filters.openFilterGroup(secondFilterGroup);
         await expect(
-          searchPage.filters.getFilterCheckboxInput(firstFilter),
+          searchPage.filters.getFilterCheckboxInput(
+            firstFilterGroup,
+            firstFilter,
+          ),
         ).toBeChecked();
         await expect(
-          searchPage.filters.getFilterCheckboxInput(secondFilter),
+          searchPage.filters.getFilterCheckboxInput(
+            secondFilterGroup,
+            secondFilter,
+          ),
         ).toBeChecked();
+      });
+    },
+  );
+
+  test(
+    'should save as new search from an existing saved search',
+    {},
+    async ({ page }) => {
+      /**
+       * This test verifies that "Save as New Search" creates a new saved search
+       * with the current configuration, navigating to a new URL while preserving
+       * the original saved search.
+       *
+       * Test flow:
+       * 1. Create a saved search with a custom WHERE and SELECT
+       * 2. Click "Save as New Search" from the action bar menu
+       * 3. Give the new search a different name and save
+       * 4. Verify navigation to a new saved search URL
+       * 5. Verify the new search preserved the original's configuration
+       * 6. Verify the original saved search still exists
+       */
+
+      let originalUrl: string;
+      const originalName = 'Original Search';
+      const newName = 'Cloned Search';
+      const customSelect =
+        'Timestamp, Body, upper(ServiceName) as service_upper';
+
+      await test.step('Create a saved search with custom SELECT and WHERE', async () => {
+        await searchPage.setCustomSELECT(customSelect);
+        await searchPage.performSearch('SeverityText:info');
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          originalName,
+        );
+
+        originalUrl = page.url();
+      });
+
+      await test.step('Click Save as New Search from the action bar', async () => {
+        await searchPage.clickSaveAsNew();
+      });
+
+      await test.step('Save the new search with a different name', async () => {
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          newName,
+        );
+      });
+
+      await test.step('Verify navigation to a new saved search URL', async () => {
+        await expect(page).not.toHaveURL(originalUrl);
+        await expect(page).toHaveURL(/\/search\/[a-f0-9]+/);
+      });
+
+      await test.step('Verify the new search preserved the SELECT', async () => {
+        await searchPage.table.waitForRowsToPopulate();
+        const selectEditor = searchPage.getSELECTEditor();
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_upper',
+        );
+      });
+
+      await test.step('Verify the new search preserved the WHERE', async () => {
+        await expect(searchPage.input).toHaveValue('SeverityText:info');
+      });
+
+      await test.step('Verify the original saved search still exists', async () => {
+        await page.goto(originalUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+        await searchPage.table.waitForRowsToPopulate();
+
+        await expect(searchPage.input).toHaveValue('SeverityText:info');
+        const selectEditor = searchPage.getSELECTEditor();
+        await expect(selectEditor).toContainText(
+          'upper(ServiceName) as service_upper',
+        );
+      });
+    },
+  );
+});
+
+test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
+  let listPage: SavedSearchesListPage;
+
+  test.beforeEach(async ({ page }) => {
+    listPage = new SavedSearchesListPage(page);
+  });
+
+  test(
+    'should display the saved searches listing page',
+    { tag: '@full-stack' },
+    async () => {
+      await listPage.goto();
+
+      await test.step('Verify the page container is visible', async () => {
+        await expect(listPage.pageContainer).toBeVisible();
+      });
+
+      await test.step('Verify the New Search button is visible', async () => {
+        await expect(listPage.newSearchButton).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should navigate to search page when clicking New Search',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      await listPage.goto();
+
+      await test.step('Click the New Search button', async () => {
+        await listPage.clickNewSearch();
+      });
+
+      await test.step('Verify navigation to the search page', async () => {
+        await expect(page).toHaveURL(/\/search\?/);
+      });
+    },
+  );
+
+  test(
+    'should search saved searches by name',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E Search Test ${ts}`;
+
+      await test.step('Create a saved search via API', async () => {
+        await createSavedSearchViaApi(page, { name: uniqueName });
+      });
+
+      await test.step('Navigate to the listing page', async () => {
+        await listPage.goto();
+      });
+
+      await test.step('Search for the unique name', async () => {
+        await listPage.searchSavedSearches(uniqueName);
+      });
+
+      await test.step('Verify the saved search appears in results', async () => {
+        await expect(listPage.getSavedSearchCard(uniqueName)).toBeVisible();
+      });
+
+      await test.step('Search for a non-existent name', async () => {
+        await listPage.searchSavedSearches(`nonexistent-search-xyz-${ts}`);
+      });
+
+      await test.step('Verify no matches state is shown', async () => {
+        await expect(listPage.getNoMatchesState()).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should switch between grid and list views',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E View Toggle ${ts}`;
+
+      await test.step('Create a saved search via API', async () => {
+        await createSavedSearchViaApi(page, { name: uniqueName });
+      });
+
+      await test.step('Navigate to the listing page', async () => {
+        await listPage.goto();
+      });
+
+      await test.step('Verify grid view shows card', async () => {
+        await expect(listPage.getSavedSearchCard(uniqueName)).toBeVisible();
+      });
+
+      await test.step('Switch to list view', async () => {
+        await listPage.switchToListView();
+      });
+
+      await test.step('Verify the saved search appears in a table row', async () => {
+        await expect(listPage.getSavedSearchRow(uniqueName)).toBeVisible();
+      });
+
+      await test.step('Switch back to grid view', async () => {
+        await listPage.switchToGridView();
+      });
+
+      await test.step('Verify the card reappears', async () => {
+        await expect(listPage.getSavedSearchCard(uniqueName)).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should delete a saved search from the card view',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E Delete Card ${ts}`;
+
+      await test.step('Create a saved search via API', async () => {
+        await createSavedSearchViaApi(page, { name: uniqueName });
+      });
+
+      await test.step('Navigate to the listing page', async () => {
+        await listPage.goto();
+      });
+
+      await test.step('Delete the saved search via the card menu', async () => {
+        await listPage.deleteSavedSearchFromCard(uniqueName);
+      });
+
+      await test.step('Verify the saved search is removed', async () => {
+        await expect(listPage.getSavedSearchCard(uniqueName)).toBeHidden();
+      });
+
+      await test.step('Verify the deletion notification appears', async () => {
+        await expect(page.getByText('Saved search deleted')).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should delete a saved search from the list view',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E Delete Row ${ts}`;
+
+      await test.step('Create a saved search via API', async () => {
+        await createSavedSearchViaApi(page, { name: uniqueName });
+      });
+
+      await test.step('Navigate to the listing page', async () => {
+        await listPage.goto();
+      });
+
+      await test.step('Switch to list view', async () => {
+        await listPage.switchToListView();
+      });
+
+      await test.step('Delete the saved search via the row menu', async () => {
+        await listPage.deleteSavedSearchFromRow(uniqueName);
+      });
+
+      await test.step('Verify the saved search is removed', async () => {
+        await expect(listPage.getSavedSearchRow(uniqueName)).toBeHidden();
+      });
+
+      await test.step('Verify the deletion notification appears', async () => {
+        await expect(page.getByText('Saved search deleted')).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should filter saved searches by tag',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const taggedName = `E2E Tagged Search ${ts}`;
+      const untaggedName = `E2E Untagged Search ${ts}`;
+      const tag = `e2e-tag-${ts}`;
+
+      await test.step('Create a saved search with a tag', async () => {
+        await createSavedSearchViaApi(page, {
+          name: taggedName,
+          tags: [tag],
+        });
+      });
+
+      await test.step('Create a saved search without the tag', async () => {
+        await createSavedSearchViaApi(page, { name: untaggedName });
+      });
+
+      await test.step('Navigate to the listing page and verify both are visible', async () => {
+        await listPage.goto();
+        await expect(listPage.getSavedSearchCard(taggedName)).toBeVisible();
+        await expect(listPage.getSavedSearchCard(untaggedName)).toBeVisible();
+      });
+
+      await test.step('Select the tag filter', async () => {
+        await listPage.selectTagFilter(tag);
+      });
+
+      await test.step('Verify only the tagged search is shown', async () => {
+        await expect(listPage.getSavedSearchCard(taggedName)).toBeVisible();
+        await expect(listPage.getSavedSearchCard(untaggedName)).toBeHidden();
+      });
+
+      await test.step('Clear the tag filter', async () => {
+        await listPage.clearTagFilter();
+      });
+
+      await test.step('Verify both searches are visible again', async () => {
+        await expect(listPage.getSavedSearchCard(taggedName)).toBeVisible();
+        await expect(listPage.getSavedSearchCard(untaggedName)).toBeVisible();
       });
     },
   );

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import {
   parseAsString,
   parseAsStringEnum,
@@ -18,6 +19,7 @@ import {
   Filter,
   isLogSource,
   isTraceSource,
+  pickSampleWeightExpressionProps,
   PresetDashboard,
   SourceKind,
   TTraceSource,
@@ -33,11 +35,14 @@ function pickSourceConfigFields(source: TSource) {
     ...(isLogSource(source) || isTraceSource(source)
       ? { implicitColumnExpression: source.implicitColumnExpression }
       : {}),
+    ...pickSampleWeightExpressionProps(source),
   };
 }
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Grid,
   Group,
@@ -1548,6 +1553,14 @@ function ServicesDashboardPage() {
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">
+      <Breadcrumbs mb="sm" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          Services
+        </Text>
+      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       <ServiceDashboardEndpointSidePanel
         service={service}

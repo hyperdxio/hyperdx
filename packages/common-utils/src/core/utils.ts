@@ -466,6 +466,7 @@ export function convertToDashboardTemplate(
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
+    tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
   };
 
@@ -530,7 +531,7 @@ export function convertToDashboardDocument(
   const output: DashboardWithoutId = {
     name: input.name,
     tiles: [],
-    tags: [],
+    tags: input.tags ?? [],
   };
 
   // expecting that input.tiles[0-n].config.source fields are already converted to ids
@@ -816,7 +817,10 @@ export function parseTokenizerFromTextIndex({
     return { key, value };
   });
 
-  const tokenizerArg = args.find(arg => arg.key === 'tokenizer')?.value;
+  const tokenizerArgRaw = args.find(arg => arg.key === 'tokenizer')?.value;
+
+  // Strip surrounding quotes if present (e.g., 'splitByNonAlpha' -> splitByNonAlpha)
+  const tokenizerArg = stripQuotes(tokenizerArgRaw ?? '');
   if (!tokenizerArg) {
     console.error(
       `Invalid tokenizer argument in index type ${typeFull}: ${tokenizerArg}`,
