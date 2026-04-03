@@ -910,7 +910,7 @@ export const processAlert = async (
             const changeValue = computeRateOfChange(
               0,
               previousValue,
-              alert.changeType ?? AlertChangeType.ABSOLUTE,
+              alert.changeType!,
             );
             previousBucketValues.set(groupKey, 0);
 
@@ -1015,7 +1015,7 @@ export const processAlert = async (
           const changeValue = computeRateOfChange(
             value,
             previousValue,
-            alert.changeType ?? AlertChangeType.ABSOLUTE,
+            alert.changeType!,
           );
 
           const history = getOrCreateHistory(groupKey);
