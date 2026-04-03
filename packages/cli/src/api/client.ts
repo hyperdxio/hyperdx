@@ -132,6 +132,12 @@ export class ApiClient {
     return res.json() as Promise<SavedSearchResponse[]>;
   }
 
+  async getDashboards(): Promise<DashboardResponse[]> {
+    const res = await this.get('/dashboards');
+    if (!res.ok) throw new Error(`GET /dashboards failed: ${res.status}`);
+    return res.json() as Promise<DashboardResponse[]>;
+  }
+
   // ---- ClickHouse client via proxy ---------------------------------
 
   createClickHouseClient(
@@ -333,4 +339,43 @@ export interface SavedSearchResponse {
   source: string;
   tags: string[];
   orderBy?: string;
+}
+
+export interface DashboardTileConfig {
+  name?: string;
+  source?: string;
+  type?: string;
+  displayType?: string;
+  sql?: string;
+  [key: string]: unknown;
+}
+
+export interface DashboardTile {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  config: DashboardTileConfig;
+  containerId?: string;
+}
+
+export interface DashboardFilter {
+  key: string;
+  displayName?: string;
+  keyExpression?: string;
+  sourceId?: string;
+}
+
+export interface DashboardResponse {
+  id: string;
+  _id: string;
+  name: string;
+  tags: string[];
+  tiles: DashboardTile[];
+  filters?: DashboardFilter[];
+  savedQuery?: string | null;
+  savedQueryLanguage?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }

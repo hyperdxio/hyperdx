@@ -393,6 +393,132 @@ Examples:
     }
   });
 
+// ---- Dashboards ----------------------------------------------------
+
+program
+  .command('dashboards')
+  .description('List dashboards with tile summaries')
+  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+About:
+  Lists all dashboards for the authenticated team. Each dashboard
+  contains tiles (charts/visualizations) that query ClickHouse sources.
+
+  Use --json for structured output suitable for LLM / agent consumption.
+
+JSON output schema (--json):
+  Array of objects, each with:
+    id                  - Dashboard ID
+    name                - Dashboard name
+    tags                - Array of tag strings
+    filters             - Dashboard-level filter keys (key, displayName, sourceId)
+    savedQuery          - Default dashboard query (if set)
+    createdAt           - ISO timestamp
+    updatedAt           - ISO timestamp
+    tiles               - Array of tile summaries:
+        id              - Tile ID
+        name            - Chart name (may be null)
+        type            - Chart type (time, table, number, pie, bar, etc.)
+        source          - Source ID referenced by this tile (null for raw SQL)
+        sql             - Raw SQL query (null for builder-mode charts)
+
+Examples:
+  $ hdx dashboards                     # Human-readable list with tiles
+  $ hdx dashboards --json              # JSON for agents / scripts
+  $ hdx dashboards --json | jq '.[0].tiles'  # List tiles of first dashboard
+`,
+  )
+  .action(async opts => {
+    const server = resolveServer(opts.server);
+    const client = new ApiClient({ apiUrl: server });
+
+    if (!(await client.checkSession())) {
+      _origError(
+        chalk.red(
+          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    const dashboards = await client.getDashboards();
+    if (dashboards.length === 0) {
+      if (opts.json) {
+        process.stdout.write('[]\n');
+      } else {
+        process.stdout.write('No dashboards found.\n');
+      }
+      return;
+    }
+
+    if (opts.json) {
+      const output = dashboards.map(d => ({
+        id: d.id,
+        name: d.name,
+        tags: d.tags ?? [],
+        filters: d.filters ?? [],
+        savedQuery: d.savedQuery ?? null,
+        createdAt: d.createdAt ?? null,
+        updatedAt: d.updatedAt ?? null,
+        tiles: d.tiles.map(t => ({
+          id: t.id,
+          name: t.config.name ?? null,
+          type: t.config.type ?? t.config.displayType ?? null,
+          source: t.config.source ?? null,
+          sql: t.config.sql ?? null,
+        })),
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    // Fetch sources to resolve source names for display
+    let sourceNames: Record<string, string> = {};
+    try {
+      const sources = await client.getSources();
+      sourceNames = Object.fromEntries(
+        sources.flatMap(s => [
+          [s.id, s.name],
+          [s._id, s.name],
+        ]),
+      );
+    } catch {
+      // Non-fatal — just won't show source names
+    }
+
+    // Human-readable output
+    for (const d of dashboards) {
+      const tags =
+        d.tags.length > 0 ? `  ${chalk.dim(`[${d.tags.join(', ')}]`)}` : '';
+      process.stdout.write(
+        `${chalk.bold.cyan(d.name)}${tags}  ${chalk.dim(`${d.tiles.length} tile${d.tiles.length !== 1 ? 's' : ''}`)}\n`,
+      );
+
+      for (let i = 0; i < d.tiles.length; i++) {
+        const t = d.tiles[i];
+        const isLast = i === d.tiles.length - 1;
+        const prefix = isLast ? '  └─ ' : '  ├─ ';
+        const name = t.config.name || '(untitled)';
+        const chartType = t.config.type ?? t.config.displayType ?? 'chart';
+        let sourceLabel = '';
+        if (t.config.sql) {
+          sourceLabel = 'raw SQL';
+        } else if (t.config.source) {
+          sourceLabel = `source: ${sourceNames[t.config.source] ?? t.config.source}`;
+        }
+        const meta = [chartType, sourceLabel].filter(Boolean).join(', ');
+        process.stdout.write(
+          `${chalk.dim(prefix)}${name} ${chalk.dim(`(${meta})`)}\n`,
+        );
+      }
+
+      process.stdout.write('\n');
+    }
+  });
+
 // ---- Query ---------------------------------------------------------
 
 program
