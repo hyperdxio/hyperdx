@@ -59,7 +59,7 @@ import { useHotkeys, useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
-  IconArrowsMove,
+  IconCornerDownRight,
   IconBell,
   IconChartBar,
   IconCopy,
@@ -427,7 +427,7 @@ const Tile = forwardRef(
                     variant="subtle"
                     size="sm"
                   >
-                    <IconArrowsMove size={14} />
+                    <IconCornerDownRight size={14} />
                   </ActionIcon>
                 </Tooltip>
               </Menu.Target>
