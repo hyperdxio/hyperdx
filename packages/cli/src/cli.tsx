@@ -379,6 +379,7 @@ program
 
     if (opts.json) {
       const output = sources.map(s => ({
+        id: s.id,
         name: s.name,
         kind: s.kind,
         database: s.from.databaseName,
