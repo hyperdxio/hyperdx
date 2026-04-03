@@ -14,8 +14,8 @@ import chalk from 'chalk';
 
 import App from '@/App';
 import { ApiClient } from '@/api/client';
-import { buildEventSearchQuery } from '@/api/eventQuery';
 import { clearSession, loadSession } from '@/utils/config';
+import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
 
@@ -141,107 +141,6 @@ program
         follow={opts.follow}
       />,
     );
-  });
-
-// ---- Stream mode (non-interactive, pipe-friendly) ------------------
-
-program
-  .command('stream')
-  .description('Stream events to stdout (non-interactive, pipe-friendly)')
-  .option('-s, --server <url>', 'HyperDX API server URL')
-  .requiredOption('--source <name>', 'Source name')
-  .option('-q, --query <query>', 'Lucene search query', '')
-  .option('-f, --follow', 'Continuously poll for new events')
-  .option('-n, --limit <number>', 'Max rows per fetch', '100')
-  .option(
-    '--since <duration>',
-    'How far back to look (e.g. 1h, 30m, 24h)',
-    '1h',
-  )
-  .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(chalk.red('Not logged in. Run `hdx auth login` to sign in.'));
-      process.exit(1);
-    }
-
-    const sources = await client.getSources();
-    const source = sources.find(
-      s => s.name.toLowerCase() === opts.source.toLowerCase(),
-    );
-
-    if (!source) {
-      _origError(chalk.red(`Source "${opts.source}" not found.`));
-      _origError('Available sources:');
-      for (const s of sources) {
-        _origError(`  - ${s.name} (${s.kind})`);
-      }
-      process.exit(1);
-    }
-
-    const chClient = client.createClickHouseClient();
-    const metadata = client.createMetadata();
-    const limit = parseInt(opts.limit, 10) || 100;
-    const sinceMs = parseDuration(opts.since);
-
-    const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
-    const bodyExpr = source.bodyExpression ?? 'Body';
-    const sevExpr = source.severityTextExpression ?? 'SeverityText';
-
-    let lastEndTime = new Date();
-
-    const fetchAndPrint = async (startTime: Date, endTime: Date) => {
-      const chSql = await buildEventSearchQuery(
-        {
-          source,
-          searchQuery: opts.query,
-          startTime,
-          endTime,
-          limit,
-        },
-        metadata,
-      );
-
-      const resultSet = await chClient.query({
-        query: chSql.sql,
-        query_params: chSql.params,
-        format: 'JSON',
-        connectionId: source.connection,
-      });
-
-      const json = await resultSet.json<Record<string, string | number>>();
-      const rows = json.data ?? [];
-
-      for (const row of rows.reverse()) {
-        const ts = row[tsExpr] ?? '';
-        const sev = String(row[sevExpr] ?? '');
-        const body = row[bodyExpr] ?? JSON.stringify(row);
-
-        const sevStr = sev ? colorSeverity(sev) : '';
-        process.stdout.write(`${chalk.dim(String(ts))} ${sevStr}${body}\n`);
-      }
-
-      return rows.length;
-    };
-
-    // Initial fetch
-    const start = new Date(lastEndTime.getTime() - sinceMs);
-    await fetchAndPrint(start, lastEndTime);
-
-    // Follow mode
-    if (opts.follow) {
-      const poll = async () => {
-        const now = new Date();
-        const since = new Date(lastEndTime.getTime() - 2000);
-        await fetchAndPrint(since, now);
-        lastEndTime = now;
-      };
-
-      setInterval(poll, 2000);
-      await new Promise(() => {});
-    }
   });
 
 // ---- Auth (login / logout / status) --------------------------------
@@ -494,35 +393,116 @@ Examples:
     }
   });
 
-// ---- Helpers -------------------------------------------------------
+// ---- Query ---------------------------------------------------------
 
-function parseDuration(s: string): number {
-  const match = s.match(/^(\d+)(s|m|h|d)$/);
-  if (!match) return 60 * 60 * 1000;
-  const n = parseInt(match[1], 10);
-  switch (match[2]) {
-    case 's':
-      return n * 1000;
-    case 'm':
-      return n * 60 * 1000;
-    case 'h':
-      return n * 60 * 60 * 1000;
-    case 'd':
-      return n * 24 * 60 * 60 * 1000;
-    default:
-      return 60 * 60 * 1000;
-  }
-}
+program
+  .command('query')
+  .description('Run a raw SQL query against a ClickHouse source')
+  .requiredOption('--source <nameOrId>', 'Source name or ID')
+  .requiredOption('--sql <query>', 'SQL query to execute')
+  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('--format <format>', 'ClickHouse output format', 'JSON')
+  .addHelpText(
+    'after',
+    `
+About:
+  Execute a raw ClickHouse SQL query through the HyperDX proxy, using
+  the connection credentials associated with a source. This is useful
+  for ad-hoc exploration, debugging, and agent-driven queries.
 
-function colorSeverity(sev: string): string {
-  const s = sev.toLowerCase();
-  const tag = `[${sev}] `;
-  if (s === 'error' || s === 'fatal' || s === 'critical')
-    return chalk.red.bold(tag);
-  if (s === 'warn' || s === 'warning') return chalk.yellow.bold(tag);
-  if (s === 'info') return chalk.blue(tag);
-  if (s === 'debug' || s === 'trace') return chalk.gray(tag);
-  return tag;
-}
+  The --source flag accepts either the source name (case-insensitive)
+  or the source ID (from 'hdx sources --json').
+
+  The query is sent as-is to ClickHouse — you are responsible for
+  writing valid SQL. Use 'hdx sources' to discover table names and
+  column schemas.
+
+  Output is written to stdout. Use --format to control the ClickHouse
+  response format (JSON, JSONEachRow, TabSeparated, CSV, etc.).
+
+Examples:
+  $ hdx query --source "Logs" --sql "SELECT count() FROM default.otel_logs"
+  $ hdx query --source "Traces" --sql "SELECT * FROM default.otel_traces LIMIT 5"
+  $ hdx query --source "Logs" --sql "SELECT Body FROM default.otel_logs LIMIT 3" --format JSONEachRow
+`,
+  )
+  .action(async opts => {
+    const server = resolveServer(opts.server);
+    const client = new ApiClient({ apiUrl: server });
+
+    if (!(await client.checkSession())) {
+      _origError(
+        chalk.red(
+          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    const sources = await client.getSources();
+    const source = sources.find(
+      s =>
+        s.name.toLowerCase() === opts.source.toLowerCase() ||
+        s.id === opts.source ||
+        s._id === opts.source,
+    );
+
+    if (!source) {
+      _origError(chalk.red(`Source "${opts.source}" not found.\n`));
+      _origError('Available sources:');
+      for (const s of sources) {
+        _origError(`  - ${s.name} (${s.kind}) [${s.id}]`);
+      }
+      process.exit(1);
+    }
+
+    const chClient = client.createClickHouseClient();
+
+    try {
+      const resultSet = await chClient.query({
+        query: opts.sql,
+        format: opts.format,
+        connectionId: source.connection,
+      });
+      const text = await resultSet.text();
+      process.stdout.write(text);
+      // Ensure trailing newline for clean terminal output
+      if (text.length > 0 && !text.endsWith('\n')) {
+        process.stdout.write('\n');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Query failed: ${msg}\n`));
+      process.exit(1);
+    }
+  });
+
+// ---- Upload Sourcemaps ---------------------------------------------
+
+program
+  .command('upload-sourcemaps')
+  .description(
+    'Upload JavaScript source maps to HyperDX for stack trace de-obfuscation',
+  )
+  .option('-k, --serviceKey <string>', 'The HyperDX service account API key')
+  .option(
+    '-u, --apiUrl [string]',
+    'An optional api url for self-hosted deployments',
+  )
+  .option(
+    '-rid, --releaseId [string]',
+    'An optional release id to associate the sourcemaps with',
+  )
+  .option(
+    '-p, --path [string]',
+    'Sets the directory of where the sourcemaps are',
+    '.',
+  )
+  .option(
+    '-bp, --basePath [string]',
+    'An optional base path for the uploaded sourcemaps',
+  )
+  .option('--apiVersion [string]', 'The API version to use (v1 or v2)', 'v1')
+  .action(uploadSourcemaps);
 
 program.parse();
