@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import cx from 'classnames';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -45,7 +46,14 @@ export default function ChartErrorState({
   }, [error]);
 
   return (
-    <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
+    <div
+      className={cx(
+        'h-100 w-100 d-flex g-1 flex-column align-items-center text-muted overflow-scroll',
+        {
+          'justify-content-center': variant === 'collapsible',
+        },
+      )}
+    >
       <Text ta="center" size="sm" my="sm">
         Error loading chart, please check your query or try again later.
       </Text>
