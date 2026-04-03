@@ -713,6 +713,10 @@ export const DashboardContainerSchema = z.object({
   type: z.enum(['section', 'group']),
   title: z.string().min(1),
   collapsed: z.boolean(),
+  // Whether the group can be collapsed (default true)
+  collapsible: z.boolean().optional(),
+  // Whether to show a border around the group (default true)
+  bordered: z.boolean().optional(),
   // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
   // Tiles reference a specific tab via tabId.
   tabs: z.array(DashboardContainerTabSchema).optional(),

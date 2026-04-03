@@ -1491,6 +1491,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  const handleToggleCollapsible = useCallback(
+    (containerId: string) => {
+      if (!dashboard) return;
+      setDashboard(
+        produce(dashboard, draft => {
+          const c = draft.containers?.find(s => s.id === containerId);
+          if (c) c.collapsible = c.collapsible === false ? true : false;
+        }),
+      );
+    },
+    [dashboard, setDashboard],
+  );
+
+  const handleToggleBordered = useCallback(
+    (containerId: string) => {
+      if (!dashboard) return;
+      setDashboard(
+        produce(dashboard, draft => {
+          const c = draft.containers?.find(s => s.id === containerId);
+          if (c) c.bordered = c.bordered === false ? true : false;
+        }),
+      );
+    },
+    [dashboard, setDashboard],
+  );
+
   // Use the hook for container/tab CRUD operations, but override
   // handleToggleCollapsed with the URL-based version above.
   const {
@@ -1977,6 +2003,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                             onToggleDefaultCollapsed={() =>
                               handleToggleDefaultCollapsed(container.id)
                             }
+                            onToggleCollapsible={() =>
+                              handleToggleCollapsible(container.id)
+                            }
+                            onToggleBordered={() =>
+                              handleToggleBordered(container.id)
+                            }
                             onDelete={() => handleDeleteContainer(container.id)}
                             onAddTile={() =>
                               onAddTile(
@@ -1999,6 +2031,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                               handleRenameContainer(container.id, newTitle)
                             }
                             dragHandleProps={dragHandleProps}
+                            confirm={confirm}
                           >
                             {(currentTabId: string | undefined) => {
                               const visibleTiles = currentTabId

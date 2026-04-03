@@ -2,19 +2,18 @@ import { useState } from 'react';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  CloseButton,
   Flex,
   Input,
   Menu,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconChevronRight,
   IconDotsVertical,
-  IconEye,
-  IconEyeOff,
   IconGripVertical,
+  IconPencil,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
@@ -27,6 +26,8 @@ type GroupContainerProps = {
   defaultCollapsed: boolean;
   onToggle: () => void;
   onToggleDefaultCollapsed?: () => void;
+  onToggleCollapsible?: () => void;
+  onToggleBordered?: () => void;
   onDelete?: () => void;
   onAddTile?: () => void;
   activeTabId?: string;
@@ -37,6 +38,11 @@ type GroupContainerProps = {
   onRename?: (newTitle: string) => void;
   children: (activeTabId: string | undefined) => React.ReactNode;
   dragHandleProps?: DragHandleProps;
+  confirm?: (
+    message: React.ReactNode,
+    confirmLabel?: string,
+    options?: { variant?: 'primary' | 'danger' },
+  ) => Promise<boolean>;
 };
 
 export default function GroupContainer({
@@ -45,6 +51,8 @@ export default function GroupContainer({
   defaultCollapsed,
   onToggle,
   onToggleDefaultCollapsed,
+  onToggleCollapsible,
+  onToggleBordered,
   onDelete,
   onAddTile,
   activeTabId,
@@ -55,6 +63,7 @@ export default function GroupContainer({
   onRename,
   children,
   dragHandleProps,
+  confirm,
 }: GroupContainerProps) {
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(container.title);
@@ -66,8 +75,11 @@ export default function GroupContainer({
 
   const tabs = container.tabs ?? [];
   const hasTabs = tabs.length >= 2;
+  const collapsible = container.collapsible !== false;
+  const bordered = container.bordered !== false;
   const showControls = hovered || menuOpen;
   const resolvedActiveTabId = activeTabId ?? tabs[0]?.id;
+  const isCollapsed = collapsible && collapsed;
 
   const firstTab = tabs[0];
   const headerTitle = firstTab?.title ?? container.title;
@@ -95,11 +107,30 @@ export default function GroupContainer({
     setEditingTabId(null);
   };
 
-  const chevron = (
+  const handleDeleteTab = async (tabId: string) => {
+    if (confirm) {
+      const tab = tabs.find(t => t.id === tabId);
+      const confirmed = await confirm(
+        <>
+          Delete tab{' '}
+          <Text component="span" fw={700}>
+            {tab?.title ?? 'this tab'}
+          </Text>
+          ? Tiles will be moved to the first remaining tab.
+        </>,
+        'Delete',
+        { variant: 'danger' },
+      );
+      if (!confirmed) return;
+    }
+    onDeleteTab?.(tabId);
+  };
+
+  const chevron = collapsible ? (
     <IconChevronRight
       size={16}
       style={{
-        transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+        transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
         transition: 'transform 150ms ease',
         flexShrink: 0,
         color: 'var(--mantine-color-dimmed)',
@@ -108,28 +139,24 @@ export default function GroupContainer({
       onClick={onToggle}
       data-testid={`group-chevron-${container.id}`}
     />
-  );
+  ) : null;
 
-  const addMenu = !collapsed && (
-    <Menu width={200} position="bottom-end">
-      <Menu.Target>
-        <ActionIcon
-          variant="subtle"
-          size="xs"
-          style={{
-            opacity: showControls ? 1 : 0,
-            pointerEvents: showControls ? 'auto' : 'none',
-          }}
-          data-testid={`group-add-menu-${container.id}`}
-        >
-          <IconPlus size={14} />
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        {onAddTile && <Menu.Item onClick={onAddTile}>Add Tile</Menu.Item>}
-        {onAddTab && <Menu.Item onClick={onAddTab}>Add Tab</Menu.Item>}
-      </Menu.Dropdown>
-    </Menu>
+  // Single "Add Tile" button (1 click) shown on hover, plus "Add Tab" in overflow
+  const addTileButton = !isCollapsed && onAddTile && (
+    <Tooltip label="Add Tile" position="top" withArrow>
+      <ActionIcon
+        variant="subtle"
+        size="sm"
+        style={{
+          opacity: showControls ? 1 : 0,
+          pointerEvents: showControls ? 'auto' : 'none',
+        }}
+        onClick={onAddTile}
+        data-testid={`group-add-tile-${container.id}`}
+      >
+        <IconPlus size={14} />
+      </ActionIcon>
+    </Tooltip>
   );
 
   const overflowMenu = (
@@ -137,7 +164,7 @@ export default function GroupContainer({
       <Menu.Target>
         <ActionIcon
           variant="subtle"
-          size="xs"
+          size="sm"
           style={{
             opacity: showControls ? 1 : 0,
             pointerEvents: showControls ? 'auto' : 'none',
@@ -147,15 +174,29 @@ export default function GroupContainer({
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        {onToggleDefaultCollapsed && (
+        {onAddTab && (
+          <Menu.Item leftSection={<IconPlus size={14} />} onClick={onAddTab}>
+            Add Tab
+          </Menu.Item>
+        )}
+        {onToggleCollapsible && (
           <Menu.Item
-            leftSection={
-              defaultCollapsed ? (
-                <IconEye size={14} />
-              ) : (
-                <IconEyeOff size={14} />
-              )
-            }
+            onClick={onToggleCollapsible}
+            data-testid={`group-toggle-collapsible-${container.id}`}
+          >
+            {collapsible ? 'Disable Collapse' : 'Enable Collapse'}
+          </Menu.Item>
+        )}
+        {onToggleBordered && (
+          <Menu.Item
+            onClick={onToggleBordered}
+            data-testid={`group-toggle-bordered-${container.id}`}
+          >
+            {bordered ? 'Hide Border' : 'Show Border'}
+          </Menu.Item>
+        )}
+        {collapsible && onToggleDefaultCollapsed && (
+          <Menu.Item
             onClick={onToggleDefaultCollapsed}
             data-testid={`group-toggle-default-${container.id}`}
           >
@@ -164,7 +205,7 @@ export default function GroupContainer({
         )}
         {onDelete && (
           <>
-            {onToggleDefaultCollapsed && <Menu.Divider />}
+            <Menu.Divider />
             <Menu.Item
               leftSection={<IconTrash size={14} />}
               color="red"
@@ -199,18 +240,31 @@ export default function GroupContainer({
     </div>
   );
 
+  // Collapsed summary: show all tab names when there are multiple tabs
+  const collapsedTabSummary =
+    isCollapsed && hasTabs ? (
+      <Text size="xs" c="dimmed" truncate style={{ maxWidth: 300 }}>
+        {tabs.map(t => t.title).join(' · ')}
+      </Text>
+    ) : null;
+
+  // Fixed header height to prevent jump on collapse/expand
+  const headerHeight = 36;
+
   return (
     <div
       data-testid={`group-container-${container.id}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        border: '1px solid var(--mantine-color-default-border)',
-        borderRadius: 4,
+        border: bordered
+          ? '1px solid var(--mantine-color-default-border)'
+          : undefined,
+        borderRadius: bordered ? 4 : undefined,
         marginTop: 8,
       }}
     >
-      {hasTabs && !collapsed ? (
+      {hasTabs && !isCollapsed ? (
         /* Tab bar header (2+ tabs, expanded) */
         <Tabs
           value={resolvedActiveTabId}
@@ -219,8 +273,10 @@ export default function GroupContainer({
           <Flex
             align="center"
             px="sm"
+            gap={6}
             style={{
               borderBottom: '1px solid var(--mantine-color-default-border)',
+              minHeight: headerHeight,
             }}
           >
             {dragHandle}
@@ -235,19 +291,22 @@ export default function GroupContainer({
                   onMouseLeave={() => setHoveredTabId(null)}
                   rightSection={
                     onDeleteTab && tabs.length > 1 ? (
-                      <CloseButton
-                        size="xs"
+                      <ActionIcon
+                        variant="subtle"
+                        size={16}
                         style={{
                           opacity: hoveredTabId === tab.id ? 1 : 0,
                           transition: 'opacity 150ms',
                         }}
                         onClick={e => {
                           e.stopPropagation();
-                          onDeleteTab(tab.id);
+                          handleDeleteTab(tab.id);
                         }}
-                        title="Remove tab"
-                        data-testid={`tab-close-${tab.id}`}
-                      />
+                        title="Delete tab"
+                        data-testid={`tab-delete-${tab.id}`}
+                      >
+                        <IconTrash size={12} />
+                      </ActionIcon>
                     ) : undefined
                   }
                   onDoubleClick={
@@ -287,7 +346,30 @@ export default function GroupContainer({
                 </Tabs.Tab>
               ))}
             </Tabs.List>
-            {addMenu}
+            {/* Rename active tab button */}
+            {onRenameTab && resolvedActiveTabId && (
+              <Tooltip label="Rename Tab" position="top" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  style={{
+                    opacity: showControls ? 1 : 0,
+                    pointerEvents: showControls ? 'auto' : 'none',
+                  }}
+                  onClick={() => {
+                    const tab = tabs.find(t => t.id === resolvedActiveTabId);
+                    if (tab) {
+                      setEditingTabId(tab.id);
+                      setEditedTabTitle(tab.title);
+                    }
+                  }}
+                  data-testid={`tab-rename-btn-${container.id}`}
+                >
+                  <IconPencil size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            {addTileButton}
             {overflowMenu}
           </Flex>
         </Tabs>
@@ -295,13 +377,13 @@ export default function GroupContainer({
         /* Plain header (1 tab or collapsed) — shows title + chevron */
         <Flex
           align="center"
-          gap="xs"
+          gap={6}
           px="sm"
-          py={4}
           style={{
-            borderBottom: collapsed
+            borderBottom: isCollapsed
               ? undefined
               : '1px solid var(--mantine-color-default-border)',
+            minHeight: headerHeight,
           }}
         >
           {dragHandle}
@@ -334,8 +416,12 @@ export default function GroupContainer({
             <Flex
               align="center"
               gap="xs"
-              style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-              onClick={onToggle}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                cursor: collapsible ? 'pointer' : undefined,
+              }}
+              onClick={collapsible ? onToggle : undefined}
             >
               <Text
                 size="sm"
@@ -356,13 +442,14 @@ export default function GroupContainer({
               >
                 {headerTitle}
               </Text>
+              {collapsedTabSummary}
             </Flex>
           )}
-          {addMenu}
+          {addTileButton}
           {overflowMenu}
         </Flex>
       )}
-      {!collapsed && (
+      {!isCollapsed && (
         <div style={{ padding: 0 }}>
           {children(hasTabs ? resolvedActiveTabId : undefined)}
         </div>

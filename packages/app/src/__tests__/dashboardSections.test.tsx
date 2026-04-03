@@ -132,6 +132,36 @@ describe('DashboardContainer schema', () => {
     }
   });
 
+  it('validates a group with collapsible and bordered options', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-opts',
+      type: 'group',
+      title: 'Configurable Group',
+      collapsed: false,
+      collapsible: false,
+      bordered: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.collapsible).toBe(false);
+      expect(result.data.bordered).toBe(false);
+    }
+  });
+
+  it('defaults collapsible and bordered to undefined (treated as true)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-defaults',
+      type: 'group',
+      title: 'Default Group',
+      collapsed: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.collapsible).toBeUndefined();
+      expect(result.data.bordered).toBeUndefined();
+    }
+  });
+
   it('rejects an invalid container type', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'c-1',
