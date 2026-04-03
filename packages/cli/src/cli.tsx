@@ -357,26 +357,25 @@ program
 
     const chClient = client.createClickHouseClient();
 
-    // Fetch schemas for non-metric sources
-    const schemas = new Map<string, string | null>();
-    for (const s of sources) {
-      if (s.kind === 'metric') {
-        schemas.set(s.id, null);
-        continue;
-      }
-      try {
-        const resultSet = await chClient.query({
-          query: `SHOW CREATE TABLE ${s.from.databaseName}.${s.from.tableName}`,
-          format: 'JSON',
-          connectionId: s.connection,
-        });
-        const json = await resultSet.json<{ statement: string }>();
-        const row = (json.data as { statement: string }[])?.[0];
-        schemas.set(s.id, row?.statement?.trimEnd() ?? null);
-      } catch {
-        schemas.set(s.id, null);
-      }
-    }
+    // Fetch schemas for non-metric sources (in parallel)
+    const schemaEntries = await Promise.all(
+      sources.map(async (s): Promise<[string, string | null]> => {
+        if (s.kind === 'metric') return [s.id, null];
+        try {
+          const resultSet = await chClient.query({
+            query: `SHOW CREATE TABLE ${s.from.databaseName}.${s.from.tableName}`,
+            format: 'JSON',
+            connectionId: s.connection,
+          });
+          const json = await resultSet.json<{ statement: string }>();
+          const row = (json.data as { statement: string }[])?.[0];
+          return [s.id, row?.statement?.trimEnd() ?? null];
+        } catch {
+          return [s.id, null];
+        }
+      }),
+    );
+    const schemas = new Map(schemaEntries);
 
     if (opts.json) {
       const output = sources.map(s => ({
