@@ -1,14 +1,6 @@
 import { useState } from 'react';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Flex,
-  Input,
-  Menu,
-  Tabs,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Flex, Menu, Tabs, Text, Tooltip } from '@mantine/core';
 import {
   IconChevronRight,
   IconDotsVertical,
@@ -325,18 +317,27 @@ export default function GroupContainer({
                         handleSaveTabRename(tab.id);
                       }}
                       onClick={e => e.stopPropagation()}
+                      style={{ display: 'inline' }}
                     >
-                      <Input
-                        size="xs"
+                      <input
                         value={editedTabTitle}
-                        onChange={e => setEditedTabTitle(e.currentTarget.value)}
+                        onChange={e => setEditedTabTitle(e.target.value)}
                         onBlur={() => handleSaveTabRename(tab.id)}
                         onKeyDown={e => {
                           e.stopPropagation();
                           if (e.key === 'Escape') setEditingTabId(null);
                         }}
                         autoFocus
-                        styles={{ input: { minWidth: 60, height: 22 } }}
+                        style={{
+                          border: 'none',
+                          outline: 'none',
+                          background: 'transparent',
+                          font: 'inherit',
+                          color: 'inherit',
+                          padding: 0,
+                          margin: 0,
+                          width: `${Math.max(editedTabTitle.length, 3)}ch`,
+                        }}
                         data-testid={`tab-rename-input-${tab.id}`}
                       />
                     </form>
@@ -396,10 +397,9 @@ export default function GroupContainer({
               }}
               style={{ flex: 1 }}
             >
-              <Input
-                size="xs"
+              <input
                 value={editedTitle}
-                onChange={e => setEditedTitle(e.currentTarget.value)}
+                onChange={e => setEditedTitle(e.target.value)}
                 onBlur={handleSaveRename}
                 onKeyDown={e => {
                   e.stopPropagation();
@@ -409,6 +409,18 @@ export default function GroupContainer({
                   }
                 }}
                 autoFocus
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  font: 'inherit',
+                  fontSize: 'var(--mantine-font-size-sm)',
+                  fontWeight: 500,
+                  color: 'inherit',
+                  padding: 0,
+                  margin: 0,
+                  width: '100%',
+                }}
                 data-testid={`group-rename-input-${container.id}`}
               />
             </form>

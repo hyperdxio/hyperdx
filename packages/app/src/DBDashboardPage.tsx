@@ -59,6 +59,7 @@ import { useHotkeys, useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
+  IconArrowsMove,
   IconBell,
   IconChartBar,
   IconCopy,
@@ -66,7 +67,6 @@ import {
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
-  IconLayoutList,
   IconPencil,
   IconPlayerPlay,
   IconPlus,
@@ -421,14 +421,15 @@ const Tile = forwardRef(
           {onMoveToGroup && moveTargets && moveTargets.length > 0 && (
             <Menu width={200} position="bottom-end">
               <Menu.Target>
-                <ActionIcon
-                  data-testid={`tile-move-group-button-${chart.id}`}
-                  variant="subtle"
-                  size="sm"
-                  title="Move to Group"
-                >
-                  <IconLayoutList size={14} />
-                </ActionIcon>
+                <Tooltip label="Move to Group" position="top" withArrow>
+                  <ActionIcon
+                    data-testid={`tile-move-group-button-${chart.id}`}
+                    variant="subtle"
+                    size="sm"
+                  >
+                    <IconArrowsMove size={14} />
+                  </ActionIcon>
+                </Tooltip>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>Move to Group</Menu.Label>
