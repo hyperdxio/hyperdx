@@ -341,6 +341,48 @@ describe('dashboard router', () => {
     expect(allTilesPostDelete).toEqual(alertsPostDeleteTiles);
   });
 
+  it('alert on a tile only appears on the dashboard that owns it, not on another dashboard with the same tile ID', async () => {
+    const sharedTileId = new mongoose.Types.ObjectId().toHexString();
+    const mockAlert = makeMockAlert(webhook._id.toString());
+
+    // Create dashboard A with an alert on the tile
+    const dashboardA = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Dashboard A',
+        tiles: [makeTile({ id: sharedTileId, alert: mockAlert })],
+        tags: [],
+      })
+      .expect(200);
+
+    // Create dashboard B with a tile that has the same ID, but no alert
+    const dashboardB = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Dashboard B',
+        tiles: [makeTile({ id: sharedTileId })],
+        tags: [],
+      })
+      .expect(200);
+
+    // Fetch all dashboards
+    const dashboards = await agent.get('/dashboards').expect(200);
+
+    const fetchedA = dashboards.body.find(
+      (d: any) => d._id === dashboardA.body.id,
+    );
+    const fetchedB = dashboards.body.find(
+      (d: any) => d._id === dashboardB.body.id,
+    );
+
+    // The alert should appear on dashboard A's tile
+    expect(fetchedA.tiles[0].config.alert).toBeTruthy();
+    expect(fetchedA.tiles[0].config.alert.tileId).toBe(sharedTileId);
+
+    // The alert should NOT appear on dashboard B's tile
+    expect(fetchedB.tiles[0].config.alert).toBeUndefined();
+  });
+
   it('preserves alert creator when different user updates dashboard', async () => {
     const mockAlert = makeMockAlert(webhook._id.toString());
     const currentUser = user;
