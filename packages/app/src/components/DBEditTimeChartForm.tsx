@@ -496,7 +496,7 @@ function ChartSeriesEditorComponent({
           language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
           metricMetadata={metricMetadata}
           onAddToWhere={handleAddToWhere}
-          onAddToGroupBy={handleAddToGroupBy}
+          onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
         />
       )}
     </>
