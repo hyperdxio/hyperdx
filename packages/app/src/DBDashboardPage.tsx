@@ -59,10 +59,10 @@ import { useHotkeys, useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
-  IconCornerDownRight,
   IconBell,
   IconChartBar,
   IconCopy,
+  IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
@@ -1505,8 +1505,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }
         }),
       );
+      // Clear stale URL collapse state so re-enabling doesn't resurrect old state
+      removeFromUrlSet(setUrlCollapsedIds, containerId);
+      removeFromUrlSet(setUrlExpandedIds, containerId);
     },
-    [dashboard, setDashboard],
+    [
+      dashboard,
+      setDashboard,
+      removeFromUrlSet,
+      setUrlCollapsedIds,
+      setUrlExpandedIds,
+    ],
   );
 
   const handleToggleBordered = useCallback(

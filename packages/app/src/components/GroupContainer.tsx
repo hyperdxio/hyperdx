@@ -120,6 +120,10 @@ export default function GroupContainer({
 
   const chevron = collapsible ? (
     <IconChevronRight
+      role="button"
+      tabIndex={0}
+      aria-expanded={!isCollapsed}
+      aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}
       size={16}
       style={{
         transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
@@ -129,6 +133,12 @@ export default function GroupContainer({
         cursor: 'pointer',
       }}
       onClick={onToggle}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle?.();
+        }
+      }}
       data-testid={`group-chevron-${container.id}`}
     />
   ) : null;
@@ -139,6 +149,7 @@ export default function GroupContainer({
       <ActionIcon
         variant="subtle"
         size="sm"
+        tabIndex={showControls ? 0 : -1}
         style={{
           opacity: showControls ? 1 : 0,
           pointerEvents: showControls ? 'auto' : 'none',
@@ -157,6 +168,7 @@ export default function GroupContainer({
         <ActionIcon
           variant="subtle"
           size="sm"
+          tabIndex={showControls ? 0 : -1}
           style={{
             opacity: showControls ? 1 : 0,
             pointerEvents: showControls ? 'auto' : 'none',
