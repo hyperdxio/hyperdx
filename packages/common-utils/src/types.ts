@@ -756,6 +756,8 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
   containerId: z.string().optional(),
+  // For tiles inside a tab container: which tab this tile belongs to
+  tabId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -767,11 +769,23 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+export const DashboardContainerTabSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+});
+
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
+  // Whether the group can be collapsed (default true)
+  collapsible: z.boolean().optional(),
+  // Whether to show a border around the group (default true)
+  bordered: z.boolean().optional(),
+  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
+  // Tiles reference a specific tab via tabId.
+  tabs: z.array(DashboardContainerTabSchema).optional(),
+  activeTabId: z.string().optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
