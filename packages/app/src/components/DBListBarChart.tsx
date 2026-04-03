@@ -180,7 +180,7 @@ export default function DBListBarChart({
   enabled,
   valueColumn,
   groupColumn,
-  hiddenSeries = [],
+  hiddenSeries,
   title,
   toolbarItems,
   showMVOptimizationIndicator = true,
@@ -220,7 +220,7 @@ export default function DBListBarChart({
     }
 
     return Object.keys(rows?.[0])
-      .filter(key => !hiddenSeries.includes(key))
+      .filter(key => !hiddenSeries?.includes(key))
       .map(key => ({
         dataKey: key,
         displayName: key,

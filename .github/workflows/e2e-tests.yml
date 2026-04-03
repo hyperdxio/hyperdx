@@ -47,6 +47,19 @@ jobs:
 
       - name: Start E2E Docker Compose
         run: |
+          # Pre-pull images with retries to handle transient Docker Hub timeouts
+          for attempt in 1 2 3; do
+            if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml pull; then
+              echo "Docker images pulled successfully on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to pull Docker images after 3 attempts"
+              exit 1
+            fi
+            echo "Docker pull failed (attempt $attempt/3), retrying in 10s..."
+            sleep 10
+          done
           docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml up -d
           echo "Waiting for MongoDB..."
           for i in $(seq 1 30); do
