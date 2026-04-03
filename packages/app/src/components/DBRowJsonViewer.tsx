@@ -320,7 +320,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
 
 export function DBRowJsonViewer({
   data,
-  jsonColumns = [],
+  jsonColumns,
 }: {
   data: any;
   jsonColumns?: string[];
