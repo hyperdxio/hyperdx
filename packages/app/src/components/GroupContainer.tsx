@@ -12,6 +12,21 @@ import {
 
 import { type DragHandleProps } from '@/components/DashboardDndContext';
 
+function AlertDot({ size = 6 }: { size?: number }) {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        backgroundColor: 'var(--mantine-color-red-filled)',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 type GroupContainerProps = {
   container: DashboardContainer;
   collapsed: boolean;
@@ -35,6 +50,8 @@ type GroupContainerProps = {
     confirmLabel?: string,
     options?: { variant?: 'primary' | 'danger' },
   ) => Promise<boolean>;
+  /** Tab IDs that contain tiles with active alerts */
+  alertingTabIds?: Set<string>;
 };
 
 export default function GroupContainer({
@@ -56,6 +73,7 @@ export default function GroupContainer({
   children,
   dragHandleProps,
   confirm,
+  alertingTabIds,
 }: GroupContainerProps) {
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(container.title);
@@ -251,17 +269,18 @@ export default function GroupContainer({
     </div>
   );
 
-  // Collapsed header: pipe-separated tab names (max 4, then "...")
+  // Collapsed header: pipe-separated tab names (max 4, then "…")
   const MAX_COLLAPSED_TABS = 4;
   const collapsedTabLabel =
     isCollapsed && hasTabs
-      ? tabs.length <= MAX_COLLAPSED_TABS
-        ? tabs.map(t => t.title).join(' | ')
-        : tabs
-            .slice(0, MAX_COLLAPSED_TABS)
-            .map(t => t.title)
-            .join(' | ') + ' | …'
+      ? tabs
+          .slice(0, MAX_COLLAPSED_TABS)
+          .map(t => t.title)
+          .join(' | ') + (tabs.length > MAX_COLLAPSED_TABS ? ' | …' : '')
       : null;
+
+  // Tab IDs with active alerts (for indicators)
+  const hasContainerAlert = alertingTabIds != null && alertingTabIds.size > 0;
 
   // Fixed header height to prevent jump on collapse/expand
   const headerHeight = 36;
@@ -365,7 +384,16 @@ export default function GroupContainer({
                       />
                     </form>
                   ) : (
-                    tab.title
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {tab.title}
+                      {alertingTabIds?.has(tab.id) && <AlertDot size={5} />}
+                    </span>
                   )}
                 </Tabs.Tab>
               ))}
@@ -480,6 +508,7 @@ export default function GroupContainer({
               >
                 {collapsedTabLabel ?? headerTitle}
               </Text>
+              {isCollapsed && hasContainerAlert && <AlertDot />}
             </Flex>
           )}
           {addTileButton}

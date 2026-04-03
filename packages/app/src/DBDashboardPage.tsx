@@ -2002,6 +2002,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     const hasTabs = groupTabs.length >= 2;
                     const containerCollapsed = isContainerCollapsed(container);
 
+                    // Compute which tabs have tiles with active alerts
+                    const alertingTabIds = new Set<string>();
+                    for (const tile of containerTiles) {
+                      if (
+                        tile.tabId &&
+                        isBuilderSavedChartConfig(tile.config) &&
+                        tile.config.alert?.state === AlertState.ALERT
+                      ) {
+                        alertingTabIds.add(tile.tabId);
+                      }
+                    }
+
                     return (
                       <SortableContainerWrapper
                         key={container.id}
@@ -2046,6 +2058,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                             }
                             dragHandleProps={dragHandleProps}
                             confirm={confirm}
+                            alertingTabIds={alertingTabIds}
                           >
                             {(currentTabId: string | undefined) => {
                               const visibleTiles = currentTabId
