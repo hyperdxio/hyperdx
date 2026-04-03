@@ -3,10 +3,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ActionIcon,
   Anchor,
-  Box,
   Button,
   Container,
   Flex,
@@ -31,12 +31,14 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
+  type Dashboard,
   useCreateDashboard,
   useDashboards,
   useDeleteDashboard,
@@ -47,6 +49,14 @@ import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
+
+function getDashboardAlerts(tiles: Dashboard['tiles']) {
+  return tiles
+    .map(t =>
+      isBuilderSavedChartConfig(t.config) ? t.config.alert : undefined,
+    )
+    .filter(a => a != null);
+}
 
 const PRESET_DASHBOARDS = [
   {
@@ -209,6 +219,9 @@ export default function DashboardsListPage() {
                   tags={d.tags}
                   description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                   onDelete={() => handleDelete(d.id)}
+                  statusIcon={
+                    <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
+                  }
                   resourceId={d.id}
                   resourceType="dashboard"
                 />
@@ -351,7 +364,7 @@ export default function DashboardsListPage() {
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={20} />
+                <Table.Th w={40} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
                 <Table.Th w={50} />
@@ -367,13 +380,14 @@ export default function DashboardsListPage() {
                   tags={d.tags}
                   onDelete={handleDelete}
                   leftSection={
-                    <Box ps={4}>
+                    <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
                       <FavoriteButton
                         resourceType="dashboard"
                         resourceId={d.id}
                         size="xs"
                       />
-                    </Box>
+                      <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
+                    </Group>
                   }
                 />
               ))}
@@ -395,6 +409,9 @@ export default function DashboardsListPage() {
                       tags={d.tags}
                       description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                       onDelete={() => handleDelete(d.id)}
+                      statusIcon={
+                        <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
+                      }
                       resourceId={d.id}
                       resourceType="dashboard"
                     />
