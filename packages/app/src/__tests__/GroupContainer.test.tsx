@@ -10,7 +10,6 @@ function renderGroupContainer(
   const defaults: React.ComponentProps<typeof GroupContainer> = {
     container: {
       id: 'g1',
-      type: 'group',
       title: 'Test Group',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'Tab One' }],
@@ -39,7 +38,6 @@ describe('GroupContainer', () => {
       renderGroupContainer({
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Test',
           collapsed: false,
           collapsible: false,
@@ -78,7 +76,6 @@ describe('GroupContainer', () => {
       renderGroupContainer({
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Test',
           collapsed: false,
           bordered: false,
@@ -96,7 +93,6 @@ describe('GroupContainer', () => {
         collapsed: true,
         container: {
           id: 'g1',
-          type: 'group',
           title: 'My Group',
           collapsed: false,
           tabs: [
@@ -114,7 +110,6 @@ describe('GroupContainer', () => {
         collapsed: false,
         container: {
           id: 'g1',
-          type: 'group',
           title: 'My Group',
           collapsed: false,
           tabs: [
@@ -131,7 +126,6 @@ describe('GroupContainer', () => {
         collapsed: true,
         container: {
           id: 'g1',
-          type: 'group',
           title: 'My Group',
           collapsed: false,
           tabs: [{ id: 'tab-1', title: 'Only Tab' }],
@@ -150,7 +144,6 @@ describe('GroupContainer', () => {
         onToggleDefaultCollapsed: jest.fn(),
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Test',
           collapsed: false,
           collapsible: false,
@@ -168,7 +161,6 @@ describe('GroupContainer', () => {
       renderGroupContainer({
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Group',
           collapsed: false,
           tabs: [
@@ -188,7 +180,6 @@ describe('GroupContainer', () => {
       renderGroupContainer({
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Group',
           collapsed: false,
           tabs: [{ id: 'tab-1', title: 'Only' }],
@@ -208,7 +199,6 @@ describe('GroupContainer', () => {
         confirm,
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Group',
           collapsed: false,
           tabs: [
@@ -241,7 +231,6 @@ describe('GroupContainer', () => {
         confirm,
         container: {
           id: 'g1',
-          type: 'group',
           title: 'Group',
           collapsed: false,
           tabs: [

@@ -30,7 +30,6 @@ export default function useDashboardContainers({
         const tabId = makeId();
         draft.containers.push({
           id: containerId,
-          type: 'group',
           title: 'New Group',
           collapsed: false,
           tabs: [{ id: tabId, title: 'New Group' }],

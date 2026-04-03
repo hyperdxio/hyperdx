@@ -708,9 +708,6 @@ export const DashboardContainerTabSchema = z.object({
 
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  // Unified container type: always a bordered, collapsible group.
-  // Accepts 'section' for backward compatibility — new code always writes 'group'.
-  type: z.enum(['section', 'group']),
   title: z.string().min(1),
   collapsed: z.boolean(),
   // Whether the group can be collapsed (default true)

@@ -36,7 +36,6 @@ export default function useTileSelection({
         if (!draft.containers) draft.containers = [];
         draft.containers.push({
           id: groupId,
-          type: 'group',
           title: 'New Group',
           collapsed: false,
           tabs: [{ id: tabId, title: 'New Group' }],

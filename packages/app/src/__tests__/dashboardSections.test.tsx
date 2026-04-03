@@ -8,17 +8,13 @@ describe('DashboardContainer schema', () => {
   it('validates a valid group', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-1',
-      type: 'group',
       title: 'Infrastructure',
       collapsed: false,
     });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.type).toBe('group');
-    }
   });
 
-  it('accepts legacy section type for backward compatibility', () => {
+  it('accepts containers with extra fields (backward compat)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'section-1',
       type: 'section',
@@ -31,7 +27,6 @@ describe('DashboardContainer schema', () => {
   it('validates a collapsed group', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-2',
-      type: 'group',
       title: 'Database Metrics',
       collapsed: true,
     });
@@ -50,7 +45,6 @@ describe('DashboardContainer schema', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: '',
-        type: 'group',
         title: 'Valid',
         collapsed: false,
       }).success,
@@ -58,7 +52,6 @@ describe('DashboardContainer schema', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: 'valid',
-        type: 'group',
         title: '',
         collapsed: false,
       }).success,
@@ -68,13 +61,11 @@ describe('DashboardContainer schema', () => {
   it('validates a group container without tabs (legacy plain group)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-1',
-      type: 'group',
       title: 'Key Metrics',
       collapsed: false,
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.type).toBe('group');
       expect(result.data.tabs).toBeUndefined();
     }
   });
@@ -82,7 +73,6 @@ describe('DashboardContainer schema', () => {
   it('validates a group with 1 tab (new default for groups)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-new',
-      type: 'group',
       title: 'New Group',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'New Group' }],
@@ -90,7 +80,6 @@ describe('DashboardContainer schema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.type).toBe('group');
       expect(result.data.tabs).toHaveLength(1);
       expect(result.data.tabs![0].title).toBe('New Group');
       expect(result.data.activeTabId).toBe('tab-1');
@@ -100,7 +89,6 @@ describe('DashboardContainer schema', () => {
   it('validates a group with 2+ tabs (tab bar behavior)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-2',
-      type: 'group',
       title: 'Overview Group',
       collapsed: false,
       tabs: [
@@ -111,7 +99,6 @@ describe('DashboardContainer schema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.type).toBe('group');
       expect(result.data.tabs).toHaveLength(2);
       expect(result.data.activeTabId).toBe('tab-a');
     }
@@ -120,14 +107,12 @@ describe('DashboardContainer schema', () => {
   it('validates a group with 1 tab (plain group, no tab bar)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-3',
-      type: 'group',
       title: 'Single Tab Group',
       collapsed: false,
       tabs: [{ id: 'tab-only', title: 'Only Tab' }],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.type).toBe('group');
       expect(result.data.tabs).toHaveLength(1);
     }
   });
@@ -135,7 +120,6 @@ describe('DashboardContainer schema', () => {
   it('validates a group with collapsible and bordered options', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-opts',
-      type: 'group',
       title: 'Configurable Group',
       collapsed: false,
       collapsible: false,
@@ -151,7 +135,6 @@ describe('DashboardContainer schema', () => {
   it('defaults collapsible and bordered to undefined (treated as true)', () => {
     const result = DashboardContainerSchema.safeParse({
       id: 'group-defaults',
-      type: 'group',
       title: 'Default Group',
       collapsed: false,
     });
@@ -160,26 +143,6 @@ describe('DashboardContainer schema', () => {
       expect(result.data.collapsible).toBeUndefined();
       expect(result.data.bordered).toBeUndefined();
     }
-  });
-
-  it('rejects an invalid container type', () => {
-    const result = DashboardContainerSchema.safeParse({
-      id: 'c-1',
-      type: 'invalid',
-      title: 'Bad Type',
-      collapsed: false,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects type tab (no longer valid)', () => {
-    const result = DashboardContainerSchema.safeParse({
-      id: 'c-2',
-      type: 'tab',
-      title: 'Old Tab',
-      collapsed: false,
-    });
-    expect(result.success).toBe(false);
   });
 });
 
@@ -280,8 +243,8 @@ describe('Dashboard schema with containers', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
-        { id: 's1', type: 'group', title: 'Group A', collapsed: false },
-        { id: 's1', type: 'group', title: 'Group B', collapsed: true },
+        { id: 's1', title: 'Group A', collapsed: false },
+        { id: 's1', title: 'Group B', collapsed: true },
       ],
     });
     expect(result.success).toBe(false);
@@ -293,11 +256,10 @@ describe('Dashboard schema with containers', () => {
       containers: [
         {
           id: 's1',
-          type: 'group',
           title: 'Infrastructure',
           collapsed: false,
         },
-        { id: 's2', type: 'group', title: 'Application', collapsed: true },
+        { id: 's2', title: 'Application', collapsed: true },
       ],
     });
     expect(result.success).toBe(true);
@@ -308,7 +270,7 @@ describe('Dashboard schema with containers', () => {
     }
   });
 
-  it('accepts legacy section type in dashboard containers', () => {
+  it('old dashboards with type field in containers still parse successfully', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
@@ -351,7 +313,6 @@ describe('Dashboard schema with containers', () => {
       containers: [
         {
           id: 's1',
-          type: 'group',
           title: 'Infrastructure',
           collapsed: false,
         },
@@ -393,7 +354,6 @@ describe('Dashboard schema with containers', () => {
       containers: [
         {
           id: 'g1',
-          type: 'group',
           title: 'My Group',
           collapsed: false,
           tabs: [
@@ -963,7 +923,6 @@ describe('group tab operations', () => {
   type SimpleGroup = {
     id: string;
     title: string;
-    type: 'group';
     collapsed: boolean;
     tabs?: SimpleTab[];
     activeTabId?: string;
@@ -975,7 +934,6 @@ describe('group tab operations', () => {
     const tabId = 'tab-new';
     const group: SimpleGroup = {
       id: 'g1',
-      type: 'group',
       title: 'New Group',
       collapsed: false,
       tabs: [{ id: tabId, title: 'New Group' }],
@@ -991,7 +949,6 @@ describe('group tab operations', () => {
     // Simulates handleAddTab for a group with 1 tab
     const group: SimpleGroup = {
       id: 'g1',
-      type: 'group',
       title: 'My Group',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'My Group' }],
@@ -1016,7 +973,6 @@ describe('group tab operations', () => {
     // Simulates handleRenameSection for a group with 1 tab
     const group: SimpleGroup = {
       id: 'g1',
-      type: 'group',
       title: 'Old Name',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'Old Name' }],
@@ -1041,7 +997,6 @@ describe('group tab operations', () => {
     // Simulates handleDeleteTab leaving 1 tab
     const group: SimpleGroup = {
       id: 'g1',
-      type: 'group',
       title: 'My Group',
       collapsed: false,
       tabs: [
