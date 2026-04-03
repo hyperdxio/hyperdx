@@ -255,4 +255,75 @@ describe('GroupContainer', () => {
       expect(onDeleteTab).not.toHaveBeenCalled();
     });
   });
+
+  describe('alert indicators', () => {
+    it('shows alert dot on collapsed group header when alertingTabIds is non-empty', () => {
+      const { container: wrapper } = renderGroupContainer({
+        collapsed: true,
+        alertingTabIds: new Set(['tab-1']),
+        container: {
+          id: 'g1',
+          title: 'Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-1', title: 'Overview' },
+            { id: 'tab-2', title: 'Logs' },
+          ],
+        },
+      });
+      // Alert dot is rendered as a small span with red background
+      const dots = wrapper.querySelectorAll(
+        'span[style*="border-radius: 50%"]',
+      );
+      expect(dots.length).toBeGreaterThan(0);
+    });
+
+    it('does not show alert dot when alertingTabIds is empty', () => {
+      const { container: wrapper } = renderGroupContainer({
+        collapsed: true,
+        alertingTabIds: new Set(),
+        container: {
+          id: 'g1',
+          title: 'Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-1', title: 'Overview' },
+            { id: 'tab-2', title: 'Logs' },
+          ],
+        },
+      });
+      const dots = wrapper.querySelectorAll(
+        'span[style*="border-radius: 50%"]',
+      );
+      expect(dots.length).toBe(0);
+    });
+
+    it('shows alert dot on specific tab in expanded tab bar', () => {
+      renderGroupContainer({
+        collapsed: false,
+        alertingTabIds: new Set(['tab-2']),
+        container: {
+          id: 'g1',
+          title: 'Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-1', title: 'Overview' },
+            { id: 'tab-2', title: 'Alerts' },
+          ],
+          activeTabId: 'tab-1',
+        },
+        activeTabId: 'tab-1',
+        onTabChange: jest.fn(),
+      });
+      // The "Alerts" tab should have a dot, "Overview" should not
+      const alertsTab = screen.getByRole('tab', { name: 'Alerts' });
+      const overviewTab = screen.getByRole('tab', { name: 'Overview' });
+      expect(
+        alertsTab.querySelector('span[style*="border-radius: 50%"]'),
+      ).toBeTruthy();
+      expect(
+        overviewTab.querySelector('span[style*="border-radius: 50%"]'),
+      ).toBeNull();
+    });
+  });
 });

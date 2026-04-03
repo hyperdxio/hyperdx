@@ -2002,15 +2002,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     const hasTabs = groupTabs.length >= 2;
                     const containerCollapsed = isContainerCollapsed(container);
 
-                    // Compute which tabs have tiles with active alerts
+                    // Compute which tabs have tiles with active alerts.
+                    // Tiles without tabId (single-tab groups) are attributed
+                    // to the first tab so the indicator still shows.
+                    const firstTabId = groupTabs[0]?.id;
                     const alertingTabIds = new Set<string>();
                     for (const tile of containerTiles) {
                       if (
-                        tile.tabId &&
                         isBuilderSavedChartConfig(tile.config) &&
                         tile.config.alert?.state === AlertState.ALERT
                       ) {
-                        alertingTabIds.add(tile.tabId);
+                        alertingTabIds.add(tile.tabId ?? firstTabId ?? '');
                       }
                     }
 
