@@ -1,4 +1,8 @@
-import Connection, { IConnection } from '@/models/connection';
+import Connection, {
+  decryptConnectionPassword,
+  encryptConnectionPassword,
+  IConnection,
+} from '@/models/connection';
 
 export function getConnections() {
   // Never return password back to the user
@@ -15,16 +19,28 @@ export function getConnectionById(
   connectionId: string,
   selectPassword = false,
 ) {
-  return Connection.findOne({ _id: connectionId, team }).select(
-    selectPassword ? '+password' : '',
-  );
+  return Connection.findOne({ _id: connectionId, team })
+    .select(selectPassword ? '+password' : '')
+    .then(connection => {
+      if (connection && selectPassword && connection.password) {
+        connection.password = decryptConnectionPassword(connection.password);
+      }
+
+      return connection;
+    });
 }
 
 export function createConnection(
   team: string,
   connection: Omit<IConnection, 'id' | '_id'>,
 ) {
-  return Connection.create({ ...connection, team });
+  return Connection.create({
+    ...connection,
+    team,
+    ...(connection.password != null
+      ? { password: encryptConnectionPassword(connection.password) }
+      : {}),
+  });
 }
 
 export function updateConnection(
@@ -33,7 +49,17 @@ export function updateConnection(
   connection: Omit<IConnection, 'id' | '_id'>,
   unsetFields: string[] = [],
 ) {
-  const updateOperation: Record<string, unknown> = { $set: connection };
+  const updateConnectionPayload =
+    connection.password != null
+      ? {
+          ...connection,
+          password: encryptConnectionPassword(connection.password),
+        }
+      : connection;
+
+  const updateOperation: Record<string, unknown> = {
+    $set: updateConnectionPayload,
+  };
 
   if (unsetFields.length > 0) {
     updateOperation.$unset = unsetFields.reduce(
