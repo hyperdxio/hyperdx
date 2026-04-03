@@ -11,7 +11,7 @@ import {
   createOrUpdateDashboardAlerts,
   deleteDashboardAlerts,
   getDashboardAlertsByTile,
-  getTeamDashboardAlertsByTile,
+  getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
@@ -96,7 +96,7 @@ async function syncDashboardAlerts(
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
     Dashboard.find({ team: teamId }),
-    getTeamDashboardAlertsByTile(teamId),
+    getTeamDashboardAlertsByDashboardAndTile(teamId),
   ]);
 
   const dashboards = _dashboards
@@ -105,7 +105,10 @@ export async function getDashboards(teamId: ObjectId) {
       ...d,
       tiles: d.tiles.map(t => ({
         ...t,
-        config: { ...t.config, alert: alerts[t.id]?.[0] },
+        config: {
+          ...t.config,
+          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+        },
       })),
     }));
 
