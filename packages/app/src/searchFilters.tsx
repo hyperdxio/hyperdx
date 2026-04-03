@@ -99,11 +99,34 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
     return trimmed.toLowerCase() === 'true';
   }
 
+  // Remove surrounding quotes and un-escape '' → '
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1).replace(/''/g, "'");
   }
   return trimmed;
 };
+
+// Returns true when the single-quote at position `i` is a real string delimiter
+// rather than an escape sequence.  Handles both ClickHouse/SQL '' escaping and
+// backslash \' escaping.
+function isQuoteBoundary(s: string, i: number): boolean {
+  if (s[i] !== "'") return false;
+  if (i > 0 && s[i - 1] === '\\') return false;
+  return true;
+}
+
+// If we're inside a quoted string and hit a quote, check whether the next
+// character is also a quote ('' escape).  If so, skip both and stay in the
+// string.  Returns the new index to continue iteration from.
+function handleQuoteEscape(
+  s: string,
+  i: number,
+): { skip: boolean; next: number } {
+  if (i + 1 < s.length && s[i + 1] === "'") {
+    return { skip: true, next: i + 1 };
+  }
+  return { skip: false, next: i };
+}
 
 // Helper function to split on commas while respecting quoted strings and booleans.
 // Handles SQL-escaped single quotes ('') inside quoted strings.
@@ -115,12 +138,14 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   for (let i = 0; i < valuesStr.length; i++) {
     const char = valuesStr[i];
 
-    if (char === "'") {
-      if (inString && i + 1 < valuesStr.length && valuesStr[i + 1] === "'") {
-        // SQL-escaped quote ('') inside a string — keep both chars
-        currentValue += "''";
-        i++;
-        continue;
+    if (isQuoteBoundary(valuesStr, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(valuesStr, i);
+        if (esc.skip) {
+          currentValue += "''";
+          i = esc.next;
+          continue;
+        }
       }
       inString = !inString;
       currentValue += char;
@@ -146,6 +171,79 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
+// Check whether a SQL fragment contains a keyword or operator outside of
+// single-quoted strings.  Accepts either single characters (=, <, >) or
+// multi-character keywords (' OR ', ' BETWEEN ') to search for.
+function containsOutsideQuotes(
+  text: string,
+  targets: (string | { char: string })[],
+): boolean {
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (isQuoteBoundary(text, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    for (const target of targets) {
+      if (typeof target === 'object') {
+        if (char === target.char) return true;
+      } else {
+        if (text.slice(i, i + target.length).toUpperCase() === target)
+          return true;
+      }
+    }
+  }
+  return false;
+}
+
+function containsOperatorOutsideQuotes(part: string): boolean {
+  return containsOutsideQuotes(part, [
+    { char: '=' },
+    { char: '<' },
+    { char: '>' },
+    ' OR ',
+  ]);
+}
+
+// Split a string on the first occurrence of `delimiter` that is outside
+// single-quoted strings.  Returns [before, after] or null if not found.
+function splitOnFirstOutsideQuotes(
+  text: string,
+  delimiter: string,
+): [string, string] | null {
+  let inString = false;
+  const upper = delimiter.toUpperCase();
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (isQuoteBoundary(text, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (text.slice(i, i + upper.length).toUpperCase() === upper) {
+      return [text.slice(0, i), text.slice(i + upper.length)];
+    }
+  }
+  return null;
+}
+
 // Helper function to extract simple IN/NOT IN clauses from a condition
 // This handles both simple conditions and compound conditions with AND
 function extractInClauses(condition: string): Array<{
@@ -167,11 +265,14 @@ function extractInClauses(condition: string): Array<{
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
 
-    if (char === "'") {
-      if (inString && i + 1 < condition.length && condition[i + 1] === "'") {
-        currentPart += "''";
-        i++;
-        continue;
+    if (isQuoteBoundary(condition, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(condition, i);
+        if (esc.skip) {
+          currentPart += "''";
+          i = esc.next;
+          continue;
+        }
       }
       inString = !inString;
       currentPart += char;
@@ -196,39 +297,38 @@ function extractInClauses(condition: string): Array<{
 
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
-    // Skip parts that contain OR (not supported) or comparison operators
-    if (
-      part.toUpperCase().includes(' OR ') ||
-      part.includes('=') ||
-      part.includes('<') ||
-      part.includes('>')
-    ) {
+    // Skip parts that contain OR (not supported) or comparison operators,
+    // but only when those operators appear outside of quoted strings.
+    if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
 
-    const isExclude = part.includes('NOT IN');
+    const isExclude = containsOutsideQuotes(part, [' NOT IN ']);
+    const hasIn = isExclude || containsOutsideQuotes(part, [' IN ']);
 
-    // Check if this is an IN clause
-    if (part.includes(' IN ') || part.includes(' NOT IN ')) {
-      const [key, values] = part.split(isExclude ? ' NOT IN ' : ' IN ');
+    if (hasIn) {
+      // Split on the first unquoted ' IN ' / ' NOT IN '
+      const splitResult = splitOnFirstOutsideQuotes(
+        part,
+        isExclude ? ' NOT IN ' : ' IN ',
+      );
+      if (!splitResult) continue;
+      const [key, values] = splitResult;
 
-      if (key && values) {
-        const keyStr = key.trim();
-        // Remove outer parentheses and split on commas while respecting quotes
-        const trimmedValues = values.trim();
-        const withoutParens =
-          trimmedValues.startsWith('(') && trimmedValues.endsWith(')')
-            ? trimmedValues.slice(1, -1)
-            : trimmedValues;
+      const keyStr = key.trim();
+      const trimmedValues = values.trim();
+      const withoutParens =
+        trimmedValues.startsWith('(') && trimmedValues.endsWith(')')
+          ? trimmedValues.slice(1, -1)
+          : trimmedValues;
 
-        const valuesArray = splitValuesOnComma(withoutParens);
+      const valuesArray = splitValuesOnComma(withoutParens);
 
-        results.push({
-          key: keyStr,
-          values: valuesArray,
-          isExclude,
-        });
-      }
+      results.push({
+        key: keyStr,
+        values: valuesArray,
+        isExclude,
+      });
     }
   }
 
@@ -251,8 +351,8 @@ export const parseQuery = (
   for (const filter of q) {
     if (filter.type !== 'sql') continue;
 
-    // Check for BETWEEN condition
-    if (filter.condition.includes(' BETWEEN ')) {
+    // Check for BETWEEN condition (only when BETWEEN appears outside quotes)
+    if (containsOutsideQuotes(filter.condition, [' BETWEEN '])) {
       const betweenMatch = filter.condition.match(
         /^(.+?)\s+BETWEEN\s+(.+?)\s+AND\s+(.+?)$/i,
       );
