@@ -44,6 +44,7 @@ import {
 import { useFavorites } from '@/favorites';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
+import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
 
@@ -120,6 +121,11 @@ export default function DashboardsListPage() {
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [dashboards, search, tagFilter]);
+
+  const tagGroups = useMemo(
+    () => groupByTags(filteredDashboards, tagFilter),
+    [filteredDashboards, tagFilter],
+  );
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(
@@ -374,20 +380,29 @@ export default function DashboardsListPage() {
             </Table.Tbody>
           </Table>
         ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-            {filteredDashboards.map(d => (
-              <ListingCard
-                key={d.id}
-                name={d.name}
-                href={`/dashboards/${d.id}`}
-                tags={d.tags}
-                description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
-                onDelete={() => handleDelete(d.id)}
-                resourceId={d.id}
-                resourceType="dashboard"
-              />
+          <Stack gap="lg">
+            {tagGroups.map(group => (
+              <div key={group.tag}>
+                <Text fw={500} size="sm" c="dimmed" mb="sm">
+                  {group.tag}
+                </Text>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+                  {group.items.map(d => (
+                    <ListingCard
+                      key={d.id}
+                      name={d.name}
+                      href={`/dashboards/${d.id}`}
+                      tags={d.tags}
+                      description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                      onDelete={() => handleDelete(d.id)}
+                      resourceId={d.id}
+                      resourceType="dashboard"
+                    />
+                  ))}
+                </SimpleGrid>
+              </div>
             ))}
-          </SimpleGrid>
+          </Stack>
         )}
       </Container>
     </div>

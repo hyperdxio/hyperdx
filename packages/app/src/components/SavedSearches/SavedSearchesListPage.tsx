@@ -37,6 +37,7 @@ import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { SavedSearchWithEnhancedAlerts } from '@/types';
 import { useConfirm } from '@/useConfirm';
+import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
 
@@ -115,6 +116,11 @@ export default function SavedSearchesListPage() {
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [savedSearches, search, tagFilter]);
+
+  const tagGroups = useMemo(
+    () => groupByTags(filteredSavedSearches, tagFilter),
+    [filteredSavedSearches, tagFilter],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -290,20 +296,29 @@ export default function SavedSearchesListPage() {
             </Table.Tbody>
           </Table>
         ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-            {filteredSavedSearches.map(s => (
-              <ListingCard
-                key={s.id}
-                name={s.name}
-                href={`/search/${s.id}`}
-                tags={s.tags}
-                onDelete={() => handleDelete(s.id)}
-                statusIcon={<AlertStatusIcon alerts={s.alerts} />}
-                resourceId={s.id}
-                resourceType="savedSearch"
-              />
+          <Stack gap="lg">
+            {tagGroups.map(group => (
+              <div key={group.tag}>
+                <Text fw={500} size="sm" c="dimmed" mb="sm">
+                  {group.tag}
+                </Text>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+                  {group.items.map(s => (
+                    <ListingCard
+                      key={s.id}
+                      name={s.name}
+                      href={`/search/${s.id}`}
+                      tags={s.tags}
+                      onDelete={() => handleDelete(s.id)}
+                      statusIcon={<AlertStatusIcon alerts={s.alerts} />}
+                      resourceId={s.id}
+                      resourceType="savedSearch"
+                    />
+                  ))}
+                </SimpleGrid>
+              </div>
             ))}
-          </SimpleGrid>
+          </Stack>
         )}
       </Container>
     </div>
