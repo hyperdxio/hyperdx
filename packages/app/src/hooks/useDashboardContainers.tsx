@@ -242,6 +242,8 @@ export default function useDashboardContainers({
             const keepTab = remaining[0];
             c.tabs = remaining;
             c.activeTabId = keepTab?.id;
+            // Sync container title to surviving tab
+            if (keepTab) c.title = keepTab.title;
             // Move tiles from deleted tab to the remaining tab
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId && tile.tabId === tabId) {
@@ -260,6 +262,8 @@ export default function useDashboardContainers({
             if (c.activeTabId === tabId) {
               c.activeTabId = targetTabId;
             }
+            // Sync container title to new first tab
+            if (c.tabs[0]) c.title = c.tabs[0].title;
           }
         }),
       );

@@ -2012,7 +2012,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         isBuilderSavedChartConfig(tile.config) &&
                         tile.config.alert?.state === AlertState.ALERT
                       ) {
-                        alertingTabIds.add(tile.tabId ?? firstTabId ?? '');
+                        const attributedTabId = tile.tabId ?? firstTabId;
+                        if (attributedTabId)
+                          alertingTabIds.add(attributedTabId);
                       }
                     }
 

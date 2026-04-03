@@ -404,6 +404,7 @@ export default function GroupContainer({
                 <ActionIcon
                   variant="subtle"
                   size="sm"
+                  tabIndex={showControls ? 0 : -1}
                   style={{
                     opacity: showControls ? 1 : 0,
                     pointerEvents: showControls ? 'auto' : 'none',
