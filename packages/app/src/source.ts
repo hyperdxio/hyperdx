@@ -423,6 +423,20 @@ function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
   return DURATION_PRESERVING_AGG_FNS.has(baseFn);
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Builds a regex that matches `<durationExpr> / 1e<N>` with optional
+ * surrounding parentheses and whitespace. Handles variants like:
+ *   (Duration)/1e6, Duration/1e6, Duration / 1e6, (Duration) / 1e6
+ */
+function buildDivisionPattern(durationExpr: string, exponent: number): RegExp {
+  const escaped = escapeRegExp(durationExpr);
+  return new RegExp(`^\\(?\\s*${escaped}\\s*\\)?\\s*/\\s*1e${exponent}$`);
+}
+
 /**
  * Returns a NumberFormat for duration display if the chart config's select
  * expressions reference a trace source's durationExpression. Returns undefined
@@ -446,8 +460,12 @@ export function getTraceDurationNumberFormat(
   if (!selectExpressions || selectExpressions.length === 0) return undefined;
 
   const durationExpr = source.durationExpression;
-  const durationMsExpr = getDurationMsExpression(source);
-  const durationSecondsExpr = getDurationSecondsExpression(source);
+  const precision = source.durationPrecision ?? 9;
+  const msExponent = precision - 3;
+  const secondsExponent = precision;
+
+  const msPattern = buildDivisionPattern(durationExpr, msExponent);
+  const secondsPattern = buildDivisionPattern(durationExpr, secondsExponent);
 
   for (const sel of selectExpressions) {
     if (!sel.valueExpression) continue;
@@ -455,22 +473,23 @@ export function getTraceDurationNumberFormat(
 
     const expr = sel.valueExpression;
 
-    if (expr.includes(durationMsExpr)) {
+    if (msPattern.test(expr)) {
       return {
         output: 'duration',
         factor: 0.001,
       };
     }
 
-    if (expr.includes(durationSecondsExpr)) {
+    if (secondsPattern.test(expr)) {
       return {
         output: 'duration',
         factor: 1,
       };
     }
 
-    if (expr.includes(durationExpr)) {
-      const precision = source.durationPrecision ?? 9;
+    // Exact match only for the raw duration expression to avoid
+    // over-matching expressions like "Duration/1e6" as raw precision.
+    if (expr === durationExpr) {
       return {
         output: 'duration',
         factor: Math.pow(10, -precision),
