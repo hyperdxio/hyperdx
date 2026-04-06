@@ -396,17 +396,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               href="/search/list"
               icon={<IconDeviceFloppy size={16} />}
               isActive={isSavedSearchActive}
-              {...(favoritedSavedSearches.length > 0 && {
-                isExpanded: isSavedSearchExpanded,
-                onToggle: () =>
-                  setIsSavedSearchExpanded(!isSavedSearchExpanded),
-              })}
+              isExpanded={isSavedSearchExpanded}
+              onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
 
-            {!isCollapsed && !!favoritedSavedSearches.length && (
+            {!isCollapsed && (
               <Collapse in={isSavedSearchExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedSavedSearches.map(renderSavedSearchLink)}
+                  {favoritedSavedSearches.length > 0 ? (
+                    favoritedSavedSearches.map(renderSavedSearchLink)
+                  ) : favorites != null && savedSearches != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites yet. Star a saved search on the{' '}
+                      <Anchor component={Link} href="/search/list" size="xs">
+                        Saved Searches
+                      </Anchor>{' '}
+                      page to show it here.
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
@@ -429,16 +436,28 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               href="/dashboards/list"
               icon={<IconLayoutGrid size={16} />}
               isActive={isDashboardsActive}
-              {...(favoritedDashboards.length > 0 && {
-                isExpanded: isDashboardsExpanded,
-                onToggle: () => setIsDashboardsExpanded(!isDashboardsExpanded),
-              })}
+              isExpanded={isDashboardsExpanded}
+              onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
             />
 
-            {!isCollapsed && !!favoritedDashboards.length && (
+            {!isCollapsed && (
               <Collapse in={isDashboardsExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedDashboards.map(renderDashboardLink)}
+                  {favoritedDashboards.length > 0 ? (
+                    favoritedDashboards.map(renderDashboardLink)
+                  ) : favorites != null && dashboards != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites yet. Star a dashboard on the{' '}
+                      <Anchor
+                        component={Link}
+                        href="/dashboards/list"
+                        size="xs"
+                      >
+                        Dashboards
+                      </Anchor>{' '}
+                      page to show it here.
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
