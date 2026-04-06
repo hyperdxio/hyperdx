@@ -36,8 +36,8 @@ jobs:
             // ── Determine which PRs to process ──────────────────────────────
             let prNumbers;
             if (context.eventName === 'workflow_dispatch') {
-              // GitHub passes an empty string (not undefined) when the optional input is omitted
-              const input = '${{ inputs.pr_number }}'.trim();
+              // Use context.payload.inputs to avoid script-injection via template interpolation
+              const input = (context.payload.inputs?.pr_number ?? '').trim();
               if (input && input !== '') {
                 prNumbers = [Number(input)];
               } else {
@@ -118,7 +118,10 @@ jobs:
             };
 
             // ── Ensure tier labels exist (once, before the loop) ─────────────
-            const { data: repoLabels } = await github.rest.issues.listLabelsForRepo({ owner, repo, per_page: 100 });
+            const repoLabels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              { owner, repo, per_page: 100 }
+            );
             const repoLabelNames = new Set(repoLabels.map(l => l.name));
             for (const label of Object.values(TIER_LABELS)) {
               if (!repoLabelNames.has(label.name)) {
@@ -184,6 +187,9 @@ jobs:
               else if (isTier2) tier = 2;
               else tier = 3;
 
+              // Escalate very large non-critical PRs to Tier 4; this also applies to agent
+              // branches that were bumped to Tier 3 above — a 400+ line agent-generated change
+              // warrants deep review regardless of which files it touches.
               if (tier === 3 && linesChanged > 400) tier = 4;
 
               // Apply label
@@ -247,5 +253,9 @@ jobs:
 
             // ── Process all target PRs ───────────────────────────────────────
             for (const prNumber of prNumbers) {
-              await classifyPR(prNumber);
+              try {
+                await classifyPR(prNumber);
+              } catch (err) {
+                console.error(`PR #${prNumber}: classification failed — ${err.message}`);
+              }
             }
