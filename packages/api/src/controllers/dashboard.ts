@@ -11,7 +11,7 @@ import {
   createOrUpdateDashboardAlerts,
   deleteDashboardAlerts,
   getDashboardAlertsByTile,
-  getTeamDashboardAlertsByTile,
+  getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
@@ -98,7 +98,7 @@ export async function getDashboards(teamId: ObjectId) {
     Dashboard.find({ team: teamId })
       .populate('createdBy', 'email name')
       .populate('updatedBy', 'email name'),
-    getTeamDashboardAlertsByTile(teamId),
+    getTeamDashboardAlertsByDashboardAndTile(teamId),
   ]);
 
   const dashboards = _dashboards
@@ -107,7 +107,10 @@ export async function getDashboards(teamId: ObjectId) {
       ...d,
       tiles: d.tiles.map(t => ({
         ...t,
-        config: { ...t.config, alert: alerts[t.id]?.[0] },
+        config: {
+          ...t.config,
+          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+        },
       })),
     }));
 

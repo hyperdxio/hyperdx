@@ -1,0 +1,284 @@
+name: PR Triage
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description:
+          PR number to classify (leave blank to classify all open PRs)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  classify:
+    name: Classify PR risk tier
+    runs-on: ubuntu-24.04
+    # For pull_request events skip drafts; workflow_dispatch always runs
+    if:
+      ${{ github.event_name == 'workflow_dispatch' ||
+      !github.event.pull_request.draft }}
+    steps:
+      - name: Classify and label PR(s)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // ── Determine which PRs to process ──────────────────────────────
+            let prNumbers;
+            if (context.eventName === 'workflow_dispatch') {
+              // Use context.payload.inputs to avoid script-injection via template interpolation
+              const input = (context.payload.inputs?.pr_number ?? '').trim();
+              if (input && input !== '') {
+                prNumbers = [Number(input)];
+              } else {
+                const openPRs = await github.paginate(
+                  github.rest.pulls.list,
+                  { owner, repo, state: 'open', per_page: 100 }
+                );
+                prNumbers = openPRs.map(pr => pr.number);
+                console.log(`Bulk triage: found ${prNumbers.length} open PRs`);
+              }
+            } else {
+              prNumbers = [context.payload.pull_request.number];
+            }
+
+            // ── Shared constants ─────────────────────────────────────────────
+            const TIER4_PATTERNS = [
+              /^packages\/api\/src\/middleware\/auth/,
+              /^packages\/api\/src\/routers\/api\/me\./,
+              /^packages\/api\/src\/routers\/api\/team\./,
+              /^packages\/api\/src\/routers\/external-api\//,
+              /^packages\/api\/src\/models\/(user|team|teamInvite)\./,
+              /^packages\/api\/src\/config\./,
+              /^packages\/api\/src\/tasks\//,
+              /^packages\/otel-collector\//,
+              /^docker\/otel-collector\//,
+              /^docker\/clickhouse\//,
+              /^\.github\/workflows\//,
+            ];
+
+            const TIER1_PATTERNS = [
+              /\.(md|txt|png|jpg|jpeg|gif|svg|ico)$/i,
+              /^yarn\.lock$/,
+              /^package-lock\.json$/,
+              /^\.yarnrc\.yml$/,
+              /^\.github\/images\//,
+              /^\.env\.example$/,
+            ];
+
+            const BOT_AUTHORS = ['dependabot', 'dependabot[bot]'];
+            const AGENT_BRANCH_PREFIXES = ['claude/', 'agent/', 'ai/'];
+
+            const TIER_LABELS = {
+              1: { name: 'review/tier-1', color: '0E8A16', description: 'Trivial — auto-merge candidate once CI passes' },
+              2: { name: 'review/tier-2', color: '1D76DB', description: 'Low risk — AI review + quick human skim' },
+              3: { name: 'review/tier-3', color: 'E4E669', description: 'Standard — full human review required' },
+              4: { name: 'review/tier-4', color: 'B60205', description: 'Critical — deep review + domain expert sign-off' },
+            };
+
+            const TIER_INFO = {
+              1: {
+                emoji: '🟢',
+                headline: 'Tier 1 — Trivial',
+                detail: 'Docs, images, lock files, or a dependency bump. No functional code changes detected.',
+                process: 'Auto-merge once CI passes. No human review required.',
+                sla: 'Resolves automatically.',
+              },
+              2: {
+                emoji: '🔵',
+                headline: 'Tier 2 — Low Risk',
+                detail: 'Small, isolated change with no API route or data model modifications.',
+                process: 'AI review + quick human skim (target: 5–15 min). Reviewer validates AI assessment and checks for domain-specific concerns.',
+                sla: 'Resolve within 4 business hours.',
+              },
+              3: {
+                emoji: '🟡',
+                headline: 'Tier 3 — Standard',
+                detail: 'Introduces new logic, modifies core functionality, or touches areas with non-trivial risk.',
+                process: 'Full human review — logic, architecture, edge cases.',
+                sla: 'First-pass feedback within 1 business day.',
+              },
+              4: {
+                emoji: '🔴',
+                headline: 'Tier 4 — Critical',
+                detail: 'Touches auth, data models, config, tasks, OTel pipeline, ClickHouse, or CI/CD.',
+                process: 'Deep review from a domain expert. Synchronous walkthrough may be required.',
+                sla: 'Schedule synchronous review within 2 business days.',
+              },
+            };
+
+            // ── Ensure tier labels exist (once, before the loop) ─────────────
+            const repoLabels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              { owner, repo, per_page: 100 }
+            );
+            const repoLabelNames = new Set(repoLabels.map(l => l.name));
+            for (const label of Object.values(TIER_LABELS)) {
+              if (!repoLabelNames.has(label.name)) {
+                await github.rest.issues.createLabel({ owner, repo, ...label });
+                repoLabelNames.add(label.name);
+              }
+            }
+
+            // ── Classify a single PR ─────────────────────────────────────────
+            async function classifyPR(prNumber) {
+              // Fetch changed files
+              const filesRes = await github.paginate(
+                github.rest.pulls.listFiles,
+                { owner, repo, pull_number: prNumber, per_page: 100 }
+              );
+              const files = filesRes.map(f => f.filename);
+              const linesChanged = filesRes.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+
+              // Fetch PR metadata
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              const author = pr.user.login;
+              const branchName = pr.head.ref;
+
+              // Skip drafts when running in bulk mode
+              if (pr.draft) {
+                console.log(`Skipping PR #${prNumber}: draft`);
+                return;
+              }
+
+              // Check for manual tier override — if a human last applied the label, respect it
+              const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({ owner, repo, issue_number: prNumber });
+              const existingTierLabel = currentLabels.find(l => l.name.startsWith('review/tier-'));
+              if (existingTierLabel) {
+                const events = await github.paginate(
+                  github.rest.issues.listEvents,
+                  { owner, repo, issue_number: prNumber, per_page: 100 }
+                );
+                const lastLabelEvent = events
+                  .filter(e => e.event === 'labeled' && e.label?.name === existingTierLabel.name)
+                  .pop();
+                if (lastLabelEvent && lastLabelEvent.actor.type !== 'Bot') {
+                  console.log(`PR #${prNumber}: tier manually set to ${existingTierLabel.name} by ${lastLabelEvent.actor.login} — skipping`);
+                  return;
+                }
+              }
+
+              // Classify
+              const isTier4 = files.some(f => TIER4_PATTERNS.some(p => p.test(f)));
+              const isTrivialAuthor = BOT_AUTHORS.includes(author);
+              const allFilesTrivial = files.length > 0 && files.every(f => TIER1_PATTERNS.some(p => p.test(f)));
+              const isTier1 = isTrivialAuthor || allFilesTrivial;
+              const isAgentBranch = AGENT_BRANCH_PREFIXES.some(p => branchName.startsWith(p));
+              const touchesApiModels = files.some(f =>
+                f.startsWith('packages/api/src/models/') || f.startsWith('packages/api/src/routers/')
+              );
+              const isSmallDiff = linesChanged < 100;
+              // Agent branches are bumped to Tier 3 regardless of size to ensure human review
+              const isTier2 = !isTier4 && !isTier1 && isSmallDiff && !touchesApiModels && !isAgentBranch;
+
+              let tier;
+              if (isTier4) tier = 4;
+              else if (isTier1) tier = 1;
+              else if (isTier2) tier = 2;
+              else tier = 3;
+
+              // Escalate very large non-critical PRs to Tier 4. Agent branches use a lower
+              // threshold (400 lines) since they warrant deeper scrutiny. Human-authored PRs
+              // are only escalated for truly massive diffs (1000+ lines); Tier 3 already
+              // requires full human review, so smaller large PRs don't need the extra urgency.
+              const sizeThreshold = isAgentBranch ? 400 : 1000;
+              if (tier === 3 && linesChanged > sizeThreshold) tier = 4;
+
+              // Apply label
+              for (const existing of currentLabels) {
+                if (existing.name.startsWith('review/tier-') && existing.name !== TIER_LABELS[tier].name) {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: existing.name });
+                }
+              }
+              if (!currentLabels.find(l => l.name === TIER_LABELS[tier].name)) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [TIER_LABELS[tier].name] });
+              }
+
+              // Build comment body
+              const info = TIER_INFO[tier];
+
+              // Primary triggers — what actually determined (or escalated) the tier
+              const triggers = [];
+              const criticalFiles = files.filter(f => TIER4_PATTERNS.some(p => p.test(f)));
+              if (criticalFiles.length > 0) {
+                triggers.push(`**Critical-path files** (${criticalFiles.length}):\n${criticalFiles.map(f => `    - \`${f}\``).join('\n')}`);
+              }
+              if (tier === 4 && linesChanged > sizeThreshold && criticalFiles.length === 0) {
+                triggers.push(`**Large diff**: ${linesChanged} lines changed (threshold: ${sizeThreshold})`);
+              }
+              if (isTrivialAuthor) triggers.push(`**Bot author**: \`${author}\``);
+              if (allFilesTrivial && !isTrivialAuthor) triggers.push('**All files are docs / images / lock files**');
+              // Agent branch prevents Tier 2 — it's a cause for Tier 3, not just context
+              if (isAgentBranch && tier <= 3) triggers.push(`**Agent-generated branch** (\`${branchName}\`) — bumped to Tier 3 for mandatory human review`);
+              // Catch-all for Tier 3 PRs that don't match any specific trigger above
+              if (triggers.length === 0 && tier === 3) triggers.push('**Standard feature/fix** — introduces new logic or modifies core functionality');
+
+              // Informational signals — didn't drive the tier by themselves
+              const contextSignals = [];
+              if (isAgentBranch && tier === 4) contextSignals.push(`agent branch (\`${branchName}\`)`);
+              if (touchesApiModels && criticalFiles.length === 0) contextSignals.push('touches API routes or data models');
+              if (linesChanged > sizeThreshold && criticalFiles.length > 0) contextSignals.push(`large diff (${linesChanged} lines)`);
+
+              const triggerSection = triggers.length > 0
+                ? `\n**Why this tier:**\n${triggers.map(t => `- ${t}`).join('\n')}`
+                : '';
+              const contextSection = contextSignals.length > 0
+                ? `\n**Additional context:** ${contextSignals.join(', ')}`
+                : '';
+
+              const body = [
+                '<!-- pr-triage -->',
+                `## ${info.emoji} ${info.headline}`,
+                '',
+                info.detail,
+                triggerSection,
+                contextSection,
+                '',
+                `**Review process**: ${info.process}`,
+                `**SLA**: ${info.sla}`,
+                '',
+                `<details><summary>Stats</summary>`,
+                '',
+                `- Files changed: ${files.length}`,
+                `- Lines changed: ${linesChanged}`,
+                `- Branch: \`${branchName}\``,
+                `- Author: ${author}`,
+                '',
+                '</details>',
+                '',
+                `> To override this classification, remove the \`${TIER_LABELS[tier].name}\` label and apply a different \`review/tier-*\` label. Manual overrides are preserved on subsequent pushes.`,
+              ].join('\n');
+
+              // Post or update the single triage comment
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: prNumber, per_page: 100 }
+              );
+              const existing = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.includes('<!-- pr-triage -->'));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+
+              console.log(`PR #${prNumber}: Tier ${tier} (${linesChanged} lines, ${files.length} files)`);
+            }
+
+            // ── Process all target PRs ───────────────────────────────────────
+            for (const prNumber of prNumbers) {
+              try {
+                await classifyPR(prNumber);
+              } catch (err) {
+                console.error(`PR #${prNumber}: classification failed — ${err.message}`);
+              }
+            }

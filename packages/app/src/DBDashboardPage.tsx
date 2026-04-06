@@ -368,27 +368,28 @@ const Tile = forwardRef(
         >
           {(chart.config.displayType === DisplayType.Line ||
             chart.config.displayType === DisplayType.StackedBar ||
-            chart.config.displayType === DisplayType.Number) && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
-              <Tooltip label={alertTooltip} withArrow>
-                <ActionIcon
-                  data-testid={`tile-alerts-button-${chart.id}`}
-                  variant="subtle"
-                  size="sm"
-                  onClick={onEditClick}
-                >
-                  <IconBell size={16} />
-                </ActionIcon>
-              </Tooltip>
-            </Indicator>
-          )}
+            chart.config.displayType === DisplayType.Number) &&
+            !isRawSqlSavedChartConfig(chart.config) && (
+              <Indicator
+                size={alert?.state === AlertState.OK ? 6 : 8}
+                zIndex={1}
+                color={alertIndicatorColor}
+                processing={alert?.state === AlertState.ALERT}
+                label={!alert && <span className="fs-8">+</span>}
+                mr={4}
+              >
+                <Tooltip label={alertTooltip} withArrow>
+                  <ActionIcon
+                    data-testid={`tile-alerts-button-${chart.id}`}
+                    variant="subtle"
+                    size="sm"
+                    onClick={onEditClick}
+                  >
+                    <IconBell size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Indicator>
+            )}
 
           <ActionIcon
             data-testid={`tile-duplicate-button-${chart.id}`}
@@ -470,7 +471,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       availableSections,
-      chart.config.displayType,
+      chart.config,
       chart.id,
       chart.containerId,
       hovered,
