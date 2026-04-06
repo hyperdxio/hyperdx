@@ -5,39 +5,46 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 describe('DashboardContainer schema', () => {
-  it('validates a valid section', () => {
+  it('validates a valid group', () => {
     const result = DashboardContainerSchema.safeParse({
-      id: 'section-1',
-      type: 'section',
+      id: 'group-1',
       title: 'Infrastructure',
       collapsed: false,
     });
     expect(result.success).toBe(true);
   });
 
-  it('validates a collapsed section', () => {
+  it('accepts containers with extra fields (backward compat)', () => {
     const result = DashboardContainerSchema.safeParse({
-      id: 'section-2',
+      id: 'section-1',
       type: 'section',
+      title: 'Legacy Section',
+      collapsed: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates a collapsed group', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-2',
       title: 'Database Metrics',
       collapsed: true,
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects a section missing required fields', () => {
+  it('rejects a container missing required fields', () => {
     const result = DashboardContainerSchema.safeParse({
-      id: 'section-3',
+      id: 'group-3',
       // missing title and collapsed
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects a section with empty id or title', () => {
+  it('rejects a container with empty id or title', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: '',
-        type: 'section',
         title: 'Valid',
         collapsed: false,
       }).success,
@@ -45,15 +52,101 @@ describe('DashboardContainer schema', () => {
     expect(
       DashboardContainerSchema.safeParse({
         id: 'valid',
-        type: 'section',
         title: '',
         collapsed: false,
       }).success,
     ).toBe(false);
   });
+
+  it('validates a group container without tabs (legacy plain group)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-1',
+      title: 'Key Metrics',
+      collapsed: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tabs).toBeUndefined();
+    }
+  });
+
+  it('validates a group with 1 tab (new default for groups)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-new',
+      title: 'New Group',
+      collapsed: false,
+      tabs: [{ id: 'tab-1', title: 'New Group' }],
+      activeTabId: 'tab-1',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tabs).toHaveLength(1);
+      expect(result.data.tabs![0].title).toBe('New Group');
+      expect(result.data.activeTabId).toBe('tab-1');
+    }
+  });
+
+  it('validates a group with 2+ tabs (tab bar behavior)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-2',
+      title: 'Overview Group',
+      collapsed: false,
+      tabs: [
+        { id: 'tab-a', title: 'Tab A' },
+        { id: 'tab-b', title: 'Tab B' },
+      ],
+      activeTabId: 'tab-a',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tabs).toHaveLength(2);
+      expect(result.data.activeTabId).toBe('tab-a');
+    }
+  });
+
+  it('validates a group with 1 tab (plain group, no tab bar)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-3',
+      title: 'Single Tab Group',
+      collapsed: false,
+      tabs: [{ id: 'tab-only', title: 'Only Tab' }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tabs).toHaveLength(1);
+    }
+  });
+
+  it('validates a group with collapsible and bordered options', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-opts',
+      title: 'Configurable Group',
+      collapsed: false,
+      collapsible: false,
+      bordered: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.collapsible).toBe(false);
+      expect(result.data.bordered).toBe(false);
+    }
+  });
+
+  it('defaults collapsible and bordered to undefined (treated as true)', () => {
+    const result = DashboardContainerSchema.safeParse({
+      id: 'group-defaults',
+      title: 'Default Group',
+      collapsed: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.collapsible).toBeUndefined();
+      expect(result.data.bordered).toBeUndefined();
+    }
+  });
 });
 
-describe('Tile schema with containerId', () => {
+describe('Tile schema with containerId and tabId', () => {
   const baseTile = {
     id: 'tile-1',
     x: 0,
@@ -79,6 +172,7 @@ describe('Tile schema with containerId', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.containerId).toBeUndefined();
+      expect(result.data.tabId).toBeUndefined();
     }
   });
 
@@ -92,9 +186,33 @@ describe('Tile schema with containerId', () => {
       expect(result.data.containerId).toBe('section-1');
     }
   });
+
+  it('validates a tile with containerId and tabId', () => {
+    const result = TileSchema.safeParse({
+      ...baseTile,
+      containerId: 'group-1',
+      tabId: 'tab-a',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.containerId).toBe('group-1');
+      expect(result.data.tabId).toBe('tab-a');
+    }
+  });
+
+  it('validates a tile with tabId but no containerId', () => {
+    const result = TileSchema.safeParse({
+      ...baseTile,
+      tabId: 'orphan-tab',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tabId).toBe('orphan-tab');
+    }
+  });
 });
 
-describe('Dashboard schema with sections', () => {
+describe('Dashboard schema with containers', () => {
   const baseDashboard = {
     id: 'dash-1',
     name: 'My Dashboard',
@@ -121,28 +239,27 @@ describe('Dashboard schema with sections', () => {
     }
   });
 
-  it('rejects duplicate section IDs', () => {
+  it('rejects duplicate container IDs', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
-        { id: 's1', type: 'section', title: 'Section A', collapsed: false },
-        { id: 's1', type: 'section', title: 'Section B', collapsed: true },
+        { id: 's1', title: 'Group A', collapsed: false },
+        { id: 's1', title: 'Group B', collapsed: true },
       ],
     });
     expect(result.success).toBe(false);
   });
 
-  it('validates a dashboard with sections', () => {
+  it('validates a dashboard with groups', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
         {
           id: 's1',
-          type: 'section',
           title: 'Infrastructure',
           collapsed: false,
         },
-        { id: 's2', type: 'section', title: 'Application', collapsed: true },
+        { id: 's2', title: 'Application', collapsed: true },
       ],
     });
     expect(result.success).toBe(true);
@@ -153,7 +270,22 @@ describe('Dashboard schema with sections', () => {
     }
   });
 
-  it('validates a full dashboard with sections and tiles referencing them', () => {
+  it('old dashboards with type field in containers still parse successfully', () => {
+    const result = DashboardSchema.safeParse({
+      ...baseDashboard,
+      containers: [
+        {
+          id: 's1',
+          type: 'section',
+          title: 'Legacy',
+          collapsed: false,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates a full dashboard with groups and tiles referencing them', () => {
     const tile = {
       id: 'tile-1',
       x: 0,
@@ -181,7 +313,6 @@ describe('Dashboard schema with sections', () => {
       containers: [
         {
           id: 's1',
-          type: 'section',
           title: 'Infrastructure',
           collapsed: false,
         },
@@ -193,11 +324,57 @@ describe('Dashboard schema with sections', () => {
       expect(result.data.containers![0].title).toBe('Infrastructure');
     }
   });
+
+  it('validates a dashboard with group container with tabs and tiles using tabId', () => {
+    const result = DashboardSchema.safeParse({
+      ...baseDashboard,
+      tiles: [
+        {
+          id: 'tile-1',
+          x: 0,
+          y: 0,
+          w: 8,
+          h: 10,
+          containerId: 'g1',
+          tabId: 'tab-a',
+          config: {
+            source: 'source-1',
+            select: [
+              {
+                aggFn: 'count',
+                aggCondition: '',
+                valueExpression: '',
+              },
+            ],
+            where: '',
+            from: { databaseName: 'default', tableName: 'logs' },
+          },
+        },
+      ],
+      containers: [
+        {
+          id: 'g1',
+          title: 'My Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-a', title: 'Tab A' },
+            { id: 'tab-b', title: 'Tab B' },
+          ],
+          activeTabId: 'tab-a',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tiles[0].tabId).toBe('tab-a');
+      expect(result.data.containers![0].tabs).toHaveLength(2);
+    }
+  });
 });
 
-describe('section tile grouping logic', () => {
+describe('container tile grouping logic', () => {
   // Test the grouping logic used in DBDashboardPage
-  type SimpleTile = { id: string; containerId?: string };
+  type SimpleTile = { id: string; containerId?: string; tabId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
 
   function groupTilesBySection(tiles: SimpleTile[], sections: SimpleSection[]) {
@@ -289,10 +466,78 @@ describe('section tile grouping logic', () => {
     expect(ungrouped.map(t => t.id)).toEqual(['b', 'c']);
     expect(bySectionId.get('s1')).toHaveLength(1);
   });
+
+  it('filters group tiles by tabId when group has tabs', () => {
+    const tiles: SimpleTile[] = [
+      { id: 'a', containerId: 'g1', tabId: 'tab-1' },
+      { id: 'b', containerId: 'g1', tabId: 'tab-2' },
+      { id: 'c', containerId: 'g1', tabId: 'tab-1' },
+    ];
+    const sections: SimpleSection[] = [
+      { id: 'g1', title: 'Group with Tabs', collapsed: false },
+    ];
+    const { bySectionId } = groupTilesBySection(tiles, sections);
+    const allGroupTiles = bySectionId.get('g1') ?? [];
+    expect(allGroupTiles).toHaveLength(3);
+    // Filter by tabId (as done in DBDashboardPage)
+    const tab1Tiles = allGroupTiles.filter(t => t.tabId === 'tab-1');
+    const tab2Tiles = allGroupTiles.filter(t => t.tabId === 'tab-2');
+    expect(tab1Tiles).toHaveLength(2);
+    expect(tab2Tiles).toHaveLength(1);
+  });
+
+  it('group with 0-1 tabs is plain group (no tab filtering)', () => {
+    const tiles: SimpleTile[] = [
+      { id: 'a', containerId: 'g1' },
+      { id: 'b', containerId: 'g1' },
+    ];
+    const sections: SimpleSection[] = [
+      { id: 'g1', title: 'Plain Group', collapsed: false },
+    ];
+    const { bySectionId } = groupTilesBySection(tiles, sections);
+    const groupTiles = bySectionId.get('g1') ?? [];
+    // No tab filtering needed for plain groups
+    expect(groupTiles).toHaveLength(2);
+    expect(groupTiles.every(t => t.tabId === undefined)).toBe(true);
+  });
+
+  it('group with 2+ tabs has tab bar behavior (tiles split by tabId)', () => {
+    // Simulates the schema: group with tabs array of 2+ entries
+    type SimpleGroup = SimpleSection & {
+      tabs?: { id: string; title: string }[];
+      activeTabId?: string;
+    };
+
+    const group: SimpleGroup = {
+      id: 'g1',
+      title: 'Tabbed Group',
+      collapsed: false,
+      tabs: [
+        { id: 'tab-1', title: 'Tab 1' },
+        { id: 'tab-2', title: 'Tab 2' },
+      ],
+      activeTabId: 'tab-1',
+    };
+
+    const tiles: SimpleTile[] = [
+      { id: 'a', containerId: 'g1', tabId: 'tab-1' },
+      { id: 'b', containerId: 'g1', tabId: 'tab-2' },
+      { id: 'c', containerId: 'g1', tabId: 'tab-1' },
+    ];
+
+    const hasTabs = (group.tabs?.length ?? 0) >= 2;
+    expect(hasTabs).toBe(true);
+
+    // When tabs exist, render prop receives activeTabId and filters tiles
+    const activeTabId = group.activeTabId ?? group.tabs![0].id;
+    const visibleTiles = tiles.filter(t => t.tabId === activeTabId);
+    expect(visibleTiles).toHaveLength(2);
+    expect(visibleTiles.map(t => t.id)).toEqual(['a', 'c']);
+  });
 });
 
-describe('section authoring operations', () => {
-  type SimpleTile = { id: string; containerId?: string };
+describe('container authoring operations', () => {
+  type SimpleTile = { id: string; containerId?: string; tabId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
   type SimpleDashboard = {
     tiles: SimpleTile[];
@@ -324,7 +569,9 @@ describe('section authoring operations', () => {
       ...dashboard,
       containers: dashboard.containers?.filter(s => s.id !== containerId),
       tiles: dashboard.tiles.map(t =>
-        t.containerId === containerId ? { ...t, containerId: undefined } : t,
+        t.containerId === containerId
+          ? { ...t, containerId: undefined, tabId: undefined }
+          : t,
       ),
     };
   }
@@ -345,11 +592,12 @@ describe('section authoring operations', () => {
     dashboard: SimpleDashboard,
     tileId: string,
     containerId: string | undefined,
+    tabId?: string,
   ) {
     return {
       ...dashboard,
       tiles: dashboard.tiles.map(t =>
-        t.id === tileId ? { ...t, containerId } : t,
+        t.id === tileId ? { ...t, containerId, tabId } : t,
       ),
     };
   }
@@ -462,6 +710,25 @@ describe('section authoring operations', () => {
       expect(result.tiles.find(t => t.id === 'd')?.containerId).toBeUndefined();
     });
 
+    it('clears tabId when deleting a group with tabs', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [
+          { id: 'a', containerId: 'g1', tabId: 'tab-1' },
+          { id: 'b', containerId: 'g1', tabId: 'tab-2' },
+          { id: 'c', containerId: 's1' },
+        ],
+        containers: [
+          { id: 'g1', title: 'Group with Tabs', collapsed: false },
+          { id: 's1', title: 'Section', collapsed: false },
+        ],
+      };
+      const result = deleteSection(dashboard, 'g1');
+      expect(result.tiles.find(t => t.id === 'a')?.containerId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'a')?.tabId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'b')?.tabId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'c')?.containerId).toBe('s1');
+    });
+
     it('handles deleting the last section', () => {
       const dashboard: SimpleDashboard = {
         tiles: [{ id: 'a', containerId: 's1' }],
@@ -524,5 +791,242 @@ describe('section authoring operations', () => {
       const result = moveTileToSection(dashboard, 'a', undefined);
       expect(result.tiles[0].containerId).toBeUndefined();
     });
+
+    it('moves a tile to a specific tab in a group', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [{ id: 'a' }],
+        containers: [{ id: 'g1', title: 'Group with Tabs', collapsed: false }],
+      };
+      const result = moveTileToSection(dashboard, 'a', 'g1', 'tab-1');
+      expect(result.tiles[0].containerId).toBe('g1');
+      expect(result.tiles[0].tabId).toBe('tab-1');
+    });
+
+    it('clears tabId when moving from group tab to regular section', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [{ id: 'a', containerId: 'g1', tabId: 'tab-1' }],
+        containers: [
+          { id: 'g1', title: 'Group with Tabs', collapsed: false },
+          { id: 's1', title: 'Section', collapsed: false },
+        ],
+      };
+      const result = moveTileToSection(dashboard, 'a', 's1');
+      expect(result.tiles[0].containerId).toBe('s1');
+      expect(result.tiles[0].tabId).toBeUndefined();
+    });
+  });
+
+  describe('reorder sections', () => {
+    function reorderSections(
+      dashboard: SimpleDashboard,
+      fromIndex: number,
+      toIndex: number,
+    ) {
+      if (!dashboard.containers) return dashboard;
+      const containers = [...dashboard.containers];
+      const [removed] = containers.splice(fromIndex, 1);
+      containers.splice(toIndex, 0, removed);
+      return { ...dashboard, containers };
+    }
+
+    it('moves a section from first to last', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [],
+        containers: [
+          { id: 's1', title: 'First', collapsed: false },
+          { id: 's2', title: 'Second', collapsed: false },
+          { id: 's3', title: 'Third', collapsed: false },
+        ],
+      };
+      const result = reorderSections(dashboard, 0, 2);
+      expect(result.containers!.map(c => c.id)).toEqual(['s2', 's3', 's1']);
+    });
+
+    it('moves a section from last to first', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [],
+        containers: [
+          { id: 's1', title: 'First', collapsed: false },
+          { id: 's2', title: 'Second', collapsed: false },
+          { id: 's3', title: 'Third', collapsed: false },
+        ],
+      };
+      const result = reorderSections(dashboard, 2, 0);
+      expect(result.containers!.map(c => c.id)).toEqual(['s3', 's1', 's2']);
+    });
+
+    it('does not affect tiles when sections are reordered', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [
+          { id: 'a', containerId: 's1' },
+          { id: 'b', containerId: 's2' },
+        ],
+        containers: [
+          { id: 's1', title: 'First', collapsed: false },
+          { id: 's2', title: 'Second', collapsed: false },
+        ],
+      };
+      const result = reorderSections(dashboard, 0, 1);
+      expect(result.tiles).toEqual(dashboard.tiles);
+      expect(result.containers!.map(c => c.id)).toEqual(['s2', 's1']);
+    });
+  });
+
+  describe('group selected tiles', () => {
+    function groupTilesIntoSection(
+      dashboard: SimpleDashboard,
+      tileIds: string[],
+      newSection: SimpleSection,
+    ) {
+      const containers = [...(dashboard.containers ?? []), newSection];
+      const tiles = dashboard.tiles.map(t =>
+        tileIds.includes(t.id) ? { ...t, containerId: newSection.id } : t,
+      );
+      return { ...dashboard, containers, tiles };
+    }
+
+    it('groups selected tiles into a new section', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+      };
+      const result = groupTilesIntoSection(dashboard, ['a', 'c'], {
+        id: 'new-s',
+        title: 'New Section',
+        collapsed: false,
+      });
+      expect(result.containers).toHaveLength(1);
+      expect(result.tiles.find(t => t.id === 'a')?.containerId).toBe('new-s');
+      expect(result.tiles.find(t => t.id === 'b')?.containerId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'c')?.containerId).toBe('new-s');
+    });
+
+    it('preserves existing sections when grouping', () => {
+      const dashboard: SimpleDashboard = {
+        tiles: [{ id: 'a', containerId: 's1' }, { id: 'b' }, { id: 'c' }],
+        containers: [{ id: 's1', title: 'Existing', collapsed: false }],
+      };
+      const result = groupTilesIntoSection(dashboard, ['b', 'c'], {
+        id: 'new-s',
+        title: 'Grouped',
+        collapsed: false,
+      });
+      expect(result.containers).toHaveLength(2);
+      expect(result.tiles.find(t => t.id === 'a')?.containerId).toBe('s1');
+      expect(result.tiles.find(t => t.id === 'b')?.containerId).toBe('new-s');
+      expect(result.tiles.find(t => t.id === 'c')?.containerId).toBe('new-s');
+    });
+  });
+});
+
+describe('group tab operations', () => {
+  type SimpleTab = { id: string; title: string };
+  type SimpleGroup = {
+    id: string;
+    title: string;
+    collapsed: boolean;
+    tabs?: SimpleTab[];
+    activeTabId?: string;
+  };
+  type SimpleTile = { id: string; containerId?: string; tabId?: string };
+
+  it('group creation always has 1 tab', () => {
+    // Simulates handleAddContainer('group')
+    const tabId = 'tab-new';
+    const group: SimpleGroup = {
+      id: 'g1',
+      title: 'New Group',
+      collapsed: false,
+      tabs: [{ id: tabId, title: 'New Group' }],
+      activeTabId: tabId,
+    };
+
+    expect(group.tabs).toHaveLength(1);
+    expect(group.tabs![0].title).toBe('New Group');
+    expect(group.activeTabId).toBe(tabId);
+  });
+
+  it('adding tab to 1-tab group creates second tab without renaming first', () => {
+    // Simulates handleAddTab for a group with 1 tab
+    const group: SimpleGroup = {
+      id: 'g1',
+      title: 'My Group',
+      collapsed: false,
+      tabs: [{ id: 'tab-1', title: 'My Group' }],
+      activeTabId: 'tab-1',
+    };
+    const tiles: SimpleTile[] = [{ id: 'a', containerId: 'g1' }];
+
+    // Add second tab (simulates the hook logic)
+    const newTabId = 'tab-2';
+    const updatedTabs = [...group.tabs!, { id: newTabId, title: 'New Tab' }];
+    const updatedTiles = tiles.map(t =>
+      t.containerId === 'g1' && !t.tabId ? { ...t, tabId: 'tab-1' } : t,
+    );
+
+    expect(updatedTabs).toHaveLength(2);
+    expect(updatedTabs[0].title).toBe('My Group'); // First tab NOT renamed
+    expect(updatedTabs[1].title).toBe('New Tab');
+    expect(updatedTiles[0].tabId).toBe('tab-1');
+  });
+
+  it('group title syncs from tabs[0].title for 1-tab groups', () => {
+    // Simulates handleRenameSection for a group with 1 tab
+    const group: SimpleGroup = {
+      id: 'g1',
+      title: 'Old Name',
+      collapsed: false,
+      tabs: [{ id: 'tab-1', title: 'Old Name' }],
+      activeTabId: 'tab-1',
+    };
+
+    // Rename via header (which syncs to tabs[0])
+    const newTitle = 'New Name';
+    const updatedGroup = {
+      ...group,
+      title: newTitle,
+      tabs: group.tabs!.map((t, i) =>
+        i === 0 ? { ...t, title: newTitle } : t,
+      ),
+    };
+
+    expect(updatedGroup.title).toBe('New Name');
+    expect(updatedGroup.tabs![0].title).toBe('New Name');
+  });
+
+  it('removing to 1 tab keeps the tab in the array', () => {
+    // Simulates handleDeleteTab leaving 1 tab
+    const group: SimpleGroup = {
+      id: 'g1',
+      title: 'My Group',
+      collapsed: false,
+      tabs: [
+        { id: 'tab-1', title: 'Tab A' },
+        { id: 'tab-2', title: 'Tab B' },
+      ],
+      activeTabId: 'tab-1',
+    };
+    const tiles: SimpleTile[] = [
+      { id: 'a', containerId: 'g1', tabId: 'tab-1' },
+      { id: 'b', containerId: 'g1', tabId: 'tab-2' },
+    ];
+
+    // Delete tab-2, keep tab-1
+    const deletedTabId = 'tab-2';
+    const remaining = group.tabs!.filter(t => t.id !== deletedTabId);
+    const keepTab = remaining[0];
+
+    // Move tiles from deleted tab to remaining tab
+    const updatedTiles = tiles.map(t =>
+      t.containerId === 'g1' && t.tabId === deletedTabId
+        ? { ...t, tabId: keepTab.id }
+        : t,
+    );
+
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe('tab-1');
+    // All tiles should now reference the remaining tab
+    expect(updatedTiles.every(t => t.tabId === 'tab-1')).toBe(true);
+    // Tab bar hidden because only 1 tab remains (rendering handles this)
+    expect(remaining.length >= 2).toBe(false);
   });
 });
