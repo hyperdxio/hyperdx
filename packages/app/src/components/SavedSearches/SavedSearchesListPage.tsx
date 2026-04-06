@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Button,
@@ -11,22 +10,21 @@ import {
   Group,
   Select,
   SimpleGrid,
+  Stack,
   Table,
   Text,
   TextInput,
-  Tooltip,
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
-  IconBell,
-  IconBellFilled,
   IconLayoutGrid,
   IconList,
   IconSearch,
   IconTable,
 } from '@tabler/icons-react';
 
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
@@ -35,35 +33,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import type { SavedSearchWithEnhancedAlerts } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
-
-function AlertStatusIcon({
-  alerts,
-}: {
-  alerts?: SavedSearchWithEnhancedAlerts['alerts'];
-}) {
-  if (!Array.isArray(alerts) || alerts.length === 0) return null;
-  const alertingCount = alerts.filter(a => a.state === AlertState.ALERT).length;
-  return (
-    <Tooltip
-      label={
-        alertingCount > 0
-          ? `${alertingCount} alert${alertingCount > 1 ? 's' : ''} triggered`
-          : 'Alerts configured'
-      }
-    >
-      {alertingCount > 0 ? (
-        <IconBellFilled size={14} color="var(--mantine-color-red-filled)" />
-      ) : (
-        <IconBell size={14} />
-      )}
-    </Tooltip>
-  );
-}
 
 export default function SavedSearchesListPage() {
   const brandName = useBrandDisplayName();
