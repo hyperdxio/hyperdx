@@ -25,6 +25,7 @@ import {
 } from '@tabler/icons-react';
 
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
@@ -121,12 +122,21 @@ export default function SavedSearchesListPage() {
   );
 
   return (
-    <div data-testid="saved-searches-list-page">
+    <div
+      data-testid="saved-searches-list-page"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
         <title>Saved Searches - {brandName}</title>
       </Head>
       <PageHeader>Saved Searches</PageHeader>
-      <Container maw={1200} py="lg" px="lg">
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         {favoritedSavedSearches.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
@@ -218,22 +228,29 @@ export default function SavedSearchesListPage() {
             Failed to load saved searches. Please try refreshing the page.
           </Text>
         ) : filteredSavedSearches.length === 0 ? (
-          <Stack align="center" gap="sm" py="xl">
-            <IconTable size={40} opacity={0.3} />
-            <Text size="sm" c="dimmed" ta="center">
-              {search || tagFilter
-                ? 'No matching saved searches.'
-                : 'No saved searches yet.'}
-            </Text>
-            <Button
-              variant="primary"
-              leftSection={<IconTable size={16} />}
-              onClick={() => Router.push('/search')}
-              data-testid="empty-new-search-button"
+          <Flex
+            align="center"
+            justify="center"
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            <EmptyState
+              icon={<IconTable size={32} />}
+              title={
+                search || tagFilter
+                  ? 'No matching saved searches yet'
+                  : 'No saved searches yet'
+              }
             >
-              New Search
-            </Button>
-          </Stack>
+              <Button
+                variant="primary"
+                leftSection={<IconTable size={16} />}
+                onClick={() => Router.push('/search')}
+                data-testid="empty-new-search-button"
+              >
+                New Search
+              </Button>
+            </EmptyState>
+          </Flex>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>

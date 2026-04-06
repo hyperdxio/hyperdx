@@ -32,6 +32,7 @@ import {
 } from '@tabler/icons-react';
 
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
@@ -181,12 +182,21 @@ export default function DashboardsListPage() {
   );
 
   return (
-    <div data-testid="dashboards-list-page">
+    <div
+      data-testid="dashboards-list-page"
+      style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
+    >
       <Head>
         <title>Dashboards - {brandName}</title>
       </Head>
       <PageHeader>Dashboards</PageHeader>
-      <Container maw={1200} py="lg" px="lg">
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         <Text fw={500} size="sm" c="dimmed" mb="sm">
           Preset Dashboards
         </Text>
@@ -332,34 +342,41 @@ export default function DashboardsListPage() {
             Failed to load dashboards. Please try refreshing the page.
           </Text>
         ) : filteredDashboards.length === 0 ? (
-          <Stack align="center" gap="sm" py="xl">
-            <IconLayoutGrid size={40} opacity={0.3} />
-            <Text size="sm" c="dimmed" ta="center">
-              {search || tagFilter
-                ? `No matching dashboards yet.`
-                : 'No dashboards yet.'}
-            </Text>
-            <Group>
-              <Button
-                component={Link}
-                href="/dashboards/import"
-                variant="secondary"
-                leftSection={<IconUpload size={16} />}
-                data-testid="empty-import-dashboard-button"
-              >
-                Import
-              </Button>
-              <Button
-                variant="primary"
-                leftSection={<IconPlus size={16} />}
-                onClick={handleCreate}
-                loading={createDashboard.isPending}
-                data-testid="empty-create-dashboard-button"
-              >
-                New Dashboard
-              </Button>
-            </Group>
-          </Stack>
+          <Flex
+            align="center"
+            justify="center"
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            <EmptyState
+              icon={<IconLayoutGrid size={32} />}
+              title={
+                search || tagFilter
+                  ? 'No matching dashboards yet'
+                  : 'No dashboards yet'
+              }
+            >
+              <Group>
+                <Button
+                  component={Link}
+                  href="/dashboards/import"
+                  variant="secondary"
+                  leftSection={<IconUpload size={16} />}
+                  data-testid="empty-import-dashboard-button"
+                >
+                  Import
+                </Button>
+                <Button
+                  variant="primary"
+                  leftSection={<IconPlus size={16} />}
+                  onClick={handleCreate}
+                  loading={createDashboard.isPending}
+                  data-testid="empty-create-dashboard-button"
+                >
+                  New Dashboard
+                </Button>
+              </Group>
+            </EmptyState>
+          </Flex>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>
