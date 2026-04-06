@@ -125,11 +125,11 @@ export class DashboardsListPage {
   }
 
   getEmptyState() {
-    return this.pageContainer.getByText('No dashboards yet.');
+    return this.pageContainer.getByText('No dashboards yet');
   }
 
   getNoMatchesState() {
-    return this.pageContainer.getByText('No matching dashboards yet.');
+    return this.pageContainer.getByText('No matching dashboards yet');
   }
 
   getFavoritesSection() {
