@@ -1,4 +1,7 @@
-import { SavedSearch } from '@hyperdx/common-utils/dist/types';
+import {
+  SavedSearch,
+  SavedSearchListApiResponse,
+} from '@hyperdx/common-utils/dist/types';
 import {
   useMutation,
   useQuery,
@@ -9,14 +12,13 @@ import {
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
 import { localSavedSearches } from './localStore';
-import { SavedSearchPopulated } from './types';
 
-async function fetchSavedSearches(): Promise<SavedSearchPopulated[]> {
+async function fetchSavedSearches(): Promise<SavedSearchListApiResponse[]> {
   if (IS_LOCAL_MODE) {
     // Locally stored saved searches never have alert data (alerts are cloud-only)
-    return localSavedSearches.getAll() as SavedSearchPopulated[];
+    return localSavedSearches.getAll() as SavedSearchListApiResponse[];
   }
-  return hdxServer('saved-search').json<SavedSearchPopulated[]>();
+  return hdxServer('saved-search').json<SavedSearchListApiResponse[]>();
 }
 
 export function useSavedSearches() {
@@ -29,7 +31,7 @@ export function useSavedSearches() {
 export function useSavedSearch(
   { id }: { id: string },
   options: Omit<
-    Partial<UseQueryOptions<SavedSearchPopulated[], Error>>,
+    Partial<UseQueryOptions<SavedSearchListApiResponse[], Error>>,
     'select'
   > = {},
 ) {

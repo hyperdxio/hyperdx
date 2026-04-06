@@ -2,7 +2,10 @@ import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  SavedSearchListApiResponse,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Button,
@@ -35,7 +38,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import type { SavedSearchPopulated } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
@@ -44,7 +46,7 @@ import { withAppNav } from '../../layout';
 function AlertStatusIcon({
   alerts,
 }: {
-  alerts?: SavedSearchPopulated['alerts'];
+  alerts?: SavedSearchListApiResponse['alerts'];
 }) {
   if (!Array.isArray(alerts) || alerts.length === 0) return null;
   const alertingCount = alerts.filter(a => a.state === AlertState.ALERT).length;

@@ -1,4 +1,7 @@
-import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  SavedSearchListApiResponse,
+  SavedSearchSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { z } from 'zod';
 
@@ -8,7 +11,9 @@ import { SavedSearch } from '@/models/savedSearch';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
-export async function getSavedSearches(teamId: string) {
+export async function getSavedSearches(
+  teamId: string,
+): Promise<SavedSearchListApiResponse[]> {
   const savedSearches = await SavedSearch.find({ team: teamId })
     .populate('createdBy', 'email name')
     .populate('updatedBy', 'email name');
