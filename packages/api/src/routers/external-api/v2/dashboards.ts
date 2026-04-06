@@ -185,8 +185,8 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *   schemas:
  *     NumberFormatOutput:
  *       type: string
- *       enum: [currency, percent, byte, time, number]
- *       description: Output format type (currency, percent, byte, time, number).
+ *       enum: [currency, percent, byte, time, number, data_rate, throughput]
+ *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput).
  *     AggregationFunction:
  *       type: string
  *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
@@ -256,6 +256,11 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           type: string
  *           description: Currency symbol for currency format.
  *           example: "$"
+ *         numericUnit:
+ *           type: string
+ *           enum: [bytes_iec, bytes_si, bits_iec, bits_si, kibibytes, kilobytes, mebibytes, megabytes, gibibytes, gigabytes, tebibytes, terabytes, pebibytes, petabytes, packets_sec, bytes_sec_iec, bytes_sec_si, bits_sec_iec, bits_sec_si, kibibytes_sec, kibibits_sec, kilobytes_sec, kilobits_sec, mebibytes_sec, mebibits_sec, megabytes_sec, megabits_sec, gibibytes_sec, gibibits_sec, gigabytes_sec, gigabits_sec, tebibytes_sec, tebibits_sec, terabytes_sec, terabits_sec, pebibytes_sec, pebibits_sec, petabytes_sec, petabits_sec, cps, ops, rps, reads_sec, wps, iops, cpm, opm, rpm_reads, wpm]
+ *           description: Numeric unit for data, data rate, or throughput formats.
+ *           example: "bytes_iec"
  *         unit:
  *           type: string
  *           description: Custom unit label.

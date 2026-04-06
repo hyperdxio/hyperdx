@@ -466,6 +466,7 @@ export function convertToDashboardTemplate(
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
+    tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
   };
 
@@ -530,7 +531,7 @@ export function convertToDashboardDocument(
   const output: DashboardWithoutId = {
     name: input.name,
     tiles: [],
-    tags: [],
+    tags: input.tags ?? [],
   };
 
   // expecting that input.tiles[0-n].config.source fields are already converted to ids

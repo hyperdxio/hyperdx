@@ -298,18 +298,23 @@ export const AppNavLink = ({
         </Badge>
       )}
       {!isCollapsed && onToggle && (
-        <button
-          type="button"
-          data-testid={`${testId}-toggle`}
-          className={styles.navItemToggle}
-          onClick={handleToggleClick}
+        <Tooltip
+          label={isExpanded ? 'Hide Favorites' : 'Show Favorites'}
+          position="right"
         >
-          {isExpanded ? (
-            <IconChevronUp size={14} className="text-muted-hover" />
-          ) : (
-            <IconChevronDown size={14} className="text-muted-hover" />
-          )}
-        </button>
+          <button
+            type="button"
+            data-testid={`${testId}-toggle`}
+            className={styles.navItemToggle}
+            onClick={handleToggleClick}
+          >
+            {isExpanded ? (
+              <IconChevronUp size={14} className="text-muted-hover" />
+            ) : (
+              <IconChevronDown size={14} className="text-muted-hover" />
+            )}
+          </button>
+        </Tooltip>
       )}
     </Link>
   );

@@ -86,6 +86,7 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import SectionHeader from '@/components/SectionHeader';
 import { TimePicker } from '@/components/TimePicker';
@@ -235,8 +236,12 @@ const Tile = forwardRef(
         } else if (source != null) {
           setQueriedConfig({
             ...chart.config,
-            // Populate these two columns from the source to support Lucene-based filters
-            ...pick(source, ['implicitColumnExpression', 'from']),
+            // Populate these columns from the source to support Lucene-based filters and metric table macros
+            ...pick(source, [
+              'implicitColumnExpression',
+              'from',
+              'metricTables',
+            ]),
             sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
@@ -315,6 +320,9 @@ const Tile = forwardRef(
       const doFiltersExist = !!filters?.filter(
         f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
       )?.length;
+      const doLuceneFiltersExist = !!filters?.filter(
+        f => f.type === 'lucene' && f.condition.trim(),
+      )?.length;
 
       if (
         !doFiltersExist ||
@@ -326,19 +334,28 @@ const Tile = forwardRef(
       const isMissingSourceForFiltering = !queriedConfig.source;
       const isMissingFiltersMacro =
         !queriedConfig.sqlTemplate.includes('$__filters');
+      const isMetricsSourceWithLuceneFilter =
+        source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
-      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
+      if (
+        !isMissingSourceForFiltering &&
+        !isMissingFiltersMacro &&
+        !isMetricsSourceWithLuceneFilter
+      )
+        return null;
 
       const message = isMissingFiltersMacro
         ? 'Filters are not applied because the SQL does not include the required $__filters macro'
-        : 'Filters are not applied because no Source is set for this chart';
+        : isMetricsSourceWithLuceneFilter
+          ? 'Lucene filters are not applied because they are not supported for metrics sources.'
+          : 'Filters are not applied because no Source is set for this chart';
 
       return (
         <Tooltip multiline maw={500} label={message} key="filter-warning">
           <IconZoomExclamation size={16} color="var(--color-text-danger)" />
         </Tooltip>
       );
-    }, [filters, queriedConfig]);
+    }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -350,27 +367,28 @@ const Tile = forwardRef(
         >
           {(chart.config.displayType === DisplayType.Line ||
             chart.config.displayType === DisplayType.StackedBar ||
-            chart.config.displayType === DisplayType.Number) && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
-              <Tooltip label={alertTooltip} withArrow>
-                <ActionIcon
-                  data-testid={`tile-alerts-button-${chart.id}`}
-                  variant="subtle"
-                  size="sm"
-                  onClick={onEditClick}
-                >
-                  <IconBell size={16} />
-                </ActionIcon>
-              </Tooltip>
-            </Indicator>
-          )}
+            chart.config.displayType === DisplayType.Number) &&
+            !isRawSqlSavedChartConfig(chart.config) && (
+              <Indicator
+                size={alert?.state === AlertState.OK ? 6 : 8}
+                zIndex={1}
+                color={alertIndicatorColor}
+                processing={alert?.state === AlertState.ALERT}
+                label={!alert && <span className="fs-8">+</span>}
+                mr={4}
+              >
+                <Tooltip label={alertTooltip} withArrow>
+                  <ActionIcon
+                    data-testid={`tile-alerts-button-${chart.id}`}
+                    variant="subtle"
+                    size="sm"
+                    onClick={onEditClick}
+                  >
+                    <IconBell size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Indicator>
+            )}
 
           <ActionIcon
             data-testid={`tile-duplicate-button-${chart.id}`}
@@ -452,7 +470,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       availableSections,
-      chart.config.displayType,
+      chart.config,
       chart.id,
       chart.containerId,
       hovered,
@@ -1543,7 +1561,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
             Dashboards
           </Anchor>
-          <Text fz="sm" c="dimmed">
+          <Text fz="sm" c="dimmed" maw={500} truncate="end">
             {dashboard?.name ?? 'Untitled'}
           </Text>
         </Breadcrumbs>
@@ -1562,6 +1580,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
         />
         <Group gap="xs">
+          {!isLocalDashboard && dashboard?.id && (
+            <FavoriteButton
+              resourceType="dashboard"
+              resourceId={dashboard.id}
+            />
+          )}
           {!isLocalDashboard && dashboard?.id && (
             <Tags
               allowCreate

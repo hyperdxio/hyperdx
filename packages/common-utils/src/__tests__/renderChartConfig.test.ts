@@ -1891,6 +1891,28 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('renders sql filters raw when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [
+            { type: 'sql', condition: 'duration > 100' },
+            { type: 'sql_ast', operator: '=', left: 'status', right: "'ok'" },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE ((duration > 100) AND (status = 'ok'))",
+      );
+    });
+
     it('skips filters without source metadata (no from)', async () => {
       const result = await renderChartConfig(
         {

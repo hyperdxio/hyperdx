@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HyperDX Dev Portal</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' fill='none' viewBox='0 0 260 260'%3E%3Cdefs%3E%3CclipPath id='a'%3E%3Crect width='260' height='260' fill='%23fff' rx='40'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23a)'%3E%3Cpath fill='%2325E2A5' d='M242.166 65v130l-112.583 65.001L17 195V65L129.583 0l112.583 65Z'/%3E%3Cpath fill='%231E1E1E' d='M157.698 42.893c1.754 1.284 2.573 3.92 1.976 6.361l-15.713 64.274h28.994c1.74 0 3.314 1.302 4.004 3.313.691 2.011.366 4.346-.827 5.941l-69.801 93.342c-1.391 1.86-3.617 2.267-5.371.984-1.753-1.285-2.572-3.921-1.976-6.362l15.713-64.274H85.704c-1.74 0-3.315-1.302-4.005-3.312-.69-2.011-.365-4.346.828-5.942l69.801-93.342c1.39-1.86 3.616-2.267 5.37-.983Z'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div
+      id="modal-overlay"
+      class="modal-overlay"
+      style="display: none"
+      onclick="if(event.target===this)closeModal(false)"
+    >
+      <div class="modal-box">
+        <h3 id="modal-title">Confirm</h3>
+        <p id="modal-message">Are you sure?</p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick="closeModal(false)">
+            Cancel
+          </button>
+          <button
+            class="modal-danger"
+            id="modal-confirm-btn"
+            onclick="closeModal(true)"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="main-panel">
+        <div class="header">
+          <h1>
+            <svg
+              class="logo"
+              width="28"
+              height="28"
+              viewBox="0 0 512 512"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g clip-path="url(#lc)">
+                <path
+                  d="M256 0L477.703 128V384L256 512L34.2975 384V128L256 0Z"
+                  fill="var(--accent)"
+                />
+                <path
+                  d="M311.365 84.4663C314.818 86.9946 316.431 92.1862 315.256 96.9926L284.313 223.563H341.409C344.836 223.563 347.936 226.127 349.295 230.086C350.655 234.046 350.014 238.644 347.665 241.786L210.211 425.598C207.472 429.26 203.089 430.062 199.635 427.534C196.182 425.005 194.569 419.814 195.744 415.007L226.686 288.437H169.591C166.164 288.437 163.064 285.873 161.705 281.914C160.345 277.954 160.986 273.356 163.335 270.214L300.789 86.4023C303.528 82.7403 307.911 81.938 311.365 84.4663Z"
+                  fill="var(--bg)"
+                />
+              </g>
+              <defs>
+                <clipPath id="lc">
+                  <rect width="512" height="512" fill="white" />
+                </clipPath>
+              </defs>
+            </svg>
+            HyperDX Dev Portal
+          </h1>
+          <div class="status">
+            <div class="dot"></div>
+            <span id="refresh-status">Auto-refreshing every 3s</span>
+          </div>
+        </div>
+
+        <div class="tab-bar">
+          <button class="tab active" id="tab-live" onclick="switchTab('live')">
+            Live
+          </button>
+          <button class="tab" id="tab-history" onclick="switchTab('history')">
+            History
+          </button>
+        </div>
+
+        <div id="error-banner" class="error-banner"></div>
+        <div id="content"></div>
+        <div id="history-content" style="display: none"></div>
+      </div>
+
+      <div id="log-panel" class="log-panel">
+        <div class="log-panel-header">
+          <h3>
+            <span id="log-title">Logs</span>
+            <span id="log-slot-label" class="slot-label"></span>
+          </h3>
+          <div class="log-panel-actions">
+            <span
+              id="log-stream-badge"
+              class="log-streaming-badge"
+              style="display: none"
+            >
+              <span class="stream-dot"></span> Live
+            </span>
+            <button
+              onclick="toggleAutoScroll()"
+              id="autoscroll-btn"
+              title="Toggle auto-scroll"
+            >
+              Auto-scroll
+            </button>
+            <button onclick="clearLogPanel()" title="Clear log view">
+              Clear
+            </button>
+            <button onclick="closeLogPanel()" class="close-btn" title="Close">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div id="log-content" class="log-content"></div>
+      </div>
+    </div>
+
+    <script>
+      const contentEl = document.getElementById('content');
+      const historyEl = document.getElementById('history-content');
+      const errorEl = document.getElementById('error-banner');
+      const logPanel = document.getElementById('log-panel');
+      const logContent = document.getElementById('log-content');
+      const logTitle = document.getElementById('log-title');
+      const logSlotLabel = document.getElementById('log-slot-label');
+      const logStreamBadge = document.getElementById('log-stream-badge');
+
+      let activeTab = 'live';
+      let currentLogSlot = null;
+      let currentLogService = null;
+      let currentLogEnvType = null;
+      let currentEventSource = null;
+      let autoScroll = true;
+
+      const MAX_LOG_LINES = 5000;
+      let logBuffer = [];
+      let rafPending = false;
+
+      // --- ANSI escape code to HTML converter ---
+      const ANSI_COLORS = {
+        30: '#666',
+        31: '#f85149',
+        32: '#3fb950',
+        33: '#d29922',
+        34: '#58a6ff',
+        35: '#bc8cff',
+        36: '#76e3ea',
+        37: '#e6edf3',
+        39: null, // default
+        90: '#7d8590',
+        91: '#ff7b72',
+        92: '#56d364',
+        93: '#e3b341',
+        94: '#79c0ff',
+        95: '#d2a8ff',
+        96: '#a5d6ff',
+        97: '#ffffff',
+      };
+
+      function ansiToHtml(text) {
+        let html = '';
+        let i = 0;
+        let openSpans = 0;
+
+        while (i < text.length) {
+          // Match ESC[ ... m sequences
+          if (text[i] === '\x1b' && text[i + 1] === '[') {
+            const end = text.indexOf('m', i + 2);
+            if (end === -1) {
+              i++;
+              continue;
+            }
+            const codes = text
+              .substring(i + 2, end)
+              .split(';')
+              .map(Number);
+            i = end + 1;
+
+            for (const code of codes) {
+              if (code === 0 || code === 22 || code === 39) {
+                // Reset / unbold / default color — close open spans
+                while (openSpans > 0) {
+                  html += '</span>';
+                  openSpans--;
+                }
+              } else if (code === 1) {
+                html += '<span style="font-weight:bold">';
+                openSpans++;
+              } else if (code === 2) {
+                html += '<span style="opacity:0.6">';
+                openSpans++;
+              } else if (code === 3) {
+                html += '<span style="font-style:italic">';
+                openSpans++;
+              } else if (ANSI_COLORS[code] !== undefined) {
+                const color = ANSI_COLORS[code];
+                if (color) {
+                  html += `<span style="color:${color}">`;
+                  openSpans++;
+                }
+              } else if (code === 38) {
+                // 256-color or RGB — parse 38;2;r;g;b
+                const rgbIdx = codes.indexOf(38);
+                if (codes[rgbIdx + 1] === 2 && codes.length >= rgbIdx + 5) {
+                  const r = codes[rgbIdx + 2],
+                    g = codes[rgbIdx + 3],
+                    b = codes[rgbIdx + 4];
+                  html += `<span style="color:rgb(${r},${g},${b})">`;
+                  openSpans++;
+                }
+                break; // consumed remaining codes
+              }
+            }
+          } else {
+            // Escape HTML special chars
+            const ch = text[i];
+            if (ch === '<') html += '&lt;';
+            else if (ch === '>') html += '&gt;';
+            else if (ch === '&') html += '&amp;';
+            else html += ch;
+            i++;
+          }
+        }
+        while (openSpans > 0) {
+          html += '</span>';
+          openSpans--;
+        }
+        return html;
+      }
+
+      function flushLogBuffer() {
+        rafPending = false;
+        if (logBuffer.length === 0) return;
+
+        const fragment = document.createDocumentFragment();
+        for (const text of logBuffer) {
+          const div = document.createElement('div');
+          div.className = 'log-line';
+          div.innerHTML = ansiToHtml(text);
+          fragment.appendChild(div);
+        }
+        logBuffer.length = 0;
+
+        logContent.appendChild(fragment);
+
+        // Prune oldest lines if over cap
+        const overflow = logContent.children.length - MAX_LOG_LINES;
+        if (overflow > 0) {
+          for (let i = 0; i < overflow; i++) {
+            logContent.removeChild(logContent.firstChild);
+          }
+        }
+
+        if (autoScroll) {
+          logContent.scrollTop = logContent.scrollHeight;
+        }
+      }
+
+      function appendLogLine(text) {
+        logBuffer.push(text);
+        if (!rafPending) {
+          rafPending = true;
+          requestAnimationFrame(flushLogBuffer);
+        }
+      }
+
+      function serviceDisplayName(name) {
+        const map = {
+          app: 'App (Next.js)',
+          api: 'API Server',
+          clickhouse: 'ClickHouse',
+          mongodb: 'MongoDB',
+          'otel-collector': 'OTel Collector',
+          'otel-collector-json': 'OTel JSON',
+          alerts: 'Alerts Task',
+          'common-utils': 'Common Utils',
+          'e2e-runner': 'E2E Runner',
+        };
+        return map[name] || name;
+      }
+
+      function envTypeLabel(envType) {
+        const map = { dev: 'Dev', e2e: 'E2E', int: 'Integration' };
+        return map[envType] || envType;
+      }
+
+      // --- Log panel ---
+
+      function openLogPanel(slot, service, envType) {
+        envType = envType || 'dev';
+        // Close existing stream
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+
+        currentLogSlot = slot;
+        currentLogService = service;
+        currentLogEnvType = envType;
+        logTitle.textContent = serviceDisplayName(service);
+        logSlotLabel.textContent = `${envTypeLabel(envType)} \u00b7 slot ${slot}`;
+        logContent.innerHTML = '';
+        appendLogLine('Loading logs...');
+        logPanel.classList.add('open');
+        logStreamBadge.style.display = 'none';
+
+        // Highlight active row
+        document
+          .querySelectorAll('.services-table tr.active')
+          .forEach(el => el.classList.remove('active'));
+        const activeRow = document.querySelector(
+          `tr[data-slot="${slot}"][data-service="${service}"][data-env="${envType}"]`,
+        );
+        if (activeRow) activeRow.classList.add('active');
+
+        // Start SSE stream
+        const eventSource = new EventSource(
+          `/api/logs/${envType}/${slot}/${encodeURIComponent(service)}?stream=1`,
+        );
+        currentEventSource = eventSource;
+
+        let firstMessage = true;
+        eventSource.onmessage = event => {
+          if (firstMessage) {
+            logContent.innerHTML = '';
+            logStreamBadge.style.display = 'inline-flex';
+            firstMessage = false;
+          }
+          appendLogLine(event.data);
+        };
+
+        eventSource.addEventListener('close', () => {
+          logStreamBadge.style.display = 'none';
+          appendLogLine('--- stream ended ---');
+        });
+
+        eventSource.onerror = () => {
+          logStreamBadge.style.display = 'none';
+          if (firstMessage) {
+            logContent.innerHTML = '';
+            appendLogLine('No logs available for this service.');
+          }
+          eventSource.close();
+        };
+      }
+
+      function closeLogPanel() {
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+        logBuffer.length = 0;
+        logPanel.classList.remove('open');
+        currentLogSlot = null;
+        currentLogService = null;
+        currentLogEnvType = null;
+        document
+          .querySelectorAll('.services-table tr.active')
+          .forEach(el => el.classList.remove('active'));
+      }
+
+      function clearLogPanel() {
+        logContent.innerHTML = '';
+        logBuffer.length = 0;
+      }
+
+      function toggleAutoScroll() {
+        autoScroll = !autoScroll;
+        const btn = document.getElementById('autoscroll-btn');
+        btn.style.color = autoScroll ? 'var(--green)' : 'var(--text-muted)';
+        btn.style.borderColor = autoScroll ? 'var(--green)' : 'var(--border)';
+        if (autoScroll) {
+          logContent.scrollTop = logContent.scrollHeight;
+        }
+      }
+
+      // --- Dashboard rendering ---
+
+      function renderStacks(stacks) {
+        if (stacks.length === 0) {
+          return `
+          <div class="empty-state">
+            <h2>No stacks running</h2>
+            <p>Start an environment from a worktree:</p>
+            <br>
+            <code>make dev</code> &nbsp; <code>make dev-e2e</code> &nbsp; <code>make dev-int</code>
+          </div>
+        `;
+        }
+
+        // Group stacks by worktree name so all envs for the same
+        // worktree appear in a single card.
+        const groups = new Map();
+        for (const stack of stacks) {
+          const key = stack.worktree || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(stack);
+        }
+
+        return `<div class="stacks">${[...groups.values()].map(renderWorktreeCard).join('')}</div>`;
+      }
+
+      function renderWorktreeCard(stacks) {
+        // Use the dev stack for the header since it has the richest metadata.
+        const header = stacks.find(s => s.envType === 'dev') || stacks[0];
+        const devStack = stacks.find(s => s.envType === 'dev');
+        const appService =
+          devStack &&
+          devStack.services.find(s => s.name === 'app' && s.status === 'up');
+        const appUrl = appService ? appService.url : null;
+        const chService =
+          devStack &&
+          devStack.services.find(
+            s => s.name === 'clickhouse' && s.status === 'up',
+          );
+        const chUrl = chService ? `http://localhost:${chService.port}` : null;
+
+        // Flatten all services from every env into one table.
+        // Insert a separator row before each env group.
+        const envOrder = ['dev', 'e2e', 'int'];
+        const sorted = [...stacks].sort(
+          (a, b) =>
+            (envOrder.indexOf(a.envType) ?? 9) -
+            (envOrder.indexOf(b.envType) ?? 9),
+        );
+
+        let rows = '';
+        for (const stack of sorted) {
+          const envType = stack.envType || 'dev';
+          // Env group separator row
+          rows += `
+            <tr class="env-separator">
+              <td colspan="4">
+                <span class="env-badge ${envType}">${envTypeLabel(envType)}</span>
+              </td>
+            </tr>`;
+          rows += stack.services
+            .map(svc => renderService(stack.slot, svc, envType))
+            .join('');
+        }
+
+        return `
+        <div class="stack-card">
+          <div class="stack-header">
+            <div>
+              <div style="display:flex;align-items:center">
+                <span class="branch">${escapeHtml(header.branch)}</span>
+              </div>
+              <div class="worktree">${escapeHtml(header.worktree)}</div>
+            </div>
+            <div class="stack-actions">
+              ${chUrl ? `<a href="${chUrl}" target="_blank" class="open-btn open-btn-secondary">Open ClickHouse</a>` : ''}
+              ${appUrl ? `<a href="${appUrl}" target="_blank" class="open-btn">Open App</a>` : ''}
+            </div>
+          </div>
+          <table class="services-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Port</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      `;
+      }
+
+      function renderService(slot, svc, envType) {
+        envType = envType || 'dev';
+        const portCell = svc.port
+          ? `<span class="port-plain">:${svc.port}</span>`
+          : `<span class="port-plain">-</span>`;
+
+        const isActive =
+          currentLogSlot == slot &&
+          currentLogService === svc.name &&
+          currentLogEnvType === envType;
+
+        return `
+        <tr class="clickable ${isActive ? 'active' : ''}"
+            data-slot="${slot}" data-service="${svc.name}" data-env="${envType}"
+            onclick="openLogPanel(${slot}, '${svc.name}', '${envType}')">
+          <td>
+            <div class="service-name">
+              ${serviceDisplayName(svc.name)}
+              <span class="type-badge ${svc.type}">${svc.type}</span>
+            </div>
+          </td>
+          <td>
+            <div class="status-indicator">
+              <div class="status-dot ${svc.status}"></div>
+              ${svc.status === 'up' ? 'Running' : 'Stopped'}
+            </div>
+          </td>
+          <td>${portCell}</td>
+          <td><button class="log-btn" onclick="event.stopPropagation(); openLogPanel(${slot}, '${svc.name}', '${envType}')">Logs</button></td>
+        </tr>
+      `;
+      }
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // --- Tab switching ---
+
+      function switchTab(tab) {
+        activeTab = tab;
+        document
+          .getElementById('tab-live')
+          .classList.toggle('active', tab === 'live');
+        document
+          .getElementById('tab-history')
+          .classList.toggle('active', tab === 'history');
+
+        if (tab === 'live') {
+          contentEl.style.display = '';
+          historyEl.style.display = 'none';
+          refresh();
+        } else {
+          contentEl.style.display = 'none';
+          historyEl.style.display = '';
+          refreshHistory();
+        }
+      }
+
+      // --- History rendering ---
+
+      function timeAgo(date) {
+        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+        if (seconds < 0) return 'just now';
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1048576).toFixed(1)} MB`;
+      }
+
+      let historySearchQuery = '';
+      let _allHistoryEntries = [];
+
+      function onHistorySearch(el) {
+        historySearchQuery = el.value;
+        historyExpanded.clear();
+        const cursorPos = el.selectionStart;
+        // Re-render from cached entries without re-fetching
+        historyEl.innerHTML = renderHistory(_allHistoryEntries);
+        // Restore focus and cursor position after re-render
+        const input = historyEl.querySelector('.history-search input');
+        if (input) {
+          input.focus();
+          input.setSelectionRange(cursorPos, cursorPos);
+        }
+      }
+
+      async function refreshHistory() {
+        try {
+          const res = await fetch('/api/history');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          _allHistoryEntries = await res.json();
+          historyEl.innerHTML = renderHistory(_allHistoryEntries);
+          errorEl.style.display = 'none';
+        } catch (err) {
+          errorEl.textContent = `Failed to fetch history: ${err.message}`;
+          errorEl.style.display = 'block';
+        }
+      }
+
+      // Simple fuzzy match: all query terms (space-separated) must appear
+      // somewhere in the searchable text (case-insensitive).
+      function fuzzyMatch(query, texts) {
+        if (!query) return true;
+        const haystack = texts.join(' ').toLowerCase();
+        const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+        return terms.every(term => haystack.includes(term));
+      }
+
+      function filterHistoryEntries(entries, query) {
+        if (!query) return entries;
+        return entries.filter(entry =>
+          fuzzyMatch(query, [entry.worktree || '', entry.branch || '']),
+        );
+      }
+
+      function renderHistory(entries) {
+        const searchHtml = `
+          <div class="history-search">
+            <span class="history-search-icon">\u{1F50D}</span>
+            <input type="text"
+                   placeholder="Search worktree or branch..."
+                   value="${escapeHtml(historySearchQuery)}"
+                   oninput="onHistorySearch(this)" />
+          </div>
+        `;
+
+        if (entries.length === 0) {
+          return `
+            <div class="empty-state">
+              <h2>No past runs</h2>
+              <p>Logs from completed dev, E2E, and integration runs will appear here.</p>
+            </div>
+          `;
+        }
+
+        const filtered = filterHistoryEntries(entries, historySearchQuery);
+
+        // Group filtered entries by worktree
+        const groups = new Map();
+        for (const entry of filtered) {
+          const key = entry.worktree || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(entry);
+        }
+
+        const noResults = filtered.length === 0;
+
+        return `
+          <div class="history-header">
+            <h2>Past Runs</h2>
+            <button class="clear-all-btn" onclick="clearAllHistory()">Clear All</button>
+          </div>
+          ${searchHtml}
+          ${
+            noResults
+              ? `<div class="empty-state"><p>No runs matching "${escapeHtml(historySearchQuery)}"</p></div>`
+              : `<div class="stacks">
+                ${[...groups.entries()].map(([worktree, group]) => renderHistoryWorktreeCard(worktree, group)).join('')}
+              </div>`
+          }
+        `;
+      }
+
+      // Track which history cards are expanded (by worktree name).
+      // All cards are collapsed by default.
+      const historyExpanded = new Set();
+
+      function toggleHistoryCard(worktree) {
+        if (historyExpanded.has(worktree)) {
+          historyExpanded.delete(worktree);
+        } else {
+          historyExpanded.add(worktree);
+        }
+        refreshHistory();
+      }
+
+      function renderHistoryWorktreeCard(worktree, entries) {
+        // Use the first entry for branch info
+        const branch = entries[0].branch || 'unknown';
+        const collapsed = !historyExpanded.has(worktree);
+        const chevron = collapsed ? '\u25b6' : '\u25bc';
+        const count = entries.length;
+
+        return `
+          <div class="stack-card">
+            <div class="stack-header">
+              <div>
+                <div style="display:flex;align-items:center">
+                  <span class="branch">${escapeHtml(branch)}</span>
+                  <span style="color:var(--text-muted);font-size:12px;margin-left:8px">${count} run${count !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="worktree">${escapeHtml(worktree)}</div>
+              </div>
+              <div class="stack-actions">
+                <button class="history-toggle-btn" onclick="toggleHistoryCard('${escapeHtml(worktree)}')">${chevron}</button>
+              </div>
+            </div>
+            <div class="history-card-body${collapsed ? ' collapsed' : ''}" style="max-height:${collapsed ? 0 : entries.length * 200}px">
+              <div class="history-list" style="padding:0">
+                ${entries.map(renderHistoryEntry).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderHistoryEntry(entry) {
+        const relTime = timeAgo(new Date(entry.timestamp));
+        return `
+          <div class="history-entry">
+            <div class="history-entry-header">
+              <div class="history-meta">
+                <span class="env-badge ${entry.envType}">${envTypeLabel(entry.envType)}</span>
+                <span class="history-time">${relTime}</span>
+                <span class="history-ts">${escapeHtml(entry.timestamp)}</span>
+              </div>
+              <button class="history-delete-btn" onclick="event.stopPropagation(); deleteHistoryEntry(${entry.slot}, '${escapeHtml(entry.dir)}')">Delete</button>
+            </div>
+            <div class="file-list">
+              ${entry.files
+                .map(
+                  f => `
+                <div class="file-item"
+                     onclick="viewHistoryLog(${entry.slot}, '${escapeHtml(entry.dir)}', '${escapeHtml(f)}', '${entry.envType}')">
+                  <span class="file-name">${escapeHtml(f)}</span>
+                  <span class="file-size">${formatSize(entry.totalSize)}</span>
+                </div>
+              `,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      async function viewHistoryLog(slot, dir, file, envType) {
+        // Close any existing SSE stream
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+
+        currentLogSlot = null;
+        currentLogService = null;
+        currentLogEnvType = null;
+
+        logTitle.textContent = file;
+        logSlotLabel.textContent = `${envTypeLabel(envType)} \u00b7 ${timeAgo(new Date(dir.replace(/^(dev|e2e|int)-/, '')))}`;
+        logContent.innerHTML = '';
+        appendLogLine('Loading archived log...');
+        logPanel.classList.add('open');
+        logStreamBadge.style.display = 'none';
+
+        // Highlight active file item
+        document
+          .querySelectorAll('.file-item.active')
+          .forEach(el => el.classList.remove('active'));
+
+        try {
+          const res = await fetch(
+            `/api/history/${slot}/${encodeURIComponent(dir)}/${encodeURIComponent(file)}`,
+          );
+          const text = await res.text();
+          logContent.innerHTML = '';
+          for (const line of text.split('\n')) {
+            appendLogLine(line);
+          }
+        } catch {
+          logContent.innerHTML = '';
+          appendLogLine('Failed to load log file.');
+        }
+      }
+
+      async function deleteHistoryEntry(slot, dir) {
+        const ok = await showModal(
+          'Delete run?',
+          'This will permanently remove the log files for this run.',
+          'Delete',
+        );
+        if (!ok) return;
+        await fetch(`/api/history/${slot}/${encodeURIComponent(dir)}`, {
+          method: 'DELETE',
+        });
+        closeLogPanel();
+        refreshHistory();
+      }
+
+      async function clearAllHistory() {
+        const ok = await showModal(
+          'Clear all history?',
+          'This will permanently delete all past run logs. This cannot be undone.',
+          'Delete All',
+        );
+        if (!ok) return;
+        try {
+          const res = await fetch('/api/history');
+          const entries = await res.json();
+          await Promise.all(
+            entries.map(e =>
+              fetch(`/api/history/${e.slot}/${encodeURIComponent(e.dir)}`, {
+                method: 'DELETE',
+              }),
+            ),
+          );
+        } catch {
+          // ignore errors
+        }
+        closeLogPanel();
+        refreshHistory();
+      }
+
+      // --- Custom confirm modal ---
+      let _modalResolve = null;
+
+      function showModal(title, message, confirmLabel) {
+        return new Promise(resolve => {
+          _modalResolve = resolve;
+          document.getElementById('modal-title').textContent = title;
+          document.getElementById('modal-message').textContent = message;
+          document.getElementById('modal-confirm-btn').textContent =
+            confirmLabel || 'Confirm';
+          const overlay = document.getElementById('modal-overlay');
+          overlay.style.display = 'flex';
+          requestAnimationFrame(() => overlay.classList.add('visible'));
+        });
+      }
+
+      function closeModal(result) {
+        const overlay = document.getElementById('modal-overlay');
+        overlay.classList.remove('visible');
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 150);
+        if (_modalResolve) {
+          _modalResolve(result);
+          _modalResolve = null;
+        }
+      }
+
+      // --- Live dashboard ---
+
+      async function refresh() {
+        try {
+          const res = await fetch('/api/stacks');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const stacks = await res.json();
+          contentEl.innerHTML = renderStacks(stacks);
+          errorEl.style.display = 'none';
+        } catch (err) {
+          errorEl.textContent = `Failed to fetch stacks: ${err.message}`;
+          errorEl.style.display = 'block';
+        }
+      }
+
+      // Initial load + periodic refresh (only refresh active tab)
+      refresh();
+      setInterval(() => {
+        if (activeTab === 'live') refresh();
+      }, 3000);
+
+      // Set initial auto-scroll button state
+      toggleAutoScroll();
+      toggleAutoScroll();
+
+      // Keybindings
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          if (_modalResolve) {
+            closeModal(false);
+          } else {
+            closeLogPanel();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
