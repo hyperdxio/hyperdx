@@ -154,4 +154,14 @@ export class DashboardsListPage {
     const card = this.getFavoritedDashboardCard(name);
     await card.getByTestId('favorite-button').click();
   }
+
+  getAlertStatusIcon(name: string) {
+    const card = this.getDashboardCard(name);
+    return card.getByTestId(/^alert-status-icon-/);
+  }
+
+  getAlertStatusIconInRow(name: string) {
+    const row = this.getDashboardRow(name);
+    return row.getByTestId(/^alert-status-icon-/);
+  }
 }
