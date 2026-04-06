@@ -396,8 +396,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               href="/search/list"
               icon={<IconDeviceFloppy size={16} />}
               isActive={isSavedSearchActive}
-              isExpanded={isSavedSearchExpanded}
-              onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
+              {...(favoritedSavedSearches.length > 0 && {
+                isExpanded: isSavedSearchExpanded,
+                onToggle: () =>
+                  setIsSavedSearchExpanded(!isSavedSearchExpanded),
+              })}
             />
 
             {!isCollapsed && !!favoritedSavedSearches.length && (
@@ -426,8 +429,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               href="/dashboards/list"
               icon={<IconLayoutGrid size={16} />}
               isActive={isDashboardsActive}
-              isExpanded={isDashboardsExpanded}
-              onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
+              {...(favoritedDashboards.length > 0 && {
+                isExpanded: isDashboardsExpanded,
+                onToggle: () => setIsDashboardsExpanded(!isDashboardsExpanded),
+              })}
             />
 
             {!isCollapsed && !!favoritedDashboards.length && (
