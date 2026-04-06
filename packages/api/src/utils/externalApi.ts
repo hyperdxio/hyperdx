@@ -8,7 +8,9 @@ import { omit } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
 
 import {
+  AlertChangeType,
   AlertChannel,
+  AlertConditionType,
   AlertDocument,
   AlertInterval,
   AlertState,
@@ -232,6 +234,8 @@ export type ExternalAlert = {
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
+  conditionType?: AlertConditionType;
+  changeType?: AlertChangeType;
   source?: string;
   state: AlertState;
   channel: AlertChannel;
@@ -315,6 +319,8 @@ export function translateAlertDocumentToExternalAlert(
     }),
     scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
     thresholdType: alertObj.thresholdType,
+    conditionType: alertObj.conditionType,
+    changeType: alertObj.changeType,
     source: alertObj.source,
     state: alertObj.state,
     channel: alertObj.channel,

@@ -3,7 +3,12 @@ import { ObjectId } from 'mongodb';
 import request from 'supertest';
 
 import { getLoggedInAgent, getServer } from '../../../fixtures';
-import { AlertSource, AlertThresholdType } from '../../../models/alert';
+import {
+  AlertChangeType,
+  AlertConditionType,
+  AlertSource,
+  AlertThresholdType,
+} from '../../../models/alert';
 import Alert from '../../../models/alert';
 import Dashboard from '../../../models/dashboard';
 import { SavedSearch } from '../../../models/savedSearch';
@@ -215,6 +220,7 @@ describe('External API Alerts', () => {
           interval: '15m',
           source: AlertSource.TILE,
           thresholdType: AlertThresholdType.ABOVE,
+          conditionType: 'threshold',
           channel: {
             type: 'webhook',
             webhookId: expect.any(String),
@@ -881,6 +887,49 @@ describe('External API Alerts', () => {
       await unauthenticatedAgent
         .get(`${ALERTS_BASE_URL}/${testId}`)
         .expect(401);
+    });
+  });
+
+  describe('Rate of Change Alerts', () => {
+    it('should create and retrieve a rate-of-change alert', async () => {
+      const { alert } = await createTestAlert({
+        conditionType: AlertConditionType.RATE_OF_CHANGE,
+        changeType: AlertChangeType.PERCENTAGE,
+      });
+
+      expect(alert.conditionType).toBe(AlertConditionType.RATE_OF_CHANGE);
+      expect(alert.changeType).toBe(AlertChangeType.PERCENTAGE);
+
+      const getResp = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResp.body.data.conditionType).toBe(
+        AlertConditionType.RATE_OF_CHANGE,
+      );
+      expect(getResp.body.data.changeType).toBe(AlertChangeType.PERCENTAGE);
+    });
+
+    it('should reject rate-of-change without changeType', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 50,
+          interval: '5m',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          conditionType: AlertConditionType.RATE_OF_CHANGE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(400);
     });
   });
 });

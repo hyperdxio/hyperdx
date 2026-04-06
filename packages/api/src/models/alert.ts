@@ -1,8 +1,14 @@
-import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertChangeType,
+  AlertConditionType,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
+
+export { AlertChangeType, AlertConditionType };
 
 export enum AlertThresholdType {
   ABOVE = 'above',
@@ -44,6 +50,8 @@ export enum AlertSource {
 export interface IAlert {
   id: string;
   channel: AlertChannel;
+  conditionType?: AlertConditionType;
+  changeType?: AlertChangeType;
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: Date | null;
@@ -87,6 +95,17 @@ const AlertSchema = new Schema<IAlert>(
     thresholdType: {
       type: String,
       enum: AlertThresholdType,
+      required: false,
+    },
+    conditionType: {
+      type: String,
+      enum: AlertConditionType,
+      default: AlertConditionType.THRESHOLD,
+      required: false,
+    },
+    changeType: {
+      type: String,
+      enum: AlertChangeType,
       required: false,
     },
     interval: {

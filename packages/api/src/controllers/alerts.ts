@@ -6,7 +6,9 @@ import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
 import Alert, {
+  AlertChangeType,
   AlertChannel,
+  AlertConditionType,
   AlertInterval,
   AlertSource,
   AlertThresholdType,
@@ -24,6 +26,8 @@ export type AlertInput = {
   id?: string;
   source?: AlertSource;
   channel: AlertChannel;
+  conditionType?: AlertConditionType;
+  changeType?: AlertChangeType;
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: string | null;
@@ -141,6 +145,8 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     source: alert.source,
     threshold: alert.threshold,
     thresholdType: alert.thresholdType,
+    conditionType: alert.conditionType,
+    changeType: alert.changeType,
     ...(userId && { createdBy: userId }),
 
     // Message template

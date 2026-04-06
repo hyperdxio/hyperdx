@@ -1,10 +1,13 @@
 import {
   AggregateFunctionSchema,
+  AlertChangeType,
+  AlertConditionType,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  validateAlertChangeType,
   validateAlertScheduleOffsetMinutes,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
@@ -510,12 +513,15 @@ export const alertSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     threshold: z.number(),
     thresholdType: z.nativeEnum(AlertThresholdType),
+    conditionType: z.nativeEnum(AlertConditionType).optional(),
+    changeType: z.nativeEnum(AlertChangeType).optional(),
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertChangeType);
 
 // ==============================
 // Webhooks

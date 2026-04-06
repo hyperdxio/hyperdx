@@ -20,6 +20,8 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertChangeType,
+  AlertConditionType,
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
@@ -107,7 +109,9 @@ import {
   sortingStateToOrderByString,
 } from '@/utils';
 import {
+  ALERT_CHANGE_TYPE_OPTIONS,
   ALERT_CHANNEL_OPTIONS,
+  ALERT_CONDITION_TYPE_OPTIONS,
   DEFAULT_TILE_ALERT,
   extendDateRangeToInterval,
   intervalToGranularity,
@@ -1423,6 +1427,28 @@ export default function EditTimeChartForm({
                 <Text size="xxs" opacity={0.5} mb={4}>
                   Trigger
                 </Text>
+                <Group gap="xs" mb={4}>
+                  <Text size="sm" opacity={0.7}>
+                    Condition
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CONDITION_TYPE_OPTIONS)}
+                    size="xs"
+                    name={`alert.conditionType`}
+                    control={control}
+                    data-testid="tile-condition-type-select"
+                  />
+                  {alert.conditionType ===
+                    AlertConditionType.RATE_OF_CHANGE && (
+                    <NativeSelect
+                      data={optionsToSelectData(ALERT_CHANGE_TYPE_OPTIONS)}
+                      size="xs"
+                      name={`alert.changeType`}
+                      control={control}
+                      data-testid="tile-change-type-select"
+                    />
+                  )}
+                </Group>
                 <Group gap="xs">
                   <Text size="sm" opacity={0.7}>
                     Alert when the value
@@ -1441,7 +1467,13 @@ export default function EditTimeChartForm({
                     control={control}
                     name={`alert.threshold`}
                   />
-                  over
+                  <Text size="sm" opacity={0.7}>
+                    {alert.conditionType === AlertConditionType.RATE_OF_CHANGE
+                      ? alert.changeType === AlertChangeType.PERCENTAGE
+                        ? '% compared to previous'
+                        : 'compared to previous'
+                      : 'over'}
+                  </Text>
                   <NativeSelect
                     data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
                     size="xs"

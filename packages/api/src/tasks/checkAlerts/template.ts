@@ -24,7 +24,13 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState, AlertThresholdType } from '@/models/alert';
+import {
+  AlertChangeType,
+  AlertConditionType,
+  AlertSource,
+  AlertState,
+  AlertThresholdType,
+} from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -353,14 +359,27 @@ export const buildAlertMessageTemplateTitle = ({
   // Add emoji prefix based on alert state
   const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
 
+  const isRateOfChange =
+    alert.conditionType === AlertConditionType.RATE_OF_CHANGE;
+  const changeSuffix =
+    alert.changeType === AlertChangeType.PERCENTAGE ? '%' : '';
+
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
-    // TODO: using template engine to render the title
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+    let baseTitle: string;
+    if (template) {
+      baseTitle = handlebars.compile(template)(view);
+    } else if (isRateOfChange) {
+      const formattedValue = formatValueToMatchThreshold(
+        value,
+        alert.threshold,
+      );
+      baseTitle = `Alert for "${savedSearch.name}" - changed by ${formattedValue}${changeSuffix}`;
+    } else {
+      baseTitle = `Alert for "${savedSearch.name}" - ${value} lines found`;
+    }
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -373,17 +392,22 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
-          doesExceedThreshold(alert.thresholdType, alert.threshold, value)
-            ? alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'exceeds'
-              : 'falls below'
-            : alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'falls below'
-              : 'exceeds'
-        } ${alert.threshold}`;
+    let baseTitle: string;
+    if (template) {
+      baseTitle = handlebars.compile(template)(view);
+    } else if (isRateOfChange) {
+      baseTitle = `Alert for "${tile.config.name}" in "${dashboard.name}" - changed by ${formattedValue}${changeSuffix}`;
+    } else {
+      baseTitle = `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+        doesExceedThreshold(alert.thresholdType, alert.threshold, value)
+          ? alert.thresholdType === AlertThresholdType.ABOVE
+            ? 'exceeds'
+            : 'falls below'
+          : alert.thresholdType === AlertThresholdType.ABOVE
+            ? 'falls below'
+            : 'exceeds'
+      } ${alert.threshold}`;
+    }
     return `${emoji}${baseTitle}`;
   }
 
