@@ -2,7 +2,9 @@
   "version": "0.1.0",
   "name": "JVM Runtime Metrics",
   "description": "Heap memory, CPU utilization, threads, and GC metrics for JVM applications with the OTel Java Agent v2+ wth JVM v17+",
-  "tags": ["OTel Runtime Metrics"],
+  "tags": [
+    "OTel Runtime Metrics"
+  ],
   "tiles": [
     {
       "id": "dd919b",
