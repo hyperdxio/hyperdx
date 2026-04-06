@@ -2077,7 +2077,11 @@ function DBSearchPage() {
                                 whiteSpace: 'pre-wrap',
                               }}
                             >
-                              <SQLPreview data={queryError.query} formatData />
+                              <SQLPreview
+                                data={queryError.query}
+                                formatData
+                                enableLineWrapping
+                              />
                             </Code>
                           </Box>
                         )}

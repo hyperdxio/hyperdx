@@ -1,5 +1,23 @@
 # @hyperdx/common-utils
 
+## 0.17.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 518bda7d: feat: Add dashboard template gallery
+- 4e54d850: fix: show Map sub-fields in facet panel for non-LowCardinality value types
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 48a8d32b: fix: Fixed bug preventing clicking into rows with nullable date types (and other misc type) columns.
+- a55b151e: fix: render clickhouse keywords properly in codemirror
+- 308da30b: feat: Add $\_\_sourceTable macro
+- e5c7fdf9: feat: Add saved searches listing page
+
 ## 0.16.2
 
 ### Patch Changes
