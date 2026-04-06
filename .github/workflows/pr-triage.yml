@@ -187,10 +187,12 @@ jobs:
               else if (isTier2) tier = 2;
               else tier = 3;
 
-              // Escalate very large non-critical PRs to Tier 4; this also applies to agent
-              // branches that were bumped to Tier 3 above — a 400+ line agent-generated change
-              // warrants deep review regardless of which files it touches.
-              if (tier === 3 && linesChanged > 400) tier = 4;
+              // Escalate very large non-critical PRs to Tier 4. Agent branches use a lower
+              // threshold (400 lines) since they warrant deeper scrutiny. Human-authored PRs
+              // are only escalated for truly massive diffs (1000+ lines); Tier 3 already
+              // requires full human review, so smaller large PRs don't need the extra urgency.
+              const sizeThreshold = isAgentBranch ? 400 : 1000;
+              if (tier === 3 && linesChanged > sizeThreshold) tier = 4;
 
               // Apply label
               for (const existing of currentLabels) {
@@ -204,22 +206,39 @@ jobs:
 
               // Build comment body
               const info = TIER_INFO[tier];
-              const signals = [];
-              if (isTier4) signals.push('critical-path files detected');
-              if (isAgentBranch) signals.push(`agent branch (\`${branchName}\`)`);
-              if (linesChanged > 400) signals.push(`large diff (${linesChanged} lines changed)`);
-              if (isTrivialAuthor) signals.push(`bot author (${author})`);
-              if (allFilesTrivial && !isTrivialAuthor) signals.push('all files are docs/images/lock files');
-              if (touchesApiModels) signals.push('API routes or data models changed');
 
-              const signalList = signals.length > 0 ? `\n**Signals**: ${signals.join(', ')}` : '';
+              // Primary triggers — what actually determined (or escalated) the tier
+              const triggers = [];
+              const criticalFiles = files.filter(f => TIER4_PATTERNS.some(p => p.test(f)));
+              if (criticalFiles.length > 0) {
+                triggers.push(`**Critical-path files** (${criticalFiles.length}):\n${criticalFiles.map(f => `  - \`${f}\``).join('\n')}`);
+              }
+              if (tier === 4 && linesChanged > sizeThreshold && criticalFiles.length === 0) {
+                triggers.push(`**Large diff**: ${linesChanged} lines changed (threshold: ${sizeThreshold})`);
+              }
+              if (isTrivialAuthor) triggers.push(`**Bot author**: \`${author}\``);
+              if (allFilesTrivial && !isTrivialAuthor) triggers.push('**All files are docs / images / lock files**');
+
+              // Context signals — informational, didn't drive the tier by themselves
+              const context = [];
+              if (isAgentBranch) context.push(`agent branch (\`${branchName}\`)`);
+              if (touchesApiModels && criticalFiles.length === 0) context.push('touches API routes or data models');
+              if (linesChanged > sizeThreshold && criticalFiles.length > 0) context.push(`large diff (${linesChanged} lines)`);
+
+              const triggerSection = triggers.length > 0
+                ? `\n**Why this tier:**\n${triggers.map(t => `- ${t}`).join('\n')}`
+                : '';
+              const contextSection = context.length > 0
+                ? `\n**Additional context:** ${context.join(', ')}`
+                : '';
 
               const body = [
                 '<!-- pr-triage -->',
                 `## ${info.emoji} ${info.headline}`,
                 '',
                 info.detail,
-                signalList,
+                triggerSection,
+                contextSection,
                 '',
                 `**Review process**: ${info.process}`,
                 `**SLA**: ${info.sla}`,
