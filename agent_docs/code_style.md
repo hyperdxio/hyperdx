@@ -100,7 +100,7 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `icon` | `ReactNode` | — | Icon in the theme circle (hidden if not provided) |
-| `title` | `string` | — | Heading text |
+| `title` | `string` | — | Heading text (headline style — no trailing period) |
 | `description` | `ReactNode` | — | Subtext below the title |
 | `children` | `ReactNode` | — | Actions (buttons, links) below description |
 | `variant` | `"default" \| "card"` | `"default"` | `"card"` wraps in a bordered Paper |
@@ -118,6 +118,8 @@ This pattern cannot be enforced by ESLint and requires manual code review.
   variant="card"
 />
 ```
+
+**Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
 
 ## Refactoring
 

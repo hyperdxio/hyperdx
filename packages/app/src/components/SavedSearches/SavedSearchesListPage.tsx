@@ -242,8 +242,8 @@ export default function SavedSearchesListPage() {
               icon={<IconTable size={32} />}
               title={
                 search || tagFilter
-                  ? 'No matching saved searches.'
-                  : 'No saved searches yet.'
+                  ? 'No matching saved searches yet'
+                  : 'No saved searches yet'
               }
             >
               <Button
