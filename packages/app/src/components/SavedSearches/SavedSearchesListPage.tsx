@@ -234,11 +234,6 @@ export default function SavedSearchesListPage() {
             style={{ flex: 1, minHeight: 0 }}
           >
             <EmptyState
-              data-testid={
-                search || tagFilter
-                  ? 'saved-searches-no-matches'
-                  : 'saved-searches-empty'
-              }
               icon={<IconTable size={32} />}
               title={
                 search || tagFilter
