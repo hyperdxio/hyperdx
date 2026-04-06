@@ -125,11 +125,11 @@ export class DashboardsListPage {
   }
 
   getEmptyState() {
-    return this.pageContainer.getByText('No dashboards yet.');
+    return this.pageContainer.getByText('No dashboards yet');
   }
 
   getNoMatchesState() {
-    return this.pageContainer.getByText('No matching dashboards yet.');
+    return this.pageContainer.getByText('No matching dashboards yet');
   }
 
   getFavoritesSection() {
@@ -153,5 +153,15 @@ export class DashboardsListPage {
   async toggleFavoriteOnFavoritedCard(name: string) {
     const card = this.getFavoritedDashboardCard(name);
     await card.getByTestId('favorite-button').click();
+  }
+
+  getAlertStatusIcon(name: string) {
+    const card = this.getDashboardCard(name);
+    return card.getByTestId(/^alert-status-icon-/);
+  }
+
+  getAlertStatusIconInRow(name: string) {
+    const row = this.getDashboardRow(name);
+    return row.getByTestId(/^alert-status-icon-/);
   }
 }

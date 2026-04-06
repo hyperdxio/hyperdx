@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AlertState,
   SavedSearchListApiResponse,
@@ -21,7 +22,6 @@ import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowBarToLeft,
   IconBell,
-  IconBellFilled,
   IconChartDots,
   IconDeviceFloppy,
   IconDeviceLaptop,
@@ -32,6 +32,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
@@ -219,26 +220,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       >
         <Group gap={2} wrap="nowrap" align="center">
           <div className="text-truncate">{savedSearch.name}</div>
-          {Array.isArray(savedSearch.alerts) &&
-          savedSearch.alerts.length > 0 ? (
-            savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
-              <Flex flex={0}>
-                <IconBellFilled
-                  size={14}
-                  className="float-end text-danger ms-1"
-                  aria-label="Has Alerts and is in ALERT state"
-                />
-              </Flex>
-            ) : (
-              <Flex flex={0}>
-                <IconBell
-                  size={14}
-                  className="float-end ms-1"
-                  aria-label="Has Alerts and is in OK state"
-                />
-              </Flex>
-            )
-          ) : null}
+          <Flex flex={0}>
+            <AlertStatusIcon alerts={savedSearch.alerts} />
+          </Flex>
         </Group>
       </Link>
     ),
@@ -246,18 +230,31 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   );
 
   const renderDashboardLink = useCallback(
-    (dashboard: Dashboard) => (
-      <Link
-        href={`/dashboards/${dashboard.id}`}
-        key={dashboard.id}
-        tabIndex={0}
-        className={cx(styles.subMenuItem, {
-          [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
-        })}
-      >
-        <div className="text-truncate">{dashboard.name}</div>
-      </Link>
-    ),
+    (dashboard: Dashboard) => {
+      const alerts = dashboard.tiles
+        .map(t =>
+          isBuilderSavedChartConfig(t.config) ? t.config.alert : undefined,
+        )
+        .filter(a => a != null);
+      return (
+        <Link
+          href={`/dashboards/${dashboard.id}`}
+          key={dashboard.id}
+          tabIndex={0}
+          className={cx(styles.subMenuItem, {
+            [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
+          })}
+          title={dashboard.name}
+        >
+          <Group gap={2} wrap="nowrap" align="center">
+            <div className="text-truncate">{dashboard.name}</div>
+            <Flex flex={0}>
+              <AlertStatusIcon alerts={alerts} />
+            </Flex>
+          </Group>
+        </Link>
+      );
+    },
     [query.dashboardId],
   );
 
@@ -406,10 +403,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
 
-            {!isCollapsed && !!favoritedSavedSearches.length && (
+            {!isCollapsed && (
               <Collapse in={isSavedSearchExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedSavedSearches.map(renderSavedSearchLink)}
+                  {favoritedSavedSearches.length > 0 ? (
+                    favoritedSavedSearches.map(renderSavedSearchLink)
+                  ) : favorites != null && savedSearches != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor component={Link} href="/search/list" size="xs">
+                        Saved Searches
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
@@ -436,10 +443,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
             />
 
-            {!isCollapsed && !!favoritedDashboards.length && (
+            {!isCollapsed && (
               <Collapse in={isDashboardsExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedDashboards.map(renderDashboardLink)}
+                  {favoritedDashboards.length > 0 ? (
+                    favoritedDashboards.map(renderDashboardLink)
+                  ) : favorites != null && dashboards != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor
+                        component={Link}
+                        href="/dashboards/list"
+                        size="xs"
+                      >
+                        Dashboards
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}

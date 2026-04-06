@@ -88,11 +88,11 @@ export class SavedSearchesListPage {
   }
 
   getEmptyState() {
-    return this.pageContainer.getByText('No saved searches yet.');
+    return this.pageContainer.getByText('No saved searches yet');
   }
 
   getNoMatchesState() {
-    return this.pageContainer.getByText('No matching saved searches.');
+    return this.pageContainer.getByText('No matching saved searches yet');
   }
 
   getFavoritesSection() {
