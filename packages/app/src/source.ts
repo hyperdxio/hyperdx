@@ -423,31 +423,17 @@ function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
   return DURATION_PRESERVING_AGG_FNS.has(baseFn);
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Builds a regex that matches `<durationExpr> / 1e<N>` with optional
- * surrounding parentheses and whitespace. Handles variants like:
- *   (Duration)/1e6, Duration/1e6, Duration / 1e6, (Duration) / 1e6
- */
-function buildDivisionPattern(durationExpr: string, exponent: number): RegExp {
-  const escaped = escapeRegExp(durationExpr);
-  return new RegExp(`^\\(?\\s*${escaped}\\s*\\)?\\s*/\\s*1e${exponent}$`);
-}
-
 /**
  * Returns a NumberFormat for duration display if the chart config's select
- * expressions reference a trace source's durationExpression. Returns undefined
- * if no match is detected.
+ * expressions exactly match a trace source's durationExpression. Returns
+ * undefined if no match is detected.
  *
  * Only applies when the aggregate function preserves the unit of the input
  * (e.g. avg, min, max, sum, p95). Functions like count and count_distinct
  * produce dimensionless values and are skipped.
  *
- * The returned format uses the `duration` output with a `factor` that converts
- * from the raw value's precision to seconds.
+ * Uses exact match only — the duration expression can be arbitrary SQL,
+ * so substring or regex matching would be fragile.
  */
 export function getTraceDurationNumberFormat(
   source: TSource | undefined,
@@ -461,35 +447,12 @@ export function getTraceDurationNumberFormat(
 
   const durationExpr = source.durationExpression;
   const precision = source.durationPrecision ?? 9;
-  const msExponent = precision - 3;
-  const secondsExponent = precision;
-
-  const msPattern = buildDivisionPattern(durationExpr, msExponent);
-  const secondsPattern = buildDivisionPattern(durationExpr, secondsExponent);
 
   for (const sel of selectExpressions) {
     if (!sel.valueExpression) continue;
     if (!isDurationPreservingAggFn(sel.aggFn)) continue;
 
-    const expr = sel.valueExpression;
-
-    if (msPattern.test(expr)) {
-      return {
-        output: 'duration',
-        factor: 0.001,
-      };
-    }
-
-    if (secondsPattern.test(expr)) {
-      return {
-        output: 'duration',
-        factor: 1,
-      };
-    }
-
-    // Exact match only for the raw duration expression to avoid
-    // over-matching expressions like "Duration/1e6" as raw precision.
-    if (expr === durationExpr) {
+    if (sel.valueExpression === durationExpr) {
       return {
         output: 'duration',
         factor: Math.pow(10, -precision),

@@ -59,16 +59,27 @@ describe('getTraceDurationNumberFormat', () => {
     expect(result).toBeUndefined();
   });
 
-  // --- exact raw expression match ---
+  // --- exact match ---
 
-  it('detects exact raw duration expression with avg aggFn', () => {
-    const result = getTraceDurationNumberFormat(TRACE_SOURCE, [
-      { valueExpression: 'Duration', aggFn: 'avg' },
-    ]);
-    expect(result).toEqual({ output: 'duration', factor: 1e-9 });
+  it('matches when valueExpression exactly equals durationExpression', () => {
+    expect(
+      getTraceDurationNumberFormat(TRACE_SOURCE, [
+        { valueExpression: 'Duration', aggFn: 'avg' },
+      ]),
+    ).toEqual({ output: 'duration', factor: 1e-9 });
   });
 
-  it('does not match raw fallback when expression only contains duration name', () => {
+  it('matches without aggFn (raw expression passed through)', () => {
+    expect(
+      getTraceDurationNumberFormat(TRACE_SOURCE, [
+        { valueExpression: 'Duration' },
+      ]),
+    ).toEqual({ output: 'duration', factor: 1e-9 });
+  });
+
+  // --- non-matching expressions ---
+
+  it('does not match expressions that only contain the duration name', () => {
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'avg(Duration)' },
@@ -76,85 +87,25 @@ describe('getTraceDurationNumberFormat', () => {
     ).toBeUndefined();
   });
 
-  // --- ms expression variants ---
-
-  it('detects ms expression with parens: (Duration)/1e6', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: '(Duration)/1e6' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 0.001 });
-  });
-
-  it('detects ms expression without parens: Duration/1e6', () => {
+  it('does not match division expressions', () => {
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'Duration/1e6' },
       ]),
-    ).toEqual({ output: 'duration', factor: 0.001 });
-  });
-
-  it('detects ms expression with spaces: Duration / 1e6', () => {
+    ).toBeUndefined();
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration / 1e6' },
+        { valueExpression: '(Duration)/1e6' },
       ]),
-    ).toEqual({ output: 'duration', factor: 0.001 });
-  });
-
-  it('detects ms expression with parens and spaces: (Duration) / 1e6', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: '(Duration) / 1e6' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 0.001 });
-  });
-
-  it('detects ms expression with inner spaces: ( Duration )/1e6', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: '( Duration )/1e6' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 0.001 });
-  });
-
-  // --- seconds expression variants ---
-
-  it('detects seconds expression with parens: (Duration)/1e9', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: '(Duration)/1e9' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1 });
-  });
-
-  it('detects seconds expression without parens: Duration/1e9', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration/1e9' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1 });
-  });
-
-  it('detects seconds expression with spaces: Duration / 1e9', () => {
+    ).toBeUndefined();
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'Duration / 1e9' },
       ]),
-    ).toEqual({ output: 'duration', factor: 1 });
+    ).toBeUndefined();
   });
 
-  it('detects seconds expression with parens and spaces: ( Duration ) / 1e9', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: '( Duration ) / 1e9' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1 });
-  });
-
-  // --- non-matching expressions ---
-
-  it('does not match unrelated expressions containing the duration name', () => {
+  it('does not match modified or similar-named expressions', () => {
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'Duration * 2' },
@@ -162,19 +113,19 @@ describe('getTraceDurationNumberFormat', () => {
     ).toBeUndefined();
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'round(Duration / 1e6, 2)' },
+        { valueExpression: 'LongerDuration' },
       ]),
     ).toBeUndefined();
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'LongerDuration' },
+        { valueExpression: 'round(Duration / 1e6, 2)' },
       ]),
     ).toBeUndefined();
   });
 
   // --- aggFn filtering ---
 
-  it('returns undefined for count aggFn on duration', () => {
+  it('returns undefined for count aggFn', () => {
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'Duration', aggFn: 'count' },
@@ -182,7 +133,7 @@ describe('getTraceDurationNumberFormat', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined for count_distinct aggFn on duration', () => {
+  it('returns undefined for count_distinct aggFn', () => {
     expect(
       getTraceDurationNumberFormat(TRACE_SOURCE, [
         { valueExpression: 'Duration', aggFn: 'count_distinct' },
@@ -190,34 +141,16 @@ describe('getTraceDurationNumberFormat', () => {
     ).toBeUndefined();
   });
 
-  it('detects duration with sum aggFn', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration', aggFn: 'sum' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1e-9 });
-  });
-
-  it('detects duration with quantile aggFn', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration', aggFn: 'quantile' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1e-9 });
-  });
-
-  it('detects duration with min/max aggFn', () => {
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration', aggFn: 'min' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1e-9 });
-    expect(
-      getTraceDurationNumberFormat(TRACE_SOURCE, [
-        { valueExpression: 'Duration', aggFn: 'max' },
-      ]),
-    ).toEqual({ output: 'duration', factor: 1e-9 });
-  });
+  it.each(['sum', 'min', 'max', 'quantile', 'avg', 'any', 'last_value'])(
+    'detects duration with %s aggFn',
+    aggFn => {
+      expect(
+        getTraceDurationNumberFormat(TRACE_SOURCE, [
+          { valueExpression: 'Duration', aggFn },
+        ]),
+      ).toEqual({ output: 'duration', factor: 1e-9 });
+    },
+  );
 
   it('detects duration with combinator aggFn like avgIf', () => {
     expect(
