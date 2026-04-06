@@ -400,10 +400,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
 
-            {!isCollapsed && !!favoritedSavedSearches.length && (
+            {!isCollapsed && (
               <Collapse in={isSavedSearchExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedSavedSearches.map(renderSavedSearchLink)}
+                  {favoritedSavedSearches.length > 0 ? (
+                    favoritedSavedSearches.map(renderSavedSearchLink)
+                  ) : favorites != null && savedSearches != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor component={Link} href="/search/list" size="xs">
+                        Saved Searches
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
@@ -430,10 +440,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
             />
 
-            {!isCollapsed && !!favoritedDashboards.length && (
+            {!isCollapsed && (
               <Collapse in={isDashboardsExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedDashboards.map(renderDashboardLink)}
+                  {favoritedDashboards.length > 0 ? (
+                    favoritedDashboards.map(renderDashboardLink)
+                  ) : favorites != null && dashboards != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor
+                        component={Link}
+                        href="/dashboards/list"
+                        size="xs"
+                      >
+                        Dashboards
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
