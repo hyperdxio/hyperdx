@@ -65,15 +65,16 @@ import {
   IconBell,
   IconChartBar,
   IconCopy,
+  IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
-  IconLayoutList,
   IconPencil,
   IconPlayerPlay,
   IconPlus,
   IconRefresh,
+  IconSquaresDiagonal,
   IconTags,
   IconTrash,
   IconUpload,
@@ -82,13 +83,21 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import {
+  EmptyContainerPlaceholder,
+  SortableContainerWrapper,
+} from '@/components/DashboardDndComponents';
+import {
+  DashboardDndProvider,
+  type DragHandleProps,
+} from '@/components/DashboardDndContext';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import SectionHeader from '@/components/SectionHeader';
+import GroupContainer from '@/components/GroupContainer';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -96,6 +105,8 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
+import useDashboardContainers from '@/hooks/useDashboardContainers';
+import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer from './components/charts/ChartContainer';
 import { DBPieChart } from './components/DBPieChart';
@@ -107,6 +118,7 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
@@ -131,9 +143,15 @@ import { useZIndex, ZIndexContext } from './zIndex';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
-const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
-
 const ReactGridLayout = WidthProvider(RGL);
+
+type MoveTarget = {
+  containerId: string;
+  tabId?: string;
+  label: string;
+  // For tabs: all tabs in order with the target tab ID
+  allTabs?: { id: string; title: string }[];
+};
 
 const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   i: chart.id,
@@ -161,8 +179,8 @@ const Tile = forwardRef(
       onEditClick,
       onDeleteClick,
       onUpdateChart,
-      onMoveToSection,
-      containers: availableSections,
+      onMoveToGroup,
+      moveTargets,
       granularity,
       onTimeRangeSelect,
       filters,
@@ -175,6 +193,8 @@ const Tile = forwardRef(
       onTouchEnd,
       children,
       isHighlighted,
+      isSelected,
+      onSelect,
     }: {
       chart: Tile;
       dateRange: [Date, Date];
@@ -183,8 +203,8 @@ const Tile = forwardRef(
       onAddAlertClick?: () => void;
       onDeleteClick: () => void;
       onUpdateChart?: (chart: Tile) => void;
-      onMoveToSection?: (containerId: string | undefined) => void;
-      containers?: DashboardContainer[];
+      onMoveToGroup?: (containerId: string | undefined, tabId?: string) => void;
+      moveTargets?: MoveTarget[];
       onSettled?: () => void;
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
@@ -198,6 +218,8 @@ const Tile = forwardRef(
       onTouchEnd?: (e: React.TouchEvent) => void;
       children?: React.ReactNode; // Resizer tooltip
       isHighlighted?: boolean;
+      isSelected?: boolean;
+      onSelect?: (tileId: string, shiftKey: boolean) => void;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -420,40 +442,74 @@ const Tile = forwardRef(
           >
             <IconPencil size={14} />
           </ActionIcon>
-          {onMoveToSection &&
-            availableSections &&
-            availableSections.length > 0 && (
-              <Menu width={200} position="bottom-end">
-                <Menu.Target>
+          {onMoveToGroup && moveTargets && moveTargets.length > 0 && (
+            <Menu width={200} position="bottom-end">
+              <Menu.Target>
+                <Tooltip label="Move to Group" position="top" withArrow>
                   <ActionIcon
-                    data-testid={`tile-move-section-button-${chart.id}`}
+                    data-testid={`tile-move-group-button-${chart.id}`}
                     variant="subtle"
                     size="sm"
-                    title="Move to Section"
                   >
-                    <IconLayoutList size={14} />
+                    <IconCornerDownRight size={14} />
                   </ActionIcon>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Label>Move to Section</Menu.Label>
-                  {chart.containerId && (
-                    <Menu.Item onClick={() => onMoveToSection(undefined)}>
-                      (Ungrouped)
+                </Tooltip>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Move to Group</Menu.Label>
+                {chart.containerId && (
+                  <Menu.Item onClick={() => onMoveToGroup(undefined)}>
+                    (Ungrouped)
+                  </Menu.Item>
+                )}
+                {moveTargets
+                  .filter(
+                    t =>
+                      !(
+                        t.containerId === chart.containerId &&
+                        t.tabId === chart.tabId
+                      ),
+                  )
+                  .map(t => (
+                    <Menu.Item
+                      key={`${t.containerId}-${t.tabId ?? ''}`}
+                      onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                    >
+                      {t.allTabs ? (
+                        <span>
+                          {t.allTabs.map((tab, i) => (
+                            <span key={tab.id}>
+                              {i > 0 && (
+                                <span
+                                  style={{
+                                    color: 'var(--mantine-color-dimmed)',
+                                  }}
+                                >
+                                  {' | '}
+                                </span>
+                              )}
+                              <span
+                                style={
+                                  tab.id !== t.tabId
+                                    ? {
+                                        color: 'var(--mantine-color-dimmed)',
+                                      }
+                                    : undefined
+                                }
+                              >
+                                {tab.title}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        t.label
+                      )}
                     </Menu.Item>
-                  )}
-                  {availableSections
-                    .filter(s => s.id !== chart.containerId)
-                    .map(s => (
-                      <Menu.Item
-                        key={s.id}
-                        onClick={() => onMoveToSection(s.id)}
-                      >
-                        {s.title}
-                      </Menu.Item>
-                    ))}
-                </Menu.Dropdown>
-              </Menu>
-            )}
+                  ))}
+              </Menu.Dropdown>
+            </Menu>
+          )}
           <ActionIcon
             data-testid={`tile-delete-button-${chart.id}`}
             variant="subtle"
@@ -469,15 +525,16 @@ const Tile = forwardRef(
       alert,
       alertIndicatorColor,
       alertTooltip,
-      availableSections,
+      moveTargets,
       chart.config,
       chart.id,
       chart.containerId,
+      chart.tabId,
       hovered,
       onDeleteClick,
       onDuplicateClick,
       onEditClick,
-      onMoveToSection,
+      onMoveToGroup,
     ]);
 
     const title = useMemo(
@@ -652,14 +709,39 @@ const Tile = forwardRef(
           ref={ref}
           style={{
             ...style,
+            ...(isSelected
+              ? {
+                  outline: '2px solid var(--mantine-color-blue-5)',
+                  outlineOffset: -2,
+                }
+              : {}),
+          }}
+          onClick={e => {
+            if (e.shiftKey && onSelect) {
+              e.preventDefault();
+              onSelect(chart.id, true);
+            }
           }}
           onMouseDown={onMouseDown}
           onMouseUp={onMouseUp}
           onTouchEnd={onTouchEnd}
         >
-          <Group justify="center" py={4}>
-            <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
-          </Group>
+          {hovered && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 100,
+                height: 3,
+                background: 'var(--mantine-color-dimmed)',
+                borderRadius: 2,
+                zIndex: 1,
+                opacity: 0.6,
+              }}
+            />
+          )}
           <div
             className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
             onMouseDown={e => e.stopPropagation()}
@@ -1063,13 +1145,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
-  const sections = useMemo(
+  const containers = useMemo(
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
-  const hasSections = sections.length > 0;
-
-  // URL-based collapse state: tracks which sections the current viewer has
+  // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
     'collapsed',
@@ -1089,28 +1169,81 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [urlExpandedIds],
   );
 
-  const isSectionCollapsed = useCallback(
-    (section: DashboardContainer): boolean => {
+  const isContainerCollapsed = useCallback(
+    (container: DashboardContainer): boolean => {
       // URL state takes precedence over DB default
-      if (collapsedIdSet.has(section.id)) return true;
-      if (expandedIdSet.has(section.id)) return false;
-      return section.collapsed ?? false;
+      if (collapsedIdSet.has(container.id)) return true;
+      if (expandedIdSet.has(container.id)) return false;
+      return container.collapsed ?? false;
     },
     [collapsedIdSet, expandedIdSet],
   );
 
+  // Valid move targets: groups and individual tabs within groups
+  const moveTargetContainers = useMemo<MoveTarget[]>(() => {
+    const targets: MoveTarget[] = [];
+    for (const c of containers) {
+      const cTabs = c.tabs ?? [];
+      if (cTabs.length >= 2) {
+        for (const tab of cTabs) {
+          targets.push({
+            containerId: c.id,
+            tabId: tab.id,
+            label: tab.title,
+            allTabs: cTabs.map(t => ({ id: t.id, title: t.title })),
+          });
+        }
+      } else if (cTabs.length === 1) {
+        // 1-tab group: show just the group name, target the single tab
+        targets.push({
+          containerId: c.id,
+          tabId: cTabs[0].id,
+          label: cTabs[0].title,
+        });
+      } else {
+        targets.push({ containerId: c.id, label: c.title });
+      }
+    }
+    return targets;
+  }, [containers]);
+
+  const hasContainers = containers.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
-  const handleMoveTileToSection = useCallback(
-    (tileId: string, containerId: string | undefined) => {
+  // --- Select-and-group workflow (Shift+click → Cmd+G) ---
+  const {
+    selectedTileIds,
+    setSelectedTileIds,
+    handleTileSelect,
+    handleGroupSelected,
+  } = useTileSelection({ dashboard, setDashboard });
+
+  const handleMoveTileToGroup = useCallback(
+    (tileId: string, containerId: string | undefined, tabId?: string) => {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
           const tile = draft.tiles.find(t => t.id === tileId);
-          if (tile) {
-            if (containerId) tile.containerId = containerId;
-            else delete tile.containerId;
-          }
+          if (!tile) return;
+
+          // Update container assignment
+          if (containerId) tile.containerId = containerId;
+          else delete tile.containerId;
+          if (tabId) tile.tabId = tabId;
+          else delete tile.tabId;
+
+          // Place in next available slot in target grid
+          const targetTiles = draft.tiles.filter(t => {
+            if (t.id === tileId) return false;
+            if (containerId) {
+              if (t.containerId !== containerId) return false;
+              return tabId ? t.tabId === tabId : true;
+            }
+            return !t.containerId;
+          });
+          const pos = calculateNextTilePosition(targetTiles, tile.w, tile.h);
+          tile.x = pos.x;
+          tile.y = pos.y;
         }),
       );
     },
@@ -1201,10 +1334,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             });
           }
         }}
-        containers={sections}
-        onMoveToSection={containerId =>
-          handleMoveTileToSection(chart.id, containerId)
+        moveTargets={moveTargetContainers}
+        onMoveToGroup={(containerId, tabId) =>
+          handleMoveTileToGroup(chart.id, containerId, tabId)
         }
+        isSelected={selectedTileIds.has(chart.id)}
+        onSelect={handleTileSelect}
       />
     ),
     [
@@ -1220,8 +1355,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       filterQueries,
-      sections,
-      handleMoveTileToSection,
+      moveTargetContainers,
+      handleMoveTileToGroup,
+      selectedTileIds,
+      handleTileSelect,
     ],
   );
 
@@ -1277,10 +1414,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   // Toggle collapse in URL state only (per-viewer, shareable via link).
   // Does NOT persist to DB — the DB `collapsed` field is the default.
-  const handleToggleSection = useCallback(
+  const handleToggleCollapse = useCallback(
     (containerId: string) => {
-      const section = dashboard?.containers?.find(s => s.id === containerId);
-      const currentlyCollapsed = section ? isSectionCollapsed(section) : false;
+      const container = dashboard?.containers?.find(s => s.id === containerId);
+      const currentlyCollapsed = container
+        ? isContainerCollapsed(container)
+        : false;
 
       if (currentlyCollapsed) {
         addToUrlSet(setUrlExpandedIds, containerId);
@@ -1292,7 +1431,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [
       dashboard?.containers,
-      isSectionCollapsed,
+      isContainerCollapsed,
       addToUrlSet,
       removeFromUrlSet,
       setUrlCollapsedIds,
@@ -1307,116 +1446,123 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
-          const section = draft.containers?.find(s => s.id === containerId);
-          if (section) section.collapsed = !section.collapsed;
+          const c = draft.containers?.find(s => s.id === containerId);
+          if (c) c.collapsed = !c.collapsed;
         }),
       );
     },
     [dashboard, setDashboard],
   );
 
-  const onAddTile = (containerId?: string) => {
-    // Auto-expand collapsed section via URL state so the new tile is visible
+  const handleToggleCollapsible = useCallback(
+    (containerId: string) => {
+      if (!dashboard) return;
+      setDashboard(
+        produce(dashboard, draft => {
+          const c = draft.containers?.find(s => s.id === containerId);
+          if (c) {
+            c.collapsible = !(c.collapsible ?? true);
+            // Ensure container is expanded when collapsing is disabled
+            if (c.collapsible === false) c.collapsed = false;
+          }
+        }),
+      );
+      // Clear stale URL collapse state so re-enabling doesn't resurrect old state
+      removeFromUrlSet(setUrlCollapsedIds, containerId);
+      removeFromUrlSet(setUrlExpandedIds, containerId);
+    },
+    [
+      dashboard,
+      setDashboard,
+      removeFromUrlSet,
+      setUrlCollapsedIds,
+      setUrlExpandedIds,
+    ],
+  );
+
+  const handleToggleBordered = useCallback(
+    (containerId: string) => {
+      if (!dashboard) return;
+      setDashboard(
+        produce(dashboard, draft => {
+          const c = draft.containers?.find(s => s.id === containerId);
+          if (c) c.bordered = !(c.bordered ?? true);
+        }),
+      );
+    },
+    [dashboard, setDashboard],
+  );
+
+  // Use the hook for container/tab CRUD operations, but override
+  // handleToggleCollapsed with the URL-based version above.
+  const {
+    handleAddContainer,
+    handleToggleCollapsed: _handleToggleCollapsedDB,
+    handleRenameContainer,
+    handleDeleteContainer,
+    handleReorderContainers,
+    handleAddTab,
+    handleRenameTab,
+    handleDeleteTab,
+    handleTabChange,
+  } = useDashboardContainers({ dashboard, setDashboard, confirm });
+
+  const onAddTile = (containerId?: string, tabId?: string) => {
+    // Auto-expand collapsed container via URL state so the new tile is visible
     if (containerId) {
-      const section = dashboard?.containers?.find(s => s.id === containerId);
-      if (section && isSectionCollapsed(section)) {
-        handleToggleSection(containerId);
+      const container = dashboard?.containers?.find(s => s.id === containerId);
+      if (container && isContainerCollapsed(container)) {
+        handleToggleCollapse(containerId);
       }
     }
+    // Default new tile size: w=8 (1/3 width), h=10 — matches original behavior
+    const newW = 8;
+    const newH = 10;
+    // Place tile in next available slot (fill right, then wrap)
+    const targetTiles = (dashboard?.tiles ?? []).filter(t => {
+      if (containerId) {
+        if (t.containerId !== containerId) return false;
+        return tabId ? t.tabId === tabId : true;
+      }
+      return !t.containerId;
+    });
+    const pos = calculateNextTilePosition(targetTiles, newW, newH);
     setEditedTile({
       id: makeId(),
-      x: 0,
-      y: 0,
-      w: 8,
-      h: 10,
+      x: pos.x,
+      y: pos.y,
+      w: newW,
+      h: newH,
       config: {
         ...DEFAULT_CHART_CONFIG,
         source: sources?.[0]?.id ?? '',
       },
       ...(containerId ? { containerId } : {}),
+      ...(tabId ? { tabId } : {}),
     });
   };
 
-  const handleAddSection = useCallback(() => {
-    if (!dashboard) return;
-    setDashboard(
-      produce(dashboard, draft => {
-        if (!draft.containers) draft.containers = [];
-        draft.containers.push({
-          id: makeId(),
-          type: 'section',
-          title: 'New Section',
-          collapsed: false,
-        });
-      }),
-    );
-  }, [dashboard, setDashboard]);
-
-  const handleRenameSection = useCallback(
-    (containerId: string, newTitle: string) => {
-      if (!dashboard || !newTitle.trim()) return;
-      setDashboard(
-        produce(dashboard, draft => {
-          const section = draft.containers?.find(s => s.id === containerId);
-          if (section) section.title = newTitle.trim();
-        }),
-      );
-    },
-    [dashboard, setDashboard],
-  );
-
-  const handleDeleteSection = useCallback(
-    (containerId: string) => {
-      if (!dashboard) return;
-      setDashboard(
-        produce(dashboard, draft => {
-          // Find the bottom edge of existing ungrouped tiles so freed
-          // tiles are placed below them without collision.
-          const sectionIds = new Set(draft.containers?.map(c => c.id) ?? []);
-          let maxUngroupedY = 0;
-          for (const tile of draft.tiles) {
-            if (!tile.containerId || !sectionIds.has(tile.containerId)) {
-              maxUngroupedY = Math.max(maxUngroupedY, tile.y + tile.h);
-            }
-          }
-
-          for (const tile of draft.tiles) {
-            if (tile.containerId === containerId) {
-              tile.y += maxUngroupedY;
-              delete tile.containerId;
-            }
-          }
-
-          draft.containers = draft.containers?.filter(
-            s => s.id !== containerId,
-          );
-        }),
-      );
-    },
-    [dashboard, setDashboard],
-  );
-
-  // Group tiles by section; orphaned tiles (containerId not matching any
-  // section) fall back to ungrouped to avoid silently hiding them.
+  // Group tiles by container.
+  // Orphaned tiles (containerId not matching any container) become ungrouped.
   const tilesByContainerId = useMemo(() => {
     const map = new Map<string, Tile[]>();
-    for (const section of sections) {
+    for (const c of containers) {
       map.set(
-        section.id,
-        allTiles.filter(t => t.containerId === section.id),
+        c.id,
+        allTiles.filter(t => t.containerId === c.id),
       );
     }
     return map;
-  }, [sections, allTiles]);
+  }, [containers, allTiles]);
 
   const ungroupedTiles = useMemo(
     () =>
-      hasSections
+      hasContainers
         ? allTiles.filter(
             t => !t.containerId || !tilesByContainerId.has(t.containerId),
           )
         : allTiles,
-    [hasSections, allTiles, tilesByContainerId],
+    [hasContainers, allTiles, tilesByContainerId],
   );
 
   const onUngroupedLayoutChange = useMemo(
@@ -1424,14 +1570,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [makeOnLayoutChange, ungroupedTiles],
   );
 
-  const sectionLayoutChangeHandlers = useMemo(() => {
+  const containerLayoutChangeHandlers = useMemo(() => {
     const map = new Map<string, (newLayout: RGL.Layout[]) => void>();
-    for (const section of sections) {
-      const tiles = tilesByContainerId.get(section.id) ?? [];
-      map.set(section.id, makeOnLayoutChange(tiles));
+    for (const c of containers) {
+      const tiles = tilesByContainerId.get(c.id) ?? [];
+      map.set(c.id, makeOnLayoutChange(tiles));
     }
     return map;
-  }, [sections, tilesByContainerId, makeOnLayoutChange]);
+  }, [containers, tilesByContainerId, makeOnLayoutChange]);
 
   const deleteDashboard = useDeleteDashboard();
 
@@ -1787,6 +1933,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />
+      {/* Selection indicator */}
+      {selectedTileIds.size > 0 && (
+        <Paper p="xs" mt="sm" withBorder>
+          <Flex align="center" gap="sm">
+            <Text size="sm">
+              {selectedTileIds.size} tile{selectedTileIds.size > 1 ? 's' : ''}{' '}
+              selected
+            </Text>
+            <Button
+              size="xs"
+              variant="primary"
+              onClick={handleGroupSelected}
+              title="Group selected tiles (Cmd+G)"
+            >
+              Group
+            </Button>
+            <Button
+              size="xs"
+              variant="secondary"
+              onClick={() => setSelectedTileIds(new Set())}
+            >
+              Clear
+            </Button>
+          </Flex>
+        </Paper>
+      )}
       <Box mt="sm">
         {dashboard != null && dashboard.tiles != null ? (
           <ErrorBoundary
@@ -1797,67 +1969,145 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </div>
             }
           >
-            {hasSections ? (
-              <>
-                {ungroupedTiles.length > 0 && (
-                  <ReactGridLayout
-                    layout={ungroupedTiles.map(tileToLayoutItem)}
-                    containerPadding={[0, 0]}
-                    onLayoutChange={onUngroupedLayoutChange}
-                    cols={24}
-                    rowHeight={32}
-                  >
-                    {ungroupedTiles.map(renderTileComponent)}
-                  </ReactGridLayout>
-                )}
-                {sections.map(section => {
-                  const sectionTiles = tilesByContainerId.get(section.id) ?? [];
-                  return (
-                    <div key={section.id}>
-                      <SectionHeader
-                        section={section}
-                        tileCount={sectionTiles.length}
-                        collapsed={isSectionCollapsed(section)}
-                        defaultCollapsed={section.collapsed ?? false}
-                        onToggle={() => handleToggleSection(section.id)}
-                        onToggleDefaultCollapsed={() =>
-                          handleToggleDefaultCollapsed(section.id)
-                        }
-                        onRename={newTitle =>
-                          handleRenameSection(section.id, newTitle)
-                        }
-                        onDelete={() => handleDeleteSection(section.id)}
-                        onAddTile={() => onAddTile(section.id)}
-                      />
-                      {!isSectionCollapsed(section) &&
-                        sectionTiles.length > 0 && (
-                          <ReactGridLayout
-                            layout={sectionTiles.map(tileToLayoutItem)}
-                            containerPadding={[0, 0]}
-                            onLayoutChange={sectionLayoutChangeHandlers.get(
-                              section.id,
-                            )}
-                            cols={24}
-                            rowHeight={32}
+            <DashboardDndProvider
+              containers={containers}
+              onReorderContainers={handleReorderContainers}
+            >
+              {hasContainers ? (
+                <>
+                  {ungroupedTiles.length > 0 && (
+                    <ReactGridLayout
+                      layout={ungroupedTiles.map(tileToLayoutItem)}
+                      containerPadding={[0, 0]}
+                      onLayoutChange={onUngroupedLayoutChange}
+                      cols={24}
+                      rowHeight={32}
+                    >
+                      {ungroupedTiles.map(renderTileComponent)}
+                    </ReactGridLayout>
+                  )}
+                  {containers.map(container => {
+                    const containerTiles =
+                      tilesByContainerId.get(container.id) ?? [];
+                    const groupTabs = container.tabs ?? [];
+                    const groupActiveTabId =
+                      container.activeTabId ?? groupTabs[0]?.id;
+                    const hasTabs = groupTabs.length >= 2;
+                    const containerCollapsed = isContainerCollapsed(container);
+
+                    // Compute which tabs have tiles with active alerts.
+                    // Tiles without tabId (single-tab groups) are attributed
+                    // to the first tab so the indicator still shows.
+                    const firstTabId = groupTabs[0]?.id;
+                    const alertingTabIds = new Set<string>();
+                    for (const tile of containerTiles) {
+                      if (
+                        isBuilderSavedChartConfig(tile.config) &&
+                        tile.config.alert?.state === AlertState.ALERT
+                      ) {
+                        const attributedTabId = tile.tabId ?? firstTabId;
+                        if (attributedTabId)
+                          alertingTabIds.add(attributedTabId);
+                      }
+                    }
+
+                    return (
+                      <SortableContainerWrapper
+                        key={container.id}
+                        containerId={container.id}
+                        containerTitle={container.title}
+                      >
+                        {(dragHandleProps: DragHandleProps) => (
+                          <GroupContainer
+                            container={container}
+                            collapsed={containerCollapsed}
+                            defaultCollapsed={container.collapsed ?? false}
+                            onToggle={() => handleToggleCollapse(container.id)}
+                            onToggleDefaultCollapsed={() =>
+                              handleToggleDefaultCollapsed(container.id)
+                            }
+                            onToggleCollapsible={() =>
+                              handleToggleCollapsible(container.id)
+                            }
+                            onToggleBordered={() =>
+                              handleToggleBordered(container.id)
+                            }
+                            onDelete={() => handleDeleteContainer(container.id)}
+                            onAddTile={() =>
+                              onAddTile(
+                                container.id,
+                                hasTabs ? groupActiveTabId : undefined,
+                              )
+                            }
+                            activeTabId={groupActiveTabId}
+                            onTabChange={tabId =>
+                              handleTabChange(container.id, tabId)
+                            }
+                            onAddTab={() => handleAddTab(container.id)}
+                            onRenameTab={(tabId, newTitle) =>
+                              handleRenameTab(container.id, tabId, newTitle)
+                            }
+                            onDeleteTab={tabId =>
+                              handleDeleteTab(container.id, tabId)
+                            }
+                            onRename={newTitle =>
+                              handleRenameContainer(container.id, newTitle)
+                            }
+                            dragHandleProps={dragHandleProps}
+                            confirm={confirm}
+                            alertingTabIds={alertingTabIds}
                           >
-                            {sectionTiles.map(renderTileComponent)}
-                          </ReactGridLayout>
+                            {(currentTabId: string | undefined) => {
+                              const visibleTiles = currentTabId
+                                ? containerTiles.filter(
+                                    t => t.tabId === currentTabId,
+                                  )
+                                : containerTiles;
+                              const visibleIsEmpty = visibleTiles.length === 0;
+                              return (
+                                <EmptyContainerPlaceholder
+                                  containerId={currentTabId ?? container.id}
+                                  isEmpty={visibleIsEmpty}
+                                  onAddTile={() =>
+                                    onAddTile(container.id, currentTabId)
+                                  }
+                                >
+                                  {visibleTiles.length > 0 && (
+                                    <ReactGridLayout
+                                      layout={visibleTiles.map(
+                                        tileToLayoutItem,
+                                      )}
+                                      containerPadding={[0, 0]}
+                                      onLayoutChange={containerLayoutChangeHandlers.get(
+                                        container.id,
+                                      )}
+                                      cols={24}
+                                      rowHeight={32}
+                                    >
+                                      {visibleTiles.map(renderTileComponent)}
+                                    </ReactGridLayout>
+                                  )}
+                                </EmptyContainerPlaceholder>
+                              );
+                            }}
+                          </GroupContainer>
                         )}
-                    </div>
-                  );
-                })}
-              </>
-            ) : (
-              <ReactGridLayout
-                layout={ungroupedTiles.map(tileToLayoutItem)}
-                containerPadding={[0, 0]}
-                onLayoutChange={onUngroupedLayoutChange}
-                cols={24}
-                rowHeight={32}
-              >
-                {ungroupedTiles.map(renderTileComponent)}
-              </ReactGridLayout>
-            )}
+                      </SortableContainerWrapper>
+                    );
+                  })}
+                </>
+              ) : (
+                <ReactGridLayout
+                  layout={ungroupedTiles.map(tileToLayoutItem)}
+                  containerPadding={[0, 0]}
+                  onLayoutChange={onUngroupedLayoutChange}
+                  cols={24}
+                  rowHeight={32}
+                >
+                  {ungroupedTiles.map(renderTileComponent)}
+                </ReactGridLayout>
+              )}
+            </DashboardDndProvider>
           </ErrorBoundary>
         ) : null}
       </Box>
@@ -1882,12 +2132,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           >
             New Tile
           </Menu.Item>
+          <Menu.Divider />
           <Menu.Item
-            data-testid="add-new-section-menu-item"
-            leftSection={<IconLayoutList size={16} />}
-            onClick={handleAddSection}
+            data-testid="add-new-group-menu-item"
+            leftSection={<IconSquaresDiagonal size={16} />}
+            onClick={() => handleAddContainer()}
           >
-            New Section
+            New Group
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
