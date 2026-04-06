@@ -211,25 +211,29 @@ jobs:
               const triggers = [];
               const criticalFiles = files.filter(f => TIER4_PATTERNS.some(p => p.test(f)));
               if (criticalFiles.length > 0) {
-                triggers.push(`**Critical-path files** (${criticalFiles.length}):\n${criticalFiles.map(f => `  - \`${f}\``).join('\n')}`);
+                triggers.push(`**Critical-path files** (${criticalFiles.length}):\n${criticalFiles.map(f => `    - \`${f}\``).join('\n')}`);
               }
               if (tier === 4 && linesChanged > sizeThreshold && criticalFiles.length === 0) {
                 triggers.push(`**Large diff**: ${linesChanged} lines changed (threshold: ${sizeThreshold})`);
               }
               if (isTrivialAuthor) triggers.push(`**Bot author**: \`${author}\``);
               if (allFilesTrivial && !isTrivialAuthor) triggers.push('**All files are docs / images / lock files**');
+              // Agent branch prevents Tier 2 — it's a cause for Tier 3, not just context
+              if (isAgentBranch && tier <= 3) triggers.push(`**Agent-generated branch** (\`${branchName}\`) — bumped to Tier 3 for mandatory human review`);
+              // Catch-all for Tier 3 PRs that don't match any specific trigger above
+              if (triggers.length === 0 && tier === 3) triggers.push('**Standard feature/fix** — introduces new logic or modifies core functionality');
 
-              // Context signals — informational, didn't drive the tier by themselves
-              const context = [];
-              if (isAgentBranch) context.push(`agent branch (\`${branchName}\`)`);
-              if (touchesApiModels && criticalFiles.length === 0) context.push('touches API routes or data models');
-              if (linesChanged > sizeThreshold && criticalFiles.length > 0) context.push(`large diff (${linesChanged} lines)`);
+              // Informational signals — didn't drive the tier by themselves
+              const contextSignals = [];
+              if (isAgentBranch && tier === 4) contextSignals.push(`agent branch (\`${branchName}\`)`);
+              if (touchesApiModels && criticalFiles.length === 0) contextSignals.push('touches API routes or data models');
+              if (linesChanged > sizeThreshold && criticalFiles.length > 0) contextSignals.push(`large diff (${linesChanged} lines)`);
 
               const triggerSection = triggers.length > 0
                 ? `\n**Why this tier:**\n${triggers.map(t => `- ${t}`).join('\n')}`
                 : '';
-              const contextSection = context.length > 0
-                ? `\n**Additional context:** ${context.join(', ')}`
+              const contextSection = contextSignals.length > 0
+                ? `\n**Additional context:** ${contextSignals.join(', ')}`
                 : '';
 
               const body = [
