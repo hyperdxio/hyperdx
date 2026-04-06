@@ -48,7 +48,6 @@ import {
   Breadcrumbs,
   Button,
   Card,
-  Center,
   Code,
   Flex,
   Grid,
@@ -71,6 +70,7 @@ import {
   IconBolt,
   IconPlayerPlay,
   IconPlus,
+  IconStack2,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -82,6 +82,7 @@ import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
@@ -1797,14 +1798,12 @@ function DBSearchPage() {
         className="bg-body"
       >
         {!queryReady ? (
-          <Paper shadow="xs" p="xl" h="100%">
-            <Center mih={100} h="100%">
-              <Text size="sm">
-                Please start by selecting a source and then click the play
-                button to query data.
-              </Text>
-            </Center>
-          </Paper>
+          <EmptyState
+            h="100%"
+            icon={<IconStack2 size={32} />}
+            title="No data to display"
+            description="Select a source and click the play button to query data."
+          />
         ) : (
           <>
             <div
