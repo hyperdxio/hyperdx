@@ -42,7 +42,7 @@ interface MetricAttributeHelperPanelProps {
   language: 'sql' | 'lucene';
   metricMetadata?: MetricMetadata | null;
   onAddToWhere: (clause: string) => void;
-  onAddToGroupBy: (clause: string) => void;
+  onAddToGroupBy?: (clause: string) => void;
 }
 
 const CATEGORY_LABELS: Record<AttributeCategory, string> = {
@@ -170,7 +170,7 @@ interface AttributeValueListProps {
   language: 'sql' | 'lucene';
   onAddToWhere: (clause: string) => void;
   onBack: () => void;
-  onAddToGroupBy: (clause: string) => void;
+  onAddToGroupBy?: (clause: string) => void;
 }
 
 function AttributeValueList({
@@ -217,7 +217,7 @@ function AttributeValueList({
       attribute.name,
       'sql',
     );
-    onAddToGroupBy(clause);
+    onAddToGroupBy?.(clause);
   }, [attribute, onAddToGroupBy]);
 
   return (
@@ -234,14 +234,16 @@ function AttributeValueList({
             </Badge>
           </Group>
         </UnstyledButton>
-        <Button
-          variant="secondary"
-          size="xs"
-          leftSection={<IconPlus size={14} />}
-          onClick={handleAddToGroupBy}
-        >
-          Group By
-        </Button>
+        {onAddToGroupBy && (
+          <Button
+            variant="secondary"
+            size="xs"
+            leftSection={<IconPlus size={14} />}
+            onClick={handleAddToGroupBy}
+          >
+            Group By
+          </Button>
+        )}
       </Group>
 
       <TextInput

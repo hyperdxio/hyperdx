@@ -160,6 +160,27 @@ Before writing new E2E tests or reviewing a PR that adds them:
 - **Database patterns**: MongoDB for metadata with Mongoose, ClickHouse for
   telemetry queries
 
+## PR Hygiene for Agent-Generated Code
+
+When using agentic tools to generate PRs, follow these practices to keep reviews
+efficient and accurate:
+
+1. **Scope PRs to a single logical change**, even if the agent can produce more
+   in one session. Smaller, focused PRs move through the review pipeline faster
+   and are easier to classify accurately.
+
+2. **Write the PR description to explain intent (the "why"), not just what
+   changed.** Reviewers need to understand the goal to catch cases where the
+   agent solved the wrong problem or made a plausible-but-wrong trade-off.
+
+3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
+   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
+   apply appropriate scrutiny and lets reviewers calibrate their attention.
+
+4. **Write or update tests alongside the implementation**, not after. Configure
+   your agent to produce tests before writing implementation code. See the
+   Testing section below for the commands to use.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:

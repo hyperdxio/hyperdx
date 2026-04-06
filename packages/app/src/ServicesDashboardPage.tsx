@@ -233,8 +233,8 @@ function ServiceSelectControlled({
 export function EndpointLatencyChart({
   source,
   dateRange,
-  appliedConfig = {},
-  extraFilters = [],
+  appliedConfig,
+  extraFilters,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
@@ -284,9 +284,9 @@ export function EndpointLatencyChart({
             config={{
               source: source.id,
               ...pickSourceConfigFields(source),
-              where: appliedConfig.where || '',
+              where: appliedConfig?.where || '',
               whereLanguage:
-                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
+                (appliedConfig?.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
@@ -323,8 +323,11 @@ export function EndpointLatencyChart({
                 },
               ],
               filters: [
-                ...extraFilters,
-                ...getScopedFilters({ appliedConfig, expressions }),
+                ...(extraFilters ?? []),
+                ...getScopedFilters({
+                  appliedConfig: appliedConfig ?? {},
+                  expressions,
+                }),
               ],
               numberFormat: MS_NUMBER_FORMAT,
               dateRange,
@@ -337,9 +340,9 @@ export function EndpointLatencyChart({
             config={{
               source: source.id,
               ...pickSourceConfigFields(source),
-              where: appliedConfig.where || '',
+              where: appliedConfig?.where || '',
               whereLanguage:
-                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
+                (appliedConfig?.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   alias: 'data_nanoseconds',
@@ -353,8 +356,11 @@ export function EndpointLatencyChart({
                 },
               ],
               filters: [
-                ...extraFilters,
-                ...getScopedFilters({ appliedConfig, expressions }),
+                ...(extraFilters ?? []),
+                ...getScopedFilters({
+                  appliedConfig: appliedConfig ?? {},
+                  expressions,
+                }),
               ],
               dateRange,
             }}

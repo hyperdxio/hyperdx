@@ -220,11 +220,17 @@ function ChartSeriesEditorComponent({
   const metricType = useWatch({ control, name: `${namePrefix}metricType` });
 
   // Initialize metricType to 'gauge' when switching to a metric source
+  // and reset 'custom' aggFn to 'count' since custom is not supported for metrics
   useEffect(() => {
-    if (tableSource?.kind === SourceKind.Metric && !metricType) {
-      setValue(`${namePrefix}metricType`, MetricsDataType.Gauge);
+    if (tableSource?.kind === SourceKind.Metric) {
+      if (!metricType) {
+        setValue(`${namePrefix}metricType`, MetricsDataType.Gauge);
+      }
+      if (aggFn === 'none') {
+        setValue(`${namePrefix}aggFn`, 'count');
+      }
     }
-  }, [tableSource?.kind, metricType, namePrefix, setValue]);
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
   const tableName =
     tableSource?.kind === SourceKind.Metric
@@ -363,6 +369,7 @@ function ChartSeriesEditorComponent({
             quantileLevelName={`${namePrefix}level`}
             defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
+            hideCustom={tableSource?.kind === SourceKind.Metric}
           />
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
@@ -496,7 +503,7 @@ function ChartSeriesEditorComponent({
           language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
           metricMetadata={metricMetadata}
           onAddToWhere={handleAddToWhere}
-          onAddToGroupBy={handleAddToGroupBy}
+          onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
         />
       )}
     </>

@@ -18,6 +18,7 @@ export class ChartEditorComponent {
   private readonly chartTypeInput: Locator;
   private readonly sourceSelector: Locator;
   private readonly metricSelector: Locator;
+  private readonly aggFnSelect: Locator;
   private readonly addOrRemoveAlertButton: Locator;
   private readonly webhookSelector: Locator;
   private readonly runQueryButton: Locator;
@@ -29,6 +30,7 @@ export class ChartEditorComponent {
     this.chartTypeInput = page.getByTestId('chart-type-input');
     this.sourceSelector = page.getByTestId('source-selector');
     this.metricSelector = page.getByTestId('metric-name-selector');
+    this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.addOrRemoveAlertButton = page.getByTestId('alert-button');
     this.webhookSelector = page.getByTestId('select-webhook');
     this.addNewWebhookButton = page.getByTestId('add-new-webhook-button');
@@ -97,6 +99,33 @@ export class ChartEditorComponent {
       // Otherwise just press Enter to select the first match
       await this.page.keyboard.press('Enter');
     }
+  }
+
+  /**
+   * Select an aggregation function from the dropdown
+   */
+  async selectAggFn(label: string) {
+    await this.aggFnSelect.click();
+    await this.page.getByRole('option', { name: label }).click();
+  }
+
+  /**
+   * Get the currently selected aggregation function value
+   */
+  async getSelectedAggFn(): Promise<string | null> {
+    return this.aggFnSelect.inputValue();
+  }
+
+  /**
+   * Check if an aggregation function option is available in the dropdown
+   */
+  async isAggFnOptionAvailable(label: string): Promise<boolean> {
+    await this.aggFnSelect.click();
+    const option = this.page.getByRole('option', { name: label });
+    const visible = await option.isVisible().catch(() => false);
+    // Close the dropdown
+    await this.page.keyboard.press('Escape');
+    return visible;
   }
 
   async clickAddAlert() {
@@ -248,6 +277,10 @@ export class ChartEditorComponent {
 
   get metric() {
     return this.metricSelector;
+  }
+
+  get aggFn() {
+    return this.aggFnSelect;
   }
 
   get alertButton() {
