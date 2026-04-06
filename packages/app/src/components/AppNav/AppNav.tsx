@@ -407,11 +407,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     favoritedSavedSearches.map(renderSavedSearchLink)
                   ) : favorites != null && savedSearches != null ? (
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
-                      No favorites yet. Star a saved search on the{' '}
+                      No favorites. Star on{' '}
                       <Anchor component={Link} href="/search/list" size="xs">
                         Saved Searches
-                      </Anchor>{' '}
-                      page to show it here.
+                      </Anchor>
+                      .
                     </Text>
                   ) : null}
                 </div>
@@ -447,15 +447,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     favoritedDashboards.map(renderDashboardLink)
                   ) : favorites != null && dashboards != null ? (
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
-                      No favorites yet. Star a dashboard on the{' '}
+                      No favorites. Star on{' '}
                       <Anchor
                         component={Link}
                         href="/dashboards/list"
                         size="xs"
                       >
                         Dashboards
-                      </Anchor>{' '}
-                      page to show it here.
+                      </Anchor>
+                      .
                     </Text>
                   ) : null}
                 </div>
