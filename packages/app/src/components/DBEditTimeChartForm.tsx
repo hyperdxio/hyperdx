@@ -1567,7 +1567,7 @@ export default function EditTimeChartForm({
       </ErrorBoundary>
       {!queryReady && activeTab !== 'markdown' ? (
         <EmptyState
-          description="Please start by selecting a database, table, and timestamp column above and then click the play button to query data."
+          description="Please start by defining your chart above and then click the play button to query data."
           variant="card"
           fullWidth
         />

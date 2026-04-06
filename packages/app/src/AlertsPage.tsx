@@ -11,6 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Container,
@@ -527,8 +528,14 @@ export default function AlertsPage() {
             description={
               <>
                 Alerts can be created from{' '}
-                <Link href="/dashboards">dashboard charts</Link> and{' '}
-                <Link href="/search">saved searches</Link>.
+                <Anchor component={Link} href="/dashboards">
+                  dashboard charts
+                </Anchor>{' '}
+                and{' '}
+                <Anchor component={Link} href="/search">
+                  saved searches
+                </Anchor>
+                .
               </>
             }
           />
