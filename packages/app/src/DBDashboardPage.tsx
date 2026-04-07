@@ -11,7 +11,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { formatRelative } from 'date-fns';
+import { formatDistanceToNow, formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
@@ -124,6 +124,7 @@ import {
 } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
+import { FormatTime } from './useFormatTime';
 import { getMetricTableName } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
@@ -1589,16 +1590,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Paper>
         </>
       ) : (
-        <Breadcrumbs mb="xs" mt="xs" fz="sm">
-          <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-            Dashboards
-          </Anchor>
-          <Text fz="sm" c="dimmed" maw={500} truncate="end">
-            {dashboard?.name ?? 'Untitled'}
-          </Text>
-        </Breadcrumbs>
+        <Group align="flex-start" mb="xs" mt="xs" justify="space-between">
+          <Breadcrumbs fz="sm">
+            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+              Dashboards
+            </Anchor>
+            <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
+              {dashboard?.name ?? 'Untitled'}
+            </Text>
+          </Breadcrumbs>
+          {!isLocalDashboard && dashboard && (
+            <Text size="xs" c="dimmed">
+              {dashboard.createdBy && (
+                <span>
+                  Created by{' '}
+                  {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
+                </span>
+              )}
+              {dashboard.updatedAt && (
+                <Tooltip
+                  label={
+                    <>
+                      <FormatTime value={dashboard.updatedAt} format="short" />
+                      {dashboard.updatedBy
+                        ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
+                        : ''}
+                    </>
+                  }
+                >
+                  <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
+                </Tooltip>
+              )}
+            </Text>
+          )}
+        </Group>
       )}
-      <Flex mt="xs" mb="md" justify="space-between" align="center">
+      <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
         <EditablePageName
           key={`${dashboardHash}`}
           name={dashboard?.name ?? ''}

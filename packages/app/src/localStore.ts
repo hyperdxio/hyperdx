@@ -1,6 +1,9 @@
 import store from 'store2';
 import { hashCode } from '@hyperdx/common-utils/dist/core/utils';
-import { SavedSearch, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SavedSearchListApiResponse,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { HDX_LOCAL_DEFAULT_SOURCES } from './config';
 import { parseJSON } from './utils';
@@ -96,6 +99,6 @@ export const localSources = createEntityStore<TSource>(
 );
 
 /** Saved searches store (alerts remain cloud-only; no alert fields persisted locally). */
-export const localSavedSearches = createEntityStore<SavedSearch>(
+export const localSavedSearches = createEntityStore<SavedSearchListApiResponse>(
   'hdx-local-saved-searches',
 );
