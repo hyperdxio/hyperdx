@@ -472,7 +472,7 @@ jobs:
 
             **Or run directly with npx:**
             ```bash
-            npx @hyperdx/cli tui -s <your-hyperdx-url>
+            npx @hyperdx/cli tui -s <your-hyperdx-api-url>
             ```
 
             **Manual download (standalone binary, no Node.js required):**
@@ -490,7 +490,7 @@ jobs:
             ### Usage
 
             ```bash
-            hdx auth login -s <your-hyperdx-url>
+            hdx auth login -s <your-hyperdx-api-url>
             hdx tui
             ```
           draft: false
