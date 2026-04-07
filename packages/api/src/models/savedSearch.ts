@@ -9,6 +9,8 @@ export interface ISavedSearch
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
+  createdBy?: ObjectId;
+  updatedBy?: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +37,16 @@ export const SavedSearch = mongoose.model<ISavedSearch>(
       },
       tags: [String],
       filters: [{ type: mongoose.Schema.Types.Mixed }],
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
     },
     {
       toJSON: { virtuals: true },

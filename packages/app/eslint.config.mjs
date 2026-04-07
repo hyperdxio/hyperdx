@@ -91,6 +91,7 @@ export default [
       'next-env.d.ts',
       'playwright-report/**',
       '.next/**',
+      '.next-e2e/**',
       '.storybook/**',
       'node_modules/**',
       'out/**',
