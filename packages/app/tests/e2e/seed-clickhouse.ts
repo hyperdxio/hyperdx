@@ -325,21 +325,24 @@ function generateSessionTraces(
     // Add visible events for the session event list:
     // - A routeChange (navigation) event — shown in both Highlighted and All Events tabs
     // - A console.error event — shown in both tabs
+    const sessionUserIndex = i % 5;
+    const sessionUserEmail = `test${sessionUserIndex}@example.com`;
+    const sessionUserName = `Test User ${sessionUserIndex}`;
+    const sessionTeamId = 'test-team-id';
+    const sessionTeamName = 'Test Team';
+
     const navTimestampNs = (baseTime - 1000) * 1000000;
     const navTraceId = `session-nav-${i}`;
     const navSpanId = `session-nav-span-${i}`;
-    const userIndex = i % 5;
-    const userEmail = `test${userIndex}@example.com`;
-    const userName = `Test User ${userIndex}`;
     rows.push(
-      `('${navTimestampNs}', '${navTraceId}', '${navSpanId}', '', '', 'routeChange', 'SPAN_KIND_INTERNAL', 'browser', {'rum.sessionId':'${sessionId}','service.name':'browser'}, '', '', {'component':'navigation','location.href':'https://example.com/dashboard','teamId':'test-team-id','teamName':'Test Team','userEmail':'${userEmail}','userName':'${userName}'}, 0, 'STATUS_CODE_OK', '', [], [], [], [], [], [], [])`,
+      `('${navTimestampNs}', '${navTraceId}', '${navSpanId}', '', '', 'routeChange', 'SPAN_KIND_INTERNAL', 'browser', {'rum.sessionId':'${sessionId}','service.name':'browser'}, '', '', {'component':'navigation','location.href':'https://example.com/dashboard','teamId':'${sessionTeamId}','teamName':'${sessionTeamName}','userEmail':'${sessionUserEmail}','userName':'${sessionUserName}'}, 0, 'STATUS_CODE_OK', '', [], [], [], [], [], [], [])`,
     );
 
     const errTimestampNs = (baseTime - 2000) * 1000000;
     const errTraceId = `session-err-${i}`;
     const errSpanId = `session-err-span-${i}`;
     rows.push(
-      `('${errTimestampNs}', '${errTraceId}', '${errSpanId}', '', '', 'console.error', 'SPAN_KIND_INTERNAL', 'browser', {'rum.sessionId':'${sessionId}','service.name':'browser'}, '', '', {'component':'error','message':'E2E test error ${i}','teamId':'test-team-id','teamName':'Test Team','userEmail':'${userEmail}','userName':'${userName}'}, 0, 'STATUS_CODE_ERROR', '', [], [], [], [], [], [], [])`,
+      `('${errTimestampNs}', '${errTraceId}', '${errSpanId}', '', '', 'console.error', 'SPAN_KIND_INTERNAL', 'browser', {'rum.sessionId':'${sessionId}','service.name':'browser'}, '', '', {'component':'error','message':'E2E test error ${i}','teamId':'${sessionTeamId}','teamName':'${sessionTeamName}','userEmail':'${sessionUserEmail}','userName':'${sessionUserName}'}, 0, 'STATUS_CODE_ERROR', '', [], [], [], [], [], [], [])`,
     );
   }
 
