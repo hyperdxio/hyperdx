@@ -147,7 +147,7 @@ export default function GroupContainer({
         transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
         transition: 'transform 150ms ease',
         flexShrink: 0,
-        color: 'var(--mantine-color-dimmed)',
+        color: 'var(--color-text-muted)',
         cursor: 'pointer',
       }}
       onClick={onToggle}
@@ -264,7 +264,7 @@ export default function GroupContainer({
     >
       <IconGripVertical
         size={14}
-        style={{ color: 'var(--mantine-color-dimmed)' }}
+        style={{ color: 'var(--color-text-muted)' }}
       />
     </div>
   );
@@ -433,7 +433,7 @@ export default function GroupContainer({
           style={{
             borderBottom: isCollapsed
               ? undefined
-              : '1px solid var(--mantine-color-default-border)',
+              : '1px solid var(--color-border)',
             minHeight: headerHeight,
           }}
         >

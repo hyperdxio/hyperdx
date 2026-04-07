@@ -25,10 +25,6 @@ export function EmptyContainerPlaceholder({
       data-testid={`container-placeholder-${containerId}`}
       style={{
         minHeight: isEmpty ? 80 : undefined,
-        borderRadius: 4,
-        border: isEmpty
-          ? '2px dashed var(--mantine-color-default-border)'
-          : undefined,
         position: 'relative',
       }}
     >
