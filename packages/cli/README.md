@@ -5,74 +5,153 @@ A terminal UI for searching and tailing events (logs and traces) from HyperDX.
 Built with [Ink](https://github.com/vadimdemedes/ink) (React for CLIs) and
 compiled into a standalone binary via [Bun](https://bun.sh).
 
+## Installation
+
+### npm (recommended)
+
+```bash
+npm install -g @hyperdx/cli
+```
+
+Or run directly with npx (no install needed):
+
+```bash
+npx @hyperdx/cli tui -s <your-hyperdx-url>
+```
+
+### Standalone Binary
+
+Download the latest binary for your platform from the
+[Releases](https://github.com/hyperdxio/hyperdx/releases) page (no Node.js
+required):
+
+```bash
+# macOS Apple Silicon
+curl -L https://github.com/hyperdxio/hyperdx/releases/latest/download/hdx-darwin-arm64 -o hdx
+
+# macOS Intel
+curl -L https://github.com/hyperdxio/hyperdx/releases/latest/download/hdx-darwin-x64 -o hdx
+
+# Linux x64
+curl -L https://github.com/hyperdxio/hyperdx/releases/latest/download/hdx-linux-x64 -o hdx
+
+chmod +x hdx
+sudo mv hdx /usr/local/bin/
+```
+
 ## Quick Start
 
 ```bash
-# From the monorepo root
-yarn install
-```
+# Install
+npm install -g @hyperdx/cli
 
-### Running in dev mode
+# Login to your HyperDX instance
+hdx auth login -s https://your-hyperdx-instance.com
 
-`yarn dev` runs `tsx src/cli.tsx` — no compile step needed.
-
-```bash
-cd packages/cli
-
-# Interactive event viewer (default command)
-yarn dev
-
-# Pass flags after --
-yarn dev -- tui -s http://localhost:8000
-yarn dev -- tui -s http://localhost:8000 -q "level:error" --source "Logs" -f
-yarn dev -- stream -s http://localhost:8000 --source "Logs" -f
-yarn dev -- auth login -s http://localhost:8000
-yarn dev -- auth logout
+# Launch the interactive TUI
+hdx tui
 ```
 
 ## Commands
 
-### `hdx tui` (default)
+### `hdx tui`
 
 Interactive event viewer with table, search, and row detail panel.
 
 ```bash
-hdx tui -s http://localhost:8000                    # Interactive mode
-hdx tui -s http://localhost:8000 -q "level:error"  # Start with a Lucene query
-hdx tui -s http://localhost:8000 --source "Logs"   # Skip source picker
-hdx tui -s http://localhost:8000 -f                # Start in follow/live tail mode
+hdx tui                                             # Uses saved session server
+hdx tui -s http://localhost:8000                    # Explicit server URL
+hdx tui -q "level:error"                           # Start with a Lucene query
+hdx tui --source "Logs"                            # Skip source picker
+hdx tui -f                                         # Start in follow/live tail mode
 ```
 
-### `hdx stream`
+### `hdx query`
 
-Non-interactive streaming mode. Pipe-friendly, outputs to stdout.
+Run a raw SQL query against a ClickHouse source.
 
 ```bash
-hdx stream -s http://localhost:8000 --source "Logs"                     # Stream events
-hdx stream -s http://localhost:8000 --source "Logs" -q "level:error" -f # Filter + follow
-hdx stream -s http://localhost:8000 --source "Logs" --since 30m         # Last 30 minutes
+hdx query --source "Logs" --sql "SELECT count() FROM default.otel_logs"
+hdx query --source "Traces" --sql "SELECT * FROM default.otel_traces LIMIT 5"
+hdx query --source "Logs" --sql "SELECT Body FROM default.otel_logs LIMIT 3" --format JSONEachRow
 ```
+
+| Flag                      | Description                              | Default |
+| ------------------------- | ---------------------------------------- | ------- |
+| `--source <nameOrId>`     | Source name or ID (required)             |         |
+| `--sql <query>`           | SQL query to execute (required)          |         |
+| `--format <format>`       | ClickHouse output format                 | `JSON`  |
 
 ### `hdx sources`
 
 List available sources.
 
 ```bash
-hdx sources -s http://localhost:8000
+hdx sources                            # Human-readable table
+hdx sources --json                     # JSON for agents / scripts
 ```
+
+### `hdx dashboards`
+
+List dashboards with tile summaries.
+
+```bash
+hdx dashboards                         # Human-readable list with tiles
+hdx dashboards --json                  # JSON for agents / scripts
+hdx dashboards --json | jq '.[0].tiles'  # List tiles of first dashboard
+```
+
+### `hdx upload-sourcemaps`
+
+Upload JavaScript source maps to HyperDX for stack trace de-obfuscation.
+
+```bash
+npx @hyperdx/cli upload-sourcemaps \
+  --serviceKey "$HYPERDX_API_ACCESS_KEY" \
+  --apiUrl "$HYPERDX_API_URL" \
+  --path .next \
+  --apiVersion v2 \
+  --releaseId "$RELEASE_ID"
+```
+
+You can also add this as an npm script:
+
+```json
+{
+  "scripts": {
+    "upload-sourcemaps": "npx @hyperdx/cli upload-sourcemaps --apiVersion v2 --path=\".next\""
+  }
+}
+```
+
+| Flag                      | Description                                      | Default |
+| ------------------------- | ------------------------------------------------ | ------- |
+| `-k, --serviceKey <key>`  | HyperDX service account API key                  |         |
+| `-p, --path <dir>`        | Directory containing sourcemaps                  | `.`     |
+| `-u, --apiUrl <url>`      | API URL for self-hosted deployments              |         |
+| `-rid, --releaseId <id>`  | Release ID to associate with the sourcemaps      |         |
+| `-bp, --basePath <path>`  | Base path for the uploaded sourcemaps            |         |
+| `--apiVersion <version>`  | API version (`v1` for HyperDX V1 Cloud, `v2` for latest) | `v1`    |
+
+> **Note:** Use `--apiVersion v2` for the latest HyperDX app. The `v1` default
+> is only for legacy HyperDX V1 Cloud deployments.
+
+Optionally, set the `HYPERDX_SERVICE_KEY` environment variable to avoid passing
+the `--serviceKey` flag.
 
 ### `hdx auth`
 
 Manage authentication.
 
 ```bash
-hdx auth login -s http://localhost:8000                          # Interactive login
+hdx auth login -s http://localhost:8000                              # Interactive login
 hdx auth login -s http://localhost:8000 -e user@example.com -p pass  # Non-interactive login
-hdx auth status                                                  # Show authentication status
-hdx auth logout                                                  # Log out
+hdx auth status                                                      # Show authentication status
+hdx auth logout                                                      # Log out
 ```
 
-The session is saved to `~/.config/hyperdx/cli/session.json`.
+The session is saved to `~/.config/hyperdx/cli/session.json`. Once logged in,
+the `-s` flag is optional — the CLI reads the server URL from the saved session.
 
 ## Keybindings
 
@@ -141,13 +220,7 @@ yarn compile:macos-x64    # macOS x64
 yarn compile:linux        # Linux x64
 ```
 
-## Options
+## Development
 
-| Flag                   | Description                        | Default |
-| ---------------------- | ---------------------------------- | ------- |
-| `-s, --server <url>`   | HyperDX API server URL (required)  |         |
-| `-q, --query <query>`  | Lucene search query                |         |
-| `--source <name>`      | Source name (skips picker)         |         |
-| `-f, --follow`         | Start in follow/live tail mode     |         |
-| `--since <duration>`   | How far back to look (stream mode) | `1h`    |
-| `-n, --limit <number>` | Max rows per fetch (stream mode)   | `100`   |
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed development setup,
+architecture details, and contribution guidelines.
