@@ -12,6 +12,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
@@ -20,12 +21,15 @@ import {
   IconChevronRight,
   IconChevronUp,
   IconHelp,
+  IconKeyboard,
   IconLogout,
   IconSettings,
   IconUserCog,
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 
 import styles from './AppNav.module.scss';
 
@@ -176,64 +180,84 @@ export const AppNavUserMenu = ({
 
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.useContext(AppNavContext);
+  const [
+    shortcutsOpened,
+    { open: openShortcutsModal, close: closeShortcutsModal },
+  ] = useDisclosure(false);
 
   return (
-    <Menu position="right-start" transitionProps={{ transition: 'fade-right' }}>
-      <Menu.Target>
-        <UnstyledButton
-          data-testid="help-menu-trigger"
-          className={styles.navItem}
-        >
-          <span className={styles.navItemContent}>
-            <span className={styles.navItemIcon}>
-              <IconHelp size={16} />
+    <>
+      <Menu
+        position="right-start"
+        transitionProps={{ transition: 'fade-right' }}
+      >
+        <Menu.Target>
+          <UnstyledButton
+            data-testid="help-menu-trigger"
+            className={styles.navItem}
+          >
+            <span className={styles.navItemContent}>
+              <span className={styles.navItemIcon}>
+                <IconHelp size={16} />
+              </span>
+              {!isCollapsed && <span>Help</span>}
             </span>
-            {!isCollapsed && <span>Help</span>}
-          </span>
-        </UnstyledButton>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>
-          Help{' '}
-          {version && (
-            <Text size="xs" component="span">
-              v{version}
-            </Text>
-          )}
-        </Menu.Label>
+          </UnstyledButton>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Label>
+            Help{' '}
+            {version && (
+              <Text size="xs" component="span">
+                v{version}
+              </Text>
+            )}
+          </Menu.Label>
 
-        <Menu.Item
-          data-testid="documentation-menu-item"
-          href="https://clickhouse.com/docs/use-cases/observability/clickstack"
-          component="a"
-          target="_blank"
-          rel="noopener noreferrer"
-          leftSection={<IconBook size={16} />}
-        >
-          Documentation
-        </Menu.Item>
-        <Menu.Item
-          data-testid="discord-menu-item"
-          leftSection={<IconBrandDiscord size={16} />}
-          component="a"
-          href="https://hyperdx.io/discord"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Discord Community
-        </Menu.Item>
-        <Menu.Item
-          data-testid="setup-instructions-menu-item"
-          leftSection={<IconBulb size={16} />}
-          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
-          component="a"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Setup Instructions
-        </Menu.Item>
-      </Menu.Dropdown>
-    </Menu>
+          <Menu.Item
+            data-testid="documentation-menu-item"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+            component="a"
+            target="_blank"
+            rel="noopener noreferrer"
+            leftSection={<IconBook size={16} />}
+          >
+            Documentation
+          </Menu.Item>
+          <Menu.Item
+            data-testid="setup-instructions-menu-item"
+            leftSection={<IconBulb size={16} />}
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+            component="a"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Setup Instructions
+          </Menu.Item>
+          <Menu.Item
+            data-testid="keyboard-shortcuts-menu-item"
+            leftSection={<IconKeyboard size={16} />}
+            onClick={openShortcutsModal}
+          >
+            Keyboard shortcuts
+          </Menu.Item>
+          <Menu.Item
+            data-testid="discord-menu-item"
+            leftSection={<IconBrandDiscord size={16} />}
+            component="a"
+            href="https://hyperdx.io/discord"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Discord Community
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+      <KeyboardShortcutsModal
+        opened={shortcutsOpened}
+        onClose={closeShortcutsModal}
+      />
+    </>
   );
 };
 
