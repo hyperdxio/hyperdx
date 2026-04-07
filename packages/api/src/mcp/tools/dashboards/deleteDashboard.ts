@@ -29,6 +29,13 @@ export function registerDeleteDashboard(
       'hyperdx_delete_dashboard',
       context,
       async ({ id: dashboardId }) => {
+        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
+          };
+        }
+
         const existing = await Dashboard.findOne({
           _id: dashboardId,
           team: teamId,

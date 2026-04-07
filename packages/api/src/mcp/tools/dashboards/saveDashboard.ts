@@ -8,17 +8,15 @@ import * as config from '@/config';
 import { deleteDashboardAlerts } from '@/controllers/alerts';
 import Dashboard from '@/models/dashboard';
 import {
+  convertToExternalDashboard,
+  convertToInternalTileConfig,
   createDashboardBodySchema,
   getMissingConnections,
   getMissingSources,
-  resolveSavedQueryLanguage,
-  updateDashboardBodySchema,
-} from '@/routers/external-api/v2/utils/dashboards';
-import {
-  convertToExternalDashboard,
-  convertToInternalTileConfig,
   isConfigTile,
+  resolveSavedQueryLanguage,
   type SeriesTile,
+  updateDashboardBodySchema,
 } from '@/routers/external-api/v2/utils/dashboards';
 import {
   translateExternalChartToTileConfig,
@@ -221,6 +219,13 @@ async function updateDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
 }) {
+  if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
+    return {
+      isError: true,
+      content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
+    };
+  }
+
   const parsed = updateDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,

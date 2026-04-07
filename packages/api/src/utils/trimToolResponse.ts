@@ -40,6 +40,25 @@ function trimArray(arr: any[], maxSize: number): any[] {
     resultSize = JSON.stringify(result).length;
   }
 
+  // If we're still over budget (e.g. a single item exceeds maxSize), truncate
+  // individual oversized items so the array itself stays within the limit.
+  if (resultSize > maxSize) {
+    result = result.map(item => {
+      const itemStr = JSON.stringify(item);
+      if (itemStr.length > maxSize) {
+        logger.info(
+          `Trimming oversized array item (${itemStr.length} bytes > ${maxSize} limit)`,
+        );
+        if (typeof item === 'object' && item !== null) {
+          return trimObject(item, maxSize);
+        }
+        // Scalar that is itself too large — return a truncation marker
+        return { __hdx_trimmed: true, originalSize: itemStr.length };
+      }
+      return item;
+    });
+  }
+
   if (result.length < arr.length) {
     logger.info(`Trimmed array from ${arr.length} to ${result.length} items`);
   }
@@ -76,7 +95,7 @@ function trimObject(obj: any, maxSize: number): any {
     const valueStr = JSON.stringify(value);
     if (currentSize + valueStr.length > maxSize) {
       logger.info(`Trimming object, stopping at key: ${key}`);
-      result.__trimmed = true;
+      result.__hdx_trimmed = true;
       break;
     }
     result[key] = value;
@@ -100,7 +119,7 @@ function trimObjectEntries(obj: any, maxSize: number): any {
       logger.info(
         `Trimmed keyValues from ${Object.keys(obj).length} to ${keyCount} entries`,
       );
-      result.__trimmed = true;
+      result.__hdx_trimmed = true;
       break;
     }
 

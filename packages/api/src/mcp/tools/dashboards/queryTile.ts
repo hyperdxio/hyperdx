@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import mongoose from 'mongoose';
 import { z } from 'zod/v4';
 
 import Dashboard from '@/models/dashboard';
@@ -57,6 +58,13 @@ export function registerQueryTile(
           };
         }
         const { startDate, endDate } = timeRange;
+
+        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
+          };
+        }
 
         const dashboard = await Dashboard.findOne({
           _id: dashboardId,

@@ -51,6 +51,13 @@ export function registerGetDashboard(
         };
       }
 
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
+        };
+      }
+
       const dashboard = await Dashboard.findOne({ _id: id, team: teamId });
       if (!dashboard) {
         return {
