@@ -6,13 +6,24 @@
  * globs for .js and .js.map files, and uploads them to presigned URLs.
  */
 
-import { basename, join } from 'path';
-import { cwd } from 'process';
+import { basename, join, resolve } from 'path';
 import { readFileSync, statSync } from 'fs';
 
 import { globSync } from 'glob';
+import { createRequire } from 'module';
 
-const PKG_VERSION = '0.2.0';
+const require = createRequire(import.meta.url);
+const PKG_VERSION: string = (require('../package.json') as { version: string })
+  .version;
+
+/** Join URL paths without mangling the protocol (path.join strips '//') */
+function urlJoin(base: string, ...segments: string[]): string {
+  const url = new URL(
+    segments.join('/'),
+    base.endsWith('/') ? base : `${base}/`,
+  );
+  return url.toString();
+}
 
 export interface UploadSourcemapsOptions {
   allowNoop?: boolean;
@@ -44,7 +55,7 @@ export async function uploadSourcemaps({
   const backend = apiUrl || 'https://api.hyperdx.io';
   const version = apiVersion || 'v1';
 
-  const res = await fetch(join(backend, 'api', version), {
+  const res = await fetch(urlJoin(backend, 'api', version), {
     method: 'get',
     headers: {
       'Content-Type': 'application/json',
@@ -84,7 +95,7 @@ export async function uploadSourcemaps({
   }));
 
   const urlRes = await fetch(
-    join(backend, 'api', version, 'sourcemaps', 'upload-presigned-urls'),
+    urlJoin(backend, 'api', version, 'sourcemaps', 'upload-presigned-urls'),
     {
       method: 'post',
       headers: {
@@ -132,7 +143,7 @@ function getAllSourceMapFiles(
   const map: { path: string; name: string }[] = [];
 
   for (const path of paths) {
-    const realPath = join(cwd(), path);
+    const realPath = resolve(path);
 
     if (statSync(realPath).isFile()) {
       map.push({
