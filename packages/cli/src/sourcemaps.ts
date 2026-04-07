@@ -21,6 +21,10 @@ const require = createRequire(import.meta.url);
 const PKG_VERSION: string = (require('../package.json') as { version: string })
   .version;
 
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 3000]; // ms between retries
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 /** Join URL paths without mangling the protocol (path.join strips '//') */
 function urlJoin(base: string, ...segments: string[]): string {
   const url = new URL(
@@ -144,11 +148,20 @@ export async function uploadSourcemaps({
 
   const uploadUrls = urlRes.data;
 
-  await Promise.all(
+  const results = await Promise.all(
     fileList.map(({ path, name }, idx) =>
-      uploadFile(path, uploadUrls[idx], name),
+      uploadFile(path, uploadUrls[idx], name, idx, fileList.length),
     ),
   );
+
+  const succeeded = results.filter(Boolean).length;
+  const failed = results.length - succeeded;
+  log(
+    `\n[HyperDX] Upload complete: ${succeeded} succeeded, ${failed} failed out of ${results.length} files.`,
+  );
+  if (failed > 0) {
+    logError('[HyperDX] Some files failed to upload. See errors above.');
+  }
 }
 
 // ---- Helpers -------------------------------------------------------
@@ -213,8 +226,41 @@ async function uploadFile(
   filePath: string,
   uploadUrl: string,
   name: string,
-): Promise<void> {
+  index: number,
+  total: number,
+): Promise<boolean> {
   const fileContent = readFileSync(filePath);
-  await fetch(uploadUrl, { method: 'put', body: fileContent });
-  log(`[HyperDX] Uploaded ${filePath} to ${name}`);
+  const prefix = `[HyperDX] [${index + 1}/${total}]`;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(uploadUrl, { method: 'put', body: fileContent });
+      if (res.ok) {
+        log(`${prefix} Uploaded ${name}`);
+        return true;
+      }
+      // 4xx — permanent failure, don't retry
+      if (res.status >= 400 && res.status < 500) {
+        logError(`${prefix} Failed to upload ${name} (${res.status})`);
+        return false;
+      }
+      // 5xx — server error, retry
+      throw new Error(`Server error (${res.status})`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[attempt - 1] ?? 3000;
+        logError(
+          `${prefix} Upload failed (${msg}), retrying in ${delay / 1000}s...`,
+        );
+        await sleep(delay);
+      } else {
+        logError(
+          `${prefix} Failed to upload ${name} after ${MAX_RETRIES} attempts: ${msg}`,
+        );
+        return false;
+      }
+    }
+  }
+  return false;
 }
