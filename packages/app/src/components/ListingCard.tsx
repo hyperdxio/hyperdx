@@ -1,9 +1,19 @@
 import Link from 'next/link';
-import { ActionIcon, Badge, Card, Group, Menu, Text } from '@mantine/core';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  ActionIcon,
+  Badge,
+  Card,
+  Group,
+  Menu,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { Favorite } from '@/favorites';
+import { FormatTime } from '@/useFormatTime';
 
 export function ListingCard({
   name,
@@ -14,6 +24,8 @@ export function ListingCard({
   statusIcon,
   resourceId,
   resourceType,
+  updatedAt,
+  updatedBy,
 }: {
   name: string;
   href: string;
@@ -23,6 +35,8 @@ export function ListingCard({
   statusIcon?: React.ReactNode;
   resourceId?: string;
   resourceType?: Favorite['resourceType'];
+  updatedAt?: string;
+  updatedBy?: string;
 }) {
   return (
     <Card
@@ -33,7 +47,7 @@ export function ListingCard({
       radius="sm"
       style={{ cursor: 'pointer', textDecoration: 'none' }}
     >
-      <Group justify="space-between" mb="xs" wrap="nowrap">
+      <Group justify="space-between" wrap="nowrap">
         <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
           <Text
             fw={500}
@@ -79,8 +93,24 @@ export function ListingCard({
         )}
       </Group>
 
+      {updatedAt && (
+        <Tooltip
+          label={
+            <>
+              <FormatTime value={updatedAt} format="short" />
+              {updatedBy ? ` by ${updatedBy}` : ''}
+            </>
+          }
+        >
+          <Text size="xs" c="dimmed" mt={2}>
+            Updated{' '}
+            {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
+          </Text>
+        </Tooltip>
+      )}
+
       {description && (
-        <Text size="sm" c="dimmed">
+        <Text size="sm" c="dimmed" mt="xs">
           {description}
         </Text>
       )}
