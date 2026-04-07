@@ -62,12 +62,19 @@ export async function uploadSourcemaps({
       Authorization: `Bearer ${serviceKey}`,
     },
   })
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(
+          `Authentication failed (${response.status}). Check your --serviceKey and --apiUrl.`,
+        );
+      }
+      return response.json();
+    })
     .then(data => {
       return data as { user?: { team?: string } };
     })
     .catch(e => {
-      console.log(e);
+      console.error(e.message || e);
       return undefined;
     });
 
@@ -109,13 +116,16 @@ export async function uploadSourcemaps({
     },
   )
     .then(response => {
+      if (!response.ok) {
+        throw new Error(`Failed to get upload URLs (${response.status}).`);
+      }
       return response.json();
     })
     .then(data => {
       return data as { data?: string[] };
     })
     .catch(e => {
-      console.log(e);
+      console.error(e.message || e);
       return undefined;
     });
 
