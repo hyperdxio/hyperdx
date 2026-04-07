@@ -5,6 +5,10 @@ import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertState,
+  SavedSearchListApiResponse,
+} from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
   Anchor,
   Badge,
@@ -36,7 +40,6 @@ import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
-import type { SavedSearch } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
@@ -204,7 +207,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   }, [meData]);
 
   const renderSavedSearchLink = useCallback(
-    (savedSearch: SavedSearch) => (
+    (savedSearch: SavedSearchListApiResponse) => (
       <Link
         href={`/search/${savedSearch.id}`}
         key={savedSearch.id}
