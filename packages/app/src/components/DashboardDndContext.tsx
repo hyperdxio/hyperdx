@@ -99,8 +99,8 @@ export function DashboardDndProvider({
             px="sm"
             py={4}
             style={{
-              background: 'var(--mantine-color-body)',
-              border: '1px solid var(--mantine-color-default-border)',
+              background: 'var(--color-bg-body)',
+              border: '1px solid var(--color-border)',
               borderRadius: 4,
               opacity: 0.85,
             }}

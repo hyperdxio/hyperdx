@@ -20,7 +20,7 @@ function AlertDot({ size = 6 }: { size?: number }) {
         width: size,
         height: size,
         borderRadius: '50%',
-        backgroundColor: 'var(--mantine-color-red-filled)',
+        backgroundColor: 'var(--color-bg-danger)',
         flexShrink: 0,
       }}
     />
@@ -269,14 +269,14 @@ export default function GroupContainer({
     </div>
   );
 
-  // Collapsed header: pipe-separated tab names (max 4, then "…")
+  // Collapsed header: pipe-separated tab names (max 4, then "\u2026")
   const MAX_COLLAPSED_TABS = 4;
   const collapsedTabLabel =
     isCollapsed && hasTabs
       ? tabs
           .slice(0, MAX_COLLAPSED_TABS)
           .map(t => t.title)
-          .join(' | ') + (tabs.length > MAX_COLLAPSED_TABS ? ' | …' : '')
+          .join(' | ') + (tabs.length > MAX_COLLAPSED_TABS ? ' | \u2026' : '')
       : null;
 
   // Tab IDs with active alerts (for indicators)
@@ -291,9 +291,7 @@ export default function GroupContainer({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        border: bordered
-          ? '1px solid var(--mantine-color-default-border)'
-          : undefined,
+        border: bordered ? '1px solid var(--color-border)' : undefined,
         borderRadius: bordered ? 4 : undefined,
         marginTop: 8,
       }}
@@ -309,7 +307,7 @@ export default function GroupContainer({
             px="sm"
             gap={6}
             style={{
-              borderBottom: '1px solid var(--mantine-color-default-border)',
+              borderBottom: '1px solid var(--color-border)',
               minHeight: headerHeight,
             }}
           >
@@ -427,7 +425,7 @@ export default function GroupContainer({
           </Flex>
         </Tabs>
       ) : (
-        /* Plain header (1 tab or collapsed) — shows title + chevron */
+        /* Plain header (1 tab or collapsed) \u2014 shows title + chevron */
         <Flex
           align="center"
           gap={6}
