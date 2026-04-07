@@ -134,14 +134,27 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const documentationItem = page.locator(
         '[data-testid="documentation-menu-item"]',
       );
-      const discordItem = page.locator('[data-testid="discord-menu-item"]');
       const setupItem = page.locator(
         '[data-testid="setup-instructions-menu-item"]',
       );
+      const shortcutsItem = page.locator(
+        '[data-testid="keyboard-shortcuts-menu-item"]',
+      );
+      const discordItem = page.locator('[data-testid="discord-menu-item"]');
 
       await expect(documentationItem).toBeVisible();
-      await expect(discordItem).toBeVisible();
       await expect(setupItem).toBeVisible();
+      await expect(shortcutsItem).toBeVisible();
+      await expect(discordItem).toBeVisible();
+    });
+
+    await test.step('Open keyboard shortcuts from help menu', async () => {
+      await page
+        .locator('[data-testid="keyboard-shortcuts-menu-item"]')
+        .click();
+      await expect(
+        page.locator('[data-testid="keyboard-shortcuts-modal"]'),
+      ).toBeVisible();
     });
   });
 });
