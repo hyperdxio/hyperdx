@@ -1293,6 +1293,52 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
       },
+      {
+        description: 'stays inclusive with date-type column',
+        timestampValueExpression: 'date',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for date-type column in multi-column timestampValueExpression',
+        timestampValueExpression: 'date, timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description: 'stays inclusive for toDate column',
+        timestampValueExpression: 'toDate(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for toDate column in multi-column timestampValueExpression',
+        timestampValueExpression: 'toDate(timestamp), timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
     ];
 
     beforeEach(() => {
@@ -1338,6 +1384,36 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+
+    it('stays inclusive for date-type column with non-subquery with clauses', async () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-02-12 03:53:38Z'),
+        new Date('2025-02-12 04:08:38Z'),
+      ];
+
+      const actual = await timeFilterExpr({
+        timestampValueExpression: 'date',
+        dateRangeEndInclusive: false,
+        dateRangeStartInclusive: false,
+        dateRange,
+        connectionId: 'test-connection',
+        databaseName: 'default',
+        tableName: 'target_table',
+        metadata: mockMetadata,
+        with: [
+          {
+            name: 'service',
+            sql: { sql: 'ServiceName', params: {} },
+            isSubquery: false,
+          },
+        ],
+      });
+
+      const actualSql = parameterizedQueryToSql(actual);
+      expect(actualSql).toBe(
+        `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+      );
+    });
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {

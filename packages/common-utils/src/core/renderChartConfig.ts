@@ -686,8 +686,11 @@ export async function timeFilterExpr({
       // timestamp comparison must also have the same function
       const toStartOf = parseToStartOfFunction(col);
 
+      // Detect toDate(...) wrapper expressions
+      const isToDateExpr = /^toDate\s*\(/.test(col);
+
       const columnMeta =
-        withClauses?.length || toStartOf
+        hasSubqueryCte(withClauses) || toStartOf || isToDateExpr
           ? null
           : await metadata.getColumn({
               databaseName,
@@ -700,7 +703,12 @@ export async function timeFilterExpr({
         UNSAFE_RAW_SQL: col,
       };
 
-      if (columnMeta == null && !withClauses?.length && !toStartOf) {
+      if (
+        columnMeta == null &&
+        hasSubqueryCte(withClauses) &&
+        !toStartOf &&
+        !isToDateExpr
+      ) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
@@ -718,12 +726,15 @@ export async function timeFilterExpr({
           ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
-      // toStartOf* filters must stay inclusive — strict < on a rounded value drops a whole interval
-      const startOp = dateRangeStartInclusive || toStartOf ? '>=' : '>';
-      const endOp = dateRangeEndInclusive || toStartOf ? '<=' : '<';
+      const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
 
-      // If it's a date type
-      if (columnMeta?.type === 'Date') {
+      // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
+      const startOp =
+        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
+      const endOp =
+        dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
+
+      if (isDateType) {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
