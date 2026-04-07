@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "hdx": "./dist/cli.js"
   },
@@ -15,6 +18,7 @@
   "scripts": {
     "dev": "tsx src/cli.tsx",
     "build": "tsup",
+    "prepublishOnly": "yarn build",
     "compile": "bun build src/cli.tsx --compile --outfile dist/hdx",
     "compile:linux": "bun build src/cli.tsx --compile --target=bun-linux-x64 --outfile dist/hdx-linux-x64",
     "compile:macos": "bun build src/cli.tsx --compile --target=bun-darwin-arm64 --outfile dist/hdx-darwin-arm64",

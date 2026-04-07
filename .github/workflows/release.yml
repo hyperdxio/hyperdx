@@ -420,6 +420,8 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # CLI – compile standalone binaries and upload as GitHub Release assets
+  # npm publishing is handled by changesets in the check_changesets job above.
+  # This job only compiles platform-specific binaries and creates a GH Release.
   # ---------------------------------------------------------------------------
   release-cli:
     name: Release CLI Binaries
@@ -435,7 +437,6 @@ jobs:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
-          registry-url: 'https://registry.npmjs.org'
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -454,14 +455,6 @@ jobs:
           yarn compile:linux
           yarn compile:macos
           yarn compile:macos-x64
-      - name: Build npm package
-        working-directory: packages/cli
-        run: yarn build
-      - name: Publish to npm
-        working-directory: packages/cli
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
