@@ -69,9 +69,8 @@ export const KeyboardShortcutsModal = ({
       title="Keyboard Shortcuts"
       size="lg"
       centered
-      data-testid="keyboard-shortcuts-modal"
     >
-      <Stack gap={0}>
+      <Stack gap={0} data-testid="keyboard-shortcuts-modal">
         {SHORTCUTS.map(({ keys, label, keyJoin = 'chord' }, rowIndex) => (
           <React.Fragment key={rowIndex}>
             <Group justify="space-between" wrap="nowrap" gap="md" py="sm">

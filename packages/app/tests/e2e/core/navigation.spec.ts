@@ -149,12 +149,13 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     });
 
     await test.step('Open keyboard shortcuts from help menu', async () => {
-      await page
-        .locator('[data-testid="keyboard-shortcuts-menu-item"]')
-        .click();
+      const shortcutsItem = page.getByTestId('keyboard-shortcuts-menu-item');
+      await shortcutsItem.scrollIntoViewIfNeeded();
+      await shortcutsItem.click();
+
       await expect(
-        page.locator('[data-testid="keyboard-shortcuts-modal"]'),
-      ).toBeVisible();
+        page.getByRole('dialog', { name: 'Keyboard Shortcuts' }),
+      ).toBeVisible({ timeout: 10_000 });
     });
   });
 });
