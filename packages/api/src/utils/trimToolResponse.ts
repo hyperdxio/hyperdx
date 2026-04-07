@@ -71,10 +71,12 @@ function trimObject(obj: any, maxSize: number): any {
   }
 
   // Generic object trimming
-  for (const [key, value] of Object.entries(obj)) {
+  const entries = Object.entries(obj);
+  for (const [key, value] of entries) {
     const valueStr = JSON.stringify(value);
     if (currentSize + valueStr.length > maxSize) {
       logger.info(`Trimming object, stopping at key: ${key}`);
+      result.__trimmed = true;
       break;
     }
     result[key] = value;
@@ -89,7 +91,8 @@ function trimObjectEntries(obj: any, maxSize: number): any {
   let currentSize = 0;
   let keyCount = 0;
 
-  for (const [key, value] of Object.entries(obj)) {
+  const entries = Object.entries(obj);
+  for (const [key, value] of entries) {
     const entry = { [key]: value };
     const entrySize = JSON.stringify(entry).length;
 
@@ -97,6 +100,7 @@ function trimObjectEntries(obj: any, maxSize: number): any {
       logger.info(
         `Trimmed keyValues from ${Object.keys(obj).length} to ${keyCount} entries`,
       );
+      result.__trimmed = true;
       break;
     }
 

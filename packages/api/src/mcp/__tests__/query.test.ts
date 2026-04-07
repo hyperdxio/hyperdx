@@ -1,4 +1,4 @@
-import { parseTimeRange } from '../tools/query';
+import { parseTimeRange } from '../tools/query/helpers';
 
 describe('parseTimeRange', () => {
   it('should return default range (last 15 minutes) when no arguments provided', () => {

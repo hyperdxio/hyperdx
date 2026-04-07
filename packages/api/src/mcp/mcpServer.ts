@@ -2,9 +2,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { CODE_VERSION } from '@/config';
 
-import dashboardPrompts from './prompts/dashboards';
-import dashboardsTools from './tools/dashboards';
-import queryTools from './tools/query';
+import dashboardPrompts from './prompts/dashboards/index';
+import dashboardsTools from './tools/dashboards/index';
+import queryTools from './tools/query/index';
 import { McpContext } from './tools/types';
 
 export function createServer(context: McpContext) {

@@ -4,12 +4,22 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 
 import { validateUserAccessKey } from '../middleware/auth';
 import logger from '../utils/logger';
+import rateLimiter from '../utils/rateLimiter';
 import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 
 const app = createMcpExpressApp();
 
-app.all('/', validateUserAccessKey, async (req, res) => {
+const mcpRateLimiter = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req): string =>
+    req.headers.authorization ?? req.ip ?? 'unknown',
+});
+
+app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
   });
@@ -42,6 +52,7 @@ app.all('/', validateUserAccessKey, async (req, res) => {
     await transport.handleRequest(req, res, req.body);
   } finally {
     await server.close();
+    await transport.close();
   }
 });
 
