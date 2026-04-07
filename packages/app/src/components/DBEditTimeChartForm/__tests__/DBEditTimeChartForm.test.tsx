@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event';
 
 import { useSource } from '@/source';
 
-import DBEditTimeChartForm from '../DBEditTimeChartForm';
+import DBEditTimeChartForm from '..';
 
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
@@ -70,7 +70,7 @@ jest.mock('@/source', () => ({
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
 }));
 
-jest.mock('../MetricNameSelect', () => ({
+jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
     const { error, onFocus, setMetricName, metricName } = props;
     const testId = props['data-testid'];
@@ -93,7 +93,7 @@ jest.mock('../MetricNameSelect', () => ({
   },
 }));
 
-jest.mock('../SourceSelect', () => ({
+jest.mock('../../SourceSelect', () => ({
   SourceSelectControlled: () => (
     <select data-testid="source-selector" defaultValue="metric-source">
       <option value="metric-source">Metric Source</option>
@@ -101,21 +101,21 @@ jest.mock('../SourceSelect', () => ({
   ),
 }));
 
-jest.mock('../ChartSQLPreview', () => ({
+jest.mock('../../ChartSQLPreview', () => ({
   __esModule: true,
   default: () => <div>Chart SQL Preview</div>,
 }));
 
-jest.mock('../DBTimeChart', () => ({
+jest.mock('../../DBTimeChart', () => ({
   DBTimeChart: () => <div>Time Chart</div>,
 }));
 
-jest.mock('../DBTableChart', () => ({
+jest.mock('../../DBTableChart', () => ({
   __esModule: true,
   default: () => <div>Table Chart</div>,
 }));
 
-jest.mock('../DBNumberChart', () => ({
+jest.mock('../../DBNumberChart', () => ({
   __esModule: true,
   default: () => <div>Number Chart</div>,
 }));
@@ -125,12 +125,12 @@ jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   default: () => <div>Search Input</div>,
 }));
 
-jest.mock('../MaterializedViews/MVOptimizationIndicator', () => ({
+jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
   __esModule: true,
   default: () => <div>MV Indicator</div>,
 }));
 
-jest.mock('../SQLEditor/SQLInlineEditor', () => ({
+jest.mock('../../SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: () => <div>SQL Editor</div>,
 }));
 
@@ -167,19 +167,21 @@ const defaultChartConfig: SavedChartConfig = {
   alignDateRangeToGranularity: true,
 };
 
-describe('DBEditTimeChartForm - Metric Name Validation', () => {
-  const renderComponent = (props = {}) => {
-    return renderWithMantine(
-      <QueryClientProvider client={queryClient}>
-        <DBEditTimeChartForm
-          chartConfig={defaultChartConfig}
-          dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
-          {...props}
-        />
-      </QueryClientProvider>,
-    );
-  };
+const renderComponent = (
+  props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+) => {
+  return renderWithMantine(
+    <QueryClientProvider client={queryClient}>
+      <DBEditTimeChartForm
+        chartConfig={defaultChartConfig}
+        dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
+        {...props}
+      />
+    </QueryClientProvider>,
+  );
+};
 
+describe('DBEditTimeChartForm - Metric Name Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -251,7 +253,7 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
           aggCondition: '',
           aggConditionLanguage: 'lucene' as const,
           valueExpression: '',
-          metricType: 'gauge' as const,
+          metricType: MetricsDataType.Gauge,
           metricName: 'test.metric.gauge',
         },
         {
@@ -259,7 +261,7 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
           aggCondition: '',
           aggConditionLanguage: 'lucene' as const,
           valueExpression: '',
-          metricType: 'gauge' as const,
+          metricType: MetricsDataType.Gauge,
           metricName: '', // Empty metric name - should trigger validation
         },
       ],
@@ -355,7 +357,7 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
           aggCondition: '',
           aggConditionLanguage: 'lucene' as const,
           valueExpression: '',
-          metricType: 'gauge' as const,
+          metricType: MetricsDataType.Gauge,
           metricName: '', // Empty metricName with metricType set - should trigger validation
         },
       ],
@@ -377,18 +379,6 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
 });
 
 describe('DBEditTimeChartForm - Save Button Metric Name Validation', () => {
-  const renderComponent = (props = {}) => {
-    return renderWithMantine(
-      <QueryClientProvider client={queryClient}>
-        <DBEditTimeChartForm
-          chartConfig={defaultChartConfig}
-          dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
-          {...props}
-        />
-      </QueryClientProvider>,
-    );
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -418,28 +408,21 @@ describe('DBEditTimeChartForm - Save Button Metric Name Validation', () => {
 });
 
 describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () => {
-  const renderComponent = (props = {}) => {
-    return renderWithMantine(
-      <QueryClientProvider client={queryClient}>
-        <DBEditTimeChartForm
-          chartConfig={{
-            ...defaultChartConfig,
-            displayType: DisplayType.Number,
-          }}
-          dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
-          dashboardId={'test-dashboard-id'}
-          {...props}
-        />
-      </QueryClientProvider>,
-    );
-  };
+  const renderAlertComponent = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, displayType: DisplayType.Number },
+      dashboardId: 'test-dashboard-id',
+      ...props,
+    });
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('should add an alert when clicking the add alert button', async () => {
-    renderComponent();
+    renderAlertComponent();
 
     // Find and click the add alert button
     const alertButton = screen.getByTestId('alert-button');
@@ -453,7 +436,7 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
 
   it('should remove an alert when clicking the remove alert button', async () => {
     const onSave = jest.fn();
-    renderComponent({ onSave });
+    renderAlertComponent({ onSave });
 
     // Find and click the add alert button
     const alertButton = screen.getByTestId('alert-button');
@@ -475,7 +458,7 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
   });
 
   it('shows alert scheduling fields inside advanced settings', async () => {
-    renderComponent();
+    renderAlertComponent();
 
     await userEvent.click(screen.getByTestId('alert-button'));
 
