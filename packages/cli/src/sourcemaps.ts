@@ -12,6 +12,11 @@ import { readFileSync, statSync } from 'fs';
 import { globSync } from 'glob';
 import { createRequire } from 'module';
 
+// Use process.stderr/stdout directly because console.error/log/info
+// are silenced by silenceLogs.ts for the TUI mode.
+const log = (msg: string) => process.stdout.write(`${msg}\n`);
+const logError = (msg: string) => process.stderr.write(`${msg}\n`);
+
 const require = createRequire(import.meta.url);
 const PKG_VERSION: string = (require('../package.json') as { version: string })
   .version;
@@ -74,7 +79,7 @@ export async function uploadSourcemaps({
       return data as { user?: { team?: string } };
     })
     .catch(e => {
-      console.error(e.message || e);
+      logError(e.message || String(e));
       return undefined;
     });
 
@@ -83,15 +88,15 @@ export async function uploadSourcemaps({
     throw new Error('invalid service key');
   }
 
-  console.info(`Starting to upload source maps from ${path}`);
+  log(`Starting to upload source maps from ${path}`);
 
   const fileList = getAllSourceMapFiles([path], { allowNoop });
 
   if (fileList.length === 0) {
-    console.error(
+    logError(
       `Error: No source maps found in ${path}, is this the correct path?`,
     );
-    console.info('Failed to upload source maps. Please see reason above.');
+    logError('Failed to upload source maps. Please see reason above.');
     return;
   }
 
@@ -125,13 +130,15 @@ export async function uploadSourcemaps({
       return data as { data?: string[] };
     })
     .catch(e => {
-      console.error(e.message || e);
+      logError(e.message || String(e));
       return undefined;
     });
 
   if (!Array.isArray(urlRes?.data)) {
-    console.error('Error: Unable to generate source map upload urls.', urlRes);
-    console.info('Failed to upload source maps. Please see reason above.');
+    logError(
+      `Error: Unable to generate source map upload urls. Response: ${JSON.stringify(urlRes)}`,
+    );
+    logError('Failed to upload source maps. Please see reason above.');
     return;
   }
 
@@ -209,5 +216,5 @@ async function uploadFile(
 ): Promise<void> {
   const fileContent = readFileSync(filePath);
   await fetch(uploadUrl, { method: 'put', body: fileContent });
-  console.log(`[HyperDX] Uploaded ${filePath} to ${name}`);
+  log(`[HyperDX] Uploaded ${filePath} to ${name}`);
 }
