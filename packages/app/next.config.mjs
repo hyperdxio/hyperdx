@@ -70,7 +70,7 @@ const nextConfig = {
       },
     ];
   },
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: false,
   ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
     ? {
         output: 'standalone',
