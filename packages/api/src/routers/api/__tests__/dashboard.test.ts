@@ -20,6 +20,8 @@ import {
   makeTile,
 } from '../../../fixtures';
 import Alert from '../../../models/alert';
+import Dashboard from '../../../models/dashboard';
+import User from '../../../models/user';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -76,6 +78,45 @@ describe('dashboard router', () => {
     expect(dashboard.body.tiles.map(tile => tile.id)).toEqual(
       MOCK_DASHBOARD.tiles.map(tile => tile.id),
     );
+  });
+
+  it('sets createdBy and updatedBy on create and populates them in GET', async () => {
+    const created = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    // GET all dashboards
+    const allDashboards = await agent.get('/dashboards').expect(200);
+    const dashboard = allDashboards.body.find(d => d._id === created.body.id);
+    expect(dashboard.createdBy).toMatchObject({ email: user.email });
+    expect(dashboard.updatedBy).toMatchObject({ email: user.email });
+  });
+
+  it('populates updatedBy with a different user after DB update', async () => {
+    const created = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    // Create a second user on the same team
+    const secondUser = await User.create({
+      email: 'second@test.com',
+      name: 'Second User',
+      team: team._id,
+    });
+
+    // Simulate a different user updating the dashboard
+    await Dashboard.findByIdAndUpdate(created.body.id, {
+      updatedBy: secondUser._id,
+    });
+
+    const allDashboards = await agent.get('/dashboards').expect(200);
+    const dashboard = allDashboards.body.find(d => d._id === created.body.id);
+    expect(dashboard.createdBy).toMatchObject({ email: user.email });
+    expect(dashboard.updatedBy).toMatchObject({
+      email: 'second@test.com',
+    });
   });
 
   it('can update a dashboard', async () => {
