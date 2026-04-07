@@ -6,7 +6,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Center, Divider, Paper, Text } from '@mantine/core';
+import { Accordion, Divider, Text } from '@mantine/core';
 import { IconCode, IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -19,6 +19,7 @@ import { DBPieChart } from '@/components/DBPieChart';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import EmptyState from '@/components/EmptyState';
 import { getFirstTimestampValueExpression } from '@/source';
 import {
   orderByStringToSortingState,
@@ -95,14 +96,11 @@ export function ChartPreviewPanel({
   return (
     <>
       {!queryReady && activeTab !== 'markdown' ? (
-        <Paper shadow="xs" p="xl">
-          <Center mih={400}>
-            <Text size="sm">
-              Please start by selecting a database, table, and timestamp column
-              above and then click the play button to query data.
-            </Text>
-          </Center>
-        </Paper>
+        <EmptyState
+          description="Please start by defining your chart above and then click the play button to query data."
+          variant="card"
+          fullWidth
+        />
       ) : undefined}
       {queryReady && queriedConfig != null && activeTab === 'table' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>

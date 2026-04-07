@@ -89,16 +89,14 @@ describe('ChartPreviewPanel', () => {
     it('should show placeholder message', () => {
       renderPanel({ queriedConfig: undefined });
 
-      expect(
-        screen.getByText(/please start by selecting/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/please start by defining/i)).toBeInTheDocument();
     });
 
     it('should not show placeholder for markdown tab', () => {
       renderPanel({ queriedConfig: undefined, activeTab: 'markdown' });
 
       expect(
-        screen.queryByText(/please start by selecting/i),
+        screen.queryByText(/please start by defining/i),
       ).not.toBeInTheDocument();
     });
   });
