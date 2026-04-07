@@ -3,6 +3,7 @@ import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
+import { env } from 'next-runtime-env';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
 import { QueryParamProvider } from 'use-query-params';
@@ -16,7 +17,7 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { DynamicFavicon } from '@/components/DynamicFavicon';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
 import {
   DEFAULT_FONT_VAR,
   FONT_VAR_MAP,
@@ -136,12 +137,19 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       .then(res => res.json())
       .then((_jsonData?: NextApiConfigResponseData) => {
         if (_jsonData?.apiKey) {
+          const frontendAttrs = parseResourceAttributes(
+            env('NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES') ?? '',
+          );
           HyperDX.init({
             apiKey: _jsonData.apiKey,
             consoleCapture: true,
             maskAllInputs: true,
             maskAllText: true,
+            // service.version is applied last so it always reflects the
+            // NEXT_PUBLIC_APP_VERSION and cannot be overridden by
+            // NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES.
             otelResourceAttributes: {
+              ...frontendAttrs,
               'service.version': process.env.NEXT_PUBLIC_APP_VERSION,
             },
             service: _jsonData.serviceName,
