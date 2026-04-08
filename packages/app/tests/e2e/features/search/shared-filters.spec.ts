@@ -26,31 +26,17 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     await expect(sharedSection).toBeHidden();
   });
 
-  test('Pinning a field shows it in the shared filters section', async () => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+  test('Sharing a field with team shows it in the shared filters section', async () => {
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
 
-    // Shared filters section should appear with the pinned field
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
     await expect(sharedSection).toContainText(TEST_FILTER_GROUP);
   });
 
-  test('Pinning a value shows it in the shared filters section', async () => {
-    // Pin a specific value
-    await searchPage.filters.pinFilter(TEST_FILTER_GROUP, TEST_FILTER_VALUE);
+  test('Shared field persists after page reload', async ({ page }) => {
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
 
-    // Shared filters section should appear
-    const sharedSection = searchPage.filters.getSharedFiltersSection();
-    await expect(sharedSection).toBeVisible();
-    await expect(sharedSection).toContainText(TEST_FILTER_GROUP);
-  });
-
-  test('Pinned field persists after page reload', async ({ page }) => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
-
-    // The shared filters section should appear (confirms the pin happened locally)
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
     await expect(sharedSection).toContainText(TEST_FILTER_GROUP);
@@ -81,11 +67,9 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     await expect(sharedSectionAfterReload).toContainText(TEST_FILTER_GROUP);
   });
 
-  test('Pinned field is removed from the main filters list', async () => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+  test('Shared field is removed from the main filters list', async () => {
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
 
-    // The field should appear in shared filters
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
 
@@ -95,18 +79,16 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     await expect(mainFilterGroup).toBeHidden();
   });
 
-  test('Unpinning a field removes it from the shared filters section', async () => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+  test('Unsharing a field removes it from the shared filters section', async () => {
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
 
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
 
-    // Unpin the field by clicking the pin icon in the shared filters section
-    const sharedGroup = sharedSection.locator(`button[title="Unpin Field"]`);
-    await sharedGroup.first().click();
+    // Unshare the field via the PinShareMenu dropdown
+    await searchPage.filters.unshareField(TEST_FILTER_GROUP);
 
-    // Shared filters section should disappear (no more pinned fields)
+    // Shared filters section should disappear (no more shared fields)
     await expect(sharedSection).toBeHidden();
 
     // The field should reappear in the main filters list
@@ -116,8 +98,7 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
   });
 
   test('Filter settings gear allows toggling shared filters visibility', async () => {
-    // Pin a field first so shared filters section appears
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
 
@@ -136,15 +117,14 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     // Shared filters section should be hidden
     await expect(sharedSection).toBeHidden();
 
-    // The pinned field should reappear in the main filters list
+    // The shared field should reappear in the main filters list
     const mainFilterGroup =
       searchPage.filters.getFilterGroup(TEST_FILTER_GROUP);
     await expect(mainFilterGroup).toBeVisible();
   });
 
   test('Applying a filter in the shared section works', async () => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
 
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
@@ -163,9 +143,8 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     await expect(filterInput).toBeChecked({ timeout: 10000 });
   });
 
-  test('Reset shared filters clears all pinned fields', async () => {
-    // Pin a field
-    await searchPage.filters.pinField(TEST_FILTER_GROUP);
+  test('Reset shared filters clears all shared fields', async () => {
+    await searchPage.filters.shareFieldWithTeam(TEST_FILTER_GROUP);
     const sharedSection = searchPage.filters.getSharedFiltersSection();
     await expect(sharedSection).toBeVisible();
 
@@ -175,12 +154,15 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     });
     await settingsButton.click();
 
-    const resetButton = searchPage.page.getByRole('button', {
-      name: 'Reset Shared Filters',
-    });
-    await resetButton.click();
+    // Click "Reset Shared Filters" — this opens a confirmation
+    await searchPage.page
+      .getByText('Reset Shared Filters', { exact: true })
+      .click();
+
+    // Click "Confirm" to actually execute the reset
+    await searchPage.page.getByText('Confirm', { exact: true }).click();
 
     // Shared filters section should disappear after the reset takes effect
-    await expect(sharedSection).toBeHidden();
+    await expect(sharedSection).toBeHidden({ timeout: 5000 });
   });
 });

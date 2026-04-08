@@ -903,66 +903,70 @@ function FilterGroupActions({
   onToggleSharedFieldPin,
   onClearClick,
 }: FilterGroupActionsProps) {
-  if (hasRange) return null;
-
   return (
     <Group gap={0} wrap="nowrap">
-      <Tooltip
-        label={showDistributions ? 'Hide Distribution' : 'Show Distribution'}
-        position="top"
-        withArrow
-        fz="xxs"
-        color="gray"
-      >
-        <ActionIcon
-          size="xs"
-          variant="subtle"
-          color="gray"
-          onClick={toggleShowDistributions}
-          data-testid={`toggle-distribution-button-${name}`}
-          aria-checked={showDistributions}
-          role="checkbox"
-        >
-          {isFetchingDistribution ? (
-            <Center>
-              <IconRefresh className="spin-animate" size={12} />
-            </Center>
-          ) : showDistributions ? (
-            <IconChartBarOff size={14} />
-          ) : (
-            <IconChartBar size={14} />
-          )}
-        </ActionIcon>
-      </Tooltip>
-      {onColumnToggle && (
-        <Tooltip
-          label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
-          position="top"
-          withArrow
-          fz="xxs"
-          color="gray"
-        >
-          <ActionIcon
-            size="xs"
-            variant="subtle"
+      {!hasRange && (
+        <>
+          <Tooltip
+            label={
+              showDistributions ? 'Hide Distribution' : 'Show Distribution'
+            }
+            position="top"
+            withArrow
+            fz="xxs"
             color="gray"
-            onClick={onColumnToggle}
-            data-testid={`toggle-column-button-${name}`}
           >
-            {isColumnDisplayed ? (
-              <IconMinus size={14} />
-            ) : (
-              <IconPlus size={14} />
-            )}
-          </ActionIcon>
-        </Tooltip>
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              onClick={toggleShowDistributions}
+              data-testid={`toggle-distribution-button-${name}`}
+              aria-checked={showDistributions}
+              role="checkbox"
+            >
+              {isFetchingDistribution ? (
+                <Center>
+                  <IconRefresh className="spin-animate" size={12} />
+                </Center>
+              ) : showDistributions ? (
+                <IconChartBarOff size={14} />
+              ) : (
+                <IconChartBar size={14} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+          {onColumnToggle && (
+            <Tooltip
+              label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
+              position="top"
+              withArrow
+              fz="xxs"
+              color="gray"
+            >
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                onClick={onColumnToggle}
+                data-testid={`toggle-column-button-${name}`}
+              >
+                {isColumnDisplayed ? (
+                  <IconMinus size={14} />
+                ) : (
+                  <IconPlus size={14} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <PinShareMenu
+            personalPinned={isFieldPinned}
+            sharedPinned={isSharedFieldPinned}
+            onTogglePersonalPin={onFieldPinClick}
+            onToggleSharedPin={onToggleSharedFieldPin}
+          />
+        </>
       )}
-      <PinShareMenu
-        personalPinned={isFieldPinned}
-        sharedPinned={isSharedFieldPinned}
-        onTogglePersonalPin={onFieldPinClick}
-        onToggleSharedPin={onToggleSharedFieldPin}
-      />
       {totalAppliedFiltersSize > 0 && (
         <Tooltip
           label="Clear Filters"

@@ -682,6 +682,17 @@ export function usePinnedFilters(sourceId: string | null) {
     null,
   );
 
+  // Cancel pending debounced writes when sourceId changes or component unmounts,
+  // preventing stale mutations from firing against the wrong source.
+  useEffect(() => {
+    return () => {
+      if (pendingTeamUpdateRef.current) {
+        clearTimeout(pendingTeamUpdateRef.current);
+        pendingTeamUpdateRef.current = null;
+      }
+    };
+  }, [sourceId]);
+
   const flushTeamUpdate = useCallback(
     (newFields: string[], newFilters: PinnedFilters) => {
       if (!sourceId) return;
