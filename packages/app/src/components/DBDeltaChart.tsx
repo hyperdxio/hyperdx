@@ -478,7 +478,7 @@ export default function DBDeltaChart({
       {/* Legend */}
       <Flex gap="md" align="center" mt={2} mb="xs" wrap="wrap">
         {legendPrefix}
-        {legendPrefix && (
+        {!!legendPrefix && (
           <Box
             h={12}
             style={{

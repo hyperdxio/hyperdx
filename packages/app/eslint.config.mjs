@@ -125,6 +125,7 @@ export default [
       ...eslintReactPlugin.configs.recommended.rules,
       // Disable rules from eslint-plugin-react-hooks that have equivalent rules in @eslint-react
       ...eslintReactPlugin.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
+      ...eslintReactPlugin.configs['recommended-type-checked'].rules,
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'error',
       'react-hook-form/no-use-watch': 'error',
