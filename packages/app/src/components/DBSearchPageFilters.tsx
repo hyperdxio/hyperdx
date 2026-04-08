@@ -1390,9 +1390,8 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, setExtraFacets, dateRange, metadata, source],
   );
 
-  // Build the set of fields shown in the Shared Filters section (union of
-  // team + personal pinned fields) so we can avoid duplicating them below.
-  // Build the set of team-pinned fields for the Shared Filters section.
+  // Build the set of team-pinned fields for the Shared Filters section,
+  // so we can avoid duplicating them in the regular Filters list below.
   const sharedFilterKeys = useMemo(() => {
     if (!isSharedFiltersVisible || !pinnedFiltersApiData?.team) {
       return new Set<string>();

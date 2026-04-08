@@ -7,6 +7,7 @@ import {
   getPinnedFilters,
   updatePinnedFilters,
 } from '@/controllers/pinnedFilter';
+import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -27,6 +28,12 @@ router.get(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
       const source = req.query.source as string;
+
+      // Verify the source belongs to this team
+      const sourceDoc = await getSource(teamId.toString(), source);
+      if (!sourceDoc) {
+        return res.status(404).json({ error: 'Source not found' });
+      }
 
       const doc = await getPinnedFilters(teamId.toString(), source);
 
@@ -64,6 +71,12 @@ router.put(
       const source = req.body.source as string;
       const fields = req.body.fields as string[];
       const filters = req.body.filters as Record<string, (string | boolean)[]>;
+
+      // Verify the source belongs to this team
+      const sourceDoc = await getSource(teamId.toString(), source);
+      if (!sourceDoc) {
+        return res.status(404).json({ error: 'Source not found' });
+      }
 
       const doc = await updatePinnedFilters(teamId.toString(), source, {
         fields,

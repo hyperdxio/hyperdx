@@ -1,10 +1,22 @@
-import mongoose from 'mongoose';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import { Source } from '@/models/source';
+
+const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
+  kind: SourceKind.Log,
+  name: 'Test Source',
+  connection: new Types.ObjectId().toString(),
+  from: { databaseName: 'test_db', tableName: 'test_table' },
+  timestampValueExpression: 'timestamp',
+  defaultTableSelectExpression: 'body',
+};
 
 describe('pinnedFilters router', () => {
   const server = getServer();
   let agent: Awaited<ReturnType<typeof getLoggedInAgent>>['agent'];
+  let team: Awaited<ReturnType<typeof getLoggedInAgent>>['team'];
   let sourceId: string;
 
   beforeAll(async () => {
@@ -14,7 +26,11 @@ describe('pinnedFilters router', () => {
   beforeEach(async () => {
     const result = await getLoggedInAgent(server);
     agent = result.agent;
-    sourceId = new mongoose.Types.ObjectId().toString();
+    team = result.team;
+
+    // Create a real source owned by this team
+    const source = await Source.create({ ...MOCK_SOURCE, team: team._id });
+    sourceId = source._id.toString();
   });
 
   afterEach(async () => {
@@ -40,6 +56,11 @@ describe('pinnedFilters router', () => {
 
     it('rejects missing source param', async () => {
       await agent.get('/pinned-filters').expect(400);
+    });
+
+    it('returns 404 for a source not owned by the team', async () => {
+      const foreignSourceId = new Types.ObjectId().toString();
+      await agent.get(`/pinned-filters?source=${foreignSourceId}`).expect(404);
     });
   });
 
@@ -88,12 +109,16 @@ describe('pinnedFilters router', () => {
     it('rejects invalid source id', async () => {
       await agent
         .put('/pinned-filters')
-        .send({
-          source: 'not-valid',
-          fields: [],
-          filters: {},
-        })
+        .send({ source: 'not-valid', fields: [], filters: {} })
         .expect(400);
+    });
+
+    it('returns 404 for a source not owned by the team', async () => {
+      const foreignSourceId = new Types.ObjectId().toString();
+      await agent
+        .put('/pinned-filters')
+        .send({ source: foreignSourceId, fields: [], filters: {} })
+        .expect(404);
     });
   });
 
@@ -144,7 +169,7 @@ describe('pinnedFilters router', () => {
 
   describe('source scoping', () => {
     it('pins are scoped to their source', async () => {
-      const sourceId2 = new mongoose.Types.ObjectId().toString();
+      const source2 = await Source.create({ ...MOCK_SOURCE, team: team._id });
 
       await agent
         .put('/pinned-filters')
@@ -156,12 +181,17 @@ describe('pinnedFilters router', () => {
         .expect(200);
 
       const res = await agent
-        .get(`/pinned-filters?source=${sourceId2}`)
+        .get(`/pinned-filters?source=${source2._id}`)
         .expect(200);
 
       expect(res.body.team).toBeNull();
     });
   });
+
+  // Note: cross-team isolation (Team B cannot read Team A's pins) is enforced
+  // by the MongoDB query filtering on teamId AND the source ownership check
+  // (getSource validates source.team === teamId). Multi-team integration tests
+  // are not possible in this single-team environment (register returns 409).
 
   describe('filter values with booleans', () => {
     it('supports boolean values in filters', async () => {

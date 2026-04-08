@@ -652,19 +652,23 @@ export function usePinnedFilters(sourceId: string | null) {
   const { data: teamApiData } = usePinnedFiltersApi(sourceId);
   const updateTeamMutation = useUpdatePinnedFilters();
 
-  // Optimistic state for team mutations (API has network latency)
+  // Optimistic state keyed by sourceId so it is automatically ignored when
+  // the source changes — no useEffect needed to clear stale state.
   const [optimisticTeam, setOptimisticTeam] = useState<{
+    sourceId: string;
     fields: string[];
     filters: PinnedFilters;
   } | null>(null);
 
   const effectiveTeam = useMemo(
     () =>
-      optimisticTeam ?? {
-        fields: teamApiData?.team?.fields ?? [],
-        filters: teamApiData?.team?.filters ?? {},
-      },
-    [optimisticTeam, teamApiData],
+      optimisticTeam?.sourceId === sourceId
+        ? { fields: optimisticTeam.fields, filters: optimisticTeam.filters }
+        : {
+            fields: teamApiData?.team?.fields ?? [],
+            filters: teamApiData?.team?.filters ?? {},
+          },
+    [optimisticTeam, sourceId, teamApiData],
   );
 
   // Merge team + personal into a unified view for read operations
@@ -677,13 +681,11 @@ export function usePinnedFilters(sourceId: string | null) {
     [effectiveTeam, personal.fields, personal.filters],
   );
 
-  // Debounce for team API writes
+  // Debounce for team API writes — cancelled on unmount to prevent stale writes.
   const pendingTeamUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
 
-  // Cancel pending debounced writes when sourceId changes or component unmounts,
-  // preventing stale mutations from firing against the wrong source.
   useEffect(() => {
     return () => {
       if (pendingTeamUpdateRef.current) {
@@ -691,13 +693,13 @@ export function usePinnedFilters(sourceId: string | null) {
         pendingTeamUpdateRef.current = null;
       }
     };
-  }, [sourceId]);
+  }, []);
 
   const flushTeamUpdate = useCallback(
     (newFields: string[], newFilters: PinnedFilters) => {
       if (!sourceId) return;
 
-      setOptimisticTeam({ fields: newFields, filters: newFilters });
+      setOptimisticTeam({ sourceId, fields: newFields, filters: newFilters });
 
       if (pendingTeamUpdateRef.current) {
         clearTimeout(pendingTeamUpdateRef.current);
