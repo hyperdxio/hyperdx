@@ -449,13 +449,27 @@ jobs:
           CLI_VERSION=$(node -p "require('./packages/cli/package.json').version")
           echo "version=${CLI_VERSION}" >> $GITHUB_OUTPUT
           echo "CLI version: ${CLI_VERSION}"
+      - name: Check if CLI release already exists
+        id: check_cli_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "cli-v${{ steps.cli_version.outputs.version }}" > /dev/null 2>&1; then
+            echo "Release cli-v${{ steps.cli_version.outputs.version }} already exists. Skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release does not exist. Proceeding."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
       - name: Compile CLI binaries
+        if: steps.check_cli_release.outputs.exists == 'false'
         working-directory: packages/cli
         run: |
           yarn compile:linux
           yarn compile:macos
           yarn compile:macos-x64
       - name: Create GitHub Release
+        if: steps.check_cli_release.outputs.exists == 'false'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           tag_name: cli-v${{ steps.cli_version.outputs.version }}
