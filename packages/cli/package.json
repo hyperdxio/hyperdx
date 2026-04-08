@@ -25,10 +25,13 @@
     "compile:macos": "bun build src/cli.tsx --compile --target=bun-darwin-arm64 --outfile dist/hdx-darwin-arm64",
     "compile:macos-x64": "bun build src/cli.tsx --compile --target=bun-darwin-x64 --outfile dist/hdx-darwin-x64"
   },
-  "dependencies": {
+  "devDependencies": {
     "@clickhouse/client": "^1.12.1",
     "@clickhouse/client-common": "^1.12.1",
     "@hyperdx/common-utils": "^0.17.0",
+    "@types/crypto-js": "^4.2.2",
+    "@types/react": "^19.0.0",
+    "@types/sqlstring": "^2.3.2",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "crypto-js": "^4.2.0",
@@ -38,12 +41,7 @@
     "ink-text-input": "^6.0.0",
     "react": "^19.0.0",
     "react-devtools-core": "^7.0.1",
-    "sqlstring": "^2.3.3"
-  },
-  "devDependencies": {
-    "@types/crypto-js": "^4.2.2",
-    "@types/react": "^19.0.0",
-    "@types/sqlstring": "^2.3.2",
+    "sqlstring": "^2.3.3",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3"
