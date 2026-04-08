@@ -10,7 +10,7 @@ export const useStableCallback = <T extends (...args: any[]) => any>(
   });
 
   return useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    // eslint-disable-next-line react-hooks/use-memo, @typescript-eslint/no-unsafe-type-assertion
     ((...args: Parameters<T>) => callbackRef.current(...args)) as T,
     [],
   );

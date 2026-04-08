@@ -28,6 +28,7 @@ export const QueryParamProvider = ({
 
   const setState = useCallback(
     (state: Record<string, any>) => {
+      // eslint-disable-next-line react-hooks/immutability
       setCache(oldCache => {
         const newCache = {
           ...oldCache,
