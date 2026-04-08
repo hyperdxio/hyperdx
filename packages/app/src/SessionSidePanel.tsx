@@ -91,7 +91,10 @@ export default function SessionSidePanel({
       className="border-start"
     >
       <ZIndexContext.Provider value={zIndex}>
-        <div className="d-flex flex-column h-100">
+        <div
+          className="d-flex flex-column h-100"
+          data-testid="session-side-panel"
+        >
           <div>
             <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
               <div style={{ width: '50%', maxWidth: 500 }}>

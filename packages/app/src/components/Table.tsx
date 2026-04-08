@@ -25,7 +25,7 @@ type TableProps<T extends Record<string, unknown> | string[]> = {
 
 // TODO: Retire this component in favor of Mantine
 export const Table = <T extends Record<string, unknown> | string[]>({
-  data = [],
+  data,
   columns,
   emptyMessage,
   hideHeader,
@@ -35,13 +35,13 @@ export const Table = <T extends Record<string, unknown> | string[]>({
   tableMeta,
 }: TableProps<T>) => {
   const table = useReactTable({
-    data,
+    data: data ?? [],
     columns,
     meta: tableMeta,
     getCoreRowModel: getCoreRowModel(),
   });
 
-  if (!data.length) {
+  if (!data?.length) {
     return <div className={styles.emptyMessage}>{emptyMessage}</div>;
   }
 
@@ -114,7 +114,7 @@ export const TableCellButton: React.FC<{
 }> = ({ onClick, title, label, biIcon }) => {
   return (
     <button className={styles.tableCellButton} title={title} onClick={onClick}>
-      {label && <span>{label}</span>}
+      {!!label && <span>{label}</span>}
       {biIcon === 'chevron-up' && <IconChevronUp size={14} />}
       {biIcon === 'chevron-down' && <IconChevronDown size={14} />}
     </button>

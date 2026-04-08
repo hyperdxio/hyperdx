@@ -1,23 +1,12 @@
-import { z } from 'zod';
 import {
   Alert,
   AlertsPageItem as _AlertsPageItem,
   BuilderChartConfig,
   Filter,
   NumberFormat as _NumberFormat,
-  SavedSearchSchema,
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
-
-type KeyValuePairs = {
-  'bool.names': string[];
-  'bool.values': number[];
-  'number.names': string[];
-  'number.values': number[];
-  'string.names': string[];
-  'string.values': string[];
-};
 
 export type AlertsPageItem = _AlertsPageItem;
 
@@ -26,12 +15,6 @@ export type AlertWithCreatedBy = Alert & {
     email: string;
     name?: string;
   };
-};
-
-export type SavedSearch = z.infer<typeof SavedSearchSchema>;
-
-export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
-  alerts?: AlertWithCreatedBy[];
 };
 
 export type SearchConfig = {

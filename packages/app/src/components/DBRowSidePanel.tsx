@@ -107,7 +107,7 @@ const DBRowSidePanel = ({
   isNestedPanel = false,
   setSubDrawerOpen,
   onClose,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
@@ -127,7 +127,7 @@ const DBRowSidePanel = ({
   const handleBreadcrumbClick = useCallback(
     (targetLevel: number) => {
       // Current panel's level in the hierarchy
-      const currentLevel = breadcrumbPath.length;
+      const currentLevel = breadcrumbPath?.length ?? 0;
 
       // The target panel level corresponds to the breadcrumb index:
       // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
@@ -149,7 +149,7 @@ const DBRowSidePanel = ({
         onBreadcrumbClick?.(targetLevel);
       }
     },
-    [breadcrumbPath.length, onBreadcrumbClick, onClose],
+    [breadcrumbPath?.length, onBreadcrumbClick, onClose],
   );
 
   const hasOverviewPanel = useMemo(() => {
@@ -326,6 +326,7 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
         />
@@ -505,9 +506,11 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <div className="overflow-hidden flex-grow-1">
+          <div
+            className="overflow-hidden flex-grow-1"
+            data-testid="side-panel-tab-replay"
+          >
             <DBSessionPanel
-              data-testid="side-panel-tab-replay"
               dateRange={fourHourRange}
               focusDate={focusDate}
               setSubDrawerOpen={setSubDrawerOpen}
@@ -550,7 +553,7 @@ export default function DBRowSidePanelErrorBoundary({
   aliasWith,
   source,
   isNestedPanel,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
@@ -589,7 +592,6 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withOverlay={!isNestedPanel}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();

@@ -43,7 +43,7 @@ const SettingContainer = ({
     <Group align="center" justify="space-between">
       <div style={{ flex: 1 }}>
         {label}
-        {description && (
+        {!!description && (
           <Text size="xs" mt={2}>
             {description}
           </Text>
