@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 
-export const mcpTileSelectItemSchema = z.object({
+const mcpTileSelectItemSchema = z.object({
   aggFn: z
     .enum([
       'avg',
@@ -40,7 +40,7 @@ export const mcpTileSelectItemSchema = z.object({
     .describe('Percentile level for aggFn="quantile"'),
 });
 
-export const mcpTileLayoutSchema = z.object({
+const mcpTileLayoutSchema = z.object({
   name: z.string().describe('Tile title shown on the dashboard'),
   x: z
     .number()
@@ -75,7 +75,7 @@ export const mcpTileLayoutSchema = z.object({
     .describe('Tile ID (auto-generated if omitted)'),
 });
 
-export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
+const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('line').describe('Line chart over time'),
     sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
@@ -104,7 +104,7 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
+const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z
       .literal('stacked_bar')
@@ -118,7 +118,7 @@ export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpTableTileSchema = mcpTileLayoutSchema.extend({
+const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('table').describe('Tabular aggregated data'),
     sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
@@ -135,7 +135,7 @@ export const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpNumberFormatSchema = z
+const mcpNumberFormatSchema = z
   .object({
     output: z
       .enum(['currency', 'percent', 'byte', 'time', 'number'])
@@ -184,7 +184,7 @@ export const mcpNumberFormatSchema = z
       'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
   );
 
-export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
+const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
     sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
@@ -201,7 +201,7 @@ export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpPieTileSchema = mcpTileLayoutSchema.extend({
+const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('pie').describe('Pie chart'),
     sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
@@ -216,7 +216,7 @@ export const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
+const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
     sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
@@ -236,14 +236,14 @@ export const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
+const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
     markdown: z.string().optional().default(''),
   }),
 });
 
-export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
+const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     configType: z
       .literal('sql')
@@ -277,7 +277,7 @@ export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpTileSchema = z.union([
+const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
   mcpTableTileSchema,

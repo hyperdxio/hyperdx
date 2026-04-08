@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── Shared schemas ──────────────────────────────────────────────────────────
 
-export const mcpAggFnSchema = z
+const mcpAggFnSchema = z
   .enum([
     'avg',
     'count',
@@ -24,7 +24,7 @@ export const mcpAggFnSchema = z
       '  none – pass a raw expression through unchanged',
   );
 
-export const mcpSelectItemSchema = z.object({
+const mcpSelectItemSchema = z.object({
   aggFn: mcpAggFnSchema,
   valueExpression: z
     .string()
@@ -61,7 +61,7 @@ export const mcpSelectItemSchema = z.object({
     ),
 });
 
-export const mcpTimeRangeSchema = z.object({
+const mcpTimeRangeSchema = z.object({
   startTime: z
     .string()
     .optional()
@@ -77,7 +77,7 @@ export const mcpTimeRangeSchema = z.object({
 
 // ─── Discriminated union schema for hyperdx_query ───────────────────────────
 
-export const builderQuerySchema = mcpTimeRangeSchema.extend({
+const builderQuerySchema = mcpTimeRangeSchema.extend({
   displayType: z
     .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
     .describe(
@@ -126,7 +126,7 @@ export const builderQuerySchema = mcpTimeRangeSchema.extend({
     ),
 });
 
-export const searchQuerySchema = mcpTimeRangeSchema.extend({
+const searchQuerySchema = mcpTimeRangeSchema.extend({
   displayType: z
     .literal('search')
     .describe('Search and filter individual log/event rows'),
@@ -167,7 +167,7 @@ export const searchQuerySchema = mcpTimeRangeSchema.extend({
     ),
 });
 
-export const sqlQuerySchema = mcpTimeRangeSchema.extend({
+const sqlQuerySchema = mcpTimeRangeSchema.extend({
   displayType: z
     .literal('sql')
     .describe(

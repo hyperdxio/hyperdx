@@ -49,7 +49,7 @@ function isEmptyResult(result: unknown): boolean {
   return false;
 }
 
-export function formatQueryResult(result: unknown) {
+function formatQueryResult(result: unknown) {
   const trimmedResult = trimToolResponse(result);
   const isTrimmed =
     JSON.stringify(trimmedResult).length < JSON.stringify(result).length;

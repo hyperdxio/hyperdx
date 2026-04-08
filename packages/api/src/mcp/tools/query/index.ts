@@ -8,9 +8,6 @@ import type { ToolDefinition } from '../types';
 import { parseTimeRange, runConfigTile } from './helpers';
 import { hyperdxQuerySchema } from './schemas';
 
-// Re-export helpers consumed by other tool files (e.g. dashboards/queryTile.ts)
-export { parseTimeRange, runConfigTile } from './helpers';
-
 // ─── Tool definition ─────────────────────────────────────────────────────────
 
 const queryTools: ToolDefinition = (server, context) => {
