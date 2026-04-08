@@ -7,6 +7,8 @@ import type { ObjectId } from '.';
 export interface IDashboard extends z.infer<typeof DashboardSchema> {
   _id: ObjectId;
   team: ObjectId;
+  createdBy?: ObjectId;
+  updatedBy?: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +34,16 @@ export default mongoose.model<IDashboard>(
       savedQueryLanguage: { type: String, required: false },
       savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
       containers: { type: mongoose.Schema.Types.Array, required: false },
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
     },
     {
       timestamps: true,

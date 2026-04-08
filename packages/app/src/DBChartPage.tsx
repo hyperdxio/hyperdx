@@ -166,7 +166,6 @@ function AIAssistant({
       </Group>
       <Collapse in={opened}>
         {opened && (
-          // eslint-disable-next-line react-hooks/refs
           <form onSubmit={handleSubmit(onSubmit)}>
             <Group mb="md">
               <SourceSelectControlled
@@ -253,6 +252,7 @@ function DBChartExplorerPage() {
         onTimeRangeSearch={onSearch}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
+        autoRun
       />
     </Box>
   );

@@ -1,5 +1,58 @@
 # @hyperdx/app
 
+## 2.23.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 20e47207: feat: Add input filter pills below search input to make filters usage more clear on seach page.
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- bfc93811: feat: Group Dashboards and Searches by Tag
+- 859ced5c: feat: Chart Explorer now auto-executes the chart on load when a valid source is configured. Deeplinks render results without requiring a manual click.
+- e6a0455a: fix: Properly enable line wrap behavior in JSON viewer by default
+- 518bda7d: feat: Add dashboard template gallery
+- 676e4f4b: fix: differentiate map indexing vs array indexing
+- 9852e9b0: perf: Defer expensive hooks in collapsed filter groups and virtualize nested filter lists
+- 5e5c6a94: fix: slider thumb and mark styling not applying theme tokens
+
+  - Move slider thumb styling from classNames to inline styles to fix CSS specificity issue where Mantine defaults override theme tokens
+  - Add !important to slider mark styles to ensure token-based colors apply
+  - Fix vertical centering of 6px slider mark dots within the 8px track
+  - Remove broken translateX/translateY nudge that misaligned marks
+
+- 4e54d850: fix: show Map sub-fields in facet panel for non-LowCardinality value types
+- 011a245f: fix: Fix error state and table overflows
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 05a1b765: fix: optimize order by should factor in wider cases, including the
+  default otel_traces
+- 48a8d32b: fix: Fixed bug preventing clicking into rows with nullable date types (and other misc type) columns.
+- a55b151e: fix: render clickhouse keywords properly in codemirror
+- 9cfb7e9c: fix: move help menu from footer to main nav links
+- 308da30b: feat: Add $\_\_sourceTable macro
+- 2bb8ccdc: fix: Fix query error when searching nested JSON values
+- df170d1e: fix: Show error on DBInfraPanel when correlated metric source is missing
+- e5c7fdf9: feat: Add saved searches listing page
+- 0cc1295d: fix: Add source schema preview to SQL Charts and Trace Panel
+- 1b77eab9: fix: replace sidebar collapse icons to align with ClickHouse collapse patterns
+- 853da16a: fix: Fix flaky E2E tests
+- b4e1498e: fix: Fix minor bugs in chart editor
+- bb24994f: feat: use 1 minute window for searches
+- Updated dependencies [518bda7d]
+- Updated dependencies [4e54d850]
+- Updated dependencies [53ba1e39]
+- Updated dependencies [b7581db8]
+- Updated dependencies [48a8d32b]
+- Updated dependencies [a15122b3]
+- Updated dependencies [a55b151e]
+- Updated dependencies [308da30b]
+- Updated dependencies [e5c7fdf9]
+- Updated dependencies [941d0450]
+  - @hyperdx/common-utils@0.17.0
+
 ## 2.22.1
 
 ### Patch Changes

@@ -13,10 +13,12 @@ function AggFnSelect({
   value,
   defaultValue,
   onChange,
+  hideCustom,
 }: {
   value: string;
   defaultValue: string;
   onChange: (value: OnChangeValue) => void;
+  hideCustom?: boolean;
 }) {
   const _onChange = useCallback(
     (value: string | null) => {
@@ -42,7 +44,7 @@ function AggFnSelect({
       value={value}
       defaultValue={defaultValue}
       onChange={_onChange}
-      data={AGG_FNS}
+      data={hideCustom ? AGG_FNS.filter(fn => fn.value !== 'none') : AGG_FNS}
       data-testid="agg-fn-select"
     />
   );
@@ -52,11 +54,13 @@ export function AggFnSelectControlled({
   aggFnName,
   quantileLevelName,
   defaultValue,
+  hideCustom,
   ...props
 }: {
   defaultValue: string;
   aggFnName: string;
   quantileLevelName: string;
+  hideCustom?: boolean;
 } & Omit<UseControllerProps<any>, 'name'>) {
   const {
     field: { onChange: onAggFnChange, value: aggFnValue },
@@ -96,6 +100,7 @@ export function AggFnSelectControlled({
       value={value}
       defaultValue={defaultValue}
       onChange={onChange}
+      hideCustom={hideCustom}
     />
   );
 }

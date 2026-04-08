@@ -152,15 +152,20 @@ function usePatterns({
     limit: { limit: samples },
   });
 
-  const { data: sampleRows, isLoading: isSampleLoading } =
-    useQueriedChartConfig(
-      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-    );
+  const {
+    data: sampleRows,
+    isLoading: isSampleLoading,
+    error: sampleError,
+  } = useQueriedChartConfig(
+    configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+    { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+  );
 
-  const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
-    enabled,
-  });
+  const {
+    data: pyodide,
+    isLoading: isLoadingPyodide,
+    error: pyodideError,
+  } = usePyodide({ enabled });
 
   const query = useQuery({
     queryKey: ['patterns', config],
@@ -203,6 +208,7 @@ function usePatterns({
 
   return {
     ...query,
+    error: sampleError || pyodideError || query.error,
     isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
@@ -228,6 +234,7 @@ export function useGroupedPatterns({
   const {
     data: results,
     isLoading,
+    error,
     patternQueryConfig,
   } = usePatterns({
     config,
@@ -315,6 +322,7 @@ export function useGroupedPatterns({
   return {
     data: groupedResults,
     isLoading,
+    error,
     miner: results?.miner,
     sampledRowCount,
     patternQueryConfig,

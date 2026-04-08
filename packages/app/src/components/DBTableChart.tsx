@@ -31,7 +31,7 @@ export default function DBTableChart({
   queryKeyPrefix,
   onSortingChange,
   sort: controlledSort,
-  hiddenColumns = [],
+  hiddenColumns,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -137,7 +137,7 @@ export default function DBTableChart({
     }
 
     return Object.keys(rows?.[0])
-      .filter(key => !hiddenColumns.includes(key))
+      .filter(key => !hiddenColumns?.includes(key))
       .map(key => ({
         // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
         id: aliasMap.includes(key) ? `"${key}"` : key,
