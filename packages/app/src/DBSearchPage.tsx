@@ -1,6 +1,7 @@
 import {
   FormEvent,
   FormEventHandler,
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -2005,7 +2006,7 @@ function DBSearchPage() {
                             </Text>
                             <Grid>
                               {whereSuggestions!.map(s => (
-                                <>
+                                <Fragment key={s.corrected()}>
                                   <Grid.Col span={10}>
                                     <Text>{s.userMessage('where')}</Text>
                                   </Grid.Col>
@@ -2018,7 +2019,7 @@ function DBSearchPage() {
                                       Accept
                                     </Button>
                                   </Grid.Col>
-                                </>
+                                </Fragment>
                               ))}
                             </Grid>
                           </Box>
