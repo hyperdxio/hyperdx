@@ -1,3 +1,7 @@
+import {
+  displayTypeSupportsRawSqlAlerts,
+  isSqlTemplateValidForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
@@ -82,7 +86,17 @@ export const validateAlertInput = async (
     }
 
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
-      throw new Api400Error('Cannot create an alert on a raw SQL tile');
+      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL tiles are only supported for Line or Stacked Bar display types',
+        );
+      }
+
+      if (!isSqlTemplateValidForAlert(tile.config)) {
+        throw new Api400Error(
+          'Raw SQL alert queries must include time filters and interval parameters to be valid for alerts.',
+        );
+      }
     }
   }
 

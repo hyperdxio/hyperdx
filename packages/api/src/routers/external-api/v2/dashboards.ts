@@ -1,3 +1,8 @@
+import {
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+  isSqlTemplateValidForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
@@ -2053,11 +2058,15 @@ router.put(
         return res.sendStatus(404);
       }
 
-      // Delete alerts for tiles that are now raw SQL (unsupported) or were removed
+      // Delete alerts for tiles that now do not support alerts
       const newTileIdSet = new Set(internalTiles.map(t => t.id));
       const tileIdsToDeleteAlerts = [
         ...internalTiles
-          .filter(tile => isRawSqlSavedChartConfig(tile.config))
+          .filter(
+            tile =>
+              isRawSqlSavedChartConfig(tile.config) &&
+              !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
+          )
           .map(tile => tile.id),
         ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
       ];

@@ -610,6 +610,79 @@ describe('validateChartForm', () => {
     ).toHaveLength(0);
   });
 
+  it('errors when raw SQL chart has alert but SQL is missing time filters and interval', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        sqlTemplate: 'SELECT count() FROM logs',
+        connection: 'conn-1',
+        alert: {
+          interval: '1h',
+          threshold: 100,
+          thresholdType: 'above',
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      undefined,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'sqlTemplate',
+        message:
+          'Raw SQL alert queries must include time filters and interval parameters',
+      }),
+    );
+  });
+
+  it('does not error when raw SQL chart has alert and SQL includes required params', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        sqlTemplate:
+          'SELECT toStartOfInterval(ts, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() FROM logs WHERE ts >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND ts <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts',
+        connection: 'conn-1',
+        alert: {
+          interval: '1h',
+          threshold: 100,
+          thresholdType: 'above',
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      undefined,
+      setError,
+    );
+    expect(
+      errors.filter(
+        e => e.path === 'sqlTemplate' && e.message.includes('alert'),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('does not validate SQL template for alerts when no alert is configured', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        sqlTemplate: 'SELECT count() FROM logs',
+        connection: 'conn-1',
+        alert: undefined,
+      }),
+      undefined,
+      setError,
+    );
+    expect(
+      errors.filter(
+        e => e.path === 'sqlTemplate' && e.message.includes('alert'),
+      ),
+    ).toHaveLength(0);
+  });
+
   // ── Source validation ────────────────────────────────────────────────
 
   it('errors when builder chart has no source', () => {

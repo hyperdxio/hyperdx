@@ -6,6 +6,8 @@ import { z } from 'zod';
 export { default as objectHash } from 'object-hash';
 
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
+import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
 import {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
@@ -16,7 +18,9 @@ import {
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  DisplayType,
   QuerySettings,
+  RawSqlChartConfig,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -1011,4 +1015,35 @@ export function getDistributedTableArgs(
     database: stripQuotes(splitArgs[1]),
     table: stripQuotes(splitArgs[2]),
   };
+}
+
+export function displayTypeSupportsRawSqlAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+  );
+}
+
+export function displayTypeSupportsBuilderAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
+}
+
+export function isSqlTemplateValidForAlert(
+  chartConfig: RawSqlChartConfig,
+): boolean {
+  const sql = replaceMacros(chartConfig);
+  const hasInterval =
+    sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
+    sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
+  const hasTimeFilter =
+    sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+    sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
+  return hasInterval && hasTimeFilter;
 }

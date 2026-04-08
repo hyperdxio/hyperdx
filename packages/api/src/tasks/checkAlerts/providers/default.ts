@@ -1,4 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
@@ -108,13 +109,56 @@ async function getTileDetails(
   }
 
   if (isRawSqlSavedChartConfig(tile.config)) {
-    logger.warn({
-      tileId,
-      dashboardId: dashboard._id,
-      alertId: alert.id,
-      message: 'skipping alert with raw sql chart config, not supported',
-    });
-    return [];
+    if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+      logger.warn({
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+        message:
+          'skipping alert with raw sql chart config, only line/bar display types are supported',
+      });
+      return [];
+    }
+
+    // Raw SQL tiles store connection ID directly on the config
+    const connection = await Connection.findOne({
+      _id: tile.config.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for raw sql tile',
+        connectionId: tile.config.connection,
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    // Optionally look up source for filter/macro metadata
+    let source: ISource | undefined;
+    if (tile.config.source) {
+      const sourceDoc = await Source.findOne({
+        _id: tile.config.source,
+        team: alert.team,
+      });
+      if (sourceDoc) {
+        source = sourceDoc.toObject();
+      }
+    }
+
+    return [
+      connection,
+      {
+        alert,
+        source,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      },
+    ];
   }
 
   const source = await Source.findOne({

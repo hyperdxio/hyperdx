@@ -1,5 +1,6 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
+import { isSqlTemplateValidForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -75,6 +76,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alert',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -205,7 +207,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     form.displayType !== DisplayType.Markdown &&
-    !form.source
+    (!form.source || !source)
   ) {
     errors.push({ path: `source`, message: 'Source is required' });
   }
@@ -244,6 +246,23 @@ export const validateChartForm = (
         });
       }
     });
+  }
+
+  // Validate raw SQL alert has required time filters and interval parameters
+  if (isRawSqlChart && form.alert) {
+    const config = {
+      configType: 'sql',
+      sqlTemplate: form.sqlTemplate ?? '',
+      connection: form.connection ?? '',
+      from: source?.from,
+    } satisfies RawSqlChartConfig;
+    if (!isSqlTemplateValidForAlert(config)) {
+      errors.push({
+        path: `sqlTemplate`,
+        message:
+          'Raw SQL alert queries must include time filters and interval parameters',
+      });
+    }
   }
 
   // Validate number and pie charts only have one series

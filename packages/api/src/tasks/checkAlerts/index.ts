@@ -14,21 +14,27 @@ import {
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  aliasMapToWithClauses,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithOptDateRange,
+  ChartConfigWithOptDateRange,
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import { isString } from 'lodash';
+import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -78,6 +84,16 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
     isBuilderSavedChartConfig(details.tile.config) &&
     details.tile.config.groupBy &&
     details.tile.config.groupBy.length > 0
+  ) {
+    return true;
+  }
+
+  // Without a reliable parser, it's difficult to tell if the raw sql contains a
+  // group by (besides the group by on the interval), so we'll assume it might.
+  // Group name will be blank if there is no group by values.
+  if (
+    details.taskType === AlertTaskType.TILE &&
+    isRawSqlSavedChartConfig(details.tile.config)
   ) {
     return true;
   }
@@ -370,9 +386,10 @@ const shouldSkipAlertCheck = (
   // Skip if ANY previous history for this alert was created in the current window
   return Array.from(previousMap.entries()).some(([key, history]) => {
     // For grouped alerts, check any key that starts with alertId prefix
-    // For non-grouped alerts, check exact match with alertId
+    // or matches the bare alertId (empty group key case).
+    // For non-grouped alerts, check exact match with alertId.
     const isMatchingKey = hasGroupBy
-      ? key.startsWith(alertKeyPrefix)
+      ? key === alert.id || key.startsWith(alertKeyPrefix)
       : key === alert.id;
 
     return (
@@ -394,11 +411,11 @@ const getAlertEvaluationDateRange = (
   // Find the latest createdAt among all histories for this alert
   let previousCreatedAt: Date | undefined;
   if (hasGroupBy) {
-    // For grouped alerts, find the latest createdAt among all groups
-    // Use the latest to avoid checking from old groups that might no longer exist
+    // For grouped alerts, find the latest createdAt among all groups.
+    // Also check the bare alertId key for the empty group key case.
     const alertKeyPrefix = getAlertKeyPrefix(alert.id);
     for (const [key, history] of previousMap.entries()) {
-      if (key.startsWith(alertKeyPrefix)) {
+      if (key === alert.id || key.startsWith(alertKeyPrefix)) {
         if (!previousCreatedAt || history.createdAt > previousCreatedAt) {
           previousCreatedAt = history.createdAt;
         }
@@ -430,9 +447,10 @@ const getChartConfigFromAlert = (
   connection: string,
   dateRange: [Date, Date],
   windowSizeInMins: number,
-): BuilderChartConfigWithOptDateRange | undefined => {
-  const { alert, source } = details;
+): ChartConfigWithOptDateRange | undefined => {
+  const { alert } = details;
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+    const { source } = details;
     const savedSearch = details.savedSearch;
     return {
       connection,
@@ -463,8 +481,40 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 
-    // Alerts are not supported for raw sql based charts
-    if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+    // Raw SQL line/bar tiles: build a RawSqlChartConfig
+    if (isRawSqlSavedChartConfig(tile.config)) {
+      if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+        return {
+          ...pick(tile.config, [
+            'configType',
+            'sqlTemplate',
+            'displayType',
+            'source',
+          ]),
+          connection,
+          dateRange,
+          granularity: `${windowSizeInMins} minute`,
+          // Include source metadata for macro expansion ($__sourceTable)
+          ...(details.source && {
+            from: details.source.from,
+            metricTables:
+              details.source.kind === SourceKind.Metric
+                ? details.source.metricTables
+                : undefined,
+          }),
+        };
+      }
+      return undefined;
+    }
+
+    const { source } = details;
+    if (!source) {
+      logger.error(
+        { alertId: alert.id },
+        'Source not found for builder tile alert',
+      );
+      return undefined;
+    }
 
     // Doesn't work for metric alerts yet
     if (
@@ -549,6 +599,14 @@ const getResponseMetadata = (
   return { timestampColumnName, valueColumnNames };
 };
 
+/**
+ * Parses the following from the given alert query result:
+ * - `value`: the numeric value to compare against the alert threshold, taken
+ *   from the last column in the result which is included in valueColumnNames
+ * - `extraFields`: an array of strings representing the names and values of
+ *   each column in the result which is neither the timestampColumnName nor a
+ *   valueColumnName, formatted as "columnName:value".
+ */
 const parseAlertData = (
   data: Record<string, string | number>,
   meta: { timestampColumnName: string; valueColumnNames: Set<string> },
@@ -575,7 +633,8 @@ export const processAlert = async (
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
 ) => {
-  const { alert, source, previousMap } = details;
+  const { alert, previousMap } = details;
+  const source = 'source' in details ? details.source : undefined;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -680,10 +739,18 @@ export const processAlert = async (
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      if (!isBuilderChartConfig(chartConfig)) {
+        logger.error({
+          chartConfig,
+          message:
+            'Found non-builder chart config for saved search alert, cannot compute WITH clauses',
+        });
+        throw new Error('Expected builder chart config for saved search alert');
+      }
       try {
         const withClauses = await computeAliasWithClauses(
           details.savedSearch,
-          source,
+          details.source,
           metadata,
         );
         if (withClauses) {
@@ -700,24 +767,34 @@ export const processAlert = async (
     // Optimize chart config with materialized views, if available.
     // materializedViews exists on Log and Trace sources.
     const mvSource =
-      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+      source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace
         ? source
         : undefined;
-    const optimizedChartConfig = mvSource?.materializedViews?.length
-      ? await tryOptimizeConfigWithMaterializedView(
-          chartConfig,
-          metadata,
-          clickhouseClient,
-          undefined,
-          mvSource,
-        )
-      : chartConfig;
+    const optimizedChartConfig =
+      isBuilderChartConfig(chartConfig) && mvSource?.materializedViews?.length
+        ? await tryOptimizeConfigWithMaterializedView(
+            chartConfig,
+            metadata,
+            clickhouseClient,
+            undefined,
+            mvSource,
+          )
+        : chartConfig;
+
+    // Readonly = 2 means the query is readonly but can still specify query settings.
+    // This is done only for Raw SQL configs because it carries a minor risk of conflict with
+    // existing settings (which may have readonly = 1) and is not required for builder
+    // chart configs, which are always rendered as select statements.
+    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
+      ? { readonly: '2' }
+      : {};
 
     // Query for alert data
     const checksData = await clickhouseClient.queryChartConfig({
       config: optimizedChartConfig,
       metadata,
-      querySettings: source.querySettings,
+      opts: { clickhouse_settings: clickHouseSettings },
+      querySettings: source?.querySettings,
     });
 
     logger.info(

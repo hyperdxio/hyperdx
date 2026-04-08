@@ -2,6 +2,7 @@ import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import {
   ActionIcon,
+  Badge,
   Box,
   Collapse,
   Group,
@@ -11,7 +12,11 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChevronDown, IconTrash } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconHelpCircle,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { AlertChannelForm } from '@/components/Alerts';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
@@ -29,11 +34,15 @@ export function TileAlertEditor({
   setValue,
   alert,
   onRemove,
+  errorMessage,
+  tooltip,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   onRemove: () => void;
+  errorMessage?: string;
+  tooltip?: string;
 }) {
   const [opened, { toggle }] = useDisclosure(true);
 
@@ -61,9 +70,28 @@ export function TileAlertEditor({
                 transition: 'transform 200ms',
               }}
             />
-            <Text size="sm" fw={500}>
-              Alert
-            </Text>
+            <Group gap={4} align="center">
+              <Text size="sm" fw={500} mt={2}>
+                Alert
+              </Text>
+              {tooltip && (
+                <Tooltip label={tooltip} withArrow>
+                  <IconHelpCircle size={16} opacity={0.5} />
+                </Tooltip>
+              )}
+              {errorMessage && (
+                <Tooltip label={errorMessage} withArrow>
+                  <Badge
+                    color="var(--color-text-danger)"
+                    size="xs"
+                    variant="light"
+                    ml="xs"
+                  >
+                    Invalid Query
+                  </Badge>
+                </Tooltip>
+              )}
+            </Group>
           </Group>
         </UnstyledButton>
         <Tooltip label="Remove alert">

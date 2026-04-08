@@ -4,8 +4,13 @@ import {
   TableConnection,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  displayTypeSupportsRawSqlAlerts,
+  isSqlTemplateValidForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
+import { RawSqlChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
@@ -13,13 +18,16 @@ import {
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
-import { IconHelpCircle } from '@tabler/icons-react';
+import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
+import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
+import { IS_LOCAL_MODE } from '@/config';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import SourceSchemaPreview from '../SourceSchemaPreview';
@@ -36,11 +44,15 @@ export default function RawSqlChartEditor({
   setValue,
   onOpenDisplaySettings,
   isDashboardForm,
+  alert,
+  dashboardId,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   onOpenDisplaySettings: () => void;
   isDashboardForm: boolean;
+  alert: ChartEditorFormState['alert'];
+  dashboardId?: string;
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -49,7 +61,27 @@ export default function RawSqlChartEditor({
   const displayType = useWatch({ control, name: 'displayType' });
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
+  const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
   const sourceObject = sources?.find(s => s.id === source);
+
+  const rawSqlConfig = useMemo(
+    () =>
+      ({
+        configType: 'sql',
+        sqlTemplate: sqlTemplate ?? '',
+        connection: connection ?? '',
+        from: sourceObject?.from,
+      }) satisfies RawSqlChartConfig,
+    [sqlTemplate, connection, sourceObject?.from],
+  );
+
+  const alertErrorMessage = useMemo(
+    () =>
+      !isSqlTemplateValidForAlert(rawSqlConfig)
+        ? 'Raw SQL alert queries must include time filters and interval parameters to be valid for alerts.'
+        : undefined,
+    [rawSqlConfig],
+  );
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -168,6 +200,21 @@ export default function RawSqlChartEditor({
           />
         </Group>
         <Group gap="xs">
+          {displayTypeSupportsRawSqlAlerts(displayType) &&
+            dashboardId &&
+            !alert &&
+            !IS_LOCAL_MODE && (
+              <Button
+                variant="subtle"
+                data-testid="alert-button"
+                size="sm"
+                color={'gray'}
+                onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
+              >
+                <IconBell size={14} className="me-2" />
+                Add Alert
+              </Button>
+            )}
           <Button
             onClick={onOpenDisplaySettings}
             size="compact-sm"
@@ -190,6 +237,16 @@ export default function RawSqlChartEditor({
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
+      {alert && (
+        <TileAlertEditor
+          control={control}
+          setValue={setValue}
+          alert={alert}
+          onRemove={() => setValue('alert', undefined)}
+          errorMessage={alertErrorMessage}
+          tooltip="The threshold will be evaluated against the last numeric column in the query result"
+        />
+      )}
     </Stack>
   );
 }
