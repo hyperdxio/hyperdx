@@ -516,16 +516,20 @@ export type SavedSearchListApiResponse = z.infer<
 // --------------------------
 // PINNED FILTERS
 // --------------------------
-export const PinnedFiltersValueSchema = z.record(
-  z.string(),
-  z.array(z.union([z.string(), z.boolean()])),
-);
+export const PinnedFiltersValueSchema = z
+  .record(
+    z.string().max(1024),
+    z.array(z.union([z.string().max(1024), z.boolean()])).max(50),
+  )
+  .refine(val => Object.keys(val).length <= 100, {
+    message: 'Too many filter keys (max 100)',
+  });
 export type PinnedFiltersValue = z.infer<typeof PinnedFiltersValueSchema>;
 
 export const PinnedFilterSchema = z.object({
   id: z.string(),
   source: z.string(),
-  fields: z.array(z.string()),
+  fields: z.array(z.string().max(1024)).max(100),
   filters: PinnedFiltersValueSchema,
 });
 export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;

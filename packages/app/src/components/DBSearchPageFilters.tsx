@@ -1601,140 +1601,169 @@ const DBSearchPageFiltersComponent = ({
    * Renders a list of facets as FilterGroup and NestedFilterGroup components.
    * Used for both the Shared Filters section and the regular Filters section.
    */
-  const renderFacetList = (
-    facets: { key: string; value: (string | boolean)[] }[],
-    options?: { keyPrefix?: string; isDefaultExpanded?: boolean },
-  ) => {
-    const { keyPrefix = '', isDefaultExpanded: forceExpanded } = options ?? {};
-    const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
+  const renderFacetList = useCallback(
+    (
+      facets: { key: string; value: (string | boolean)[] }[],
+      options?: { keyPrefix?: string; isDefaultExpanded?: boolean },
+    ) => {
+      const { keyPrefix = '', isDefaultExpanded: forceExpanded } =
+        options ?? {};
+      const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
 
-    const makeValuePins = (key: string): ValuePinHandlers => ({
-      onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
-      isPinned: (value: string | boolean) => isFilterPinned(key, value),
-      onSharedPinClick: (value: string | boolean) =>
-        toggleSharedFilterPin(key, value),
-      isSharedPinned: (value: string | boolean) =>
-        isSharedFilterPinned(key, value),
-    });
+      const makeValuePins = (key: string): ValuePinHandlers => ({
+        onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
+        isPinned: (value: string | boolean) => isFilterPinned(key, value),
+        onSharedPinClick: (value: string | boolean) =>
+          toggleSharedFilterPin(key, value),
+        isSharedPinned: (value: string | boolean) =>
+          isSharedFilterPinned(key, value),
+      });
 
-    const makeFieldPins = (key: string): FieldPinHandlers => ({
-      onFieldPinClick: () => toggleFieldPin(key),
-      isFieldPinned: isFieldPinned(key),
-      onToggleSharedFieldPin: () => toggleSharedFieldPin(key),
-      isSharedFieldPinned: isSharedFieldPinned(key),
-    });
+      const makeFieldPins = (key: string): FieldPinHandlers => ({
+        onFieldPinClick: () => toggleFieldPin(key),
+        isFieldPinned: isFieldPinned(key),
+        onToggleSharedFieldPin: () => toggleSharedFieldPin(key),
+        isSharedFieldPinned: isSharedFieldPinned(key),
+      });
 
-    return (
-      <>
-        {grouped.map(group => (
-          <NestedFilterGroup
-            key={`${keyPrefix}${group.key}`}
-            data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
-            name={group.key}
-            childFilters={group.children}
-            selectedValues={group.children.reduce((acc, child) => {
-              acc[child.key] = filterState[child.key] ?? {
-                included: new Set(),
-                excluded: new Set(),
-              };
-              return acc;
-            }, {} as FilterState)}
-            onChange={(key, value) => setFilterValue(key, value)}
-            onClearClick={key => clearFilter(key)}
-            onOnlyClick={(key, value) => setFilterValue(key, value, 'only')}
-            onExcludeClick={(key, value) =>
-              setFilterValue(key, value, 'exclude')
-            }
-            onPinClick={(key, value) => toggleFilterPin(key, value)}
-            isPinned={(key, value) => isFilterPinned(key, value)}
-            onSharedPinClick={(key, value) => toggleSharedFilterPin(key, value)}
-            isSharedPinned={(key, value) => isSharedFilterPinned(key, value)}
-            onFieldPinClick={key => toggleFieldPin(key)}
-            isFieldPinned={key => isFieldPinned(key)}
-            onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
-            isSharedFieldPinned={key => isSharedFieldPinned(key)}
-            onColumnToggle={onColumnToggle}
-            displayedColumns={displayedColumns}
-            onLoadMore={loadMoreFilterValuesForKey}
-            loadMoreLoading={group.children.reduce(
-              (acc, child) => {
-                acc[child.key] = loadMoreLoadingKeys.has(child.key);
+      return (
+        <>
+          {grouped.map(group => (
+            <NestedFilterGroup
+              key={`${keyPrefix}${group.key}`}
+              data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
+              name={group.key}
+              childFilters={group.children}
+              selectedValues={group.children.reduce((acc, child) => {
+                acc[child.key] = filterState[child.key] ?? {
+                  included: new Set(),
+                  excluded: new Set(),
+                };
                 return acc;
-              },
-              {} as Record<string, boolean>,
-            )}
-            hasLoadedMore={group.children.reduce(
-              (acc, child) => {
-                acc[child.key] = Boolean(extraFacets[child.key]);
-                return acc;
-              },
-              {} as Record<string, boolean>,
-            )}
-            isDefaultExpanded={
-              forceExpanded ??
-              group.children.some(
-                child =>
-                  (filterState[child.key] &&
-                    (filterState[child.key].included.size > 0 ||
-                      filterState[child.key].excluded.size > 0)) ||
-                  isFieldPinned(child.key) ||
-                  isSharedFieldPinned(child.key),
-              )
-            }
-            chartConfig={chartConfig}
-            isLive={isLive}
-          />
-        ))}
-        {nonGrouped.map(facet => (
-          <FilterGroup
-            key={`${keyPrefix}${facet.key}`}
-            data-testid={`${keyPrefix}filter-group-${facet.key}`}
-            name={cleanedFacetName(facet.key)}
-            showFilterCounts={showFilterCounts}
-            options={facet.value.map(value => ({
-              value,
-              label: value.toString(),
-            }))}
-            optionsLoading={isFacetsLoading}
-            selectedValues={
-              filterState[facet.key] ?? {
-                included: new Set(),
-                excluded: new Set(),
+              }, {} as FilterState)}
+              onChange={(key, value) => setFilterValue(key, value)}
+              onClearClick={key => clearFilter(key)}
+              onOnlyClick={(key, value) => setFilterValue(key, value, 'only')}
+              onExcludeClick={(key, value) =>
+                setFilterValue(key, value, 'exclude')
               }
-            }
-            onChange={value => setFilterValue(facet.key, value)}
-            onClearClick={() => clearFilter(facet.key)}
-            onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
-            onExcludeClick={value =>
-              setFilterValue(facet.key, value, 'exclude')
-            }
-            valuePins={makeValuePins(facet.key)}
-            fieldPins={makeFieldPins(facet.key)}
-            onColumnToggle={
-              onColumnToggle ? () => onColumnToggle(facet.key) : undefined
-            }
-            isColumnDisplayed={displayedColumns?.includes(facet.key)}
-            onLoadMore={loadMoreFilterValuesForKey}
-            loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-            hasLoadedMore={Boolean(extraFacets[facet.key])}
-            isDefaultExpanded={
-              forceExpanded ??
-              (isFieldPrimary(tableMetadata, facet.key) ||
-                isFieldPinned(facet.key) ||
-                isSharedFieldPinned(facet.key) ||
-                (filterState[facet.key] != null &&
-                  (filterState[facet.key].included.size > 0 ||
-                    filterState[facet.key].excluded.size > 0 ||
-                    filterState[facet.key].range != null)))
-            }
-            chartConfig={chartConfig}
-            isLive={isLive}
-            onRangeChange={range => setFilterRange(facet.key, range)}
-          />
-        ))}
-      </>
-    );
-  };
+              onPinClick={(key, value) => toggleFilterPin(key, value)}
+              isPinned={(key, value) => isFilterPinned(key, value)}
+              onSharedPinClick={(key, value) =>
+                toggleSharedFilterPin(key, value)
+              }
+              isSharedPinned={(key, value) => isSharedFilterPinned(key, value)}
+              onFieldPinClick={key => toggleFieldPin(key)}
+              isFieldPinned={key => isFieldPinned(key)}
+              onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
+              isSharedFieldPinned={key => isSharedFieldPinned(key)}
+              onColumnToggle={onColumnToggle}
+              displayedColumns={displayedColumns}
+              onLoadMore={loadMoreFilterValuesForKey}
+              loadMoreLoading={group.children.reduce(
+                (acc, child) => {
+                  acc[child.key] = loadMoreLoadingKeys.has(child.key);
+                  return acc;
+                },
+                {} as Record<string, boolean>,
+              )}
+              hasLoadedMore={group.children.reduce(
+                (acc, child) => {
+                  acc[child.key] = Boolean(extraFacets[child.key]);
+                  return acc;
+                },
+                {} as Record<string, boolean>,
+              )}
+              isDefaultExpanded={
+                forceExpanded ??
+                group.children.some(
+                  child =>
+                    (filterState[child.key] &&
+                      (filterState[child.key].included.size > 0 ||
+                        filterState[child.key].excluded.size > 0)) ||
+                    isFieldPinned(child.key) ||
+                    isSharedFieldPinned(child.key),
+                )
+              }
+              chartConfig={chartConfig}
+              isLive={isLive}
+            />
+          ))}
+          {nonGrouped.map(facet => (
+            <FilterGroup
+              key={`${keyPrefix}${facet.key}`}
+              data-testid={`${keyPrefix}filter-group-${facet.key}`}
+              name={cleanedFacetName(facet.key)}
+              showFilterCounts={showFilterCounts}
+              options={facet.value.map(value => ({
+                value,
+                label: value.toString(),
+              }))}
+              optionsLoading={isFacetsLoading}
+              selectedValues={
+                filterState[facet.key] ?? {
+                  included: new Set(),
+                  excluded: new Set(),
+                }
+              }
+              onChange={value => setFilterValue(facet.key, value)}
+              onClearClick={() => clearFilter(facet.key)}
+              onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
+              onExcludeClick={value =>
+                setFilterValue(facet.key, value, 'exclude')
+              }
+              valuePins={makeValuePins(facet.key)}
+              fieldPins={makeFieldPins(facet.key)}
+              onColumnToggle={
+                onColumnToggle ? () => onColumnToggle(facet.key) : undefined
+              }
+              isColumnDisplayed={displayedColumns?.includes(facet.key)}
+              onLoadMore={loadMoreFilterValuesForKey}
+              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+              hasLoadedMore={Boolean(extraFacets[facet.key])}
+              isDefaultExpanded={
+                forceExpanded ??
+                (isFieldPrimary(tableMetadata, facet.key) ||
+                  isFieldPinned(facet.key) ||
+                  isSharedFieldPinned(facet.key) ||
+                  (filterState[facet.key] != null &&
+                    (filterState[facet.key].included.size > 0 ||
+                      filterState[facet.key].excluded.size > 0 ||
+                      filterState[facet.key].range != null)))
+              }
+              chartConfig={chartConfig}
+              isLive={isLive}
+              onRangeChange={range => setFilterRange(facet.key, range)}
+            />
+          ))}
+        </>
+      );
+    },
+    [
+      filterState,
+      setFilterValue,
+      clearFilter,
+      toggleFilterPin,
+      isFilterPinned,
+      toggleSharedFilterPin,
+      isSharedFilterPinned,
+      toggleFieldPin,
+      isFieldPinned,
+      toggleSharedFieldPin,
+      isSharedFieldPinned,
+      onColumnToggle,
+      displayedColumns,
+      loadMoreFilterValuesForKey,
+      loadMoreLoadingKeys,
+      extraFacets,
+      showFilterCounts,
+      isFacetsLoading,
+      chartConfig,
+      isLive,
+      setFilterRange,
+      tableMetadata,
+    ],
+  );
 
   return (
     <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>

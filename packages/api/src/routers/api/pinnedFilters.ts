@@ -47,7 +47,7 @@ router.get(
 
 const updateBodySchema = z.object({
   source: objectIdSchema,
-  fields: z.array(z.string()),
+  fields: z.array(z.string().max(1024)).max(100),
   filters: PinnedFiltersValueSchema,
 });
 
