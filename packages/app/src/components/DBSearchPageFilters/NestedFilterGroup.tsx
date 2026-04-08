@@ -41,7 +41,7 @@ const MAX_VIRTUAL_LIST_HEIGHT = 350;
 export const NestedFilterGroup = ({
   name,
   childFilters,
-  selectedValues = {},
+  selectedValues: _selectedValues,
   onChange,
   onClearClick,
   onOnlyClick,
@@ -60,6 +60,11 @@ export const NestedFilterGroup = ({
   chartConfig,
   isLive,
 }: NestedFilterGroupProps) => {
+  const selectedValues: FilterState = useMemo(
+    () => _selectedValues ?? {},
+    [_selectedValues],
+  );
+
   const totalFiltersSize = useMemo(
     () =>
       Object.values(selectedValues).reduce(

@@ -203,12 +203,14 @@ export const getAlertById = async (
   });
 };
 
-export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
+export const getTeamDashboardAlertsByDashboardAndTile = async (
+  teamId: ObjectId,
+) => {
   const alerts = await Alert.find({
     source: AlertSource.TILE,
     team: teamId,
   }).populate('createdBy', 'email name');
-  return groupBy(alerts, 'tileId');
+  return groupBy(alerts, a => `${a.dashboard?.toString()}:${a.tileId}`);
 };
 
 export const getDashboardAlertsByTile = async (

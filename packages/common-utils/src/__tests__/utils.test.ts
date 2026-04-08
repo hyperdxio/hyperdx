@@ -544,6 +544,7 @@ describe('utils', () => {
       expect(template).toEqual({
         name: 'My Dashboard',
         version: '0.1.0',
+        tags: ['tag1', 'tag2'],
         tiles: [
           {
             id: 'tile1',
@@ -665,6 +666,7 @@ describe('utils', () => {
       expect(template).toEqual({
         name: 'My Dashboard',
         version: '0.1.0',
+        tags: ['tag1', 'tag2'],
         tiles: [
           {
             id: 'tile1',

@@ -67,7 +67,7 @@ export const SectionWrapper: React.FC<
   React.PropsWithChildren<{ title?: React.ReactNode }>
 > = ({ children, title }) => (
   <div className={styles.panelSectionWrapper}>
-    {title && <div className={styles.panelSectionWrapperTitle}>{title}</div>}
+    {!!title && <div className={styles.panelSectionWrapperTitle}>{title}</div>}
     {children}
   </div>
 );

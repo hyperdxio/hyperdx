@@ -487,11 +487,101 @@ export const SavedSearchSchema = z.object({
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
+const PopulatedUserSchema = z
+  .object({ email: z.string(), name: z.string().optional() })
+  .optional();
+
+export const SavedSearchListApiResponseSchema = SavedSearchSchema.omit({
+  alerts: true,
+}).extend({
+  alerts: z
+    .array(
+      AlertSchema.and(
+        z.object({
+          createdBy: PopulatedUserSchema,
+        }),
+      ),
+    )
+    .optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  createdBy: PopulatedUserSchema,
+  updatedBy: PopulatedUserSchema,
+});
+
+export type SavedSearchListApiResponse = z.infer<
+  typeof SavedSearchListApiResponseSchema
+>;
+
 // --------------------------
 // DASHBOARDS
 // --------------------------
+export enum NumericUnit {
+  // Data
+  BytesIEC = 'bytes_iec',
+  BytesSI = 'bytes_si',
+  BitsIEC = 'bits_iec',
+  BitsSI = 'bits_si',
+  Kibibytes = 'kibibytes',
+  Kilobytes = 'kilobytes',
+  Mebibytes = 'mebibytes',
+  Megabytes = 'megabytes',
+  Gibibytes = 'gibibytes',
+  Gigabytes = 'gigabytes',
+  Tebibytes = 'tebibytes',
+  Terabytes = 'terabytes',
+  Pebibytes = 'pebibytes',
+  Petabytes = 'petabytes',
+  // Data Rate
+  PacketsSec = 'packets_sec',
+  BytesSecIEC = 'bytes_sec_iec',
+  BytesSecSI = 'bytes_sec_si',
+  BitsSecIEC = 'bits_sec_iec',
+  BitsSecSI = 'bits_sec_si',
+  KibibytesSec = 'kibibytes_sec',
+  KibibitsSec = 'kibibits_sec',
+  KilobytesSec = 'kilobytes_sec',
+  KilobitsSec = 'kilobits_sec',
+  MebibytesSec = 'mebibytes_sec',
+  MebibitsSec = 'mebibits_sec',
+  MegabytesSec = 'megabytes_sec',
+  MegabitsSec = 'megabits_sec',
+  GibibytesSec = 'gibibytes_sec',
+  GibibitsSec = 'gibibits_sec',
+  GigabytesSec = 'gigabytes_sec',
+  GigabitsSec = 'gigabits_sec',
+  TebibytesSec = 'tebibytes_sec',
+  TebibitsSec = 'tebibits_sec',
+  TerabytesSec = 'terabytes_sec',
+  TerabitsSec = 'terabits_sec',
+  PebibytesSec = 'pebibytes_sec',
+  PebibitsSec = 'pebibits_sec',
+  PetabytesSec = 'petabytes_sec',
+  PetabitsSec = 'petabits_sec',
+  // Throughput
+  Cps = 'cps',
+  Ops = 'ops',
+  Rps = 'rps',
+  ReadsSec = 'reads_sec',
+  Wps = 'wps',
+  Iops = 'iops',
+  Cpm = 'cpm',
+  Opm = 'opm',
+  RpmReads = 'rpm_reads',
+  Wpm = 'wpm',
+}
+
 export const NumberFormatSchema = z.object({
-  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.nativeEnum(NumericUnit).optional(),
   mantissa: z.number().int().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
@@ -764,9 +854,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   tiles: z.array(TileTemplateSchema),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),

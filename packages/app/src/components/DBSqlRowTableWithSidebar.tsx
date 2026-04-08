@@ -38,6 +38,7 @@ interface Props {
   onSortingChange?: (v: SortingState | null) => void;
   initialSortBy?: SortingState;
   variant?: DBRowTableVariant;
+  enableSmallFirstWindow?: boolean;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -55,6 +56,7 @@ export default function DBSqlRowTableWithSideBar({
   onSortingChange,
   initialSortBy,
   variant,
+  enableSmallFirstWindow,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -118,6 +120,7 @@ export default function DBSqlRowTableWithSideBar({
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         variant={variant}
+        enableSmallFirstWindow={enableSmallFirstWindow}
       />
     </RowSidePanelContext.Provider>
   );

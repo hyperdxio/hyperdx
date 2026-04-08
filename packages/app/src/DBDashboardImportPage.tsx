@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  type DashboardTemplate,
   DashboardTemplateSchema,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
@@ -20,9 +21,10 @@ import {
   Collapse,
   Container,
   Group,
-  Input,
+  Loader,
   Stack,
   Table,
+  TagsInput,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -36,22 +38,19 @@ import {
   IconX,
 } from '@tabler/icons-react';
 
-import { PageHeader } from './components/PageHeader';
 import SelectControlled from './components/SelectControlled';
 import { useBrandDisplayName } from './theme/ThemeProvider';
+import api from './api';
 import { useConnections } from './connection';
 import { useCreateDashboard, useUpdateDashboard } from './dashboard';
+import { getDashboardTemplate } from './dashboardTemplates';
 import { withAppNav } from './layout';
 import { useSources } from './source';
-
-// The schema for the JSON data we expect to receive
-const InputSchema = DashboardTemplateSchema;
-type Input = z.infer<typeof InputSchema>;
 
 function FileSelection({
   onComplete,
 }: {
-  onComplete: (input: Input | null) => void;
+  onComplete: (input: DashboardTemplate | null) => void;
 }) {
   // The schema for the form data we expect to receive
   const FormSchema = z.object({ file: z.instanceof(File).nullable() });
@@ -79,7 +78,7 @@ function FileSelection({
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      const parsed = InputSchema.parse(data); // throws if invalid
+      const parsed = DashboardTemplateSchema.parse(data); // throws if invalid
       onComplete(parsed);
     } catch (e: any) {
       onComplete(null);
@@ -188,6 +187,7 @@ function FileSelection({
 
 const MappingForm = z.object({
   dashboardName: z.string().min(1),
+  tags: z.array(z.string()),
   sourceMappings: z.array(z.string()),
   connectionMappings: z.array(z.string()),
   filterSourceMappings: z.array(z.string()).optional(),
@@ -195,10 +195,11 @@ const MappingForm = z.object({
 
 type MappingFormValues = z.infer<typeof MappingForm>;
 
-function Mapping({ input }: { input: Input }) {
+function Mapping({ input }: { input: DashboardTemplate }) {
   const router = useRouter();
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
+  const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryParam('dashboardId', StringParam);
 
   const { handleSubmit, getFieldState, control, setValue } =
@@ -206,6 +207,7 @@ function Mapping({ input }: { input: Input }) {
       resolver: zodResolver(MappingForm),
       defaultValues: {
         dashboardName: input.name,
+        tags: input.tags ?? [],
         sourceMappings: input.tiles.map(() => ''),
         connectionMappings: input.tiles.map(() => ''),
       },
@@ -381,6 +383,7 @@ function Mapping({ input }: { input: Input }) {
         tiles: zippedTiles,
         filters: zippedFilters,
         name: data.dashboardName,
+        tags: data.tags,
       });
       let _dashboardId = dashboardId;
       if (_dashboardId) {
@@ -420,6 +423,18 @@ function Mapping({ input }: { input: Input }) {
               label="Dashboard Name"
               {...field}
               error={formState.errors.dashboardName?.message}
+            />
+          )}
+        />
+        <Controller
+          name="tags"
+          control={control}
+          render={({ field }) => (
+            <TagsInput
+              label="Tags"
+              placeholder="Add tags"
+              data={existingTags?.data ?? []}
+              {...field}
             />
           )}
         />
@@ -496,7 +511,7 @@ function Mapping({ input }: { input: Input }) {
         {createDashboard.isError && (
           <Text c="red">{createDashboard.error.toString()}</Text>
         )}
-        <Button type="submit" loading={createDashboard.isPending}>
+        <Button type="submit" loading={createDashboard.isPending} mb="md">
           Finish Import
         </Button>
       </Stack>
@@ -506,7 +521,21 @@ function Mapping({ input }: { input: Input }) {
 
 function DBDashboardImportPage() {
   const brandName = useBrandDisplayName();
-  const [input, setInput] = useState<Input | null>(null);
+  const router = useRouter();
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const templateName = router.query.template as string | undefined;
+  const isTemplate = !!templateName;
+  const isLoadingRoute = !router.isReady;
+
+  const templateInput = useMemo(
+    () => (templateName ? getDashboardTemplate(templateName) : undefined),
+    [templateName],
+  );
+
+  const [fileInput, setFileInput] = useState<DashboardTemplate | null>(null);
+  const input = templateInput ?? fileInput;
+  const isTemplateNotFound = isTemplate && !isLoadingRoute && !templateInput;
 
   return (
     <div>
@@ -517,6 +546,16 @@ function DBDashboardImportPage() {
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards
         </Anchor>
+        {isTemplate && (
+          <Anchor
+            component={Link}
+            href="/dashboards/templates"
+            fz="sm"
+            c="dimmed"
+          >
+            Templates
+          </Anchor>
+        )}
         <Text fz="sm" c="dimmed">
           Import
         </Text>
@@ -524,11 +563,26 @@ function DBDashboardImportPage() {
       <div>
         <Container>
           <Stack gap="lg" mt="xl">
-            <FileSelection
-              onComplete={i => {
-                setInput(i);
-              }}
-            />
+            {isLoadingRoute ? (
+              <Loader mx="auto" />
+            ) : isTemplateNotFound ? (
+              <Stack align="center" gap="sm" py="xl">
+                <Text ta="center">Oops! We couldn't find that template.</Text>
+                <Text ta="center">
+                  Try{' '}
+                  <Anchor component={Link} href="/dashboards/templates">
+                    browsing available templates
+                  </Anchor>
+                  .
+                </Text>
+              </Stack>
+            ) : !isTemplate ? (
+              <FileSelection
+                onComplete={i => {
+                  setFileInput(i);
+                }}
+              />
+            ) : null}
             {input && <Mapping input={input} />}
           </Stack>
         </Container>

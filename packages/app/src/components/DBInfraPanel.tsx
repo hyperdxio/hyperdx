@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { add, min, sub } from 'date-fns';
 import {
   convertDateRangeToGranularityString,
@@ -10,16 +11,23 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
+  Anchor,
   Box,
   Card,
   Group,
+  Modal,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Text,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
+import { TableSourceForm } from '@/components/Sources/SourceForm';
+import { IS_LOCAL_MODE } from '@/config';
 import { useSource } from '@/source';
 
 import {
@@ -209,13 +217,17 @@ export default ({
   rowId: string | undefined | null;
   source: TSource;
 }) => {
+  const [editModalOpened, { open: openEditModal, close: closeEditModal }] =
+    useDisclosure(false);
+
   const metricSourceId =
     source.kind === SourceKind.Log || source.kind === SourceKind.Trace
       ? source.metricSourceId
       : undefined;
-  const { data: metricSourceData } = useSource({ id: metricSourceId });
-  const metricSource =
-    metricSourceData?.kind === SourceKind.Metric ? metricSourceData : undefined;
+  const { data: metricSource, isLoading: isLoadingMetricSource } = useSource({
+    id: metricSourceId,
+    kinds: [SourceKind.Metric],
+  });
 
   const logSource = source.kind === SourceKind.Log ? source : undefined;
 
@@ -226,6 +238,39 @@ export default ({
 
   return (
     <Stack my="md" gap={40}>
+      {!metricSource && !isLoadingMetricSource && (
+        <>
+          <Alert color="yellow" title="No correlated metric source">
+            <Text size="sm">
+              {metricSourceId
+                ? `The correlated metric source for "${source.name}" could not be found.`
+                : `Source "${source.name}" does not have a correlated metric source.`}{' '}
+              Infrastructure metrics can be displayed when a metric source is
+              configured in{' '}
+              {IS_LOCAL_MODE ? (
+                <Anchor component="button" onClick={openEditModal}>
+                  Source Settings
+                </Anchor>
+              ) : (
+                <Anchor component={Link} href="/team">
+                  Team Settings
+                </Anchor>
+              )}
+              .
+            </Text>
+          </Alert>
+          {IS_LOCAL_MODE && (
+            <Modal
+              size="xl"
+              opened={editModalOpened}
+              onClose={closeEditModal}
+              title="Edit Source"
+            >
+              <TableSourceForm sourceId={source.id} />
+            </Modal>
+          )}
+        </>
+      )}
       {podUid && (
         <div>
           {metricSource && (

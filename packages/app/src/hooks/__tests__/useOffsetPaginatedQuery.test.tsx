@@ -186,11 +186,11 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // Should have data from the first 6-hour window (working backwards from end date)
+      // Should have data from the first 15-min window (working backwards from end date)
       expect(result.current.data).toBeDefined();
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-01T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-01T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-02T00:00:00Z'), // endDate
@@ -226,14 +226,14 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // Should have data from the first 6-hour window (working forwards from start date)
+      // Should have data from the first 15-min window (working forwards from start date)
       expect(result.current.data).toBeDefined();
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
         new Date('2024-01-01T00:00:00Z'), // startDate
       );
       expect(result.current.data?.window.endTime).toEqual(
-        new Date('2024-01-01T06:00:00Z'), // endDate + 6h
+        new Date('2024-01-01T00:15:00Z'), // endDate + 15m
       );
       expect(result.current.data?.window.direction).toEqual('ASC');
     });
@@ -473,7 +473,7 @@ describe('useOffsetPaginatedQuery', () => {
       // Verify we're in the first window
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-01T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-01T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-02T00:00:00Z'), // endDate
@@ -509,9 +509,9 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // First window: 6h (working backwards from end date)
+      // First window: 15-min (working backwards from end date)
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-02T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-02T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-03T00:00:00Z'), // endDate
