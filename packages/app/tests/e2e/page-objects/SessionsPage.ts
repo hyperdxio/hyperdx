@@ -96,6 +96,18 @@ export class SessionsPage {
     return this.page.getByTestId('row-side-panel');
   }
 
+  /**
+   * Click the Mantine overlay of the topmost open drawer to close it.
+   * Mantine renders one overlay per open Drawer. The last one belongs to
+   * the innermost (topmost) drawer.
+   */
+  async clickTopmostDrawerOverlay() {
+    // Mantine overlays are siblings of the drawer content inside the portal root.
+    // Use the last one since the inner panel's overlay is rendered on top.
+    const overlay = this.page.locator('.mantine-Drawer-overlay').last();
+    await overlay.click({ position: { x: 10, y: 10 } });
+  }
+
   // Getters for assertions
 
   get form() {

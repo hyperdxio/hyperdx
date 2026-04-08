@@ -101,6 +101,19 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
           sessionsPage.rowSidePanel.getByTestId('side-panel-tab-replay'),
         ).toHaveCount(0);
       });
+
+      await test.step('Clicking the overlay closes the event detail panel but keeps the session replay open', async () => {
+        // Without the fix, withOverlay={!isNestedPanel} removed the overlay on nested panels,
+        // so there was nothing to click to close the panel (it had to be ESC only).
+        // With the fix (withOverlay always true), clicking the Mantine overlay dismisses the inner panel.
+        await sessionsPage.clickTopmostDrawerOverlay();
+
+        // The event detail panel must close
+        await expect(sessionsPage.rowSidePanel).toBeHidden();
+
+        // The session replay drawer must still be open
+        await expect(sessionsPage.sessionSidePanel).toBeVisible();
+      });
     },
   );
 });
