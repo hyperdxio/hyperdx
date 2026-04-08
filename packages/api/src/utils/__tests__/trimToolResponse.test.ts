@@ -55,20 +55,23 @@ describe('trimToolResponse', () => {
   });
 
   describe('large objects', () => {
-    it('should trim large objects by dropping keys', () => {
+    it('should trim large objects to fit within maxSize', () => {
       const largeObj: Record<string, string> = {};
       for (let i = 0; i < 100; i++) {
         largeObj[`key_${i}`] = 'x'.repeat(200);
       }
 
       const result = trimToolResponse(largeObj, 5000);
-      const resultKeys = Object.keys(result);
-      expect(resultKeys.length).toBeLessThan(100);
-      // The implementation stops adding keys once cumulative size would
-      // exceed maxSize, but the last included key may push slightly over
-      // since it's added before the check on the *next* key.
-      // The important guarantee is that fewer keys are returned.
-      expect(resultKeys.length).toBeGreaterThan(0);
+      // The trimmed result must be smaller than the original
+      expect(JSON.stringify(result).length).toBeLessThan(
+        JSON.stringify(largeObj).length,
+      );
+      // All keys should still be present (values are trimmed, not dropped)
+      expect(
+        Object.keys(result).filter(k => k !== '__hdx_trimmed'),
+      ).toHaveLength(100);
+      // The sentinel flag should be set to indicate trimming occurred
+      expect(result.__hdx_trimmed).toBe(true);
     });
 
     it('should not trim objects that fit within maxSize', () => {

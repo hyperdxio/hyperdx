@@ -66,21 +66,43 @@ function trimArray(arr: any[], maxSize: number): any[] {
   return result;
 }
 
+// Keys in trimObject come exclusively from Object.entries() on internal tool
+// response data — never from user-supplied HTTP input — so bracket-notation
+// writes are not an injection risk; see inline eslint-disable comments below.
 function trimObject(obj: any, maxSize: number): any {
-  const result: any = {};
-  let currentSize = 0;
-
-  // Generic object trimming
   const entries = Object.entries(obj);
+  if (entries.length === 0) return obj;
+
+  const result: any = {};
+
+  // Give each key an equal share of the budget so that no single large value
+  // crowds out the rest (e.g. a large array at key[0] eating all the budget
+  // before key[1] gets a chance to appear).
+  const perKeyBudget = Math.floor(maxSize / entries.length);
+  let trimmed = false;
+
   for (const [key, value] of entries) {
     const valueStr = JSON.stringify(value);
-    if (currentSize + valueStr.length > maxSize) {
-      logger.info(`Trimming object, stopping at key: ${key}`);
-      result.__hdx_trimmed = true;
-      break;
+
+    if (valueStr.length <= perKeyBudget) {
+      result[key] = value; // eslint-disable-line security/detect-object-injection
+    } else {
+      logger.info(
+        `Trimming oversized object value at key "${key}" (${valueStr.length} bytes > ${perKeyBudget} per-key budget)`,
+      );
+      if (Array.isArray(value)) {
+        result[key] = trimArray(value, perKeyBudget); // eslint-disable-line security/detect-object-injection
+      } else if (typeof value === 'object' && value !== null) {
+        result[key] = trimObject(value, perKeyBudget); // eslint-disable-line security/detect-object-injection
+      } else {
+        result[key] = { __hdx_trimmed: true, originalSize: valueStr.length }; // eslint-disable-line security/detect-object-injection
+      }
+      trimmed = true;
     }
-    result[key] = value;
-    currentSize += valueStr.length;
+  }
+
+  if (trimmed) {
+    result.__hdx_trimmed = true;
   }
 
   return result;
