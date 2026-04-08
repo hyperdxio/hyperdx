@@ -6,7 +6,7 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 import {
   getConnectionById,

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import Dashboard from '@/models/dashboard';

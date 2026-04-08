@@ -1,4 +1,4 @@
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';

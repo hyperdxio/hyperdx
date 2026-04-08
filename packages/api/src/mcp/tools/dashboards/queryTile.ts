@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';

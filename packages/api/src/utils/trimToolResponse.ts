@@ -70,25 +70,6 @@ function trimObject(obj: any, maxSize: number): any {
   const result: any = {};
   let currentSize = 0;
 
-  // Special handling for known structures
-  if ('allFieldsWithKeys' in obj && 'keyValues' in obj) {
-    // This is metadata from getAIMetadata
-    result.allFieldsWithKeys = trimArray(
-      obj.allFieldsWithKeys || [],
-      maxSize * 0.6,
-    );
-    result.keyValues = trimObjectEntries(obj.keyValues || {}, maxSize * 0.4);
-
-    // Include other properties if they exist
-    for (const key in obj) {
-      if (key !== 'allFieldsWithKeys' && key !== 'keyValues') {
-        result[key] = obj[key];
-      }
-    }
-
-    return result;
-  }
-
   // Generic object trimming
   const entries = Object.entries(obj);
   for (const [key, value] of entries) {
@@ -100,32 +81,6 @@ function trimObject(obj: any, maxSize: number): any {
     }
     result[key] = value;
     currentSize += valueStr.length;
-  }
-
-  return result;
-}
-
-function trimObjectEntries(obj: any, maxSize: number): any {
-  const result: any = {};
-  let currentSize = 0;
-  let keyCount = 0;
-
-  const entries = Object.entries(obj);
-  for (const [key, value] of entries) {
-    const entry = { [key]: value };
-    const entrySize = JSON.stringify(entry).length;
-
-    if (currentSize + entrySize > maxSize) {
-      logger.info(
-        `Trimmed keyValues from ${Object.keys(obj).length} to ${keyCount} entries`,
-      );
-      result.__hdx_trimmed = true;
-      break;
-    }
-
-    result[key] = value;
-    currentSize += entrySize;
-    keyCount++;
   }
 
   return result;

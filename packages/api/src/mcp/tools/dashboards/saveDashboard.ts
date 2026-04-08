@@ -2,7 +2,7 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 import * as config from '@/config';
 import { deleteDashboardAlerts } from '@/controllers/alerts';

@@ -1,5 +1,5 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
@@ -12,30 +12,8 @@ import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 
-import { createServer } from '../mcpServer';
 import { McpContext } from '../tools/types';
-
-/**
- * Helper to call an MCP tool by name on a connected McpServer.
- * Uses the internal registered handlers directly.
- */
-async function callTool(
-  server: McpServer,
-  toolName: string,
-  args: Record<string, unknown> = {},
-) {
-  // Access registered tool handlers via the internal server
-  const internalServer = (server as any).server;
-  const handler = internalServer._requestHandlers?.get('tools/call');
-  if (!handler) {
-    throw new Error('No tools/call handler registered');
-  }
-  const result = await handler({
-    method: 'tools/call',
-    params: { name: toolName, arguments: args },
-  });
-  return result;
-}
+import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 describe('MCP Dashboard Tools', () => {
   const server = getServer();
@@ -43,7 +21,7 @@ describe('MCP Dashboard Tools', () => {
   let user: any;
   let traceSource: any;
   let connection: any;
-  let mcpServer: McpServer;
+  let client: Client;
 
   beforeAll(async () => {
     await server.start();
@@ -78,10 +56,11 @@ describe('MCP Dashboard Tools', () => {
       teamId: team._id.toString(),
       userId: user._id.toString(),
     };
-    mcpServer = createServer(context);
+    client = await createTestClient(context);
   });
 
   afterEach(async () => {
+    await client.close();
     await server.clearDBs();
   });
 
@@ -91,12 +70,12 @@ describe('MCP Dashboard Tools', () => {
 
   describe('hyperdx_list_sources', () => {
     it('should list available sources and connections', async () => {
-      const result = await callTool(mcpServer, 'hyperdx_list_sources');
+      const result = await callTool(client, 'hyperdx_list_sources');
 
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
 
-      const output = JSON.parse(result.content[0].text);
+      const output = JSON.parse(getFirstText(result));
       expect(output.sources).toHaveLength(1);
       expect(output.sources[0]).toMatchObject({
         id: traceSource._id.toString(),
@@ -114,8 +93,8 @@ describe('MCP Dashboard Tools', () => {
     });
 
     it('should include column schema for sources', async () => {
-      const result = await callTool(mcpServer, 'hyperdx_list_sources');
-      const output = JSON.parse(result.content[0].text);
+      const result = await callTool(client, 'hyperdx_list_sources');
+      const output = JSON.parse(getFirstText(result));
       const source = output.sources[0];
 
       expect(source.columns).toBeDefined();
@@ -129,24 +108,26 @@ describe('MCP Dashboard Tools', () => {
 
     it('should return empty sources for a team with no sources', async () => {
       // Clear everything and re-register with new team
+      await client.close();
       await server.clearDBs();
       const result2 = await getLoggedInAgent(server);
       const context2: McpContext = {
         teamId: result2.team._id.toString(),
       };
-      const mcpServer2 = createServer(context2);
+      const client2 = await createTestClient(context2);
 
-      const result = await callTool(mcpServer2, 'hyperdx_list_sources');
-      const output = JSON.parse(result.content[0].text);
+      const result = await callTool(client2, 'hyperdx_list_sources');
+      const output = JSON.parse(getFirstText(result));
 
       expect(output.sources).toHaveLength(0);
       expect(output.connections).toHaveLength(0);
+
+      await client2.close();
     });
   });
 
   describe('hyperdx_get_dashboard', () => {
     it('should list all dashboards when no id provided', async () => {
-      // Create some dashboards
       await new Dashboard({
         name: 'Dashboard 1',
         tiles: [],
@@ -160,10 +141,10 @@ describe('MCP Dashboard Tools', () => {
         tags: ['tag2'],
       }).save();
 
-      const result = await callTool(mcpServer, 'hyperdx_get_dashboard', {});
+      const result = await callTool(client, 'hyperdx_get_dashboard', {});
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output).toHaveLength(2);
       expect(output[0]).toHaveProperty('id');
       expect(output[0]).toHaveProperty('name');
@@ -178,12 +159,12 @@ describe('MCP Dashboard Tools', () => {
         tags: ['test'],
       }).save();
 
-      const result = await callTool(mcpServer, 'hyperdx_get_dashboard', {
+      const result = await callTool(client, 'hyperdx_get_dashboard', {
         id: dashboard._id.toString(),
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.id).toBe(dashboard._id.toString());
       expect(output.name).toBe('My Dashboard');
       expect(output.tags).toEqual(['test']);
@@ -192,19 +173,19 @@ describe('MCP Dashboard Tools', () => {
 
     it('should return error for non-existent dashboard id', async () => {
       const fakeId = '000000000000000000000000';
-      const result = await callTool(mcpServer, 'hyperdx_get_dashboard', {
+      const result = await callTool(client, 'hyperdx_get_dashboard', {
         id: fakeId,
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found');
+      expect(getFirstText(result)).toContain('not found');
     });
   });
 
   describe('hyperdx_save_dashboard', () => {
     it('should create a new dashboard with tiles', async () => {
       const sourceId = traceSource._id.toString();
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'New MCP Dashboard',
         tiles: [
           {
@@ -223,8 +204,8 @@ describe('MCP Dashboard Tools', () => {
         tags: ['mcp-test'],
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.id).toBeDefined();
       expect(output.name).toBe('New MCP Dashboard');
       expect(output.tiles).toHaveLength(1);
@@ -238,7 +219,7 @@ describe('MCP Dashboard Tools', () => {
     });
 
     it('should create a dashboard with a markdown tile', async () => {
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Markdown Dashboard',
         tiles: [
           {
@@ -251,8 +232,8 @@ describe('MCP Dashboard Tools', () => {
         ],
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(1);
       expect(output.tiles[0].config.displayType).toBe('markdown');
     });
@@ -261,7 +242,7 @@ describe('MCP Dashboard Tools', () => {
       const sourceId = traceSource._id.toString();
 
       // Create first
-      const createResult = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Original Name',
         tiles: [
           {
@@ -274,10 +255,10 @@ describe('MCP Dashboard Tools', () => {
           },
         ],
       });
-      const created = JSON.parse(createResult.content[0].text);
+      const created = JSON.parse(getFirstText(createResult));
 
       // Update
-      const updateResult = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
         id: created.id,
         name: 'Updated Name',
         tiles: [
@@ -293,8 +274,8 @@ describe('MCP Dashboard Tools', () => {
         tags: ['updated'],
       });
 
-      expect(updateResult.isError).toBeUndefined();
-      const updated = JSON.parse(updateResult.content[0].text);
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
       expect(updated.id).toBe(created.id);
       expect(updated.name).toBe('Updated Name');
       expect(updated.tiles).toHaveLength(1);
@@ -304,7 +285,7 @@ describe('MCP Dashboard Tools', () => {
 
     it('should return error for missing source ID', async () => {
       const fakeSourceId = '000000000000000000000000';
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Bad Dashboard',
         tiles: [
           {
@@ -319,12 +300,12 @@ describe('MCP Dashboard Tools', () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('source');
+      expect(getFirstText(result)).toContain('source');
     });
 
     it('should return error when updating non-existent dashboard', async () => {
       const sourceId = traceSource._id.toString();
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         id: '000000000000000000000000',
         name: 'Ghost Dashboard',
         tiles: [
@@ -340,12 +321,12 @@ describe('MCP Dashboard Tools', () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found');
+      expect(getFirstText(result)).toContain('not found');
     });
 
     it('should create a dashboard with multiple tile types', async () => {
       const sourceId = traceSource._id.toString();
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Multi-tile Dashboard',
         tiles: [
           {
@@ -403,22 +384,19 @@ describe('MCP Dashboard Tools', () => {
             y: 11,
             w: 12,
             h: 2,
-            config: {
-              displayType: 'markdown',
-              markdown: '# Dashboard Notes',
-            },
+            config: { displayType: 'markdown', markdown: '# Dashboard Notes' },
           },
         ],
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(5);
     });
 
     it('should create a dashboard with a raw SQL tile', async () => {
       const connectionId = connection._id.toString();
-      const result = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'SQL Dashboard',
         tiles: [
           {
@@ -433,8 +411,8 @@ describe('MCP Dashboard Tools', () => {
         ],
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(1);
     });
   });
@@ -447,12 +425,12 @@ describe('MCP Dashboard Tools', () => {
         team: team._id,
       }).save();
 
-      const result = await callTool(mcpServer, 'hyperdx_delete_dashboard', {
+      const result = await callTool(client, 'hyperdx_delete_dashboard', {
         id: dashboard._id.toString(),
       });
 
-      expect(result.isError).toBeUndefined();
-      const output = JSON.parse(result.content[0].text);
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
       expect(output.deleted).toBe(true);
       expect(output.id).toBe(dashboard._id.toString());
 
@@ -462,30 +440,29 @@ describe('MCP Dashboard Tools', () => {
     });
 
     it('should return error for non-existent dashboard', async () => {
-      const result = await callTool(mcpServer, 'hyperdx_delete_dashboard', {
+      const result = await callTool(client, 'hyperdx_delete_dashboard', {
         id: '000000000000000000000000',
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found');
+      expect(getFirstText(result)).toContain('not found');
     });
   });
 
   describe('hyperdx_query_tile', () => {
     it('should return error for non-existent dashboard', async () => {
-      const result = await callTool(mcpServer, 'hyperdx_query_tile', {
+      const result = await callTool(client, 'hyperdx_query_tile', {
         dashboardId: '000000000000000000000000',
         tileId: 'some-tile-id',
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found');
+      expect(getFirstText(result)).toContain('not found');
     });
 
     it('should return error for non-existent tile', async () => {
-      // Create dashboard with a tile
       const sourceId = traceSource._id.toString();
-      const createResult = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Tile Query Test',
         tiles: [
           {
@@ -498,20 +475,20 @@ describe('MCP Dashboard Tools', () => {
           },
         ],
       });
-      const dashboard = JSON.parse(createResult.content[0].text);
+      const dashboard = JSON.parse(getFirstText(createResult));
 
-      const result = await callTool(mcpServer, 'hyperdx_query_tile', {
+      const result = await callTool(client, 'hyperdx_query_tile', {
         dashboardId: dashboard.id,
         tileId: 'non-existent-tile-id',
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Tile not found');
+      expect(getFirstText(result)).toContain('Tile not found');
     });
 
     it('should return error for invalid time range', async () => {
       const sourceId = traceSource._id.toString();
-      const createResult = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Time Range Test',
         tiles: [
           {
@@ -524,21 +501,21 @@ describe('MCP Dashboard Tools', () => {
           },
         ],
       });
-      const dashboard = JSON.parse(createResult.content[0].text);
+      const dashboard = JSON.parse(getFirstText(createResult));
 
-      const result = await callTool(mcpServer, 'hyperdx_query_tile', {
+      const result = await callTool(client, 'hyperdx_query_tile', {
         dashboardId: dashboard.id,
         tileId: dashboard.tiles[0].id,
         startTime: 'not-a-date',
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Invalid');
+      expect(getFirstText(result)).toContain('Invalid');
     });
 
     it('should execute query for a valid tile', async () => {
       const sourceId = traceSource._id.toString();
-      const createResult = await callTool(mcpServer, 'hyperdx_save_dashboard', {
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Query Tile Test',
         tiles: [
           {
@@ -551,9 +528,9 @@ describe('MCP Dashboard Tools', () => {
           },
         ],
       });
-      const dashboard = JSON.parse(createResult.content[0].text);
+      const dashboard = JSON.parse(getFirstText(createResult));
 
-      const result = await callTool(mcpServer, 'hyperdx_query_tile', {
+      const result = await callTool(client, 'hyperdx_query_tile', {
         dashboardId: dashboard.id,
         tileId: dashboard.tiles[0].id,
         startTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -561,7 +538,7 @@ describe('MCP Dashboard Tools', () => {
       });
 
       // Should succeed (may have empty results since no data inserted)
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
     });
   });

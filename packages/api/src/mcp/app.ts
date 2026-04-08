@@ -4,7 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 
 import { validateUserAccessKey } from '../middleware/auth';
 import logger from '../utils/logger';
-import rateLimiter from '../utils/rateLimiter';
+import rateLimiter, { rateLimiterKeyGenerator } from '../utils/rateLimiter';
 import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 
@@ -15,8 +15,7 @@ const mcpRateLimiter = rateLimiter({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req): string =>
-    req.headers.authorization ?? req.ip ?? 'unknown',
+  keyGenerator: rateLimiterKeyGenerator,
 });
 
 app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
