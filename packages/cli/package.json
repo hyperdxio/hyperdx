@@ -13,7 +13,8 @@
     "dist/*"
   ],
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=22.16.0",
+    "bun": "1.3.11"
   },
   "scripts": {
     "dev": "tsx src/cli.tsx",

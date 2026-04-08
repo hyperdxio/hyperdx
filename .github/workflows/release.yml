@@ -440,7 +440,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: '1.3.11'
       - name: Install dependencies
         run: yarn install
       - name: Get CLI version
@@ -456,7 +456,7 @@ jobs:
           yarn compile:macos
           yarn compile:macos-x64
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           tag_name: cli-v${{ steps.cli_version.outputs.version }}
           name: '@hyperdx/cli v${{ steps.cli_version.outputs.version }}'
