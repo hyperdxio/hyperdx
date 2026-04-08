@@ -4,4 +4,4 @@
 "@hyperdx/app": minor
 ---
 
-Add support for global filter pinning (now persisted in database instead of local storage) enabling filters to be shared across members of team
+Introduces Shared Filters, enabling teams to pin and surface common filters across all members.

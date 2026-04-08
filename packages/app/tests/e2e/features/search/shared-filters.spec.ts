@@ -10,7 +10,7 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
   test.beforeEach(async ({ page }) => {
     searchPage = new SearchPage(page);
 
-    // Reset pinned filters via API so each test starts clean
+    // Reset team pinned filters via API so each test starts clean
     const sources = await getSources(page, 'log');
     const sourceId = sources[0]._id;
     await page.request.put(`${getApiUrl()}/pinned-filters`, {
@@ -18,6 +18,13 @@ test.describe('Shared Filters', { tag: ['@search'] }, () => {
     });
 
     await searchPage.goto();
+
+    // If SeverityText ended up in the Shared Filters section from a previous
+    // test, the regular filter group won't be visible. Poll until it appears.
+    await expect(
+      searchPage.filters.getFilterGroup(TEST_FILTER_GROUP),
+    ).toBeVisible({ timeout: 15000 });
+
     await searchPage.filters.openFilterGroup(TEST_FILTER_GROUP);
   });
 

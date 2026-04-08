@@ -307,9 +307,14 @@ export class FilterComponent {
 
   /**
    * Unshare a field from the team via the PinShareMenu dropdown.
+   * Looks in the Shared Filters section since shared fields are moved there.
    */
   async unshareField(filterName: string) {
-    const group = this.getFilterGroup(filterName);
+    // Shared fields live in the Shared Filters section, not the regular list
+    const sharedSection = this.getSharedFiltersSection();
+    const group = sharedSection.getByTestId(
+      `shared-filter-group-${filterName}`,
+    );
     await group.hover();
     const pinButton = group
       .locator('button[aria-label="Unpin"], button[aria-label="Pin"]')
