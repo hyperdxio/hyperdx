@@ -15,6 +15,36 @@
   --orange: #db6d28;
   --log-bg: #141517; /* dark-8 */
   --hover: #25262b; /* dark-6: color-bg-hover */
+  --log-text: #c9d1d9;
+  --row-hover: rgba(88, 166, 255, 0.05);
+  --row-active: rgba(88, 166, 255, 0.1);
+  --table-border: rgba(48, 54, 61, 0.5);
+  --modal-backdrop: rgba(0, 0, 0, 0.6);
+  --hover-overlay: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --card-bg: #f8f9fa;
+  --card-surface: #f1f3f5;
+  --border: #dee2e6;
+  --border-emphasis: #ced4da;
+  --text: #212529;
+  --text-muted: #868e96;
+  --accent: #12b886;
+  --accent-hover: #0ca678;
+  --green: #12b886;
+  --red: #e03131;
+  --yellow: #f08c00;
+  --orange: #e8590c;
+  --log-bg: #f8f9fa;
+  --hover: #e9ecef;
+  --log-text: #212529;
+  --row-hover: rgba(0, 0, 0, 0.03);
+  --row-active: rgba(0, 0, 0, 0.06);
+  --table-border: rgba(0, 0, 0, 0.08);
+  --modal-backdrop: rgba(0, 0, 0, 0.3);
+  --hover-overlay: rgba(0, 0, 0, 0.05);
 }
 
 * {
@@ -120,7 +150,7 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
   background: var(--bg);
-  color: #c9d1d9;
+  color: var(--log-text);
 }
 
 .log-content .log-line {
@@ -164,6 +194,12 @@ body {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+}
+
+.header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .header .status {
@@ -329,7 +365,7 @@ body {
 .services-table td {
   padding: 10px 20px;
   font-size: 14px;
-  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  border-bottom: 1px solid var(--table-border);
 }
 
 .services-table tr:last-child td {
@@ -342,11 +378,11 @@ body {
 }
 
 .services-table tr.clickable:hover {
-  background: rgba(88, 166, 255, 0.05);
+  background: var(--row-hover);
 }
 
 .services-table tr.active {
-  background: rgba(88, 166, 255, 0.1);
+  background: var(--row-active);
 }
 
 .service-name {
@@ -517,7 +553,7 @@ body {
 
 .history-toggle-btn:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hover-overlay);
 }
 
 .history-card-body {
@@ -543,7 +579,7 @@ body {
   justify-content: space-between;
   padding: 12px 20px;
   background: var(--card-surface);
-  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  border-bottom: 1px solid var(--table-border);
 }
 
 .history-entry-header .history-meta {
@@ -595,11 +631,11 @@ body {
 }
 
 .file-item:hover {
-  background: rgba(88, 166, 255, 0.05);
+  background: var(--row-hover);
 }
 
 .file-item.active {
-  background: rgba(88, 166, 255, 0.1);
+  background: var(--row-active);
 }
 
 .file-name {
@@ -660,7 +696,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -734,4 +770,30 @@ body {
 
 .modal-danger:hover {
   opacity: 0.85;
+}
+
+/* --- Theme toggle --- */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
 }
