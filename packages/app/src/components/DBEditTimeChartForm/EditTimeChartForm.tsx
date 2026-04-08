@@ -397,7 +397,6 @@ export default function EditTimeChartForm({
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
       if (config == null) {
         return config;

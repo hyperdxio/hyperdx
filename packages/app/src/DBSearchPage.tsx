@@ -1247,7 +1247,7 @@ function DBSearchPage() {
       updateRelativeTimeInputValue(interval);
     }
     // we only want this to run on initial mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [updateRelativeTimeInputValue, searchedConfig.source, isReady]);
 
   useLiveUpdate({

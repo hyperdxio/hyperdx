@@ -141,6 +141,7 @@ export const TableSearchInput = ({
 
   // Handle keyboard shortcuts (Cmd+F, Escape)
   const handleKeyDown = useCallback(
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
     (e: KeyboardEvent) => {
       // Detect Cmd+F (Mac) or Ctrl+F (Windows/Linux)
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -155,7 +156,7 @@ export const TableSearchInput = ({
         handleClose();
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
     [isVisible, handleClose, handleShow],
   );
 
