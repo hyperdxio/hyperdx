@@ -122,6 +122,11 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
+      ...eslintReactPlugin.configs.recommended.rules,
+      // Temporarily disable @eslint-react rules that are failing at the time of setup - we'll re-enable these incrementally as we fix the issues
+      '@eslint-react/component-hook-factories': 'warn',
+      // Disable rules from eslint-plugin-react-hooks that have equivalent rules in @eslint-react
+      ...eslintReactPlugin.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'error',
       'react-hook-form/no-use-watch': 'error',
