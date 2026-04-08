@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
-import {
-  type PinnedFiltersApiResponse,
-  usePinnedFiltersApi,
-  useUpdatePinnedFilters,
-} from './pinnedFilters';
+import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
+import { useLocalStorage } from './utils';
 
 export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 
@@ -432,158 +429,258 @@ type PinnedFilters = {
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
 /**
- * Migrate pinned filters from localStorage to the server.
- * Reads the old localStorage keys and pushes them as team-level pins,
- * then clears the localStorage entries for that source.
+ * Merge team-level and personal pinned filter data into a single view.
+ * Fields and filter values are unioned (deduplicated).
  */
-function useLocalStorageMigration(
-  sourceId: string | null,
-  apiData: PinnedFiltersApiResponse | undefined,
-  updateMutation: ReturnType<typeof useUpdatePinnedFilters>,
-) {
-  const hasMigratedRef = useRef<Set<string>>(new Set());
+export function mergePinnedData(
+  team: { fields: string[]; filters: PinnedFilters } | null,
+  personal: { fields: string[]; filters: PinnedFilters } | null,
+): { fields: string[]; filters: PinnedFilters } {
+  const teamFields = team?.fields ?? [];
+  const personalFields = personal?.fields ?? [];
+  const fields = [...new Set([...teamFields, ...personalFields])];
 
-  useEffect(() => {
-    if (!sourceId || !apiData || hasMigratedRef.current.has(sourceId)) return;
+  const teamFilters = team?.filters ?? {};
+  const personalFilters = personal?.filters ?? {};
+  const allKeys = new Set([
+    ...Object.keys(teamFilters),
+    ...Object.keys(personalFilters),
+  ]);
 
-    // Only migrate if server has no team-level data yet
-    if (apiData.team != null) {
-      hasMigratedRef.current.add(sourceId);
-      return;
-    }
-
-    try {
-      const storedFiltersRaw = window.localStorage.getItem(
-        'hdx-pinned-search-filters',
-      );
-      const storedFieldsRaw = window.localStorage.getItem('hdx-pinned-fields');
-
-      const storedFilters: Record<string, PinnedFilters> = storedFiltersRaw
-        ? JSON.parse(storedFiltersRaw)
-        : {};
-      const storedFields: Record<string, string[]> = storedFieldsRaw
-        ? JSON.parse(storedFieldsRaw)
-        : {};
-
-      const filtersForSource = storedFilters[sourceId];
-      const fieldsForSource = storedFields[sourceId];
-
-      const hasLocalData =
-        (filtersForSource && Object.keys(filtersForSource).length > 0) ||
-        (fieldsForSource && fieldsForSource.length > 0);
-
-      if (hasLocalData) {
-        updateMutation.mutate(
-          {
-            source: sourceId,
-            fields: fieldsForSource ?? [],
-            filters: filtersForSource ?? {},
-          },
-          {
-            onSuccess: () => {
-              // Clean up localStorage for this source after successful migration
-              try {
-                if (storedFiltersRaw) {
-                  const updated = { ...storedFilters };
-                  delete updated[sourceId];
-                  window.localStorage.setItem(
-                    'hdx-pinned-search-filters',
-                    JSON.stringify(updated),
-                  );
-                }
-                if (storedFieldsRaw) {
-                  const updated = { ...storedFields };
-                  delete updated[sourceId];
-                  window.localStorage.setItem(
-                    'hdx-pinned-fields',
-                    JSON.stringify(updated),
-                  );
-                }
-              } catch {
-                // localStorage cleanup is best-effort
-              }
-            },
-          },
-        );
+  const filters: PinnedFilters = {};
+  for (const key of allKeys) {
+    const teamVals = teamFilters[key] ?? [];
+    const personalVals = personalFilters[key] ?? [];
+    const merged = [...teamVals];
+    for (const v of personalVals) {
+      if (!merged.some(existing => existing === v)) {
+        merged.push(v);
       }
-    } catch {
-      // Migration is best-effort — don't block the user
     }
+    filters[key] = merged;
+  }
 
-    hasMigratedRef.current.add(sourceId);
-  }, [sourceId, apiData, updateMutation]);
+  return { fields, filters };
+}
+
+/**
+ * Hook for personal pinned filters stored in localStorage.
+ * This is the original storage mechanism — per-user, per-browser.
+ */
+function usePersonalPinnedFilters(sourceId: string | null) {
+  const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
+    [sourceId: string]: PinnedFilters;
+  }>('hdx-pinned-search-filters', {});
+
+  const [_pinnedFields, _setPinnedFields] = useLocalStorage<{
+    [sourceId: string]: string[];
+  }>('hdx-pinned-fields', {});
+
+  const filters = useMemo<PinnedFilters>(
+    () =>
+      !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
+    [_pinnedFilters, sourceId],
+  );
+
+  const fields = useMemo<string[]>(
+    () =>
+      !sourceId || !_pinnedFields[sourceId] ? [] : _pinnedFields[sourceId],
+    [_pinnedFields, sourceId],
+  );
+
+  const setFilters = useCallback(
+    (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => {
+      if (!sourceId) return;
+      _setPinnedFilters(prev => {
+        const updated = { ...prev };
+        updated[sourceId] =
+          val instanceof Function ? val(prev[sourceId] ?? {}) : val;
+        return updated;
+      });
+    },
+    [sourceId, _setPinnedFilters],
+  );
+
+  const setFields = useCallback(
+    (val: string[] | ((pf: string[]) => string[])) => {
+      if (!sourceId) return;
+      _setPinnedFields(prev => {
+        const updated = { ...prev };
+        updated[sourceId] =
+          val instanceof Function ? val(prev[sourceId] ?? []) : val;
+        return updated;
+      });
+    },
+    [sourceId, _setPinnedFields],
+  );
+
+  return { filters, fields, setFilters, setFields };
 }
 
 export function usePinnedFilters(sourceId: string | null) {
-  const { data: apiData } = usePinnedFiltersApi(sourceId);
-  const updateMutation = useUpdatePinnedFilters();
+  // Personal pins: localStorage (per-user, per-browser)
+  const personal = usePersonalPinnedFilters(sourceId);
 
-  // Migrate from localStorage on first load
-  useLocalStorageMigration(sourceId, apiData, updateMutation);
+  // Team/shared pins: MongoDB via API (shared across team)
+  const { data: teamApiData } = usePinnedFiltersApi(sourceId);
+  const updateTeamMutation = useUpdatePinnedFilters();
 
-  // Optimistic local state so rapid toggles don't lose changes.
-  // When the user toggles a pin, we update this local state immediately,
-  // then debounce the API call. Optimistic state is cleared when the
-  // mutation settles (not on every apiData change, which would race with
-  // background refetches during the debounce window).
+  // Optimistic state for team mutations (API has network latency)
   const [optimisticTeam, setOptimisticTeam] = useState<{
     fields: string[];
     filters: PinnedFilters;
   } | null>(null);
 
-  // The effective team state: optimistic if pending, otherwise from API
   const effectiveTeam = useMemo(
     () =>
       optimisticTeam ?? {
-        fields: apiData?.team?.fields ?? [],
-        filters: apiData?.team?.filters ?? {},
+        fields: teamApiData?.team?.fields ?? [],
+        filters: teamApiData?.team?.filters ?? {},
       },
-    [optimisticTeam, apiData],
+    [optimisticTeam, teamApiData],
   );
 
-  // Merge team data into a unified view for read operations
+  // Merge team + personal into a unified view for read operations
   const { fields: pinnedFields, filters: pinnedFilters } = useMemo(
-    () => ({
-      fields: effectiveTeam.fields,
-      filters: effectiveTeam.filters,
-    }),
-    [effectiveTeam],
+    () =>
+      mergePinnedData(effectiveTeam, {
+        fields: personal.fields,
+        filters: personal.filters,
+      }),
+    [effectiveTeam, personal.fields, personal.filters],
   );
 
-  // Debounce ref to batch rapid toggles
-  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce for team API writes
+  const pendingTeamUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
-  const flushUpdate = useCallback(
+  const flushTeamUpdate = useCallback(
     (newFields: string[], newFilters: PinnedFilters) => {
       if (!sourceId) return;
 
-      // Update optimistic state immediately so the next toggle reads it
       setOptimisticTeam({ fields: newFields, filters: newFilters });
 
-      if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
+      if (pendingTeamUpdateRef.current) {
+        clearTimeout(pendingTeamUpdateRef.current);
       }
-      pendingUpdateRef.current = setTimeout(() => {
-        updateMutation.mutate(
+      pendingTeamUpdateRef.current = setTimeout(() => {
+        updateTeamMutation.mutate(
           {
             source: sourceId,
             fields: newFields,
             filters: newFilters,
           },
           {
-            // Clear optimistic state only after the mutation resolves,
-            // so background refetches during the debounce window don't
-            // cause the UI to briefly flash stale server data.
             onSettled: () => setOptimisticTeam(null),
           },
         );
-        pendingUpdateRef.current = null;
+        pendingTeamUpdateRef.current = null;
       }, 300);
     },
-    [sourceId, updateMutation],
+    [sourceId, updateTeamMutation],
   );
 
+  // Personal pin: value-level pin (localStorage, instant)
   const toggleFilterPin = useCallback(
+    (property: string, value: string | boolean) => {
+      personal.setFilters(prev => {
+        const updated = { ...prev };
+        if (!updated[property]) {
+          updated[property] = [];
+        }
+        const idx = updated[property].findIndex(
+          (v: string | boolean) => v === value,
+        );
+        if (idx >= 0) {
+          updated[property] = updated[property].filter(
+            (_: string | boolean, i: number) => i !== idx,
+          );
+          if (updated[property].length === 0) {
+            delete updated[property];
+          }
+        } else {
+          updated[property] = [...updated[property], value];
+        }
+        return updated;
+      });
+
+      // When pinning a value, also pin the field if not already pinned
+      personal.setFields(prev =>
+        prev.includes(property) ? prev : [...prev, property],
+      );
+    },
+    [personal],
+  );
+
+  // Personal pin: field-level pin (localStorage, instant)
+  const toggleFieldPin = useCallback(
+    (field: string) => {
+      personal.setFields(prev => {
+        const idx = prev.indexOf(field);
+        return idx >= 0 ? prev.filter((_, i) => i !== idx) : [...prev, field];
+      });
+    },
+    [personal],
+  );
+
+  // Personal-only checks (not merged) — so team pins don't show as personal
+  const isFilterPinned = useCallback(
+    (property: string, value: string | boolean): boolean => {
+      return (
+        personal.filters[property] != null &&
+        personal.filters[property].some((v: string | boolean) => v === value)
+      );
+    },
+    [personal.filters],
+  );
+
+  const isFieldPinned = useCallback(
+    (field: string): boolean => {
+      return personal.fields.includes(field);
+    },
+    [personal.fields],
+  );
+
+  // Merged view for getPinnedFields (used for sorting and always-fetch logic)
+  const getPinnedFields = useCallback((): string[] => {
+    return pinnedFields;
+  }, [pinnedFields]);
+
+  // Team pin: field-level (MongoDB via API, debounced)
+  const toggleSharedFieldPin = useCallback(
+    (field: string) => {
+      const currentFields = [...effectiveTeam.fields];
+      const currentFilters = { ...effectiveTeam.filters };
+      const fieldIndex = currentFields.indexOf(field);
+
+      if (fieldIndex >= 0) {
+        // Removing field from shared — also clean up its filter values
+        const newFields = currentFields.filter((_, i) => i !== fieldIndex);
+        delete currentFilters[field];
+        flushTeamUpdate(newFields, currentFilters);
+      } else {
+        // Adding field to shared
+        flushTeamUpdate([...currentFields, field], currentFilters);
+      }
+    },
+    [effectiveTeam, flushTeamUpdate],
+  );
+
+  const isSharedFieldPinned = useCallback(
+    (field: string): boolean => {
+      // A field is shared if it's in the fields list OR has shared filter values
+      return (
+        effectiveTeam.fields.includes(field) ||
+        (effectiveTeam.filters[field] != null &&
+          effectiveTeam.filters[field].length > 0)
+      );
+    },
+    [effectiveTeam],
+  );
+
+  // Team pin: value-level (MongoDB via API, debounced)
+  const toggleSharedFilterPin = useCallback(
     (property: string, value: string | boolean) => {
       const currentFilters: PinnedFilters = { ...effectiveTeam.filters };
       const currentFields = [...effectiveTeam.fields];
@@ -605,55 +702,31 @@ export function usePinnedFilters(sourceId: string | null) {
         currentFilters[property] = [...currentFilters[property], value];
       }
 
-      // When pinning a value, also pin the field if not already pinned
+      // When sharing a value, also add the field to shared fields
       const newFields = currentFields.includes(property)
         ? currentFields
         : [...currentFields, property];
 
-      flushUpdate(newFields, currentFilters);
+      flushTeamUpdate(newFields, currentFilters);
     },
-    [effectiveTeam, flushUpdate],
+    [effectiveTeam, flushTeamUpdate],
   );
 
-  const toggleFieldPin = useCallback(
-    (field: string) => {
-      const currentFields = [...effectiveTeam.fields];
-      const currentFilters = { ...effectiveTeam.filters };
-      const fieldIndex = currentFields.indexOf(field);
-      const newFields =
-        fieldIndex >= 0
-          ? currentFields.filter((_, i) => i !== fieldIndex)
-          : [...currentFields, field];
-
-      flushUpdate(newFields, currentFilters);
-    },
-    [effectiveTeam, flushUpdate],
-  );
-
-  const isFilterPinned = useCallback(
+  const isSharedFilterPinned = useCallback(
     (property: string, value: string | boolean): boolean => {
-      return (
-        pinnedFilters[property] != null &&
-        pinnedFilters[property].some(v => v === value)
-      );
+      const vals = effectiveTeam.filters[property];
+      return vals != null && vals.some(v => v === value);
     },
-    [pinnedFilters],
+    [effectiveTeam],
   );
-
-  const isFieldPinned = useCallback(
-    (field: string): boolean => {
-      return pinnedFields.includes(field);
-    },
-    [pinnedFields],
-  );
-
-  const getPinnedFields = useCallback((): string[] => {
-    return pinnedFields;
-  }, [pinnedFields]);
 
   const resetPinnedFilters = useCallback(() => {
-    flushUpdate([], {});
-  }, [flushUpdate]);
+    // Reset personal (localStorage)
+    personal.setFields(() => []);
+    personal.setFilters(() => ({}));
+    // Reset team (MongoDB)
+    flushTeamUpdate([], {});
+  }, [personal, flushTeamUpdate]);
 
   return {
     toggleFilterPin,
@@ -662,6 +735,10 @@ export function usePinnedFilters(sourceId: string | null) {
     isFieldPinned,
     getPinnedFields,
     pinnedFilters,
+    toggleSharedFieldPin,
+    isSharedFieldPinned,
+    toggleSharedFilterPin,
+    isSharedFilterPinned,
     resetPinnedFilters,
   };
 }

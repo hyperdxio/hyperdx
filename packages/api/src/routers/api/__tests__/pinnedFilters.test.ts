@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
-import PinnedFilter from '@/models/pinnedFilter';
 
 describe('pinnedFilters router', () => {
   const server = getServer();
@@ -60,8 +59,7 @@ describe('pinnedFilters router', () => {
       expect(res.body.id).toBeDefined();
     });
 
-    it('upserts pinned filters on repeated PUT', async () => {
-      // First write
+    it('upserts on repeated PUT', async () => {
       await agent
         .put('/pinned-filters')
         .send({
@@ -71,7 +69,6 @@ describe('pinnedFilters router', () => {
         })
         .expect(200);
 
-      // Second write overwrites
       const res = await agent
         .put('/pinned-filters')
         .send({
@@ -101,7 +98,7 @@ describe('pinnedFilters router', () => {
   });
 
   describe('GET + PUT round-trip', () => {
-    it('returns team data after PUT', async () => {
+    it('returns data after PUT', async () => {
       await agent
         .put('/pinned-filters')
         .send({
@@ -120,8 +117,7 @@ describe('pinnedFilters router', () => {
       expect(res.body.team.filters).toEqual({ ServiceName: ['web'] });
     });
 
-    it('can reset pinned filters by sending empty fields and filters', async () => {
-      // First set some pins
+    it('can reset by sending empty fields and filters', async () => {
       await agent
         .put('/pinned-filters')
         .send({
@@ -131,14 +127,9 @@ describe('pinnedFilters router', () => {
         })
         .expect(200);
 
-      // Reset
       await agent
         .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          fields: [],
-          filters: {},
-        })
+        .send({ source: sourceId, fields: [], filters: {} })
         .expect(200);
 
       const res = await agent
@@ -153,18 +144,18 @@ describe('pinnedFilters router', () => {
 
   describe('team scoping', () => {
     it('does not leak pinned filters between teams', async () => {
-      // Insert a pinned filter belonging to a different team directly in DB
-      const otherTeamId = new mongoose.Types.ObjectId();
-      await PinnedFilter.create({
-        team: otherTeamId,
-        source: new mongoose.Types.ObjectId(sourceId),
-        user: null,
-        fields: ['ServiceName'],
-        filters: { ServiceName: ['web'] },
-      });
+      await agent
+        .put('/pinned-filters')
+        .send({
+          source: sourceId,
+          fields: ['ServiceName'],
+          filters: { ServiceName: ['web'] },
+        })
+        .expect(200);
 
-      // The logged-in user (different team) should not see the other team's pins
-      const res = await agent
+      const { agent: agentB } = await getLoggedInAgent(server);
+
+      const res = await agentB
         .get(`/pinned-filters?source=${sourceId}`)
         .expect(200);
 

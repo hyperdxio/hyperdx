@@ -19,6 +19,7 @@ import {
   Group,
   Loader,
   MantineStyleProps,
+  Menu,
   NumberInput,
   ScrollArea,
   Stack,
@@ -45,6 +46,7 @@ import {
   IconSearch,
   IconShadow,
   IconSitemap,
+  IconUsers,
 } from '@tabler/icons-react';
 
 import { IS_CLICKHOUSE_BUILD } from '@/config';
@@ -69,7 +71,7 @@ import { mergePath, useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
-import { SharedFilters } from './DBSearchPageFilters/SharedFilters';
+import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -107,10 +109,12 @@ type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
   pinned: boolean;
+  sharedPinned?: boolean;
   onChange?: (checked: boolean) => void;
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
   onClickPin: VoidFunction;
+  onClickSharedPin?: VoidFunction;
   className?: string;
   percentage?: number;
   isPercentageLoading?: boolean;
@@ -143,6 +147,124 @@ const TextButton = ({
   );
 };
 
+/**
+ * Shared pin/share dropdown menu used on both value rows and group headers.
+ * Shows contextual actions: "Remove from Shared" / "Pin for me" / "Share with team"
+ * with the most relevant action first.
+ *
+ * Icon logic:
+ *  - sharedPinned → IconUsers (people icon)
+ *  - personalPinned → IconPinFilled
+ *  - neither → IconPin (outline)
+ */
+function PinShareMenu({
+  personalPinned,
+  sharedPinned,
+  onTogglePersonalPin,
+  onToggleSharedPin,
+  size = 14,
+  onChange,
+  'data-testid': dataTestId,
+  'aria-label': ariaLabel,
+}: {
+  personalPinned: boolean;
+  sharedPinned: boolean;
+  onTogglePersonalPin: VoidFunction;
+  onToggleSharedPin?: VoidFunction;
+  size?: number;
+  onChange?: (opened: boolean) => void;
+  'data-testid'?: string;
+  'aria-label'?: string;
+}) {
+  const isPinnedAny = personalPinned || sharedPinned;
+
+  // Personal pin icon takes priority over shared icon
+  const triggerIcon = personalPinned ? (
+    <IconPinFilled size={size} />
+  ) : sharedPinned ? (
+    <IconUsers size={size} />
+  ) : (
+    <IconPin size={size} />
+  );
+
+  return (
+    <Menu
+      position="right"
+      withArrow
+      shadow="sm"
+      width={200}
+      onChange={onChange}
+    >
+      <Menu.Target>
+        <ActionIcon
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={ariaLabel ?? (isPinnedAny ? 'Unpin' : 'Pin')}
+          data-testid={dataTestId}
+        >
+          {triggerIcon}
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {onToggleSharedPin && sharedPinned && (
+          <Menu.Item
+            leftSection={<IconUsers size={14} />}
+            onClick={onToggleSharedPin}
+            fz="xs"
+          >
+            Remove from Shared
+          </Menu.Item>
+        )}
+        <Menu.Item
+          leftSection={
+            personalPinned ? <IconPinFilled size={14} /> : <IconPin size={14} />
+          }
+          onClick={onTogglePersonalPin}
+          fz="xs"
+        >
+          {personalPinned ? 'Unpin for me' : 'Pin for me'}
+        </Menu.Item>
+        {onToggleSharedPin && !sharedPinned && (
+          <Menu.Item
+            leftSection={<IconUsers size={14} />}
+            onClick={onToggleSharedPin}
+            fz="xs"
+          >
+            Share with team
+          </Menu.Item>
+        )}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+/**
+ * Small indicator icon shown persistently on pinned/shared values.
+ */
+function PinShareIndicator({
+  personalPinned,
+  sharedPinned,
+  'data-testid': dataTestId,
+}: {
+  personalPinned: boolean;
+  sharedPinned: boolean;
+  'data-testid'?: string;
+}) {
+  if (!personalPinned && !sharedPinned) return null;
+
+  // Personal pin icon takes priority over shared icon
+  return (
+    <Center me="1px">
+      {personalPinned ? (
+        <IconPinFilled size={12} data-testid={dataTestId} />
+      ) : (
+        <IconUsers size={12} data-testid={dataTestId} />
+      )}
+    </Center>
+  );
+}
+
 type FilterPercentageProps = {
   percentage: number;
   isLoading?: boolean;
@@ -163,24 +285,34 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-export const FilterCheckbox = ({
+const FilterCheckbox = ({
   columnName,
   value,
   label,
   pinned,
+  sharedPinned,
   onChange,
   onClickOnly,
   onClickExclude,
   onClickPin,
+  onClickSharedPin,
   className,
   percentage,
   isPercentageLoading,
 }: FilterCheckboxProps) => {
+  const [pinMenuOpened, setPinMenuOpened] = useState(false);
   const testIdPrefix = `filter-checkbox-${columnName}-${label}`;
+  const isPinnedAny = pinned || sharedPinned;
   return (
     <div
       className={cx(classes.filterCheckbox, className)}
       data-testid={testIdPrefix}
+      // Keep actions visible while pin menu is open
+      style={
+        pinMenuOpened
+          ? { backgroundColor: 'var(--color-bg-surface)' }
+          : undefined
+      }
     >
       <Group
         gap={8}
@@ -235,7 +367,10 @@ export const FilterCheckbox = ({
           </Group>
         </Tooltip>
       </Group>
-      <div className={classes.filterActions}>
+      <div
+        className={classes.filterActions}
+        style={pinMenuOpened ? { display: 'flex' } : undefined}
+      >
         {onClickOnly && (
           <TextButton
             onClick={onClickOnly}
@@ -250,24 +385,26 @@ export const FilterCheckbox = ({
             data-testid={`${testIdPrefix}-exclude`}
           />
         )}
-        <ActionIcon
-          onClick={onClickPin}
-          size="xs"
-          variant="subtle"
-          color="gray"
-          aria-label={pinned ? 'Unpin field' : 'Pin field'}
-          role="checkbox"
-          aria-checked={pinned}
+        <PinShareMenu
+          personalPinned={pinned}
+          sharedPinned={sharedPinned ?? false}
+          onTogglePersonalPin={onClickPin}
+          onToggleSharedPin={onClickSharedPin}
+          size={12}
+          onChange={setPinMenuOpened}
           data-testid={`${testIdPrefix}-pin`}
-        >
-          {pinned ? <IconPinFilled size={12} /> : <IconPin size={12} />}
-        </ActionIcon>
+          aria-label={isPinnedAny ? 'Unpin value' : 'Pin value'}
+        />
       </div>
-      {pinned && (
-        <Center me="1px">
-          <IconPinFilled size={12} data-testid={`${testIdPrefix}-pin-pinned`} />
-        </Center>
-      )}
+      <PinShareIndicator
+        personalPinned={pinned}
+        sharedPinned={sharedPinned ?? false}
+        data-testid={
+          sharedPinned
+            ? `${testIdPrefix}-pin-shared`
+            : `${testIdPrefix}-pin-pinned`
+        }
+      />
     </div>
   );
 };
@@ -348,14 +485,19 @@ export type FilterGroupProps = {
   onExcludeClick: (value: string | boolean) => void;
   onPinClick: (value: string | boolean) => void;
   isPinned: (value: string | boolean) => boolean;
+  onSharedPinClick?: (value: string | boolean) => void;
+  isSharedPinned?: (value: string | boolean) => boolean;
   onFieldPinClick?: VoidFunction;
   isFieldPinned?: boolean;
+  onToggleSharedFieldPin?: VoidFunction;
+  isSharedFieldPinned?: boolean;
   onColumnToggle?: VoidFunction;
   isColumnDisplayed?: boolean;
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
   isLive?: boolean;
@@ -378,6 +520,8 @@ const FilterGroupBody = ({
   onExcludeClick,
   isPinned,
   onPinClick,
+  isSharedPinned,
+  onSharedPinClick,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
@@ -401,6 +545,8 @@ const FilterGroupBody = ({
   onExcludeClick: (value: string | boolean) => void;
   isPinned: (value: string | boolean) => boolean;
   onPinClick: (value: string | boolean) => void;
+  isSharedPinned?: (value: string | boolean) => boolean;
+  onSharedPinClick?: (value: string | boolean) => void;
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
@@ -509,18 +655,25 @@ const FilterGroupBody = ({
         );
     }
 
-    // When not searching, sort by pinned, selected, distribution, then alphabetically
+    // When not searching, sort by personal pinned, shared pinned, selected,
+    // distribution, then alphabetically
     return augmentedOptions.toSorted((a, b) => {
       const aPinned = isPinned(a.value);
+      const aShared = isSharedPinned?.(a.value) ?? false;
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
       const bPinned = isPinned(b.value);
+      const bShared = isSharedPinned?.(b.value) ?? false;
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
 
-      // First sort by pinned status
+      // First sort by personal pinned status
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Then sort by shared pinned status
+      if (aShared && !bShared) return -1;
+      if (!aShared && bShared) return 1;
 
       // Then sort by included status
       if (aIncluded && !bIncluded) return -1;
@@ -544,6 +697,7 @@ const FilterGroupBody = ({
     search,
     augmentedOptions,
     isPinned,
+    isSharedPinned,
     selectedValues.included,
     selectedValues.excluded,
     distributionData,
@@ -624,6 +778,10 @@ const FilterGroupBody = ({
           onClickOnly={() => onOnlyClick(option.value)}
           onClickExclude={() => onExcludeClick(option.value)}
           onClickPin={() => onPinClick(option.value)}
+          sharedPinned={isSharedPinned?.(option.value)}
+          onClickSharedPin={
+            onSharedPinClick ? () => onSharedPinClick(option.value) : undefined
+          }
           isPercentageLoading={isFetchingDistribution}
           percentage={
             showDistributions && distributionData
@@ -713,11 +871,11 @@ type FilterGroupActionsProps = {
   isFetchingDistribution: boolean;
   isColumnDisplayed: boolean;
   isFieldPinned: boolean;
-  totalAppliedFiltersSize: number;
+  isSharedFieldPinned: boolean;
   toggleShowDistributions: VoidFunction;
-  onColumnToggle: VoidFunction;
+  onColumnToggle?: VoidFunction;
   onFieldPinClick: VoidFunction;
-  onClearClick: VoidFunction;
+  onToggleSharedFieldPin: VoidFunction;
 };
 function FilterGroupActions({
   name,
@@ -726,94 +884,46 @@ function FilterGroupActions({
   isFetchingDistribution,
   isColumnDisplayed,
   isFieldPinned,
-  totalAppliedFiltersSize,
+  isSharedFieldPinned,
   toggleShowDistributions,
   onColumnToggle,
   onFieldPinClick,
-  onClearClick,
+  onToggleSharedFieldPin,
 }: FilterGroupActionsProps) {
+  if (hasRange) return null;
+
   return (
     <Group gap={0} wrap="nowrap">
-      {!hasRange && (
-        <>
-          <Tooltip
-            label={
-              showDistributions ? 'Hide Distribution' : 'Show Distribution'
-            }
-            position="top"
-            withArrow
-            fz="xxs"
-            color="gray"
-          >
-            <ActionIcon
-              size="xs"
-              variant="subtle"
-              color="gray"
-              onClick={toggleShowDistributions}
-              data-testid={`toggle-distribution-button-${name}`}
-              aria-checked={showDistributions}
-              role="checkbox"
-            >
-              {isFetchingDistribution ? (
-                <Center>
-                  <IconRefresh className="spin-animate" size={12} />
-                </Center>
-              ) : showDistributions ? (
-                <IconChartBarOff size={14} />
-              ) : (
-                <IconChartBar size={14} />
-              )}
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip
-            label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
-            position="top"
-            withArrow
-            fz="xxs"
-            color="gray"
-          >
-            <ActionIcon
-              size="xs"
-              variant="subtle"
-              color="gray"
-              onClick={onColumnToggle}
-              data-testid={`toggle-column-button-${name}`}
-            >
-              {isColumnDisplayed ? (
-                <IconMinus size={14} />
-              ) : (
-                <IconPlus size={14} />
-              )}
-            </ActionIcon>
-          </Tooltip>
-          {onFieldPinClick && (
-            <Tooltip
-              label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
-              position="top"
-              withArrow
-              fz="xxs"
-              color="gray"
-            >
-              <ActionIcon
-                size="xs"
-                variant="subtle"
-                color="gray"
-                onClick={onFieldPinClick}
-                title={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
-              >
-                {isFieldPinned ? (
-                  <IconPinFilled size={14} />
-                ) : (
-                  <IconPin size={14} />
-                )}
-              </ActionIcon>
-            </Tooltip>
+      <Tooltip
+        label={showDistributions ? 'Hide Distribution' : 'Show Distribution'}
+        position="top"
+        withArrow
+        fz="xxs"
+        color="gray"
+      >
+        <ActionIcon
+          size="xs"
+          variant="subtle"
+          color="gray"
+          onClick={toggleShowDistributions}
+          data-testid={`toggle-distribution-button-${name}`}
+          aria-checked={showDistributions}
+          role="checkbox"
+        >
+          {isFetchingDistribution ? (
+            <Center>
+              <IconRefresh className="spin-animate" size={12} />
+            </Center>
+          ) : showDistributions ? (
+            <IconChartBarOff size={14} />
+          ) : (
+            <IconChartBar size={14} />
           )}
-        </>
-      )}
-      {totalAppliedFiltersSize > 0 && (
+        </ActionIcon>
+      </Tooltip>
+      {onColumnToggle && (
         <Tooltip
-          label="Clear Filters"
+          label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
           position="top"
           withArrow
           fz="xxs"
@@ -823,12 +933,23 @@ function FilterGroupActions({
             size="xs"
             variant="subtle"
             color="gray"
-            onClick={onClearClick}
+            onClick={onColumnToggle}
+            data-testid={`toggle-column-button-${name}`}
           >
-            <IconFilterOff size={14} />
+            {isColumnDisplayed ? (
+              <IconMinus size={14} />
+            ) : (
+              <IconPlus size={14} />
+            )}
           </ActionIcon>
         </Tooltip>
       )}
+      <PinShareMenu
+        personalPinned={isFieldPinned}
+        sharedPinned={isSharedFieldPinned}
+        onTogglePersonalPin={onFieldPinClick}
+        onToggleSharedPin={onToggleSharedFieldPin}
+      />
     </Group>
   );
 }
@@ -846,14 +967,19 @@ export const FilterGroup = ({
   onExcludeClick,
   isPinned,
   onPinClick,
+  onSharedPinClick,
+  isSharedPinned,
   onFieldPinClick,
   isFieldPinned,
+  onToggleSharedFieldPin,
+  isSharedFieldPinned,
   onColumnToggle,
   isColumnDisplayed,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
   isLive,
@@ -928,6 +1054,13 @@ export const FilterGroup = ({
               >
                 <Text size="xs" fw="500" truncate="end">
                   {name}
+                  {showFilterCounts && (
+                    <Text
+                      component="span"
+                      size="xs"
+                      c="dimmed"
+                    >{` (${totalAppliedFiltersSize})`}</Text>
+                  )}
                 </Text>
               </Tooltip>
             </Accordion.Control>
@@ -938,11 +1071,11 @@ export const FilterGroup = ({
               isFetchingDistribution={isFetchingDistribution}
               isColumnDisplayed={isColumnDisplayed ?? false}
               isFieldPinned={isFieldPinned ?? false}
-              totalAppliedFiltersSize={totalAppliedFiltersSize}
+              isSharedFieldPinned={isSharedFieldPinned ?? false}
               toggleShowDistributions={toggleShowDistributions}
-              onColumnToggle={onColumnToggle ?? voidFunc}
+              onColumnToggle={onColumnToggle}
               onFieldPinClick={onFieldPinClick ?? voidFunc}
-              onClearClick={onClearClick}
+              onToggleSharedFieldPin={onToggleSharedFieldPin ?? voidFunc}
             />
           </Center>
           <Accordion.Panel
@@ -970,6 +1103,8 @@ export const FilterGroup = ({
                   onExcludeClick={onExcludeClick}
                   isPinned={isPinned}
                   onPinClick={onPinClick}
+                  isSharedPinned={isSharedPinned}
+                  onSharedPinClick={onSharedPinClick}
                   onLoadMore={onLoadMore}
                   loadMoreLoading={loadMoreLoading}
                   hasLoadedMore={hasLoadedMore}
@@ -1036,12 +1171,20 @@ const DBSearchPageFiltersComponent = ({
     isFilterPinned,
     isFieldPinned,
     getPinnedFields,
+    toggleSharedFilterPin,
+    isSharedFilterPinned,
     pinnedFilters,
+    toggleSharedFieldPin,
+    isSharedFieldPinned,
     resetPinnedFilters,
   } = usePinnedFilters(sourceId ?? null);
   const { data: pinnedFiltersApiData } = usePinnedFiltersApi(sourceId ?? null);
   const [isSharedFiltersVisible, setSharedFiltersVisible] = useLocalStorage(
     'hdx-shared-filters-visible',
+    true,
+  );
+  const [showFilterCounts, setShowFilterCounts] = useLocalStorage(
+    'hdx-show-filter-counts',
     true,
   );
   const { size, startResize } = useResizable(16, 'left');
@@ -1206,16 +1349,43 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, setExtraFacets, dateRange, metadata, source],
   );
 
-  // Build the set of fields already shown in the Shared Filters section,
-  // so we can avoid duplicating them in the main filters list.
+  // Build the set of fields shown in the Shared Filters section (union of
+  // team + personal pinned fields) so we can avoid duplicating them below.
+  // Build the set of team-pinned fields for the Shared Filters section.
   const sharedFilterKeys = useMemo(() => {
     if (!isSharedFiltersVisible || !pinnedFiltersApiData?.team) {
       return new Set<string>();
     }
     const team = pinnedFiltersApiData.team;
-    const keys = new Set([...team.fields, ...Object.keys(team.filters)]);
-    return keys;
+    return new Set([...team.fields, ...Object.keys(team.filters)]);
   }, [isSharedFiltersVisible, pinnedFiltersApiData]);
+
+  // Build the facet list for the Shared Filters section.
+  // For each team-pinned field: merge pinned values with dynamic facet values.
+  const sharedFacets = useMemo(() => {
+    if (sharedFilterKeys.size === 0) return [];
+
+    const facetMap = new Map(
+      (facetsWithPinnedValues ?? []).map(f => [f.key, f.value]),
+    );
+
+    return Array.from(sharedFilterKeys).map(key => {
+      const teamVals = pinnedFiltersApiData?.team?.filters[key] ?? [];
+      const dynamicValues = facetMap.get(key) ?? [];
+
+      if (teamVals.length > 0) {
+        const merged = [...teamVals];
+        for (const v of dynamicValues) {
+          if (!merged.some(existing => existing === v)) {
+            merged.push(v);
+          }
+        }
+        return { key, value: merged };
+      }
+      // Field-only pin — show dynamic values
+      return { key, value: dynamicValues };
+    });
+  }, [sharedFilterKeys, facetsWithPinnedValues, pinnedFiltersApiData]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
@@ -1272,11 +1442,18 @@ const DBSearchPageFiltersComponent = ({
       return aIsPk && !bIsPk ? -1 : bIsPk && !aIsPk ? 1 : 0;
     });
 
-    // prioritize facets that are pinned
+    // prioritize facets that are pinned (either personal or shared)
     _facets.sort((a, b) => {
-      const aPinned = isFieldPinned(a.key);
-      const bPinned = isFieldPinned(b.key);
+      const aPinned = isFieldPinned(a.key) || isSharedFieldPinned(a.key);
+      const bPinned = isFieldPinned(b.key) || isSharedFieldPinned(b.key);
       return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
+    });
+
+    // among pinned, prioritize shared over personal
+    _facets.sort((a, b) => {
+      const aShared = isSharedFieldPinned(a.key);
+      const bShared = isSharedFieldPinned(b.key);
+      return aShared && !bShared ? -1 : bShared && !aShared ? 1 : 0;
     });
 
     // prioritize facets that have checked items
@@ -1302,6 +1479,7 @@ const DBSearchPageFiltersComponent = ({
     tableMetadata,
     extraFacets,
     isFieldPinned,
+    isSharedFieldPinned,
     jsonColumns,
     sharedFilterKeys,
   ]);
@@ -1407,22 +1585,143 @@ const DBSearchPageFiltersComponent = ({
             </Tabs.List>
           </Tabs>
 
-          {isSharedFiltersVisible && pinnedFiltersApiData?.team && (
-            <SharedFilters
-              teamData={pinnedFiltersApiData.team}
-              facets={facetsWithPinnedValues}
-              filterState={filterState}
-              onFilterChange={(key, value) => setFilterValue(key, value)}
-              onFilterOnly={(key, value) => setFilterValue(key, value, 'only')}
-              onFilterExclude={(key, value) =>
-                setFilterValue(key, value, 'exclude')
-              }
-              onFilterClear={key => clearFilter(key)}
-              onToggleFilterPin={(key, value) => toggleFilterPin(key, value)}
-              onToggleFieldPin={key => toggleFieldPin(key)}
-              isFilterPinned={(key, value) => isFilterPinned(key, value)}
-              isFieldPinned={key => isFieldPinned(key)}
-            />
+          {isSharedFiltersVisible && (
+            <SharedFiltersSection hasSharedFacets={sharedFacets.length > 0}>
+              {(() => {
+                const { grouped, nonGrouped } =
+                  groupFacetsByBaseName(sharedFacets);
+
+                return (
+                  <>
+                    {grouped.map(group => (
+                      <NestedFilterGroup
+                        key={`shared-${group.key}`}
+                        data-testid={`shared-nested-filter-group-${group.key}`}
+                        name={group.key}
+                        childFilters={group.children}
+                        selectedValues={group.children.reduce(
+                          (acc, child) => {
+                            acc[child.key] = filterState[child.key]
+                              ? filterState[child.key]
+                              : {
+                                  included: new Set(),
+                                  excluded: new Set(),
+                                };
+                            return acc;
+                          },
+                          {} as Record<
+                            string,
+                            {
+                              included: Set<string | boolean>;
+                              excluded: Set<string | boolean>;
+                            }
+                          >,
+                        )}
+                        onChange={(key, value) => setFilterValue(key, value)}
+                        onClearClick={key => clearFilter(key)}
+                        onOnlyClick={(key, value) =>
+                          setFilterValue(key, value, 'only')
+                        }
+                        onExcludeClick={(key, value) =>
+                          setFilterValue(key, value, 'exclude')
+                        }
+                        onPinClick={(key, value) => toggleFilterPin(key, value)}
+                        isPinned={(key, value) => isFilterPinned(key, value)}
+                        onSharedPinClick={(key, value) =>
+                          toggleSharedFilterPin(key, value)
+                        }
+                        isSharedPinned={(key, value) =>
+                          isSharedFilterPinned(key, value)
+                        }
+                        onFieldPinClick={key => toggleFieldPin(key)}
+                        isFieldPinned={key => isFieldPinned(key)}
+                        onToggleSharedFieldPin={key =>
+                          toggleSharedFieldPin(key)
+                        }
+                        isSharedFieldPinned={key => isSharedFieldPinned(key)}
+                        onColumnToggle={onColumnToggle}
+                        displayedColumns={displayedColumns}
+                        onLoadMore={loadMoreFilterValuesForKey}
+                        loadMoreLoading={group.children.reduce(
+                          (acc, child) => {
+                            acc[child.key] = loadMoreLoadingKeys.has(child.key);
+                            return acc;
+                          },
+                          {} as Record<string, boolean>,
+                        )}
+                        hasLoadedMore={group.children.reduce(
+                          (acc, child) => {
+                            acc[child.key] = Boolean(extraFacets[child.key]);
+                            return acc;
+                          },
+                          {} as Record<string, boolean>,
+                        )}
+                        isDefaultExpanded
+                        chartConfig={chartConfig}
+                        isLive={isLive}
+                      />
+                    ))}
+                    {nonGrouped.map(facet => (
+                      <FilterGroup
+                        key={`shared-${facet.key}`}
+                        data-testid={`shared-filter-group-${facet.key}`}
+                        name={cleanedFacetName(facet.key)}
+                        showFilterCounts={showFilterCounts}
+                        options={facet.value.map(value => ({
+                          value,
+                          label: value.toString(),
+                        }))}
+                        optionsLoading={isFacetsLoading}
+                        selectedValues={
+                          filterState[facet.key]
+                            ? filterState[facet.key]
+                            : { included: new Set(), excluded: new Set() }
+                        }
+                        onChange={value => setFilterValue(facet.key, value)}
+                        onClearClick={() => clearFilter(facet.key)}
+                        onOnlyClick={value =>
+                          setFilterValue(facet.key, value, 'only')
+                        }
+                        onExcludeClick={value =>
+                          setFilterValue(facet.key, value, 'exclude')
+                        }
+                        onPinClick={value => toggleFilterPin(facet.key, value)}
+                        isPinned={value => isFilterPinned(facet.key, value)}
+                        onSharedPinClick={value =>
+                          toggleSharedFilterPin(facet.key, value)
+                        }
+                        isSharedPinned={value =>
+                          isSharedFilterPinned(facet.key, value)
+                        }
+                        onFieldPinClick={() => toggleFieldPin(facet.key)}
+                        isFieldPinned={isFieldPinned(facet.key)}
+                        onToggleSharedFieldPin={() =>
+                          toggleSharedFieldPin(facet.key)
+                        }
+                        isSharedFieldPinned={isSharedFieldPinned(facet.key)}
+                        onColumnToggle={
+                          onColumnToggle
+                            ? () => onColumnToggle(facet.key)
+                            : undefined
+                        }
+                        isColumnDisplayed={displayedColumns?.includes(
+                          facet.key,
+                        )}
+                        onLoadMore={loadMoreFilterValuesForKey}
+                        loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+                        hasLoadedMore={Boolean(extraFacets[facet.key])}
+                        isDefaultExpanded
+                        chartConfig={chartConfig}
+                        isLive={isLive}
+                        onRangeChange={range =>
+                          setFilterRange(facet.key, range)
+                        }
+                      />
+                    ))}
+                  </>
+                );
+              })()}
+            </SharedFiltersSection>
           )}
 
           <Flex align="center" justify="space-between">
@@ -1444,21 +1743,30 @@ const DBSearchPageFiltersComponent = ({
             </Flex>
             <Group gap={0}>
               {showClearAllButton && (
-                <TextButton
-                  label="Clear all"
-                  onClick={() => {
-                    clearAllFilters();
-                  }}
-                />
+                <Tooltip
+                  label="Clear All Filters"
+                  position="top"
+                  withArrow
+                  fz="xxs"
+                  color="gray"
+                >
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="xs"
+                    onClick={() => clearAllFilters()}
+                    aria-label="Clear All Filters"
+                  >
+                    <IconFilterOff size={14} />
+                  </ActionIcon>
+                </Tooltip>
               )}
               <FilterSettingsPanel
                 isSharedFiltersVisible={isSharedFiltersVisible}
                 onSharedFiltersVisibilityChange={setSharedFiltersVisible}
-                hasSharedFilters={
-                  pinnedFiltersApiData?.team != null &&
-                  (pinnedFiltersApiData.team.fields.length > 0 ||
-                    Object.keys(pinnedFiltersApiData.team.filters).length > 0)
-                }
+                showFilterCounts={showFilterCounts}
+                onShowFilterCountsChange={setShowFilterCounts}
+                hasSharedFilters={sharedFilterKeys.size > 0}
                 onResetSharedFilters={resetPinnedFilters}
               />
             </Group>
@@ -1570,8 +1878,16 @@ const DBSearchPageFiltersComponent = ({
                     }}
                     onPinClick={(key, value) => toggleFilterPin(key, value)}
                     isPinned={(key, value) => isFilterPinned(key, value)}
+                    onSharedPinClick={(key, value) =>
+                      toggleSharedFilterPin(key, value)
+                    }
+                    isSharedPinned={(key, value) =>
+                      isSharedFilterPinned(key, value)
+                    }
                     onFieldPinClick={key => toggleFieldPin(key)}
                     isFieldPinned={key => isFieldPinned(key)}
+                    onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
+                    isSharedFieldPinned={key => isSharedFieldPinned(key)}
                     onColumnToggle={onColumnToggle}
                     displayedColumns={displayedColumns}
                     onLoadMore={loadMoreFilterValuesForKey}
@@ -1596,7 +1912,8 @@ const DBSearchPageFiltersComponent = ({
                           (filterState[child.key] &&
                             (filterState[child.key].included.size > 0 ||
                               filterState[child.key].excluded.size > 0)) ||
-                          isFieldPinned(child.key),
+                          isFieldPinned(child.key) ||
+                          isSharedFieldPinned(child.key),
                       )
                     }
                     chartConfig={chartConfig}
@@ -1610,6 +1927,7 @@ const DBSearchPageFiltersComponent = ({
                     key={facet.key}
                     data-testid={`filter-group-${facet.key}`}
                     name={cleanedFacetName(facet.key)}
+                    showFilterCounts={showFilterCounts}
                     options={facet.value.map(value => ({
                       value,
                       label: value.toString(),
@@ -1632,8 +1950,18 @@ const DBSearchPageFiltersComponent = ({
                     }}
                     onPinClick={value => toggleFilterPin(facet.key, value)}
                     isPinned={value => isFilterPinned(facet.key, value)}
+                    onSharedPinClick={value =>
+                      toggleSharedFilterPin(facet.key, value)
+                    }
+                    isSharedPinned={value =>
+                      isSharedFilterPinned(facet.key, value)
+                    }
                     onFieldPinClick={() => toggleFieldPin(facet.key)}
                     isFieldPinned={isFieldPinned(facet.key)}
+                    onToggleSharedFieldPin={() =>
+                      toggleSharedFieldPin(facet.key)
+                    }
+                    isSharedFieldPinned={isSharedFieldPinned(facet.key)}
                     onColumnToggle={
                       onColumnToggle
                         ? () => onColumnToggle(facet.key)
@@ -1643,15 +1971,7 @@ const DBSearchPageFiltersComponent = ({
                     onLoadMore={loadMoreFilterValuesForKey}
                     loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
                     hasLoadedMore={Boolean(extraFacets[facet.key])}
-                    isDefaultExpanded={
-                      // open by default if PK, or has selected values
-                      isFieldPrimary(tableMetadata, facet.key) ||
-                      isFieldPinned(facet.key) ||
-                      (filterState[facet.key] &&
-                        (filterState[facet.key].included.size > 0 ||
-                          filterState[facet.key].excluded.size > 0 ||
-                          filterState[facet.key].range != null))
-                    }
+                    isDefaultExpanded
                     chartConfig={chartConfig}
                     isLive={isLive}
                     onRangeChange={range => setFilterRange(facet.key, range)}
