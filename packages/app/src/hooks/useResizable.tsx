@@ -52,7 +52,7 @@ function useResizable(
 
   const endResize = useCallback(() => {
     document.removeEventListener('mousemove', handleResize);
-    // eslint-disable-next-line react-hooks/immutability
+
     document.removeEventListener('mouseup', endResize);
   }, [handleResize]);
 
@@ -76,6 +76,7 @@ function useResizable(
 
   return {
     size: sizePercentage,
+    setSize: setSizePercentage,
     startResize,
   };
 }

@@ -17,6 +17,8 @@ import {
   IconClipboard,
 } from '@tabler/icons-react';
 
+import { DBRowTableIconButton } from '@/components/DBTable/DBRowTableIconButton';
+
 import styles from './HyperJson.module.scss';
 
 export type LineAction = {
@@ -131,17 +133,15 @@ const LineMenu = React.memo(
     return (
       <div className={styles.lineMenu}>
         {lineActions.map(action => (
-          <button
+          <DBRowTableIconButton
             key={action.key}
+            onClick={() => action.onClick()}
             title={action.title}
-            className={styles.lineMenuBtn}
-            onClick={e => {
-              action.onClick();
-              e.stopPropagation();
-            }}
+            variant="copy"
+            iconSize={14}
           >
             {action.label}
-          </button>
+          </DBRowTableIconButton>
         ))}
       </div>
     );

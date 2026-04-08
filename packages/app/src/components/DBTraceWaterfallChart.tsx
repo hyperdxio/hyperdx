@@ -13,12 +13,12 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Center,
   Checkbox,
   Code,
-  Divider,
   Group,
   Kbd,
   Text,
@@ -26,16 +26,23 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconAlertCircleFilled,
+  IconAlertTriangleFilled,
   IconChevronDown,
   IconChevronRight,
+  IconChevronsDown,
+  IconChevronsRight,
   IconLogs,
+  IconSparkles,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import useResizable from '@/hooks/useResizable';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -46,12 +53,11 @@ import {
 } from '@/source';
 import { useFormatTime } from '@/useFormatTime';
 import {
+  COLORS,
   getChartColorError,
-  getChartColorErrorHighlight,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
   getChartColorWarning,
-  getChartColorWarningHighlight,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
@@ -61,7 +67,6 @@ import {
 import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
-import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 export type SpanRow = {
   Body: string;
@@ -83,33 +88,30 @@ export type SpanRow = {
   __hdx_hidden?: boolean | 1 | 0;
 };
 
-function textColor(condition: { isError: boolean; isWarn: boolean }): string {
-  const { isError, isWarn } = condition;
-  if (isError) return 'text-danger';
-  if (isWarn) return 'text-warning';
-  return '';
-}
-
 function barColor(condition: {
-  isError: boolean;
-  isWarn: boolean;
   isHighlighted: boolean;
+  isError?: boolean;
   type: string | undefined;
+  serviceColor?: string;
 }) {
-  const { isError, isWarn, isHighlighted, type } = condition;
-
-  if (isError)
-    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
-
-  if (isWarn)
-    return isHighlighted
-      ? getChartColorWarningHighlight()
-      : getChartColorWarning();
+  const { isHighlighted, isError, type, serviceColor } = condition;
 
   if (type === SourceKind.Log) {
     return isHighlighted
       ? getChartColorSuccessHighlight()
       : getChartColorSuccess();
+  }
+
+  if (isError) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${getChartColorError()} 60%, white)`
+      : getChartColorError();
+  }
+
+  if (serviceColor) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${serviceColor} 60%, white)`
+      : serviceColor;
   }
 
   return isHighlighted ? '#A9AFB7' : '#6A7077';
@@ -413,6 +415,204 @@ function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
   );
 }
 
+function fmtMs(ms: number): string {
+  if (ms < 1) return `${Math.round(ms * 1000)}µs`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function generateTraceSummary(rows: any[], minOffset: number): string {
+  const spans = rows.filter(
+    (r: any) => r.type !== SourceKind.Log && r.Duration != null,
+  );
+  if (!spans.length) return 'No span data available.';
+
+  const maxEnd = spans.reduce((acc: number, r: any) => {
+    const end = new Date(r.Timestamp).getTime() + (r.Duration || 0) * 1000;
+    return Math.max(acc, end);
+  }, 0);
+  const totalMs = maxEnd - minOffset;
+
+  const rootSpan = spans.find(
+    (r: any) => !r.ParentSpanId || r.ParentSpanId === '',
+  );
+
+  const byService = new Map<string, { count: number; totalMs: number }>();
+  for (const s of spans) {
+    const svc = s.ServiceName || 'unknown';
+    const prev = byService.get(svc) || { count: 0, totalMs: 0 };
+    prev.count += 1;
+    prev.totalMs += (s.Duration || 0) * 1000;
+    byService.set(svc, prev);
+  }
+
+  const sorted = [...spans].sort(
+    (a: any, b: any) => (b.Duration || 0) - (a.Duration || 0),
+  );
+  const slowest = sorted[0];
+  const slowestMs = (slowest.Duration || 0) * 1000;
+  const slowestPct = totalMs > 0 ? Math.round((slowestMs / totalMs) * 100) : 0;
+
+  const errorSpans = spans.filter(
+    (r: any) =>
+      r.StatusCode === 'Error' || r.SeverityText?.toLowerCase() === 'error',
+  );
+
+  const lines: string[] = [];
+
+  if (errorSpans.length > 0) {
+    const firstErr = errorSpans[0];
+    const errSvc = firstErr.ServiceName || 'unknown';
+    const errBody = firstErr.Body || 'unknown operation';
+
+    const errMessage =
+      firstErr.SpanEvents?.find(
+        (e: any) => e.Name === 'exception' || e.Name === 'error',
+      )?.Attributes?.['exception.message'] || '';
+
+    lines.push(
+      `⚠ ${errorSpans.length} error${errorSpans.length !== 1 ? 's' : ''} detected. ` +
+        `First error in **${errSvc}** → \`${errBody}\`` +
+        (errMessage ? `: "${errMessage}"` : '') +
+        '.',
+    );
+
+    if (errorSpans.length > 1) {
+      const errServices = [
+        ...new Set(errorSpans.map((r: any) => r.ServiceName).filter(Boolean)),
+      ];
+      lines.push(
+        `Errors span across ${errServices.length} service${errServices.length !== 1 ? 's' : ''}: ${errServices.join(', ')}.`,
+      );
+    }
+  }
+
+  if (slowestPct >= 30 && slowest !== rootSpan) {
+    lines.push(
+      `🐢 Bottleneck: \`${slowest.Body || 'unknown'}\` in **${slowest.ServiceName || 'unknown'}** ` +
+        `took ${fmtMs(slowestMs)} (${slowestPct}% of total trace). ` +
+        'Consider optimizing this operation.',
+    );
+  }
+
+  const slowService = [...byService.entries()].sort(
+    (a, b) => b[1].totalMs - a[1].totalMs,
+  )[0];
+  if (slowService && byService.size > 1) {
+    const ratio = totalMs > 0 ? slowService[1].totalMs / totalMs : 0;
+    const svcPct = Math.round(ratio * 100);
+    if (svcPct >= 40) {
+      lines.push(
+        `**${slowService[0]}** accounts for ~${svcPct}% of total time (${slowService[1].count} span${slowService[1].count !== 1 ? 's' : ''}).`,
+      );
+    }
+  }
+
+  if (errorSpans.length === 0 && lines.length === 0) {
+    lines.push(
+      `✓ Trace completed successfully in ${fmtMs(totalMs)}` +
+        (rootSpan ? ` for \`${rootSpan.Body}\`` : '') +
+        `. No errors or significant bottlenecks detected.`,
+    );
+  }
+
+  return lines.join(' ');
+}
+
+function StreamingText({ text, speed = 12 }: { text: string; speed?: number }) {
+  const [charIndex, setCharIndex] = useState(0);
+
+  useEffect(() => {
+    if (!text) return;
+
+    const interval = setInterval(() => {
+      setCharIndex(prev => {
+        const next = prev + 1;
+        if (next >= text.length) {
+          clearInterval(interval);
+          return text.length;
+        }
+        return next;
+      });
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  const displayed = text.slice(0, charIndex);
+  const isStreaming = charIndex < text.length;
+
+  return (
+    <>
+      {displayed}
+      {isStreaming && (
+        <span
+          style={{
+            display: 'inline-block',
+            width: 4,
+            height: 14,
+            backgroundColor: 'var(--color-text-brand)',
+            marginLeft: 1,
+            verticalAlign: 'text-bottom',
+            animation: 'blink 0.8s step-end infinite',
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function TraceSummaryPanel({
+  rows,
+  minOffset,
+  onClose,
+}: {
+  rows: any[];
+  minOffset: number;
+  onClose: () => void;
+}) {
+  const summaryText = useMemo(
+    () => generateTraceSummary(rows, minOffset),
+    [rows, minOffset],
+  );
+
+  return (
+    <Box
+      mx="xs"
+      mb="xs"
+      px="sm"
+      py="xs"
+      style={{
+        backgroundColor: 'var(--color-bg-muted)',
+        borderRadius: 'var(--mantine-radius-sm)',
+        border: '1px solid var(--color-border)',
+        position: 'relative',
+      }}
+    >
+      <Group gap={6} mb={4} align="center">
+        <IconSparkles size={13} style={{ color: 'var(--color-text-brand)' }} />
+        <Text size="xxs" fw={600}>
+          Trace Summary
+        </Text>
+        <ActionIcon
+          variant="subtle"
+          size="xs"
+          onClick={onClose}
+          style={{ marginLeft: 'auto' }}
+        >
+          <IconX size={12} />
+        </ActionIcon>
+      </Group>
+      <Text
+        size="xs"
+        c="dimmed"
+        style={{ fontFamily: 'var(--mantine-font-family)', lineHeight: 1.5 }}
+      >
+        <StreamingText key={summaryText} text={summaryText} />
+      </Text>
+    </Box>
+  );
+}
+
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableSource,
@@ -423,6 +623,7 @@ export function DBTraceWaterfallChartContainer({
   onClick,
   highlightedRowWhere,
   initialRowHighlightHint,
+  headerExtra,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -440,8 +641,8 @@ export function DBTraceWaterfallChartContainer({
     spanId: string;
     body: string;
   };
+  headerExtra?: React.ReactNode;
 }) {
-  const { size, startResize } = useResizable(30, 'bottom');
   const formatTime = useFormatTime();
 
   const {
@@ -451,7 +652,7 @@ export function DBTraceWaterfallChartContainer({
     isFilterActive,
     isFilterExpanded,
     setIsFilterExpanded,
-    onSubmit: onSubmitFilters,
+    onSubmit: submitFilters,
   } = useWaterfallSearchState({
     hasLogSource: !!logTableSource,
   });
@@ -460,8 +661,19 @@ export function DBTraceWaterfallChartContainer({
     defaultValues: {
       traceWhere: traceWhere ?? '',
       logWhere: logWhere ?? '',
+      traceWhereLanguage: getStoredLanguage() ?? 'lucene',
     },
   });
+
+  const onSubmitFilters = useCallback(
+    (data: { traceWhere: string; logWhere: string }) => {
+      submitFilters({
+        traceWhere: data.traceWhere,
+        logWhere: data.traceWhere,
+      });
+    },
+    [submitFilters],
+  );
 
   const onClearFilters = useCallback(() => {
     setValue('traceWhere', '');
@@ -516,6 +728,29 @@ export function DBTraceWaterfallChartContainer({
       return secDiff;
     }
   });
+
+  const serviceColorMap = useMemo(() => {
+    const serviceNames = [
+      ...new Set(
+        rows
+          .filter(
+            r =>
+              r.ServiceName &&
+              r.type !== SourceKind.Log &&
+              typeof r.ServiceName === 'string',
+          )
+          .map(r => r.ServiceName as string),
+      ),
+    ].sort();
+
+    // Skip COLORS[0] (green) — it's reserved for correlated log entries
+    const serviceColors = COLORS.slice(1);
+    const map = new Map<string, string>();
+    serviceNames.forEach((name, i) => {
+      map.set(name, serviceColors[i % serviceColors.length]);
+    });
+    return map;
+  }, [rows]);
 
   const highlightedAttributeValues = useMemo(() => {
     const visibleTraceRowsData = traceRowsData?.filter(
@@ -598,8 +833,9 @@ export function DBTraceWaterfallChartContainer({
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSummary, setShowSummary] = useState(false);
 
-  const { nodesMap, flattenedNodes } = useMemo(() => {
+  const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
     const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
     const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
@@ -667,6 +903,19 @@ export function DBTraceWaterfallChartContainer({
       }
     }
 
+    // Build a map of level → parent node IDs (nodes with children)
+    const parentIdsByLevel = new Map<number, Set<string>>();
+    const collectParents = (node: Node, level: number) => {
+      if (node.children?.length > 0 && node.id) {
+        if (!parentIdsByLevel.has(level)) {
+          parentIdsByLevel.set(level, new Set());
+        }
+        parentIdsByLevel.get(level)!.add(node.id);
+      }
+      node.children?.forEach((child: any) => collectParents(child, level + 1));
+    };
+    rootNodes.forEach(root => collectParents(root, 0));
+
     type NodeWithLevel = Node & { level: number };
     // flatten the rootnode dag into an array via in-order traversal
     const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
@@ -690,7 +939,7 @@ export function DBTraceWaterfallChartContainer({
       rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
     }
 
-    return { nodesMap, flattenedNodes };
+    return { nodesMap, flattenedNodes, parentIdsByLevel };
   }, [collapsedIds, rows, validSpanIDs]);
 
   const toggleCollapse = useCallback(
@@ -724,6 +973,55 @@ export function DBTraceWaterfallChartContainer({
     },
     [nodesMap],
   );
+
+  const expandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    const allParentIds = new Set<string>();
+    parentIdsByLevel.forEach(ids => {
+      ids.forEach(id => allParentIds.add(id));
+    });
+    setCollapsedIds(allParentIds);
+  }, [parentIdsByLevel]);
+
+  const expandOneLevel = useCallback(() => {
+    setCollapsedIds(prev => {
+      if (prev.size === 0) return prev;
+      const newSet = new Set(prev);
+      // Find the shallowest collapsed level and expand those nodes
+      const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => a - b);
+      for (const level of sortedLevels) {
+        const ids = parentIdsByLevel.get(level)!;
+        const collapsedAtLevel = [...ids].filter(id => newSet.has(id));
+        if (collapsedAtLevel.length > 0) {
+          collapsedAtLevel.forEach(id => newSet.delete(id));
+          break;
+        }
+      }
+      return newSet;
+    });
+  }, [parentIdsByLevel]);
+
+  const collapseOneLevel = useCallback(() => {
+    setCollapsedIds(prev => {
+      const newSet = new Set(prev);
+      // Find the deepest expanded level with parent nodes and collapse those
+      const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => b - a);
+      for (const level of sortedLevels) {
+        const ids = parentIdsByLevel.get(level)!;
+        const expandedAtLevel = [...ids].filter(id => !newSet.has(id));
+        if (expandedAtLevel.length > 0) {
+          expandedAtLevel.forEach(id => newSet.add(id));
+          break;
+        }
+      }
+      return newSet;
+    });
+  }, [parentIdsByLevel]);
+
+  const hasCollapsibleNodes = parentIdsByLevel.size > 0;
 
   const spanCount = flattenedNodes.length;
   const errorCount = flattenedNodes.filter(
@@ -808,7 +1106,7 @@ export function DBTraceWaterfallChartContainer({
           aliasWith,
           label: (
             <div
-              className={`${textColor({ isError, isWarn })} ${
+              className={`${
                 isHighlighted && styles.traceTimelineLabelHighlighted
               } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
               role="button"
@@ -854,25 +1152,57 @@ export function DBTraceWaterfallChartContainer({
                     }
                   >
                     {collapsedIds.has(id) ? (
-                      <IconChevronRight
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
+                      <IconChevronRight size={16} className="me-1" />
                     ) : (
-                      <IconChevronDown
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
+                      <IconChevronDown size={16} className="me-1" />
                     )}{' '}
                   </Center>
                 </Tooltip>
 
-                {!isFilterActive && (
-                  <Text span size="xxs" me="xs" pt="2px">
-                    {result.children.length > 0
-                      ? `(${result.children.length})`
-                      : ''}
+                <div
+                  style={{
+                    width: 3,
+                    minWidth: 3,
+                    height: 14,
+                    backgroundColor:
+                      type === SourceKind.Log
+                        ? getChartColorSuccess()
+                        : serviceName
+                          ? serviceColorMap.get(serviceName)
+                          : '#6A7077',
+                    borderRadius: 1,
+                    flexShrink: 0,
+                    marginRight: 6,
+                  }}
+                />
+
+                {result.children.length > 0 && (
+                  <Text
+                    span
+                    size="xxs"
+                    c="dimmed"
+                    me={4}
+                    style={{ flexShrink: 0 }}
+                  >
+                    ({result.children.length})
                   </Text>
+                )}
+
+                {isError && (
+                  <IconAlertCircleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorError() }}
+                    aria-label="Error"
+                  />
+                )}
+                {isWarn && !isError && (
+                  <IconAlertTriangleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorWarning() }}
+                    aria-label="Warning"
+                  />
                 )}
 
                 <Group gap={0} wrap="nowrap">
@@ -887,11 +1217,13 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` ${displayText}` : ''}`}
                     role="button"
                   >
-                    {serviceName ? `${serviceName} | ` : ''}
-                    {displayText}
+                    {serviceName && <>{serviceName} </>}
+                    <Text span inherit c="dimmed">
+                      {displayText}
+                    </Text>
                   </Text>
                 </Group>
               </div>
@@ -912,10 +1244,12 @@ export function DBTraceWaterfallChartContainer({
               tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
-                isError,
-                isWarn,
                 isHighlighted,
+                isError,
                 type,
+                serviceColor: serviceName
+                  ? serviceColorMap.get(serviceName)
+                  : undefined,
               }),
               body: <span>{displayText}</span>,
               minWidthPerc: 1,
@@ -931,9 +1265,9 @@ export function DBTraceWaterfallChartContainer({
       flattenedNodes,
       formatTime,
       highlightedRowWhere,
-      isFilterActive,
       minOffset,
       onClick,
+      serviceColorMap,
       showSpanEvents,
       toggleCollapse,
       collapseTooltipShown,
@@ -945,56 +1279,78 @@ export function DBTraceWaterfallChartContainer({
     return v.id === highlightedRowWhere;
   });
 
-  const heightPx = (size / 100) * window.innerHeight;
-
-  return (
+  const controlsHeader = (
     <>
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
-          <Box
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            <Text size="xs">Spans filter</Text>
-            <SearchInputV2
+          <Box mt="xs">
+            <SearchWhereInput
               tableConnection={tcFromSource(traceTableSource)}
-              placeholder={
-                'Search trace spans w/ Lucene ex. StatusCode:"Error"'
-              }
-              language="lucene"
               name="traceWhere"
+              languageName="traceWhereLanguage"
               control={control}
               size="xs"
+              showLabel={false}
+              allowMultiline={false}
               onSubmit={handleSubmit(onSubmitFilters)}
+              onLanguageChange={lang =>
+                setValue('traceWhereLanguage', lang, {
+                  shouldDirty: true,
+                })
+              }
+              lucenePlaceholder='Filter spans & logs ex. StatusCode:"Error"'
+              sqlPlaceholder="Filter spans & logs ex. StatusCode = 'Error'"
               data-testid="trace-search-input"
             />
-
-            {logTableSource && (
-              <>
-                <Text size="xs">Logs filter</Text>
-                <SearchInputV2
-                  tableConnection={tcFromSource(logTableSource)}
-                  placeholder={
-                    'Search trace logs w/ Lucene ex. SeverityText:"error"'
-                  }
-                  language="lucene"
-                  name="logWhere"
-                  control={control}
-                  size="xs"
-                  onSubmit={handleSubmit(onSubmitFilters)}
-                  data-testid="log-search-input"
-                />
-              </>
-            )}
           </Box>
         </form>
       )}
       <Group my="xs" justify="space-between">
         <Group gap="md">
+          {hasCollapsibleNodes && (
+            <Group gap={2}>
+              <Tooltip label="Expand +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={expandOneLevel}
+                  aria-label="Expand one level"
+                >
+                  <IconChevronDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={collapseOneLevel}
+                  aria-label="Collapse one level"
+                >
+                  <IconChevronRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Expand all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={expandAll}
+                  aria-label="Expand all"
+                >
+                  <IconChevronsDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={collapseAll}
+                  aria-label="Collapse all"
+                >
+                  <IconChevronsRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          )}
           <Text size="xs">
             {spanCountString},{' '}
             <span className={errorCount ? 'text-danger' : ''}>
@@ -1008,62 +1364,91 @@ export function DBTraceWaterfallChartContainer({
             onChange={() => setShowSpanEvents(!showSpanEvents)}
           />
         </Group>
-        <span>
-          <Anchor
-            underline="always"
-            onClick={() => setIsFilterExpanded(prev => !prev)}
-            size="xs"
-          >
-            {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
-            {isFilterActive && '(active)'}
-          </Anchor>
-          {isFilterActive && (
+        <Group gap="sm">
+          <Tooltip label="Summarize trace" position="bottom">
+            <ActionIcon
+              variant={showSummary ? 'light' : 'subtle'}
+              size="sm"
+              onClick={() => setShowSummary(prev => !prev)}
+              aria-label="Summarize trace"
+            >
+              <IconSparkles size={14} />
+            </ActionIcon>
+          </Tooltip>
+          {headerExtra}
+          <span>
             <Anchor
               underline="always"
-              onClick={onClearFilters}
+              onClick={() => setIsFilterExpanded(prev => !prev)}
               size="xs"
-              ms="xs"
             >
-              Clear Filters
+              {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
+              {isFilterActive && '(active)'}
             </Anchor>
-          )}
-        </span>
+            {isFilterActive && (
+              <Anchor
+                underline="always"
+                onClick={onClearFilters}
+                size="xs"
+                ms="xs"
+              >
+                Clear Filters
+              </Anchor>
+            )}
+          </span>
+        </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
-      <div
-        style={{
-          position: 'relative',
-          overflow: 'hidden',
-          maxHeight: `${heightPx}px`,
-        }}
-      >
-        {isFetching ? (
-          <div className="my-3">Loading Traces...</div>
-        ) : error ? (
-          <Box mt="lg">
-            <Text my="sm" size="sm">
-              An error occurred while fetching trace data:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-          </Box>
-        ) : rows == null ? (
-          <div>
-            An unknown error occurred. <ContactSupportText />
-          </div>
-        ) : flattenedNodes.length === 0 ? (
-          <div className="my-3">No matching spans or logs found</div>
-        ) : (
+    </>
+  );
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {isFetching ? (
+        <div className="my-3 px-1">Loading Traces...</div>
+      ) : error ? (
+        <Box mt="lg" px="xs">
+          <Text my="sm" size="sm">
+            An error occurred while fetching trace data:
+          </Text>
+          <Code
+            block
+            style={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {error.message}
+          </Code>
+        </Box>
+      ) : rows == null ? (
+        <div className="px-1">
+          An unknown error occurred. <ContactSupportText />
+        </div>
+      ) : flattenedNodes.length === 0 ? (
+        <div className="my-3 px-1">No matching spans or logs found</div>
+      ) : (
+        <div
+          style={{
+            minWidth: 740,
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <TimelineChart
-            maxHeight={heightPx}
             rowHeight={22}
             labelWidth={300}
             onEventClick={(event: {
@@ -1080,15 +1465,22 @@ export function DBTraceWaterfallChartContainer({
             cursors={[]}
             rows={timelineRows}
             initialScrollRowIndex={initialScrollRowIndex}
+            renderHeader={minimap => (
+              <>
+                {minimap}
+                {controlsHeader}
+                {showSummary && rows && (
+                  <TraceSummaryPanel
+                    rows={rows}
+                    minOffset={minOffset}
+                    onClose={() => setShowSummary(false)}
+                  />
+                )}
+              </>
+            )}
           />
-        )}
-      </div>
-      <Divider
-        mt="md"
-        className={resizeStyles.resizeYHandle}
-        onMouseDown={startResize}
-        style={{ position: 'relative', bottom: 0 }}
-      />
-    </>
+        </div>
+      )}
+    </div>
   );
 }

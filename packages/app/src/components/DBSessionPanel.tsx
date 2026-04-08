@@ -94,6 +94,7 @@ export const DBSessionPanel = ({
   focusDate,
   serviceName,
   setSubDrawerOpen,
+  onEventNavigate,
 }: {
   traceSourceId?: string;
   rumSessionId: string;
@@ -101,6 +102,10 @@ export const DBSessionPanel = ({
   focusDate: Date;
   serviceName: string;
   setSubDrawerOpen: (open: boolean) => void;
+  onEventNavigate?: (
+    rowId: string,
+    aliasWith: import('@/hooks/useRowWhere').WithClause[],
+  ) => void;
 }) => {
   const { data: traceSource } = useSource({
     id: traceSourceId,
@@ -137,6 +142,7 @@ export const DBSessionPanel = ({
           sessionSource={sessionSource}
           rumSessionId={rumSessionId}
           setDrawerOpen={setSubDrawerOpen}
+          onEventNavigate={onEventNavigate}
           initialTs={focusDate.getTime()}
         />
       ) : (

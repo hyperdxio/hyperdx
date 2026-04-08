@@ -1,17 +1,16 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  isLogSource,
-  isTraceSource,
-  SourceKind,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
-import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import {
+  getDisplayedTimestampValueExpression,
+  getDurationMsExpression,
+  getEventBody,
+} from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
@@ -27,6 +26,8 @@ export enum ROW_DATA_ALIASES {
   EVENT_ATTRIBUTES = '__hdx_event_attributes',
   EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
   SPAN_EVENTS = '__hdx_span_events',
+  DURATION_MS = '__hdx_duration_ms',
+  SPAN_KIND = '__hdx_span_kind',
 }
 
 export function useRowData({
@@ -41,18 +42,31 @@ export function useRowData({
   const eventBodyExpr = getEventBody(source);
 
   const searchedTraceIdExpr =
-    isLogSource(source) || isTraceSource(source)
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
       ? source.traceIdExpression
       : undefined;
   const searchedSpanIdExpr =
-    isLogSource(source) || isTraceSource(source)
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
       ? source.spanIdExpression
       : undefined;
 
-  const severityTextExpr = isLogSource(source)
-    ? source.severityTextExpression
-    : isTraceSource(source)
-      ? source.statusCodeExpression
+  const severityTextExpr =
+    source.kind === SourceKind.Log
+      ? source.severityTextExpression
+      : source.kind === SourceKind.Trace
+        ? source.statusCodeExpression
+        : undefined;
+
+  const serviceNameExpr =
+    source.kind === SourceKind.Log ||
+    source.kind === SourceKind.Trace ||
+    source.kind === SourceKind.Metric
+      ? source.serviceNameExpression
+      : undefined;
+
+  const eventAttrsExpr =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+      ? source.eventAttributesExpression
       : undefined;
 
   const selectHighlightedRowAttributes =
@@ -105,11 +119,10 @@ export function useRowData({
               },
             ]
           : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.serviceNameExpression
+        ...(serviceNameExpr
           ? [
               {
-                valueExpression: source.serviceNameExpression,
+                valueExpression: serviceNameExpr,
                 alias: ROW_DATA_ALIASES.SERVICE_NAME,
               },
             ]
@@ -122,11 +135,10 @@ export function useRowData({
               },
             ]
           : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.eventAttributesExpression
+        ...(eventAttrsExpr
           ? [
               {
-                valueExpression: source.eventAttributesExpression,
+                valueExpression: eventAttrsExpr,
                 alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
               },
             ]
@@ -143,6 +155,22 @@ export function useRowData({
               },
             ]
           : []),
+        ...(source.kind === SourceKind.Trace && source.durationExpression
+          ? [
+              {
+                valueExpression: getDurationMsExpression(source),
+                alias: ROW_DATA_ALIASES.DURATION_MS,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.spanKindExpression
+          ? [
+              {
+                valueExpression: source.spanKindExpression,
+                alias: ROW_DATA_ALIASES.SPAN_KIND,
+              },
+            ]
+          : []),
         ...selectHighlightedRowAttributes,
       ],
       where: rowId ?? '0=1',
@@ -156,7 +184,6 @@ export function useRowData({
     },
   );
 
-  // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
     if (!queryResult.data?.data?.[0]) {
       return queryResult.data;
@@ -192,8 +219,6 @@ export function useRowData({
 export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
   return (
     meta
-      // The type could either be just 'JSON' or it could be 'JSON(<parameters>)'
-      // this is a basic way to match both cases
       ?.filter(m => m.type === 'JSON' || m.type.startsWith('JSON('))
       .map(m => m.name) ?? []
   );

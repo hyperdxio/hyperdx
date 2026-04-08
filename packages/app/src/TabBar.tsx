@@ -1,3 +1,4 @@
+import React from 'react';
 import cx from 'classnames';
 
 import TabItem from './TabItem';
@@ -6,17 +7,23 @@ export default function TabBar<T extends string | number | undefined>({
   items,
   activeItem,
   className,
+  style,
   onClick,
   'data-testid': dataTestId,
 }: {
   items: Array<{ value: T; text: React.ReactNode }>;
   activeItem: T;
   className?: string | undefined;
+  style?: React.CSSProperties;
   onClick?: (item: T) => any;
   'data-testid'?: string;
 }) {
   return (
-    <div className={cx('d-flex flex-wrap', className)} data-testid={dataTestId}>
+    <div
+      className={cx('d-flex flex-wrap', className)}
+      style={style}
+      data-testid={dataTestId}
+    >
       {items.map(item => {
         return (
           <TabItem

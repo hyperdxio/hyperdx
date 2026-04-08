@@ -18,3 +18,23 @@
   padding-right: 8px;
   position: relative;
 }
+
+.barDetail {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.barDetailBody {
+  display: none;
+  color: var(--color-text-muted);
+}
+
+.timelineRow:hover .barDetailBody,
+.timelineRowActive .barDetailBody {
+  display: inline;
+}

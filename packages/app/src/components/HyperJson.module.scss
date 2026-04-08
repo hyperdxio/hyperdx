@@ -33,10 +33,9 @@
   align-items: flex-start;
   border-radius: 3px;
   position: relative;
-  overflow: hidden;
 
   &:hover {
-    background-color: var(--color-bg-highlighted);
+    background-color: var(--color-bg-muted);
 
     .lineMenu {
       display: flex;
@@ -71,30 +70,11 @@
 .lineMenu {
   display: none;
   align-items: center;
+  gap: 4px;
   position: absolute;
-  right: 0;
-  top: 0;
-  height: calc(100% + 1px);
-  max-height: 24px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.lineMenuBtn {
-  border: 0;
-  background-color: rgb(0 0 0 / 20%);
-  backdrop-filter: blur(4px);
-  color: var(--color-text);
-  border-left: 1px solid var(--color-border);
-  padding: 0 8px;
-  height: 100%;
-
-  &:hover {
-    background-color: var(--color-bg-highlighted);
-  }
-
-  &:active {
-    background-color: var(--color-bg-muted);
-  }
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .clickable {

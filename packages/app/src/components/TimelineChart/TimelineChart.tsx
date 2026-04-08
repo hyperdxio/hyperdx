@@ -7,7 +7,6 @@ import {
   useState,
 } from 'react';
 import cx from 'classnames';
-import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useDrag } from '@/hooks/useDrag';
@@ -21,6 +20,7 @@ import {
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
 import { TimelineCursor } from './TimelineCursor';
+import { TimelineMinimap } from './TimelineMinimap';
 import { TimelineMouseCursor } from './TimelineMouseCursor';
 import { TimelineXAxis } from './TimelineXAxis';
 
@@ -49,9 +49,8 @@ type TimelineChartProps = {
   rowHeight: number;
   onEventClick?: (e: Row) => void;
   labelWidth: number;
-  className?: string;
-  maxHeight: number;
   initialScrollRowIndex?: number;
+  renderHeader?: (minimap: React.ReactNode) => React.ReactNode;
 };
 
 export const TimelineChart = memo(function ({
@@ -60,9 +59,8 @@ export const TimelineChart = memo(function ({
   rowHeight,
   onEventClick,
   labelWidth: initialLabelWidth,
-  className,
-  maxHeight,
   initialScrollRowIndex,
+  renderHeader,
 }: TimelineChartProps) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState(0);
@@ -189,20 +187,20 @@ export const TimelineChart = memo(function ({
     }
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
+  const minimapElement = (
+    <TimelineMinimap
+      rows={rows}
+      maxVal={maxVal}
+      scale={scale}
+      offset={offset}
+      setOffset={setOffset}
+      setScale={setScale}
+    />
+  );
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight,
-      }}
-      className={className}
-    >
-      <Flex justify="end" mb="sm">
-        <Text>
-          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
-        </Text>
-      </Flex>
+    <>
+      {renderHeader ? renderHeader(minimapElement) : minimapElement}
       <div
         style={{
           position: 'relative',
@@ -251,6 +249,7 @@ export const TimelineChart = memo(function ({
             height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
             width: '100%',
             position: 'relative',
+            zIndex: 1,
           }}
         >
           <div
@@ -310,7 +309,7 @@ export const TimelineChart = memo(function ({
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 });
 

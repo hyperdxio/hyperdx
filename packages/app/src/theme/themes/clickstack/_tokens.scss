@@ -200,6 +200,17 @@
   --color-chart-warning-highlight: #f5c94d;
   --color-chart-error-highlight: #ffa090;
 
+  /* Visualization Range Selector (minimap viewports, brush ranges, etc.) */
+  --color-viz-range-handle: var(--palette-brand-300);
+  --color-viz-range-handle-grip: var(--color-text-inverted);
+  --color-viz-range-border: var(--palette-brand-700);
+  --color-viz-range-overlay: rgb(0 0 0 / 20%);
+  --color-viz-range-brush: rgb(250 255 105 / 20%);
+  --color-viz-range-brush-border: rgb(250 255 105 / 50%);
+
+  /* Shadows */
+  --shadow-drawer: -4px 0 24px rgb(0 0 0 / 25%);
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
   --mantine-color-text: var(--color-text) !important;
@@ -400,6 +411,17 @@
   --color-chart-success-highlight: #80d9b3;
   --color-chart-warning-highlight: #f5c94d;
   --color-chart-error-highlight: #ffa090;
+
+  /* Visualization Range Selector (minimap viewports, brush ranges, etc.) */
+  --color-viz-range-handle: var(--mantine-color-indigo-8);
+  --color-viz-range-handle-grip: var(--mantine-color-indigo-1);
+  --color-viz-range-border: var(--mantine-color-indigo-8);
+  --color-viz-range-overlay: rgb(0 0 0 / 4%);
+  --color-viz-range-brush: rgb(67 126 239 / 20%);
+  --color-viz-range-brush-border: var(--mantine-color-indigo-8);
+
+  /* Shadows */
+  --shadow-drawer: -4px 0 24px rgb(0 0 0 / 4%);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;

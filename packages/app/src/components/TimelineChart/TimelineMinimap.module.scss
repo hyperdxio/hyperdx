@@ -1,0 +1,83 @@
+.container {
+  position: relative;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface);
+  overflow: hidden;
+  user-select: none;
+}
+
+.tick {
+  position: absolute;
+  top: 0;
+  border-left: 1px solid var(--color-border-muted);
+  pointer-events: none;
+}
+
+.tickLabel {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-left: 3px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.bar {
+  position: absolute;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.dimmedOverlay {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: var(--color-viz-range-overlay);
+  pointer-events: none;
+}
+
+.viewportFrame {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-viz-range-border);
+  pointer-events: none;
+}
+
+.handleGrip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 20px;
+  background-color: var(--color-viz-range-handle);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+
+  &Left {
+    left: -3px;
+  }
+
+  &Right {
+    right: -3px;
+  }
+}
+
+.handleGripLine {
+  width: 0;
+  height: 8px;
+  border-left: 1px solid var(--color-viz-range-handle-grip);
+}
+
+.brushOverlay {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: var(--color-viz-range-brush);
+  border: 1px solid var(--color-viz-range-brush-border);
+  box-sizing: border-box;
+  pointer-events: none;
+}

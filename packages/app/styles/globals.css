@@ -42,3 +42,9 @@ a {
   display: grid;
   grid-template-rows: auto 1fr;
 }
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
