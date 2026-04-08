@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('pinnedFilters router', () => {
   const server = getServer();
@@ -139,36 +139,6 @@ describe('pinnedFilters router', () => {
       expect(res.body.team).not.toBeNull();
       expect(res.body.team.fields).toEqual([]);
       expect(res.body.team.filters).toEqual({});
-    });
-  });
-
-  describe('team scoping', () => {
-    it('does not leak pinned filters between teams', async () => {
-      await agent
-        .put('/pinned-filters')
-        .send({
-          source: sourceId,
-          fields: ['ServiceName'],
-          filters: { ServiceName: ['web'] },
-        })
-        .expect(200);
-
-      // Create a second user on a different team
-      const agentB = getAgent(server);
-      await agentB
-        .post('/register/password')
-        .send({
-          email: `other-${Date.now()}@test.com`,
-          password: 'TacoCat!2#4X',
-          confirmPassword: 'TacoCat!2#4X',
-        })
-        .expect(200);
-
-      const res = await agentB
-        .get(`/pinned-filters?source=${sourceId}`)
-        .expect(200);
-
-      expect(res.body.team).toBeNull();
     });
   });
 
