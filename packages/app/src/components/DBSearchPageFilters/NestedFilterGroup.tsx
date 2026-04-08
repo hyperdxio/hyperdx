@@ -4,7 +4,11 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterState } from '@/searchFilters';
 
-import { FilterGroup } from '../DBSearchPageFilters';
+import {
+  type FieldPinHandlers,
+  FilterGroup,
+  type ValuePinHandlers,
+} from '../DBSearchPageFilters';
 
 import classes from '../../../styles/SearchPage.module.scss';
 
@@ -212,28 +216,27 @@ export const NestedFilterGroup = ({
                               onExcludeClick={value =>
                                 onExcludeClick(child.key, value)
                               }
-                              onPinClick={value => onPinClick(child.key, value)}
-                              isPinned={value => isPinned(child.key, value)}
-                              onSharedPinClick={
-                                onSharedPinClick
+                              valuePins={{
+                                onPinClick: value =>
+                                  onPinClick(child.key, value),
+                                isPinned: value => isPinned(child.key, value),
+                                onSharedPinClick: onSharedPinClick
                                   ? value => onSharedPinClick(child.key, value)
-                                  : undefined
-                              }
-                              isSharedPinned={
-                                isSharedPinned
+                                  : undefined,
+                                isSharedPinned: isSharedPinned
                                   ? value => isSharedPinned(child.key, value)
-                                  : undefined
-                              }
-                              onFieldPinClick={() =>
-                                onFieldPinClick?.(child.key)
-                              }
-                              isFieldPinned={isFieldPinned?.(child.key)}
-                              onToggleSharedFieldPin={() =>
-                                onToggleSharedFieldPin?.(child.key)
-                              }
-                              isSharedFieldPinned={isSharedFieldPinned?.(
-                                child.key,
-                              )}
+                                  : undefined,
+                              }}
+                              fieldPins={{
+                                onFieldPinClick: () =>
+                                  onFieldPinClick?.(child.key),
+                                isFieldPinned: isFieldPinned?.(child.key),
+                                onToggleSharedFieldPin: () =>
+                                  onToggleSharedFieldPin?.(child.key),
+                                isSharedFieldPinned: isSharedFieldPinned?.(
+                                  child.key,
+                                ),
+                              }}
                               onColumnToggle={
                                 onColumnToggle
                                   ? () => onColumnToggle(child.key)

@@ -464,6 +464,33 @@ export function mergePinnedData(
 }
 
 /**
+ * Toggle a value in a PinnedFilters map. Returns a new map with the value
+ * added or removed under the given property key.
+ */
+function toggleValueInFilters(
+  filters: PinnedFilters,
+  property: string,
+  value: string | boolean,
+): PinnedFilters {
+  const updated = { ...filters };
+  if (!updated[property]) {
+    updated[property] = [];
+  }
+  const idx = updated[property].findIndex((v: string | boolean) => v === value);
+  if (idx >= 0) {
+    updated[property] = updated[property].filter(
+      (_: string | boolean, i: number) => i !== idx,
+    );
+    if (updated[property].length === 0) {
+      delete updated[property];
+    }
+  } else {
+    updated[property] = [...updated[property], value];
+  }
+  return updated;
+}
+
+/**
  * Hook for personal pinned filters stored in localStorage.
  * This is the original storage mechanism — per-user, per-browser.
  */
@@ -584,27 +611,7 @@ export function usePinnedFilters(sourceId: string | null) {
   // Personal pin: value-level pin (localStorage, instant)
   const toggleFilterPin = useCallback(
     (property: string, value: string | boolean) => {
-      personal.setFilters(prev => {
-        const updated = { ...prev };
-        if (!updated[property]) {
-          updated[property] = [];
-        }
-        const idx = updated[property].findIndex(
-          (v: string | boolean) => v === value,
-        );
-        if (idx >= 0) {
-          updated[property] = updated[property].filter(
-            (_: string | boolean, i: number) => i !== idx,
-          );
-          if (updated[property].length === 0) {
-            delete updated[property];
-          }
-        } else {
-          updated[property] = [...updated[property], value];
-        }
-        return updated;
-      });
-
+      personal.setFilters(prev => toggleValueInFilters(prev, property, value));
       // When pinning a value, also pin the field if not already pinned
       personal.setFields(prev =>
         prev.includes(property) ? prev : [...prev, property],
@@ -682,32 +689,17 @@ export function usePinnedFilters(sourceId: string | null) {
   // Team pin: value-level (MongoDB via API, debounced)
   const toggleSharedFilterPin = useCallback(
     (property: string, value: string | boolean) => {
-      const currentFilters: PinnedFilters = { ...effectiveTeam.filters };
-      const currentFields = [...effectiveTeam.fields];
-
-      if (!currentFilters[property]) {
-        currentFilters[property] = [];
-      }
-      const idx = currentFilters[property].findIndex(
-        (v: string | boolean) => v === value,
+      const newFilters = toggleValueInFilters(
+        effectiveTeam.filters,
+        property,
+        value,
       );
-      if (idx >= 0) {
-        currentFilters[property] = currentFilters[property].filter(
-          (_: string | boolean, i: number) => i !== idx,
-        );
-        if (currentFilters[property].length === 0) {
-          delete currentFilters[property];
-        }
-      } else {
-        currentFilters[property] = [...currentFilters[property], value];
-      }
-
       // When sharing a value, also add the field to shared fields
-      const newFields = currentFields.includes(property)
-        ? currentFields
-        : [...currentFields, property];
+      const newFields = effectiveTeam.fields.includes(property)
+        ? effectiveTeam.fields
+        : [...effectiveTeam.fields, property];
 
-      flushTeamUpdate(newFields, currentFilters);
+      flushTeamUpdate(newFields, newFilters);
     },
     [effectiveTeam, flushTeamUpdate],
   );
