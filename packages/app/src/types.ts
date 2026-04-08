@@ -139,6 +139,8 @@ export enum KubePhase {
 export type NextApiConfigResponseData = {
   apiKey?: string;
   collectorUrl: string;
+  tracesUrl?: string;
+  logsUrl?: string;
   serviceName: string;
   appVersion?: string;
 };
