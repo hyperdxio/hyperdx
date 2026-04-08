@@ -264,7 +264,6 @@ export default function DOMPlayer({
       );
     }
 
-    // eslint-disable-next-line react-hooks/immutability
     updatePlayerTimeRafRef.current = requestAnimationFrame(updatePlayerTime);
   }, []);
 
