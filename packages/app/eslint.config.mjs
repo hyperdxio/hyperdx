@@ -122,6 +122,10 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
+      ...eslintReactPlugin.configs.recommended.rules,
+      // Disable rules from eslint-plugin-react-hooks that have equivalent rules in @eslint-react
+      ...eslintReactPlugin.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
+      ...eslintReactPlugin.configs['recommended-type-checked'].rules,
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'error',
       'react-hook-form/no-use-watch': 'error',
@@ -206,6 +210,7 @@ export default [
     rules: {
       // Drop date rules — new Date() / Date.now() are fine in tests
       'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
+      '@eslint-react/component-hook-factories': 'off',
     },
   },
   {

@@ -40,17 +40,17 @@ export default function EmptyState({
 }: EmptyStateProps) {
   const inner = (
     <Stack align="center" gap="xs">
-      {icon && (
+      {!!icon && (
         <ThemeIcon size={56} radius="xl" variant="light" color="gray">
           {icon}
         </ThemeIcon>
       )}
-      {title && (
+      {!!title && (
         <Title order={3} fw={600} size="xl" maw={600}>
           {title}
         </Title>
       )}
-      {description && (
+      {!!description && (
         <Text size="sm" c="dimmed" ta="center" maw={600}>
           {description}
         </Text>
