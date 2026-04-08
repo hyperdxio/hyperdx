@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('pinnedFilters router', () => {
   const server = getServer();
@@ -153,7 +153,16 @@ describe('pinnedFilters router', () => {
         })
         .expect(200);
 
-      const { agent: agentB } = await getLoggedInAgent(server);
+      // Create a second user on a different team
+      const agentB = getAgent(server);
+      await agentB
+        .post('/register/password')
+        .send({
+          email: `other-${Date.now()}@test.com`,
+          password: 'TacoCat!2#4X',
+          confirmPassword: 'TacoCat!2#4X',
+        })
+        .expect(200);
 
       const res = await agentB
         .get(`/pinned-filters?source=${sourceId}`)

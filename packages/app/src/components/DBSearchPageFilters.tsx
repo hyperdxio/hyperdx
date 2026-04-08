@@ -881,10 +881,12 @@ type FilterGroupActionsProps = {
   isColumnDisplayed: boolean;
   isFieldPinned: boolean;
   isSharedFieldPinned: boolean;
+  totalAppliedFiltersSize: number;
   toggleShowDistributions: VoidFunction;
   onColumnToggle?: VoidFunction;
   onFieldPinClick: VoidFunction;
   onToggleSharedFieldPin: VoidFunction;
+  onClearClick: VoidFunction;
 };
 function FilterGroupActions({
   name,
@@ -894,10 +896,12 @@ function FilterGroupActions({
   isColumnDisplayed,
   isFieldPinned,
   isSharedFieldPinned,
+  totalAppliedFiltersSize,
   toggleShowDistributions,
   onColumnToggle,
   onFieldPinClick,
   onToggleSharedFieldPin,
+  onClearClick,
 }: FilterGroupActionsProps) {
   if (hasRange) return null;
 
@@ -959,6 +963,24 @@ function FilterGroupActions({
         onTogglePersonalPin={onFieldPinClick}
         onToggleSharedPin={onToggleSharedFieldPin}
       />
+      {totalAppliedFiltersSize > 0 && (
+        <Tooltip
+          label="Clear Filters"
+          position="top"
+          withArrow
+          fz="xxs"
+          color="gray"
+        >
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color="gray"
+            onClick={onClearClick}
+          >
+            <IconFilterOff size={14} />
+          </ActionIcon>
+        </Tooltip>
+      )}
     </Group>
   );
 }
@@ -1086,6 +1108,8 @@ export const FilterGroup = ({
               onToggleSharedFieldPin={
                 fieldPins?.onToggleSharedFieldPin ?? voidFunc
               }
+              totalAppliedFiltersSize={totalAppliedFiltersSize}
+              onClearClick={onClearClick}
             />
           </Center>
           <Accordion.Panel
@@ -1689,7 +1713,16 @@ const DBSearchPageFiltersComponent = ({
             onLoadMore={loadMoreFilterValuesForKey}
             loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
             hasLoadedMore={Boolean(extraFacets[facet.key])}
-            isDefaultExpanded={forceExpanded ?? true}
+            isDefaultExpanded={
+              forceExpanded ??
+              (isFieldPrimary(tableMetadata, facet.key) ||
+                isFieldPinned(facet.key) ||
+                isSharedFieldPinned(facet.key) ||
+                (filterState[facet.key] != null &&
+                  (filterState[facet.key].included.size > 0 ||
+                    filterState[facet.key].excluded.size > 0 ||
+                    filterState[facet.key].range != null)))
+            }
             chartConfig={chartConfig}
             isLive={isLive}
             onRangeChange={range => setFilterRange(facet.key, range)}

@@ -282,15 +282,41 @@ export class FilterComponent {
 
   /**
    * Pin a field (group-level pin, not a value pin).
-   * Hovers over the filter group header and clicks the pin icon.
+   * Opens the PinShareMenu on the filter group header and clicks "Pin for me".
    */
   async pinField(filterName: string) {
     const group = this.getFilterGroup(filterName);
     await group.hover();
-    // The pin button is inside the filter group header actions
-    const pinButton = group.locator(
-      'button[title="Pin Field"], button[title="Unpin Field"]',
-    );
+    // The pin button is the PinShareMenu trigger inside the filter group header
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
     await pinButton.click();
+    // Click "Pin for me" in the dropdown menu
+    await this.page.getByRole('menuitem', { name: 'Pin for me' }).click();
+  }
+
+  /**
+   * Share a field with the team via the PinShareMenu dropdown.
+   */
+  async shareFieldWithTeam(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
+    await pinButton.click();
+    await this.page.getByRole('menuitem', { name: 'Share with team' }).click();
+  }
+
+  /**
+   * Unshare a field from the team via the PinShareMenu dropdown.
+   */
+  async unshareField(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    const pinButton = group
+      .locator('button[aria-label="Unpin"], button[aria-label="Pin"]')
+      .first();
+    await pinButton.click();
+    await this.page
+      .getByRole('menuitem', { name: 'Remove from Shared' })
+      .click();
   }
 }

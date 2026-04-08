@@ -5,7 +5,7 @@ import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
 import { localPinnedFilters } from './localStore';
 
-export type PinnedFiltersApiResponse = {
+type PinnedFiltersApiResponse = {
   team: { id: string; fields: string[]; filters: PinnedFiltersValue } | null;
 };
 
