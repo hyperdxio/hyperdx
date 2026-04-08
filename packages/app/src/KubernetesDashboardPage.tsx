@@ -1673,6 +1673,7 @@ function KubernetesDashboardPage() {
 }
 
 const KubernetesDashboardPageDynamic = dynamic(
+  // eslint-disable-next-line @typescript-eslint/require-await
   async () => KubernetesDashboardPage,
   {
     ssr: false,

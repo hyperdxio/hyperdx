@@ -4,7 +4,7 @@ import { expect, test } from '../utils/base-test';
 test.describe('ClickHouse Dashboard', { tag: ['@full-stack'] }, () => {
   let clickhousePage: ClickHouseDashboardPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     clickhousePage = new ClickHouseDashboardPage(page);
   });
 
@@ -16,6 +16,6 @@ test.describe('ClickHouse Dashboard', { tag: ['@full-stack'] }, () => {
     await clickhousePage.selectConnection('local');
 
     // Assert the heatmap rendered without error
-    await expect(await clickhousePage.queryLatencyChart).toBeVisible();
+    await expect(clickhousePage.queryLatencyChart).toBeVisible();
   });
 });

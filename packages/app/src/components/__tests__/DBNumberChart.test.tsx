@@ -95,7 +95,7 @@ describe('DBNumberChart', () => {
     expect(mockFormatNumber).toHaveBeenCalledWith(1234, config.numberFormat);
   });
 
-  it('updates the display when numberFormat changes', async () => {
+  it('updates the display when numberFormat changes', () => {
     let setNumberFormatFn: (format: NumberFormat) => void;
     const TestComponent = () => {
       const [numberFormat, setNumberFormat] = React.useState<

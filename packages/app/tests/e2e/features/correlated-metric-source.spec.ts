@@ -4,7 +4,7 @@ import { expect, test } from '../utils/base-test';
 test.describe('Correlated Metric Source', { tag: ['@full-stack'] }, () => {
   let searchPage: SearchPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     searchPage = new SearchPage(page);
   });
 

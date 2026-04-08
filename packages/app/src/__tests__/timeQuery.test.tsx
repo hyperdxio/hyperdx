@@ -83,7 +83,7 @@ describe.skip('useTimeQuery tests', () => {
     window.location = savedLocation;
   });
 
-  it('initializes successfully to a non-UTC time', async () => {
+  it('initializes successfully to a non-UTC time', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
 
     render(
@@ -101,7 +101,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('initializes successfully to a UTC time', async () => {
+  it('initializes successfully to a UTC time', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
 
     render(
@@ -119,7 +119,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('can be overridden by `tq` url param', async () => {
+  it('can be overridden by `tq` url param', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     testRouter.replace('/search?tq=Last+4H');
 
@@ -155,7 +155,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('browser navigation of from/to qparmas updates the searched time range', async () => {
+  it('browser navigation of from/to qparmas updates the searched time range', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     testRouter.setIsReady(false);
     testRouter.replace('/search');
@@ -227,7 +227,7 @@ describe.skip('useTimeQuery tests', () => {
     `);
   });
 
-  it('overrides initial value with async updated `from` and `to` params', async () => {
+  it('overrides initial value with async updated `from` and `to` params', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     // 10/03/23 from 04:00am EDT to 08:00am EDT
     testRouter.setIsReady(false);
@@ -268,7 +268,7 @@ describe.skip('useTimeQuery tests', () => {
     `);
   });
 
-  it('accepts `from` and `to` url params', async () => {
+  it('accepts `from` and `to` url params', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     // 10/03/23 from 04:00am EDT to 08:00am EDT
     testRouter.replace('/search?from=1696320000000&to=1696334400000');
@@ -288,7 +288,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('handles bad input in `from` and `to` url params', async () => {
+  it('handles bad input in `from` and `to` url params', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     testRouter.replace('/search?from=abc&to=def');
 
@@ -308,7 +308,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('prefers `tq` param over `from` and `to` params', async () => {
+  it('prefers `tq` param over `from` and `to` params', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     // 10/03/23 from 04:00am EDT to 08:00am EDT, tq says last 1 hour
     testRouter.replace(
@@ -342,7 +342,7 @@ describe.skip('useTimeQuery tests', () => {
     );
   });
 
-  it('enables custom display value', async () => {
+  it('enables custom display value', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     testRouter.replace('/search');
     const initialDisplayValue = 'Live Tail';

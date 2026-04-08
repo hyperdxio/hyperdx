@@ -8,7 +8,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   let dashboardPage: DashboardPage;
   let alertsPage: AlertsPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     searchPage = new SearchPage(page);
     dashboardPage = new DashboardPage(page);
     alertsPage = new AlertsPage(page);

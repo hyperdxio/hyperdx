@@ -22,9 +22,7 @@ jest.mock('../useMetadata');
 jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
   optimizeGetKeyValuesCalls: jest
     .fn()
-    .mockImplementation(async ({ keys, chartConfig }) => [
-      { keys, chartConfig },
-    ]),
+    .mockImplementation(({ keys, chartConfig }) => [{ keys, chartConfig }]),
 }));
 
 describe('useDashboardFilterValues', () => {
@@ -778,6 +776,7 @@ describe('useDashboardFilterValues', () => {
     // Mock optimizeGetKeyValuesCalls to return separate calls
     jest
       .mocked(optimizeGetKeyValuesCalls)
+      // eslint-disable-next-line @typescript-eslint/require-await
       .mockImplementation(async ({ chartConfig, keys }) => [
         { chartConfig, keys },
       ]);
@@ -785,14 +784,12 @@ describe('useDashboardFilterValues', () => {
     // First query resolves quickly, second query takes longer
     let resolveQuery;
     mockMetadata.getKeyValues
-      .mockImplementationOnce(async () => {
-        return [
-          {
-            key: 'environment',
-            value: ['production'],
-          },
-        ];
-      })
+      .mockResolvedValueOnce([
+        {
+          key: 'environment',
+          value: ['production'],
+        },
+      ])
       .mockImplementationOnce(
         async () =>
           new Promise(resolve => {
@@ -847,6 +844,7 @@ describe('useDashboardFilterValues', () => {
     // Mock optimizeGetKeyValuesCalls to return separate calls
     jest
       .mocked(optimizeGetKeyValuesCalls)
+      // eslint-disable-next-line @typescript-eslint/require-await
       .mockImplementationOnce(async ({ chartConfig, keys }) => [
         { chartConfig, keys },
       ]);
@@ -910,6 +908,7 @@ describe('useDashboardFilterValues', () => {
     // Mock optimizeGetKeyValuesCalls for both date ranges
     jest
       .mocked(optimizeGetKeyValuesCalls)
+      // eslint-disable-next-line @typescript-eslint/require-await
       .mockImplementation(async ({ chartConfig }) => [
         {
           chartConfig,

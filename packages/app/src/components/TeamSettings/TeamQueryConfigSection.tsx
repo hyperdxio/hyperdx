@@ -76,7 +76,7 @@ function ClickhouseSettingForm({
   });
 
   const onSubmit: SubmitHandler<{ value: any }> = useCallback(
-    async values => {
+    values => {
       try {
         const settingValue =
           type === 'boolean'

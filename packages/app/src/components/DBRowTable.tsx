@@ -370,7 +370,7 @@ export const RawLogTable = memo(
     onInstructionsClick?: () => void;
     rows: Record<string, any>[];
     isLoading?: boolean;
-    fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
+    fetchNextPage?: (options?: FetchNextPageOptions) => any;
     onRowDetailsClick: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => RowWhereResult;
     // onPropertySearchClick: (
@@ -1688,7 +1688,7 @@ function DBSqlRowTableComponent({
   });
   const noisyPatterns = useQuery({
     queryKey: ['noisy-patterns', config],
-    queryFn: async () => {
+    queryFn: () => {
       return Object.values(groupedPatterns.data).filter(
         p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
       );

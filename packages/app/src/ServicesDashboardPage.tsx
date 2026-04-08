@@ -1705,6 +1705,7 @@ function ServicesDashboardPage() {
 }
 
 const ServicesDashboardPageDynamic = dynamic(
+  // eslint-disable-next-line @typescript-eslint/require-await
   async () => ServicesDashboardPage,
   {
     ssr: false,

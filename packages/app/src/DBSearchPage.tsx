@@ -2151,6 +2151,7 @@ function DBSearchPage() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 const DBSearchPageDynamic = dynamic(async () => DBSearchPage, { ssr: false });
 
 // @ts-ignore

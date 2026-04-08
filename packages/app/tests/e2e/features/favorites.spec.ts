@@ -41,7 +41,7 @@ test.describe(
     let dashboardsListPage: DashboardsListPage;
     let dashboardPage: DashboardPage;
 
-    test.beforeEach(async ({ page }) => {
+    test.beforeEach(({ page }) => {
       dashboardsListPage = new DashboardsListPage(page);
       dashboardPage = new DashboardPage(page);
     });
@@ -177,7 +177,7 @@ test.describe(
   () => {
     let savedSearchesListPage: SavedSearchesListPage;
 
-    test.beforeEach(async ({ page }) => {
+    test.beforeEach(({ page }) => {
       savedSearchesListPage = new SavedSearchesListPage(page);
     });
 

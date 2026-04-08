@@ -6,7 +6,7 @@ test.describe('Temporary Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
   let dashboardsListPage: DashboardsListPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     dashboardPage = new DashboardPage(page);
     dashboardsListPage = new DashboardsListPage(page);
   });
@@ -56,7 +56,7 @@ test.describe('Temporary Dashboard', { tag: ['@dashboard'] }, () => {
 
       let savedUrl: string;
 
-      await test.step('Verify the URL contains the dashboard query param', async () => {
+      await test.step('Verify the URL contains the dashboard query param', () => {
         savedUrl = page.url();
         expect(savedUrl).toContain('dashboard=');
       });

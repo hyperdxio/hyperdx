@@ -78,8 +78,8 @@ describe('ConnectionForm', () => {
     const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
     const submitButton = screen.getByRole('button', { name: /Create/i });
 
-    await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
-    await fireEvent.change(hostInput, {
+    fireEvent.change(nameInput, { target: { value: 'Test Name' } });
+    fireEvent.change(hostInput, {
       target: { value: 'http://example.com:8123/' },
     }); // Host with trailing slash
 
@@ -120,7 +120,7 @@ describe('ConnectionForm', () => {
     const submitButton = screen.getByRole('button', { name: /Save/i });
 
     // Update host
-    await fireEvent.change(hostInput, {
+    fireEvent.change(hostInput, {
       target: { value: 'http://updated.com:8123/' },
     });
 
@@ -159,8 +159,8 @@ describe('ConnectionForm', () => {
     const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
     const testButton = screen.getByRole('button', { name: 'Test Connection' });
 
-    await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
-    await fireEvent.change(hostInput, {
+    fireEvent.change(nameInput, { target: { value: 'Test Name' } });
+    fireEvent.change(hostInput, {
       target: { value: 'http://test.com:8123/' },
     });
 
@@ -204,11 +204,11 @@ describe('ConnectionForm', () => {
 
     const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
 
-    await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
-    await fireEvent.change(hostInput, {
+    fireEvent.change(nameInput, { target: { value: 'Test Name' } });
+    fireEvent.change(hostInput, {
       target: { value: 'http://example.com:8123' },
     });
-    await fireEvent.change(settingPrefixInput, {
+    fireEvent.change(settingPrefixInput, {
       target: { value: 'myprefix' },
     });
 
@@ -249,7 +249,7 @@ describe('ConnectionForm', () => {
     const submitButton = screen.getByRole('button', { name: /Save/i });
 
     // Clear the setting prefix
-    await fireEvent.change(settingPrefixInput, {
+    fireEvent.change(settingPrefixInput, {
       target: { value: '' },
     });
 

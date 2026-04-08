@@ -63,7 +63,9 @@ const parseHeaders = (
     // Replacing _ -> - is part of the otel spec, idk why
     const key = fullKey.replace(keyPrefix, '').replace('_', '-');
 
-    let keyVal = [[key, `${value}`]] as [string, string][];
+    const defaultValue =
+      typeof value === 'string' ? value : JSON.stringify(value);
+    let keyVal = [[key, `${defaultValue}`]] as [string, string][];
 
     if (Array.isArray(value)) {
       keyVal = value.map(value => [key, `${value}`] as [string, string]);

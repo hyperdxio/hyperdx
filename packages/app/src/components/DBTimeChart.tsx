@@ -700,7 +700,7 @@ function DBTimeChartComponent({
           error={
             resultFormattingError instanceof Error
               ? resultFormattingError
-              : new Error(String(resultFormattingError))
+              : new Error(JSON.stringify(resultFormattingError))
           }
         />
       ) : graphResults.length === 0 ? (

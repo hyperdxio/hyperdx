@@ -371,7 +371,7 @@ export const DBSearchPageAlertModal = ({
           filters: searchedConfig.filters ?? [],
           tags: [],
         });
-        await createAlert.mutate({
+        createAlert.mutate({
           ...data,
           source: AlertSource.SAVED_SEARCH,
           savedSearchId: result.id,
@@ -381,14 +381,14 @@ export const DBSearchPageAlertModal = ({
       } else if (id) {
         // Create new alert
         if (activeIndex === 'stage') {
-          await createAlert.mutate({
+          createAlert.mutate({
             ...data,
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
         } else if (data.id) {
           // Update existing alert
-          await updateAlert.mutate({
+          updateAlert.mutate({
             ...data,
             id: data.id,
             source: AlertSource.SAVED_SEARCH,
@@ -414,9 +414,9 @@ export const DBSearchPageAlertModal = ({
     onClose();
   };
 
-  const onDelete = async (id: string) => {
+  const onDelete = (id: string) => {
     try {
-      await deleteAlert.mutate(id);
+      deleteAlert.mutate(id);
       notifications.show({
         color: 'green',
         message: 'Alert deleted!',

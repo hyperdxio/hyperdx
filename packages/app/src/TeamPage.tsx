@@ -64,7 +64,7 @@ export default function TeamPage() {
   });
 
   const onSubmitTeamName: SubmitHandler<{ name: string }> = useCallback(
-    async values => {
+    values => {
       setTeamName.mutate(
         { name: values.name },
         {

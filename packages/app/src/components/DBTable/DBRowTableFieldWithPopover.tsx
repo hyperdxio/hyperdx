@@ -85,7 +85,9 @@ const DBRowTableFieldWithPopover = ({
   const copyFieldValue = async () => {
     try {
       const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+        typeof cellValue === 'string'
+          ? cellValue
+          : JSON.stringify(cellValue ?? '');
       await navigator.clipboard.writeText(value);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
@@ -98,7 +100,9 @@ const DBRowTableFieldWithPopover = ({
   const addFilter = () => {
     if (canFilter) {
       const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+        typeof cellValue === 'string'
+          ? cellValue
+          : JSON.stringify(cellValue ?? '');
       onPropertyAddClick(columnName, value, 'include');
       handleClick(); // Close the popover
     }
@@ -107,7 +111,9 @@ const DBRowTableFieldWithPopover = ({
   const excludeFilter = () => {
     if (canFilter) {
       const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+        typeof cellValue === 'string'
+          ? cellValue
+          : JSON.stringify(cellValue ?? '');
       onPropertyAddClick(columnName, value, 'exclude');
       handleClick(); // Close the popover
     }

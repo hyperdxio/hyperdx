@@ -1027,7 +1027,7 @@ const DBSearchPageFiltersComponent = ({
     (
       property: string,
       value: string | boolean,
-      action?: 'only' | 'exclude' | 'include' | undefined,
+      action?: 'only' | 'exclude' | 'include',
     ) => {
       return _setFilterValue(property, value, action);
     },

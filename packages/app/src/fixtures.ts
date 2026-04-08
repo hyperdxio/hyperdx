@@ -19,7 +19,9 @@ export class TestRouter implements PartialRouter {
   constructor(private locationMock: LocationMock) {}
 
   replace = (url: string | UrlObject) => {
-    this.locationMock.assign(`${BASE_URL}${url}`);
+    this.locationMock.assign(
+      `${BASE_URL}${typeof url === 'string' ? url : TestRouter.getURLString(url)}`,
+    );
     this.currentUrl = TestRouter.getURLString(url);
     this.locationMock.assign(`${BASE_URL}${this.currentUrl}`);
     return Promise.resolve(true);

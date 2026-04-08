@@ -592,6 +592,7 @@ function DBDashboardImportPage() {
 }
 
 const DBDashboardImportPageDynamic = dynamic(
+  // eslint-disable-next-line @typescript-eslint/require-await
   async () => DBDashboardImportPage,
   {
     ssr: false,

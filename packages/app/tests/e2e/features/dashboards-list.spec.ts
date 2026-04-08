@@ -7,7 +7,7 @@ test.describe('Dashboards Listing Page', { tag: ['@dashboard'] }, () => {
   let dashboardsListPage: DashboardsListPage;
   let dashboardPage: DashboardPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     dashboardsListPage = new DashboardsListPage(page);
     dashboardPage = new DashboardPage(page);
   });

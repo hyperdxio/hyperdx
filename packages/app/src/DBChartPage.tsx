@@ -258,6 +258,7 @@ function DBChartExplorerPage() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
   ssr: false,
 });

@@ -95,7 +95,7 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
         await searchPage.page.waitForURL('**/search**liveInterval=900000**');
       });
 
-      await test.step('Verify URL parameters', async () => {
+      await test.step('Verify URL parameters', () => {
         const url = searchPage.page.url();
         expect(url).toContain('isLive=true');
         // Live Tail defaults to 15 minutes (900000ms)
@@ -152,7 +152,7 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
         await searchPage.page.waitForURL('**/search**isLive=false**');
       });
 
-      await test.step('Verify exited live mode', async () => {
+      await test.step('Verify exited live mode', () => {
         const url = searchPage.page.url();
         // Should have absolute time range
         expect(url).toContain('from=');
@@ -277,7 +277,7 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
         await expect(searchResultsTable).toBeAttached();
       });
 
-      await test.step('Verify URL maintains relative time params', async () => {
+      await test.step('Verify URL maintains relative time params', () => {
         const url = searchPage.page.url();
         expect(url).toContain('isLive=true');
         expect(url).toContain('liveInterval=300000'); // 5 minutes

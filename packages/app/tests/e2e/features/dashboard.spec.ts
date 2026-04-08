@@ -74,7 +74,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     let dashboardUrl: string;
 
-    await test.step('Save dashboard URL', async () => {
+    await test.step('Save dashboard URL', () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);
     });
@@ -355,7 +355,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     let dashboardUrl: string;
 
-    await test.step('Save dashboard URL', async () => {
+    await test.step('Save dashboard URL', () => {
       dashboardUrl = dashboardPage.page.url();
       console.log(`Dashboard URL: ${dashboardUrl}`);
     });

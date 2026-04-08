@@ -205,6 +205,7 @@ function DBServiceMapPage() {
   ) : null;
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 const DBServiceMapPageDynamic = dynamic(async () => DBServiceMapPage, {
   ssr: false,
 });

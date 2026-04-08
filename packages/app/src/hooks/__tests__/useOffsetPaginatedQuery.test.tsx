@@ -650,7 +650,7 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.error?.message).toBe('Query failed');
     });
 
-    it('should handle invalid time window errors', async () => {
+    it('should handle invalid time window errors', () => {
       const config = createMockChartConfig({
         dateRange: [
           new Date('2024-01-02T00:00:00Z'), // End date before start date

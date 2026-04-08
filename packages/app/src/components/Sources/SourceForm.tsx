@@ -2090,7 +2090,7 @@ export function TableSourceForm({
 
   const _onCreate = useCallback(() => {
     clearErrors();
-    handleSubmit(async data => {
+    handleSubmit(data => {
       const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error, 'create');

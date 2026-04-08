@@ -152,7 +152,10 @@ export function ChartSeriesEditor({
 
   const handleAddToGroupBy = useCallback(
     (clause: string) => {
-      const currentValue = groupBy || '';
+      if (typeof groupBy !== 'object') {
+        console.warn('Group By value is not a string, cannot add clause');
+      }
+      const currentValue = typeof groupBy === 'object' ? '' : groupBy || '';
       const newValue = currentValue ? `${currentValue}, ${clause}` : clause;
       setValue('groupBy', newValue);
       onSubmit();

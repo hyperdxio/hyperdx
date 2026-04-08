@@ -1962,6 +1962,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 const DBDashboardPageDynamic = dynamic(async () => DBDashboardPage, {
   ssr: false,
 });

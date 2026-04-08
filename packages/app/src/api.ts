@@ -69,10 +69,7 @@ const server = ky.create({
   timeout: false,
 });
 
-export const hdxServer = (
-  url: string,
-  options?: Options | undefined,
-): ResponsePromise => {
+export const hdxServer = (url: string, options?: Options): ResponsePromise => {
   return server(url, {
     ...options,
   });
@@ -129,7 +126,7 @@ const api = {
     return useQuery({
       queryKey: [`dashboards`],
       queryFn: IS_LOCAL_MODE
-        ? async () => fetchLocalDashboards()
+        ? () => fetchLocalDashboards()
         : () => hdxServer(`dashboards`, { method: 'GET' }).json<Dashboard[]>(),
       ...options,
     });
@@ -370,7 +367,7 @@ const api = {
     return useQuery({
       queryKey: [`team/tags`],
       queryFn: IS_LOCAL_MODE
-        ? async () => ({ data: getLocalDashboardTags() })
+        ? () => ({ data: getLocalDashboardTags() })
         : () => hdxServer(`team/tags`).json<TeamTagsApiResponse>(),
     });
   },

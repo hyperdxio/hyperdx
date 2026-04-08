@@ -38,7 +38,7 @@ export class ServicesDashboardPage {
    * Get a row link from the "Top 20 Most Time Consuming Endpoints" table
    * by endpoint name.
    */
-  async getTopEndpointsTableLink(endpointName: string) {
+  getTopEndpointsTableLink(endpointName: string) {
     const endpointLink = this.page
       .getByTestId('services-top-endpoints-table')
       .getByRole('link', { name: endpointName, exact: true })

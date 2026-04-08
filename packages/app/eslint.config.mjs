@@ -84,6 +84,7 @@ const DATE_SYNTAX_RESTRICTIONS = [
 export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
   prettierConfig,
   prettierPlugin,
   {
@@ -130,12 +131,6 @@ export default [
       'react-hooks/exhaustive-deps': 'error',
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
-      '@typescript-eslint/ban-ts-comment': 'warn',
-      '@typescript-eslint/no-empty-function': 'warn',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unsafe-function-type': 'warn',
-      '@typescript-eslint/no-unsafe-type-assertion': 'warn',
-      '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {
@@ -163,6 +158,26 @@ export default [
         ...DATE_SYNTAX_RESTRICTIONS,
       ],
       'no-console': ['error', { allow: ['warn', 'error'] }],
+
+      // TODO: Enable these rules and fix existing violations
+      '@typescript-eslint/ban-ts-comment': 'warn',
+      '@typescript-eslint/no-empty-function': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-function-type': 'warn',
+      '@typescript-eslint/no-unsafe-type-assertion': 'warn',
+      '@typescript-eslint/no-unused-expressions': 'warn',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-misused-promises': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      '@typescript-eslint/no-unsafe-enum-comparison': 'off',
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
     },
     languageOptions: {
       parser: tseslint.parser,
@@ -206,7 +221,7 @@ export default [
     },
   },
   {
-    files: ['src/**/__tests__/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    files: ['src/**/__tests__/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}', 'src/setupTests.tsx'],
     rules: {
       // Drop date rules — new Date() / Date.now() are fine in tests
       'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],

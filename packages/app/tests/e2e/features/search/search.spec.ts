@@ -126,14 +126,14 @@ test.describe('Search', { tag: '@search' }, () => {
 
         // Use infrastructure component for K8s metrics
         const podMetrics =
-          await searchPage.infrastructure.verifyStandardMetrics('k8s.pod.');
+          searchPage.infrastructure.verifyStandardMetrics('k8s.pod.');
         await expect(podMetrics.subpanel).toBeVisible();
         await expect(podMetrics.cpuUsage).toBeVisible();
         await expect(podMetrics.memoryUsage).toBeVisible();
         await expect(podMetrics.diskUsage).toBeVisible();
 
         const nodeMetrics =
-          await searchPage.infrastructure.verifyStandardMetrics('k8s.node.');
+          searchPage.infrastructure.verifyStandardMetrics('k8s.node.');
         await expect(nodeMetrics.subpanel).toBeVisible();
         await expect(nodeMetrics.cpuUsage).toBeVisible();
         await expect(nodeMetrics.memoryUsage).toBeVisible();

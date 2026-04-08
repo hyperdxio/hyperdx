@@ -297,7 +297,7 @@ export default function SessionSubpanel({
   }, [prevTsQuery, tsQuery]);
 
   const debouncedSetTsQuery = useRef(
-    throttle(async (ts: number) => {
+    throttle((ts: number) => {
       setTsQuery(ts);
     }, 1000),
   ).current;

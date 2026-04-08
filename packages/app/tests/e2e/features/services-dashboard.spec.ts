@@ -31,11 +31,10 @@ test.describe('Services Dashboard', { tag: ['@services'] }, () => {
     await servicesPage.searchLucene('Order');
 
     // Should be filtered out
-    const otherLink = await servicesPage.getTopEndpointsTableLink('AddItem');
+    const otherLink = servicesPage.getTopEndpointsTableLink('AddItem');
     await expect(otherLink).toHaveCount(0);
 
-    const orderLink =
-      await servicesPage.getTopEndpointsTableLink('Order create');
+    const orderLink = servicesPage.getTopEndpointsTableLink('Order create');
     await expect(orderLink).toBeVisible();
   });
 });

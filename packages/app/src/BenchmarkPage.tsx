@@ -451,6 +451,7 @@ function BenchmarkPage() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 const BenchmarkPageDynamic = dynamic(async () => BenchmarkPage, { ssr: false });
 
 export default BenchmarkPageDynamic;

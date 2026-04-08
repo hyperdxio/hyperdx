@@ -733,7 +733,7 @@ test.describe('Saved Search Functionality', () => {
 test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
   let listPage: SavedSearchesListPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     listPage = new SavedSearchesListPage(page);
   });
 

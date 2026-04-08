@@ -9,7 +9,7 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   let dashboardImportPage: DashboardImportPage;
   let dashboardPage: DashboardPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     dashboardsListPage = new DashboardsListPage(page);
     dashboardImportPage = new DashboardImportPage(page);
     dashboardPage = new DashboardPage(page);

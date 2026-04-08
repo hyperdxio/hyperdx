@@ -39,7 +39,7 @@ export class InfrastructurePanelComponent {
    * Get all metric types for a subpanel
    * @param subpanel - The subpanel locator
    */
-  async getAllMetrics(subpanel: Locator) {
+  getAllMetrics(subpanel: Locator) {
     const metrics = ['cpu-usage', 'memory-usage', 'disk-usage'];
     const results: Record<string, Locator> = {};
 
@@ -56,9 +56,9 @@ export class InfrastructurePanelComponent {
    * Verify all standard metrics are visible for a resource
    * @param resourceType - e.g., 'k8s.pod.' or 'k8s.node.'
    */
-  async verifyStandardMetrics(resourceType: string) {
+  verifyStandardMetrics(resourceType: string) {
     const subpanel = this.getSubpanel(resourceType);
-    const metrics = await this.getAllMetrics(subpanel);
+    const metrics = this.getAllMetrics(subpanel);
 
     return {
       subpanel,

@@ -860,6 +860,7 @@ function ClickhousePage() {
     </Box>
   );
 }
+// eslint-disable-next-line @typescript-eslint/require-await
 const ClickhousePageDynamic = dynamic(async () => ClickhousePage, {
   ssr: false,
 });

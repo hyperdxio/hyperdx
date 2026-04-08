@@ -4,7 +4,7 @@ import { expect, test } from '../utils/base-test';
 test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
   let sessionsPage: SessionsPage;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(({ page }) => {
     sessionsPage = new SessionsPage(page);
   });
 
