@@ -17,7 +17,7 @@
     "dotenv": "^16.4.7",
     "dotenv-cli": "^8.0.0",
     "dotenv-expand": "^12.0.1",
-    "eslint": "^9.39.1",
+    "eslint": "^10.1.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-n": "^16.4.0",
     "eslint-plugin-prettier": "^5.2.1",
@@ -29,7 +29,7 @@
     "nx": "21.3.11",
     "prettier": "3.3.3",
     "tslib": "^2.6.0",
-    "typescript-eslint": "^8.46.0"
+    "typescript-eslint": "^8.56.0"
   },
   "scripts": {
     "setup": "yarn install && husky install",
@@ -75,10 +75,11 @@
     "send": "^0.19.0",
     "serve-static": "^1.16.0",
     "cookie": "^0.7.0",
-    "brace-expansion": "^2.0.2",
     "diff": "^5.2.2",
     "on-headers": "^1.1.0",
     "fast-xml-parser": "^4.5.4",
-    "systeminformation": "^5.24.0"
+    "systeminformation": "^5.24.0",
+    "brace-expansion@npm:^1.1.7": "npm:^2.0.2",
+    "brace-expansion@npm:^2.0.1": "npm:^2.0.2"
   }
 }
