@@ -9,8 +9,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
-  IconArrowBarToLeft,
-  IconArrowBarToRight,
+  IconArrowLeft,
   IconConnection,
   IconDeviceLaptop,
   IconLogs,
@@ -46,12 +45,11 @@ function truncate(text: string, max: number) {
 
 function SidePanelBreadcrumbs({
   items,
-  isFullWidth,
-  onToggleFullWidth,
+  onBack,
 }: {
   items: BreadcrumbItem[];
-  isFullWidth?: boolean;
-  onToggleFullWidth?: () => void;
+  /** Always shown before the trail; closes the panel at root or pops navigation. */
+  onBack: () => void;
 }) {
   const breadcrumbElements = useMemo(() => {
     return items.map((item, i) => {
@@ -105,39 +103,25 @@ function SidePanelBreadcrumbs({
     });
   }, [items]);
 
-  if (items.length === 0) return null;
-
   return (
     <Group gap={8} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-      {onToggleFullWidth && (
-        <Tooltip
-          label={isFullWidth ? 'Collapse panel' : 'Expand panel'}
-          position="bottom"
+      <Tooltip label="Back" position="bottom">
+        <ActionIcon variant="link" size="sm" onClick={onBack} aria-label="Back">
+          <IconArrowLeft size={14} />
+        </ActionIcon>
+      </Tooltip>
+      {items.length > 0 ? (
+        <Breadcrumbs
+          separator="›"
+          separatorMargin={6}
+          styles={{
+            root: { flexWrap: 'nowrap', overflow: 'hidden' },
+            separator: { color: 'var(--mantine-color-dimmed)' },
+          }}
         >
-          <ActionIcon
-            variant="subtle"
-            size="sm"
-            onClick={onToggleFullWidth}
-            aria-label={isFullWidth ? 'Collapse panel' : 'Expand panel'}
-          >
-            {isFullWidth ? (
-              <IconArrowBarToRight size={16} />
-            ) : (
-              <IconArrowBarToLeft size={16} />
-            )}
-          </ActionIcon>
-        </Tooltip>
-      )}
-      <Breadcrumbs
-        separator="›"
-        separatorMargin={6}
-        styles={{
-          root: { flexWrap: 'nowrap', overflow: 'hidden' },
-          separator: { color: 'var(--mantine-color-dimmed)' },
-        }}
-      >
-        {breadcrumbElements}
-      </Breadcrumbs>
+          {breadcrumbElements}
+        </Breadcrumbs>
+      ) : null}
     </Group>
   );
 }

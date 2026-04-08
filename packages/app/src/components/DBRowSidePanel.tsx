@@ -30,7 +30,14 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
+import {
+  IconCopy,
+  IconKeyboard,
+  IconLayoutSidebarRightCollapse,
+  IconLayoutSidebarRightExpand,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -97,12 +104,41 @@ enum Tab {
   Replay = 'replay',
 }
 
-export function SidePanelHeaderActions({ onClose }: { onClose: () => void }) {
+export function SidePanelHeaderActions({
+  onClose,
+  isFullWidth,
+  onToggleFullWidth,
+}: {
+  onClose: () => void;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
+}) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   return (
     <>
       <Group gap={8} wrap="nowrap">
+        {onToggleFullWidth && (
+          <Tooltip
+            label={isFullWidth ? 'Collapse panel width' : 'Expand panel width'}
+            position="bottom"
+          >
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              onClick={onToggleFullWidth}
+              aria-label={
+                isFullWidth ? 'Collapse panel width' : 'Expand panel width'
+              }
+            >
+              {isFullWidth ? (
+                <IconLayoutSidebarRightCollapse size={16} />
+              ) : (
+                <IconLayoutSidebarRightExpand size={16} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Tooltip label="Keyboard shortcuts" position="bottom">
           <ActionIcon
             variant="subtle"
@@ -225,7 +261,7 @@ export const DBRowSidePanelInner = ({
     [],
   );
 
-  const _handleNavigateBack = useCallback(() => {
+  const handlePanelBack = useCallback(() => {
     if (navStack.length > 0) {
       setNavStack(prev => prev.slice(0, -1));
     } else if (sourceStack.length > 0) {
@@ -236,7 +272,7 @@ export const DBRowSidePanelInner = ({
     } else {
       onClose();
     }
-  }, [navStack.length, sourceStack.length, onClose, onNavigateToParent]);
+  }, [navStack.length, sourceStack.length, onNavigateToParent, onClose]);
 
   const handleSourceStackPush = useCallback((entry: SourceStackEntry) => {
     setSourceStack(prev => [...prev, entry]);
@@ -586,10 +622,13 @@ export const DBRowSidePanelInner = ({
         <Flex align="center" justify="space-between" gap="sm" mb={8}>
           <SidePanelBreadcrumbs
             items={allBreadcrumbs}
+            onBack={handlePanelBack}
+          />
+          <SidePanelHeaderActions
+            onClose={onClose}
             isFullWidth={isFullWidth}
             onToggleFullWidth={onToggleFullWidth}
           />
-          <SidePanelHeaderActions onClose={onClose} />
         </Flex>
         <Group gap="xs" wrap="wrap">
           {timestampDate && !isNaN(timestampDate.getTime()) && (

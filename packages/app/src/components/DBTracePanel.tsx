@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -64,13 +64,19 @@ export default function DBTracePanel({
   };
   'data-testid'?: string;
 }) {
-  const { control } = useForm({
+  const { control, setValue: setSourceFieldValue } = useForm({
     defaultValues: {
-      source: childSourceId,
+      source: childSourceId ?? undefined,
     },
   });
 
   const sourceId = useWatch({ control, name: 'source' });
+
+  useEffect(() => {
+    if (childSourceId != null) {
+      setSourceFieldValue('source', childSourceId);
+    }
+  }, [childSourceId, setSourceFieldValue]);
 
   const { data: childSourceData, isLoading: isChildSourceDataLoading } =
     useSource({
@@ -132,11 +138,13 @@ export default function DBTracePanel({
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
+  const prevTraceIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    setEventRowWhere(null);
-    return () => {
-      setEventRowWhere(null);
-    };
+    const prev = prevTraceIdRef.current;
+    if (prev !== undefined && prev !== traceId) {
+      void setEventRowWhere(null);
+    }
+    prevTraceIdRef.current = traceId;
   }, [traceId, setEventRowWhere]);
 
   const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(

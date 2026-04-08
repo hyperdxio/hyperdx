@@ -73,7 +73,7 @@ export default function SessionSidePanel({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+  const [_subDrawerOpen, setSubDrawerOpen] = useState(false);
   const [sourceStack, setSourceStack] = useState<SourceStackEntry[]>([]);
 
   const initialWidth = getInitialDrawerWidthPercent();
@@ -99,9 +99,7 @@ export default function SessionSidePanel({
     }
   }, [sourceStack.length, handleClose]);
 
-  useHotkeys(['esc'], handleNavigateBack, {
-    enabled: subDrawerOpen === false,
-  });
+  useHotkeys(['esc'], handleNavigateBack);
 
   const sessionLabel = session?.userEmail || `Anonymous Session ${sessionId}`;
 
@@ -153,13 +151,15 @@ export default function SessionSidePanel({
     <Drawer
       opened={sessionId != null}
       onClose={() => {
-        if (!subDrawerOpen) {
-          handleNavigateBack();
-        }
+        setSubDrawerOpen(false);
+        handleClose();
       }}
       position="right"
       size={`${size}vw`}
       withCloseButton={false}
+      withOverlay
+      closeOnClickOutside
+      closeOnEscape={false}
       lockScroll={false}
       zIndex={drawerZIndex}
       styles={{
@@ -222,10 +222,13 @@ export default function SessionSidePanel({
                 <Flex align="center" justify="space-between" gap="sm" mb={8}>
                   <SidePanelBreadcrumbs
                     items={breadcrumbs}
+                    onBack={handleNavigateBack}
+                  />
+                  <SidePanelHeaderActions
+                    onClose={handleClose}
                     isFullWidth={isFullWidth}
                     onToggleFullWidth={toggleFullWidth}
                   />
-                  <SidePanelHeaderActions onClose={handleClose} />
                 </Flex>
                 <Text size="xs" c="dimmed">
                   Last active {timeAgo} ago
