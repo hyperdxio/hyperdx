@@ -89,7 +89,8 @@ export class FilterComponent {
   }
 
   /**
-   * Pin a filter value to persist it
+   * Pin a filter value personally (localStorage).
+   * Opens the PinShareMenu dropdown and clicks "Pin for me".
    */
   async pinFilter(columnName: string, valueName: string) {
     const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
@@ -97,6 +98,10 @@ export class FilterComponent {
       filterCheckbox,
       `filter-checkbox-${columnName}-${valueName}-pin`,
     );
+    // PinShareMenu opens a dropdown — click "Pin for me"
+    await this.page
+      .getByRole('menuitem', { name: 'Pin for me' })
+      .click({ timeout: 10000 });
   }
 
   /**
