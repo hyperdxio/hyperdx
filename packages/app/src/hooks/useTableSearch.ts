@@ -97,7 +97,7 @@ export function useTableSearch({
       shouldScrollToMatchRef.current = true;
     }
     // Otherwise keep the current match index as is (loading more data shouldn't change position)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [debouncedSearchQuery, rows, searchableColumns]);
 
   // Handle visibility changes
@@ -146,6 +146,7 @@ export function useTableSearch({
     shouldScrollToMatchRef.current = false;
   }, []);
 
+  // eslint-disable-next-line react-hooks/refs
   return {
     searchQuery: debouncedSearchQuery,
     inputValue,
@@ -154,6 +155,7 @@ export function useTableSearch({
     currentMatchIndex,
     isSearchVisible,
     setIsSearchVisible,
+    // eslint-disable-next-line react-hooks/refs
     shouldScrollToMatch: shouldScrollToMatchRef.current,
     clearShouldScrollToMatch,
     handlePreviousMatch,

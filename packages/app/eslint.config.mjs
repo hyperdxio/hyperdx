@@ -123,12 +123,20 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
-      ...eslintReactPlugin.configs.recommended.rules,
-      // Disable rules from eslint-plugin-react-hooks that have equivalent rules in @eslint-react
-      ...eslintReactPlugin.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
       ...eslintReactPlugin.configs['recommended-type-checked'].rules,
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/exhaustive-deps': 'error',
+      '@eslint-react/exhaustive-deps': 'error',
+      
+      // Disable rules from eslint-plugin-react-hooks that have equivalent rules enabled in @eslint-react
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/static-components': 'off',
+      'react-hooks/use-memo': 'off',
+      'react-hooks/component-hook-factories': 'off',
+      'react-hooks/error-boundaries': 'off',
+      'react-hooks/set-state-in-render': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/unsupported-syntax': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+      
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
       '@typescript-eslint/no-unused-vars': [

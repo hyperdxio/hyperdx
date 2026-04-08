@@ -420,7 +420,7 @@ export const useSearchPageFilterState = ({
       setFilters(parsedQuery.filters);
     }
     // only react to changes in parsed query
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [parsedQuery.filters]);
 
   const updateFilterQuery = React.useCallback(

@@ -858,7 +858,7 @@ export const RawLogTable = memo(
         // Conditions not met, clear flag
         tableSearch.clearShouldScrollToMatch();
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line @eslint-react/exhaustive-deps
     }, [
       tableSearch.shouldScrollToMatch,
       tableSearch.currentMatchIndex,
@@ -1531,7 +1531,7 @@ function DBSqlRowTableComponent({
     if (prevSourceId && prevSourceId !== sourceId) {
       _onSortingChange(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [sourceId]);
 
   // Sync local orderBy state with initialSortBy when it changes

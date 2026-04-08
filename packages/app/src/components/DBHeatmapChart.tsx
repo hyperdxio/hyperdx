@@ -954,6 +954,7 @@ function Heatmap({
       plugins: [
         // legendAsTooltipPlugin()
 
+        // eslint-disable-next-line react-hooks/refs
         highlightDataPlugin({
           proximity: 20,
           yFormatter: tickFormatter,

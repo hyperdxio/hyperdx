@@ -135,7 +135,7 @@ const TimePickerComponent = ({
       }
     }
     // only run when dateRange changes or opened state changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [dateRange, opened, mode]);
 
   const handleRelativeSearch = React.useCallback(
