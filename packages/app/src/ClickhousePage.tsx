@@ -368,6 +368,7 @@ function InsertsTab({
             }
             toolbarPrefix={[
               <SegmentedControl
+                key="inserts-by-toolbar"
                 size="xs"
                 value={insertsBy ?? 'queries'}
                 onChange={value => {
