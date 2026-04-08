@@ -45,7 +45,7 @@ export class FilterComponent {
   }
 
   /**
-   * Open/expand a filter group
+   * Open/expand a filter group (toggles — may close if already open)
    */
   async openFilterGroup(filterName: string) {
     await this.getFilterGroup(filterName).click();

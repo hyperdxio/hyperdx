@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Button,
@@ -15,19 +14,18 @@ import {
   Table,
   Text,
   TextInput,
-  Tooltip,
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
-  IconBell,
-  IconBellFilled,
   IconLayoutGrid,
   IconList,
   IconSearch,
   IconTable,
 } from '@tabler/icons-react';
 
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
@@ -35,35 +33,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import type { SavedSearchWithEnhancedAlerts } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
-
-function AlertStatusIcon({
-  alerts,
-}: {
-  alerts?: SavedSearchWithEnhancedAlerts['alerts'];
-}) {
-  if (!Array.isArray(alerts) || alerts.length === 0) return null;
-  const alertingCount = alerts.filter(a => a.state === AlertState.ALERT).length;
-  return (
-    <Tooltip
-      label={
-        alertingCount > 0
-          ? `${alertingCount} alert${alertingCount > 1 ? 's' : ''} triggered`
-          : 'Alerts configured'
-      }
-    >
-      {alertingCount > 0 ? (
-        <IconBellFilled size={14} color="var(--mantine-color-red-filled)" />
-      ) : (
-        <IconBell size={14} />
-      )}
-    </Tooltip>
-  );
-}
 
 export default function SavedSearchesListPage() {
   const brandName = useBrandDisplayName();
@@ -149,12 +122,21 @@ export default function SavedSearchesListPage() {
   );
 
   return (
-    <div data-testid="saved-searches-list-page">
+    <div
+      data-testid="saved-searches-list-page"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
         <title>Saved Searches - {brandName}</title>
       </Head>
       <PageHeader>Saved Searches</PageHeader>
-      <Container maw={1200} py="lg" px="lg">
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         {favoritedSavedSearches.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
@@ -175,6 +157,8 @@ export default function SavedSearchesListPage() {
                   statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                   resourceId={s.id}
                   resourceType="savedSearch"
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                 />
               ))}
             </SimpleGrid>
@@ -246,22 +230,29 @@ export default function SavedSearchesListPage() {
             Failed to load saved searches. Please try refreshing the page.
           </Text>
         ) : filteredSavedSearches.length === 0 ? (
-          <Stack align="center" gap="sm" py="xl">
-            <IconTable size={40} opacity={0.3} />
-            <Text size="sm" c="dimmed" ta="center">
-              {search || tagFilter
-                ? 'No matching saved searches.'
-                : 'No saved searches yet.'}
-            </Text>
-            <Button
-              variant="primary"
-              leftSection={<IconTable size={16} />}
-              onClick={() => Router.push('/search')}
-              data-testid="empty-new-search-button"
+          <Flex
+            align="center"
+            justify="center"
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            <EmptyState
+              icon={<IconTable size={32} />}
+              title={
+                search || tagFilter
+                  ? 'No matching saved searches yet'
+                  : 'No saved searches yet'
+              }
             >
-              New Search
-            </Button>
-          </Stack>
+              <Button
+                variant="primary"
+                leftSection={<IconTable size={16} />}
+                onClick={() => Router.push('/search')}
+                data-testid="empty-new-search-button"
+              >
+                New Search
+              </Button>
+            </EmptyState>
+          </Flex>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>
@@ -269,6 +260,8 @@ export default function SavedSearchesListPage() {
                 <Table.Th w={40} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
+                <Table.Th>Created By</Table.Th>
+                <Table.Th>Last Updated</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
@@ -281,6 +274,9 @@ export default function SavedSearchesListPage() {
                   href={`/search/${s.id}`}
                   tags={s.tags}
                   onDelete={handleDelete}
+                  createdBy={s.createdBy?.name || s.createdBy?.email}
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                   leftSection={
                     <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
                       <FavoriteButton
@@ -313,6 +309,8 @@ export default function SavedSearchesListPage() {
                       statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                       resourceId={s.id}
                       resourceType="savedSearch"
+                      updatedAt={s.updatedAt}
+                      updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                     />
                   ))}
                 </SimpleGrid>

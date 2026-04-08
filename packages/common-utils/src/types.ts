@@ -487,6 +487,32 @@ export const SavedSearchSchema = z.object({
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
+const PopulatedUserSchema = z
+  .object({ email: z.string(), name: z.string().optional() })
+  .optional();
+
+export const SavedSearchListApiResponseSchema = SavedSearchSchema.omit({
+  alerts: true,
+}).extend({
+  alerts: z
+    .array(
+      AlertSchema.and(
+        z.object({
+          createdBy: PopulatedUserSchema,
+        }),
+      ),
+    )
+    .optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  createdBy: PopulatedUserSchema,
+  updatedBy: PopulatedUserSchema,
+});
+
+export type SavedSearchListApiResponse = z.infer<
+  typeof SavedSearchListApiResponseSchema
+>;
+
 // --------------------------
 // PINNED FILTERS
 // --------------------------

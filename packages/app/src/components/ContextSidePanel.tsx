@@ -79,7 +79,7 @@ export default function ContextSubpanel({
   dbSqlRowTableConfig,
   rowData,
   rowId,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
@@ -102,7 +102,7 @@ export default function ContextSubpanel({
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
   // State management for nested panels
-  const isNested = breadcrumbPath.length > 0;
+  const isNested = !!breadcrumbPath?.length;
 
   const {
     contextRowId,
@@ -327,7 +327,7 @@ export default function ContextSubpanel({
           onClose={handleContextSidePanelClose}
           isNestedPanel={true}
           breadcrumbPath={[
-            ...breadcrumbPath,
+            ...(breadcrumbPath ?? []),
             {
               label: `Surrounding Context`,
               rowData,

@@ -11,6 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Container,
@@ -23,7 +24,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle,
   IconBell,
-  IconBrandSlack,
   IconChartLine,
   IconCheck,
   IconChevronRight,
@@ -33,6 +33,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
@@ -463,7 +464,12 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <IconCheck size={14} /> OK
         </Group>
         {okData.length === 0 && (
-          <div className="text-center my-4 fs-8">No alerts</div>
+          <EmptyState
+            variant="card"
+            icon={<IconBell size={32} />}
+            title="No alerts"
+            description="All alerts in OK state will appear here."
+          />
         )}
         {okData.map((alert, index) => (
           <AlertDetails key={index} alert={alert} />
@@ -480,41 +486,60 @@ export default function AlertsPage() {
   const alerts = React.useMemo(() => data?.data || [], [data?.data]);
 
   return (
-    <div data-testid="alerts-page" className="AlertsPage">
+    <div
+      data-testid="alerts-page"
+      className="AlertsPage"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
         <title>Alerts - {brandName}</title>
       </Head>
       <PageHeader>Alerts</PageHeader>
-      <div className="my-4">
-        <Container maw={1500}>
-          <Alert
-            icon={<IconInfoCircleFilled size={16} />}
-            color="gray"
-            py="xs"
-            mt="md"
-          >
-            Alerts can be{' '}
-            <a
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
-              target="_blank"
-              rel="noopener noreferrer"
+      <div className="my-4" style={{ flex: 1 }}>
+        {isLoading ? (
+          <div className="text-center my-4 fs-8">Loading...</div>
+        ) : isError ? (
+          <div className="text-center my-4 fs-8">Error</div>
+        ) : alerts?.length ? (
+          <Container maw={1500}>
+            <Alert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+              mt="md"
             >
-              created
-            </a>{' '}
-            from dashboard charts and saved searches.
-          </Alert>
-          {isLoading ? (
-            <div className="text-center my-4 fs-8">Loading...</div>
-          ) : isError ? (
-            <div className="text-center my-4 fs-8">Error</div>
-          ) : alerts?.length ? (
-            <>
-              <AlertCardList alerts={alerts} />
-            </>
-          ) : (
-            <div className="text-center my-4 fs-8">No alerts created yet</div>
-          )}
-        </Container>
+              Alerts can be{' '}
+              <a
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                created
+              </a>{' '}
+              from dashboard charts and saved searches.
+            </Alert>
+            <AlertCardList alerts={alerts} />
+          </Container>
+        ) : (
+          <EmptyState
+            h="100%"
+            icon={<IconBell size={32} />}
+            title="No alerts created yet"
+            description={
+              <>
+                Alerts can be created from{' '}
+                <Anchor component={Link} href="/dashboards">
+                  dashboard charts
+                </Anchor>{' '}
+                and{' '}
+                <Anchor component={Link} href="/search">
+                  saved searches
+                </Anchor>
+                .
+              </>
+            }
+          />
+        )}
       </div>
     </div>
   );

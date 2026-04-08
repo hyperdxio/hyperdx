@@ -368,6 +368,7 @@ function InsertsTab({
             }
             toolbarPrefix={[
               <SegmentedControl
+                key="inserts-by-toolbar"
                 size="xs"
                 value={insertsBy ?? 'queries'}
                 onChange={value => {
@@ -784,7 +785,12 @@ function ClickhousePage() {
               </ChartBox>
             </Grid.Col>
             <Grid.Col span={12}>
-              <ChartBox style={{ height: 400 }}>
+              <ChartBox
+                style={{
+                  height: 400,
+                  overflow: 'hidden',
+                }}
+              >
                 <Text size="sm" mb="md">
                   Slowest Queries
                 </Text>

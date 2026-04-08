@@ -98,7 +98,7 @@ export default function SQLEditor({
         minHeight={'100px'}
         extensions={[
           createCodeMirrorStyleTheme(),
-          // eslint-disable-next-line react-hooks/refs
+
           compartmentRef.current.of(
             clickhouseSql({
               upperCaseKeywords: true,

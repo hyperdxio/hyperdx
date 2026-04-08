@@ -1,5 +1,29 @@
 # @hyperdx/api
 
+## 2.23.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 59b1f46f: fix: Show alerts on a tile only when dashboard matches
+- Updated dependencies [518bda7d]
+- Updated dependencies [4e54d850]
+- Updated dependencies [53ba1e39]
+- Updated dependencies [b7581db8]
+- Updated dependencies [48a8d32b]
+- Updated dependencies [a15122b3]
+- Updated dependencies [a55b151e]
+- Updated dependencies [308da30b]
+- Updated dependencies [e5c7fdf9]
+- Updated dependencies [941d0450]
+  - @hyperdx/common-utils@0.17.0
+
 ## 2.22.1
 
 ### Patch Changes

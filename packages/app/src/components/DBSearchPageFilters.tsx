@@ -487,11 +487,17 @@ const FilterRangeDisplay = ({
   );
 };
 
+type SelectedValues = {
+  included: Set<string | boolean>;
+  excluded: Set<string | boolean>;
+  range?: { min: number; max: number };
+};
+
 export type FilterGroupProps = {
   name: string;
   options: { value: string | boolean; label: string }[];
   optionsLoading?: boolean;
-  selectedValues?: FilterState[string];
+  selectedValues?: SelectedValues;
   onChange: (value: string | boolean) => void;
   onClearClick: VoidFunction;
   onOnlyClick: (value: string | boolean) => void;
@@ -542,7 +548,7 @@ const FilterGroupBody = ({
   name: string;
   options: { value: string | boolean; label: string }[];
   optionsLoading?: boolean;
-  selectedValues: FilterState[string];
+  selectedValues: SelectedValues;
   onChange: (value: string | boolean) => void;
   onOnlyClick: (value: string | boolean) => void;
   onExcludeClick: (value: string | boolean) => void;
@@ -963,7 +969,7 @@ export const FilterGroup = ({
   name,
   options,
   optionsLoading,
-  selectedValues = { included: new Set(), excluded: new Set() },
+  selectedValues: _selectedValues,
   onChange,
   onClearClick,
   onOnlyClick,
@@ -986,6 +992,11 @@ export const FilterGroup = ({
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
   const [showDistributions, setShowDistributions] = useState(false);
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
+
+  const selectedValues: SelectedValues = useMemo(
+    () => _selectedValues ?? { included: new Set(), excluded: new Set() },
+    [_selectedValues],
+  );
 
   const hasRange = selectedValues.range != null;
 
