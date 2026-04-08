@@ -1487,13 +1487,41 @@ const DBSearchPageFiltersComponent = ({
     sharedFilterKeys,
   ]);
 
-  const showClearAllButton = useMemo(
+  // Check if shared facets have active selections
+  const showSharedClearButton = useMemo(
     () =>
-      Object.values(filterState).some(
-        f => f.included.size > 0 || f.excluded.size > 0 || f.range != null,
-      ),
-    [filterState],
+      sharedFacets.some(facet => {
+        const f = filterState[facet.key];
+        return (
+          f && (f.included.size > 0 || f.excluded.size > 0 || f.range != null)
+        );
+      }),
+    [sharedFacets, filterState],
   );
+
+  // Check if non-shared facets have active selections
+  const showFiltersClearButton = useMemo(
+    () =>
+      shownFacets.some(facet => {
+        const f = filterState[facet.key];
+        return (
+          f && (f.included.size > 0 || f.excluded.size > 0 || f.range != null)
+        );
+      }),
+    [shownFacets, filterState],
+  );
+
+  const clearSharedSelections = useCallback(() => {
+    for (const facet of sharedFacets) {
+      clearFilter(facet.key);
+    }
+  }, [sharedFacets, clearFilter]);
+
+  const clearRegularSelections = useCallback(() => {
+    for (const facet of shownFacets) {
+      clearFilter(facet.key);
+    }
+  }, [shownFacets, clearFilter]);
 
   const parentSpanIdExpr =
     source?.kind === SourceKind.Trace
@@ -1589,7 +1617,11 @@ const DBSearchPageFiltersComponent = ({
           </Tabs>
 
           {isSharedFiltersVisible && (
-            <SharedFiltersSection hasSharedFacets={sharedFacets.length > 0}>
+            <SharedFiltersSection
+              hasSharedFacets={sharedFacets.length > 0}
+              showClearButton={showSharedClearButton}
+              onClearSelections={clearSharedSelections}
+            >
               {(() => {
                 const { grouped, nonGrouped } =
                   groupFacetsByBaseName(sharedFacets);
@@ -1745,9 +1777,9 @@ const DBSearchPageFiltersComponent = ({
               )}
             </Flex>
             <Group gap={0}>
-              {showClearAllButton && (
+              {showFiltersClearButton && (
                 <Tooltip
-                  label="Clear All Filters"
+                  label="Clear Filters"
                   position="top"
                   withArrow
                   fz="xxs"
@@ -1757,8 +1789,8 @@ const DBSearchPageFiltersComponent = ({
                     variant="subtle"
                     color="gray"
                     size="xs"
-                    onClick={() => clearAllFilters()}
-                    aria-label="Clear All Filters"
+                    onClick={clearRegularSelections}
+                    aria-label="Clear Filters"
                   >
                     <IconFilterOff size={14} />
                   </ActionIcon>

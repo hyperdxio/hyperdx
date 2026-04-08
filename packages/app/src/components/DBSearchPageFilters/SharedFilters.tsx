@@ -1,18 +1,24 @@
 import { memo, type ReactNode } from 'react';
 import {
+  ActionIcon,
   Collapse,
   Flex,
   Group,
   Stack,
   Text,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChevronDown, IconUsers } from '@tabler/icons-react';
+import { IconChevronDown, IconFilterOff, IconUsers } from '@tabler/icons-react';
 
 interface SharedFiltersSectionProps {
   /** Whether there are any shared facets to display */
   hasSharedFacets: boolean;
+  /** Whether any shared facets have active filter selections */
+  showClearButton: boolean;
+  /** Callback to clear all shared filter selections */
+  onClearSelections: VoidFunction;
   /** Pre-rendered FilterGroup components for shared/pinned facets */
   children: ReactNode;
 }
@@ -25,6 +31,8 @@ interface SharedFiltersSectionProps {
  */
 function SharedFiltersSectionComponent({
   hasSharedFacets,
+  showClearButton,
+  onClearSelections,
   children,
 }: SharedFiltersSectionProps) {
   const [opened, { toggle }] = useDisclosure(true);
@@ -35,8 +43,12 @@ function SharedFiltersSectionComponent({
 
   return (
     <Stack gap="xs" data-testid="shared-filters-section">
-      <UnstyledButton onClick={toggle} data-testid="shared-filters-toggle">
-        <Flex align="center" justify="space-between">
+      <Flex align="center" justify="space-between">
+        <UnstyledButton
+          onClick={toggle}
+          data-testid="shared-filters-toggle"
+          style={{ flex: 1 }}
+        >
           <Group gap={4}>
             <IconUsers
               size={12}
@@ -46,16 +58,39 @@ function SharedFiltersSectionComponent({
               Shared Filters
             </Text>
           </Group>
-          <IconChevronDown
-            size={14}
-            color="var(--mantine-color-gray-6)"
-            style={{
-              transition: 'transform 0.2s ease-in-out',
-              transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
-            }}
-          />
-        </Flex>
-      </UnstyledButton>
+        </UnstyledButton>
+        <Group gap={0} wrap="nowrap">
+          {showClearButton && (
+            <Tooltip
+              label="Clear Shared Filters"
+              position="top"
+              withArrow
+              fz="xxs"
+              color="gray"
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="xs"
+                onClick={onClearSelections}
+                aria-label="Clear Shared Filters"
+              >
+                <IconFilterOff size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <UnstyledButton onClick={toggle}>
+            <IconChevronDown
+              size={14}
+              color="var(--mantine-color-gray-6)"
+              style={{
+                transition: 'transform 0.2s ease-in-out',
+                transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
+              }}
+            />
+          </UnstyledButton>
+        </Group>
+      </Flex>
       <Collapse in={opened}>
         <Stack gap={8}>{children}</Stack>
       </Collapse>
