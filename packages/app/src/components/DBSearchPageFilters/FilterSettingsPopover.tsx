@@ -35,16 +35,22 @@ export function FilterSettingsPanel({
   onSharedFiltersVisibilityChange,
   showFilterCounts,
   onShowFilterCountsChange,
-  hasSharedFilters,
+  hasPersonalPins,
+  onResetPersonalPins,
+  hasSharedPins,
   onResetSharedFilters,
 }: {
   isSharedFiltersVisible: boolean;
   onSharedFiltersVisibilityChange: (visible: boolean) => void;
   showFilterCounts: boolean;
   onShowFilterCountsChange: (show: boolean) => void;
-  hasSharedFilters: boolean;
+  hasPersonalPins: boolean;
+  onResetPersonalPins: VoidFunction;
+  hasSharedPins: boolean;
   onResetSharedFilters: VoidFunction;
 }) {
+  const showResetSection = hasPersonalPins || hasSharedPins;
+
   return (
     <SettingsPopover
       target={
@@ -89,48 +95,73 @@ export function FilterSettingsPanel({
           checked={showFilterCounts}
           onChange={e => onShowFilterCountsChange(e.currentTarget.checked)}
         />
-        {hasSharedFilters && <ResetButton onReset={onResetSharedFilters} />}
+        {showResetSection && (
+          <>
+            <Divider />
+            {hasPersonalPins && (
+              <ResetAction
+                label="Reset My Pins"
+                confirmationText="This will clear your personal pinned filters."
+                onReset={onResetPersonalPins}
+              />
+            )}
+            {hasSharedPins && (
+              <ResetAction
+                label="Reset Shared Filters"
+                confirmationText="This will clear all shared filters for the entire team."
+                onReset={onResetSharedFilters}
+              />
+            )}
+          </>
+        )}
       </Flex>
     </SettingsPopover>
   );
 }
 
-function ResetButton({ onReset }: { onReset: VoidFunction }) {
+function ResetAction({
+  label,
+  confirmationText,
+  onReset,
+}: {
+  label: string;
+  confirmationText: string;
+  onReset: VoidFunction;
+}) {
   const [confirming, setConfirming] = useState(false);
 
-  return (
-    <>
-      <Divider />
-      {confirming ? (
-        <Flex direction="column" gap={4}>
-          <Text size="xs" c="yellow">
-            This will clear all shared filters for the entire team.
-          </Text>
-          <Flex gap="xs">
-            <UnstyledButton
-              onClick={() => {
-                onReset();
-                setConfirming(false);
-              }}
-            >
-              <Text size="xs" c="red" fw={500}>
-                Confirm
-              </Text>
-            </UnstyledButton>
-            <UnstyledButton onClick={() => setConfirming(false)}>
-              <Text size="xs" c="dimmed">
-                Cancel
-              </Text>
-            </UnstyledButton>
-          </Flex>
+  if (confirming) {
+    return (
+      <Flex direction="column" gap={4}>
+        <Text size="xs" c="yellow">
+          {confirmationText}
+        </Text>
+        <Flex gap="xs">
+          <UnstyledButton
+            onClick={() => {
+              onReset();
+              setConfirming(false);
+            }}
+          >
+            <Text size="xs" c="red" fw={500}>
+              Confirm
+            </Text>
+          </UnstyledButton>
+          <UnstyledButton onClick={() => setConfirming(false)}>
+            <Text size="xs" c="dimmed">
+              Cancel
+            </Text>
+          </UnstyledButton>
         </Flex>
-      ) : (
-        <UnstyledButton onClick={() => setConfirming(true)}>
-          <Text size="xs" c="dimmed">
-            Reset to Default
-          </Text>
-        </UnstyledButton>
-      )}
-    </>
+      </Flex>
+    );
+  }
+
+  return (
+    <UnstyledButton onClick={() => setConfirming(true)}>
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+    </UnstyledButton>
   );
 }

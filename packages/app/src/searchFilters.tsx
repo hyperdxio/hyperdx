@@ -720,13 +720,27 @@ export function usePinnedFilters(sourceId: string | null) {
     [effectiveTeam],
   );
 
-  const resetPinnedFilters = useCallback(() => {
-    // Reset personal (localStorage)
+  const resetPersonalPins = useCallback(() => {
     personal.setFields(() => []);
     personal.setFilters(() => ({}));
-    // Reset team (MongoDB)
+  }, [personal]);
+
+  const resetSharedFilters = useCallback(() => {
     flushTeamUpdate([], {});
-  }, [personal, flushTeamUpdate]);
+  }, [flushTeamUpdate]);
+
+  const hasPersonalPins = useMemo(
+    () =>
+      personal.fields.length > 0 || Object.keys(personal.filters).length > 0,
+    [personal.fields, personal.filters],
+  );
+
+  const hasSharedPins = useMemo(
+    () =>
+      effectiveTeam.fields.length > 0 ||
+      Object.keys(effectiveTeam.filters).length > 0,
+    [effectiveTeam],
+  );
 
   return {
     toggleFilterPin,
@@ -739,6 +753,9 @@ export function usePinnedFilters(sourceId: string | null) {
     isSharedFieldPinned,
     toggleSharedFilterPin,
     isSharedFilterPinned,
-    resetPinnedFilters,
+    resetPersonalPins,
+    resetSharedFilters,
+    hasPersonalPins,
+    hasSharedPins,
   };
 }

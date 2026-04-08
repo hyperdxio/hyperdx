@@ -1171,12 +1171,15 @@ const DBSearchPageFiltersComponent = ({
     isFilterPinned,
     isFieldPinned,
     getPinnedFields,
-    toggleSharedFilterPin,
-    isSharedFilterPinned,
     pinnedFilters,
     toggleSharedFieldPin,
     isSharedFieldPinned,
-    resetPinnedFilters,
+    toggleSharedFilterPin,
+    isSharedFilterPinned,
+    resetPersonalPins,
+    resetSharedFilters,
+    hasPersonalPins,
+    hasSharedPins,
   } = usePinnedFilters(sourceId ?? null);
   const { data: pinnedFiltersApiData } = usePinnedFiltersApi(sourceId ?? null);
   const [isSharedFiltersVisible, setSharedFiltersVisible] = useLocalStorage(
@@ -1766,8 +1769,10 @@ const DBSearchPageFiltersComponent = ({
                 onSharedFiltersVisibilityChange={setSharedFiltersVisible}
                 showFilterCounts={showFilterCounts}
                 onShowFilterCountsChange={setShowFilterCounts}
-                hasSharedFilters={sharedFilterKeys.size > 0}
-                onResetSharedFilters={resetPinnedFilters}
+                hasPersonalPins={hasPersonalPins}
+                onResetPersonalPins={resetPersonalPins}
+                hasSharedPins={hasSharedPins}
+                onResetSharedFilters={resetSharedFilters}
               />
             </Group>
           </Flex>
