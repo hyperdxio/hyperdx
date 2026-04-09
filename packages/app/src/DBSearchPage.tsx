@@ -409,7 +409,7 @@ function SaveSearchModalComponent({
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    handleSubmit(({ name }) => {
+    handleSubmit(async ({ name }) => {
       if (isUpdate) {
         if (savedSearchId == null) {
           throw new Error('savedSearchId is required for update');
@@ -432,11 +432,20 @@ function SaveSearchModalComponent({
             onSuccess: () => {
               onClose();
             },
+            onError: error => {
+              console.error('Error updating saved search:', error);
+              notifications.show({
+                color: 'red',
+                title: 'Error',
+                message:
+                  'An error occurred while updating your saved search. Please try again.',
+              });
+            },
           },
         );
       } else {
-        createSavedSearch.mutate(
-          {
+        try {
+          const savedSearch = await createSavedSearch.mutateAsync({
             name,
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
@@ -446,17 +455,24 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
-          },
-          {
-            onSuccess: savedSearch => {
-              router.push(`/search/${savedSearch.id}${window.location.search}`);
-              onClose();
-            },
-          },
-        );
+          });
+
+          router.push(`/search/${savedSearch.id}${window.location.search}`);
+          onClose();
+        } catch (error) {
+          console.error('Error creating saved search:', error);
+          notifications.show({
+            color: 'red',
+            title: 'Error',
+            message:
+              'An error occurred while saving your search. Please try again.',
+          });
+        }
       }
     })();
   };
+
+  const isPending = createSavedSearch.isPending || updateSavedSearch.isPending;
 
   const { data: chartConfig } = useSearchedConfigToChartConfig(searchedConfig);
 
@@ -572,6 +588,7 @@ function SaveSearchModalComponent({
             variant="primary"
             type="submit"
             disabled={!formState.isValid}
+            loading={isPending}
           >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
@@ -869,7 +886,7 @@ function DBSearchPage() {
       where: searchedConfig.where || '',
       whereLanguage:
         searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      source: searchedConfig.source || defaultSourceId,
+      source: searchedConfig.source || (savedSearchId ? '' : defaultSourceId),
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -1619,16 +1636,18 @@ function DBSearchPage() {
             </Text>
           </Group>
           <Group justify="space-between" align="flex-end">
-            <EditablePageName
-              key={savedSearch.id}
-              name={savedSearch?.name ?? 'Untitled Search'}
-              onSave={editedName => {
-                updateSavedSearch.mutate({
-                  id: savedSearch.id,
-                  name: editedName,
-                });
-              }}
-            />
+            <div data-testid="saved-search-name">
+              <EditablePageName
+                key={savedSearch.id}
+                name={savedSearch?.name ?? 'Untitled Search'}
+                onSave={editedName => {
+                  updateSavedSearch.mutate({
+                    id: savedSearch.id,
+                    name: editedName,
+                  });
+                }}
+              />
+            </div>
 
             <Group gap="xs">
               <FavoriteButton
