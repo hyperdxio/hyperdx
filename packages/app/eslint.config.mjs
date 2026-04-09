@@ -122,12 +122,28 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
-      ...eslintReactPlugin.configs.recommended.rules,
-      // Disable rules from eslint-plugin-react-hooks that have equivalent rules in @eslint-react
-      ...eslintReactPlugin.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
       ...eslintReactPlugin.configs['recommended-type-checked'].rules,
+      
+      // Non-default react-hooks rules
+      'react-hooks/set-state-in-render': 'error',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'error',
+      
+      // Disable rules from @eslint-react that have equivalent rules enabled in eslint-plugin-react-hooks
+      '@eslint-react/rules-of-hooks': 'off',
+      '@eslint-react/component-hook-factories': 'off',
+      '@eslint-react/exhaustive-deps': 'off',
+      '@eslint-react/error-boundaries': 'off',
+      '@eslint-react/immutability': 'off',
+      '@eslint-react/purity': 'off',
+      '@eslint-react/refs': 'off',
+      '@eslint-react/set-state-in-effect': 'off',
+      '@eslint-react/set-state-in-render': 'off',
+      '@eslint-react/no-nested-component-definitions': 'off',
+      '@eslint-react/no-nested-lazy-component-declarations': 'off',
+      '@eslint-react/unsupported-syntax': 'off',
+      '@eslint-react/use-memo': 'off',
+      
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
       '@typescript-eslint/ban-ts-comment': 'warn',
