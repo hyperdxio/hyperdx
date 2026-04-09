@@ -63,7 +63,7 @@ const WebhookChannelForm = <T extends object>(
 
   return (
     <div>
-      <Group gap="md" justify="space-between">
+      <Group gap="md" justify="space-between" align="flex-start">
         <Select
           data-testid="select-webhook"
           comboboxProps={{
