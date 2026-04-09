@@ -381,9 +381,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
-      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Remove Alert',
-      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();

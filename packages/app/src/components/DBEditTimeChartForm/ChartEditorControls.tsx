@@ -4,9 +4,7 @@ import {
   FieldErrors,
   UseFormClearErrors,
   UseFormSetValue,
-  useWatch,
 } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -15,20 +13,9 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Divider,
-  Flex,
-  Group,
-  Paper,
-  Stack,
-  Switch,
-  Text,
-} from '@mantine/core';
+import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
 import { IconBell, IconCirclePlus } from '@tabler/icons-react';
 
-import { AlertChannelForm } from '@/components/Alerts';
-import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
@@ -39,16 +26,10 @@ import SourceSchemaPreview from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
-import { optionsToSelectData } from '@/utils';
-import {
-  ALERT_CHANNEL_OPTIONS,
-  DEFAULT_TILE_ALERT,
-  intervalToMinutes,
-  TILE_ALERT_INTERVAL_OPTIONS,
-  TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-} from '@/utils/alerts';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ChartSeriesEditor } from './ChartSeriesEditor';
+import { TileAlertEditor } from './TileAlertEditor';
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
@@ -103,18 +84,6 @@ export function ChartEditorControls({
   onSubmit,
   openDisplaySettings,
 }: ChartEditorControlsProps) {
-  const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
-  const alertScheduleOffsetMinutes = useWatch({
-    control,
-    name: 'alert.scheduleOffsetMinutes',
-  });
-  const maxAlertScheduleOffsetMinutes = alert?.interval
-    ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
-    : 0;
-  const alertIntervalLabel = alert?.interval
-    ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
-    : undefined;
-
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -274,20 +243,19 @@ export function ChartEditorControls({
                 />
               )}
               {(displayType === DisplayType.Line ||
+                displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
                 dashboardId &&
+                !alert &&
                 !IS_LOCAL_MODE && (
                   <Button
                     variant="subtle"
                     data-testid="alert-button"
                     size="sm"
-                    color={alert ? 'red' : 'gray'}
-                    onClick={() =>
-                      setValue('alert', alert ? undefined : DEFAULT_TILE_ALERT)
-                    }
+                    onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
                   >
                     <IconBell size={14} className="me-2" />
-                    {!alert ? 'Add Alert' : 'Remove Alert'}
+                    Add Alert
                   </Button>
                 )}
             </Group>
@@ -334,76 +302,14 @@ export function ChartEditorControls({
         </Flex>
       )}
       {alert && !isRawSqlInput && (
-        <Paper my="sm">
-          <Stack gap="xs" data-testid="alert-details">
-            <Paper px="md" py="sm" radius="xs">
-              <Text size="xxs" opacity={0.5} mb={4}>
-                Trigger
-              </Text>
-              <Group gap="xs">
-                <Text size="sm" opacity={0.7}>
-                  Alert when the value
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
-                  size="xs"
-                  name={`alert.thresholdType`}
-                  control={control}
-                />
-                <NumberInput
-                  size="xs"
-                  w={80}
-                  control={control}
-                  name={`alert.threshold`}
-                />
-                over
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                  size="xs"
-                  name={`alert.interval`}
-                  control={control}
-                />
-                <Text size="sm" opacity={0.7}>
-                  window via
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                  size="xs"
-                  name={`alert.channel.type`}
-                  control={control}
-                />
-              </Group>
-              {alert?.createdBy && (
-                <Text size="xs" opacity={0.6} mt="xs">
-                  Created by {alert.createdBy.name || alert.createdBy.email}
-                </Text>
-              )}
-              <AlertScheduleFields
-                control={control}
-                setValue={setValue}
-                scheduleOffsetName="alert.scheduleOffsetMinutes"
-                scheduleStartAtName="alert.scheduleStartAt"
-                scheduleOffsetMinutes={alertScheduleOffsetMinutes}
-                maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
-                offsetWindowLabel={
-                  alertIntervalLabel
-                    ? `from each ${alertIntervalLabel} window`
-                    : 'from each alert window'
-                }
-              />
-            </Paper>
-            <Paper px="md" py="sm" radius="xs">
-              <Text size="xxs" opacity={0.5} mb={4}>
-                Send to
-              </Text>
-              <AlertChannelForm
-                control={control}
-                type={alertChannelType}
-                namePrefix="alert."
-              />
-            </Paper>
-          </Stack>
-        </Paper>
+        <Box mt="sm">
+          <TileAlertEditor
+            control={control}
+            setValue={setValue}
+            alert={alert}
+            onRemove={() => setValue('alert', undefined)}
+          />
+        </Box>
       )}
     </>
   );

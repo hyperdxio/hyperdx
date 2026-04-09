@@ -419,6 +419,104 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
+  # CLI – compile standalone binaries and upload as GitHub Release assets
+  # npm publishing is handled by changesets in the check_changesets job above.
+  # This job only compiles platform-specific binaries and creates a GH Release.
+  # ---------------------------------------------------------------------------
+  release-cli:
+    name: Release CLI Binaries
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.11'
+      - name: Install dependencies
+        run: yarn install
+      - name: Get CLI version
+        id: cli_version
+        run: |
+          CLI_VERSION=$(node -p "require('./packages/cli/package.json').version")
+          echo "version=${CLI_VERSION}" >> $GITHUB_OUTPUT
+          echo "CLI version: ${CLI_VERSION}"
+      - name: Check if CLI release already exists
+        id: check_cli_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "cli-v${{ steps.cli_version.outputs.version }}" > /dev/null 2>&1; then
+            echo "Release cli-v${{ steps.cli_version.outputs.version }} already exists. Skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release does not exist. Proceeding."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Compile CLI binaries
+        if: steps.check_cli_release.outputs.exists == 'false'
+        working-directory: packages/cli
+        run: |
+          yarn compile:linux
+          yarn compile:macos
+          yarn compile:macos-x64
+      - name: Create GitHub Release
+        if: steps.check_cli_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          tag_name: cli-v${{ steps.cli_version.outputs.version }}
+          name: '@hyperdx/cli v${{ steps.cli_version.outputs.version }}'
+          body: |
+            ## @hyperdx/cli v${{ steps.cli_version.outputs.version }}
+
+            ### Installation
+
+            **npm (recommended):**
+            ```bash
+            npm install -g @hyperdx/cli
+            ```
+
+            **Or run directly with npx:**
+            ```bash
+            npx @hyperdx/cli tui -s <your-hyperdx-api-url>
+            ```
+
+            **Manual download (standalone binary, no Node.js required):**
+            ```bash
+            # macOS Apple Silicon
+            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-darwin-arm64 -o hdx
+            # macOS Intel
+            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-darwin-x64 -o hdx
+            # Linux x64
+            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-linux-x64 -o hdx
+
+            chmod +x hdx && sudo mv hdx /usr/local/bin/
+            ```
+
+            ### Usage
+
+            ```bash
+            hdx auth login -s <your-hyperdx-api-url>
+            hdx tui
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            packages/cli/dist/hdx-linux-x64
+            packages/cli/dist/hdx-darwin-arm64
+            packages/cli/dist/hdx-darwin-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
   # Downstream notifications
   # ---------------------------------------------------------------------------
   notify_helm_charts:
@@ -553,6 +651,7 @@ jobs:
         publish-otel-collector,
         publish-local,
         publish-all-in-one,
+        release-cli,
         notify_helm_charts,
         notify_ch,
         notify_clickhouse_clickstack,

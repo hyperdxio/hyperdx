@@ -19,7 +19,8 @@ export class ChartEditorComponent {
   private readonly sourceSelector: Locator;
   private readonly metricSelector: Locator;
   private readonly aggFnSelect: Locator;
-  private readonly addOrRemoveAlertButton: Locator;
+  private readonly addAlertButton: Locator;
+  private readonly removeAlertButton: Locator;
   private readonly webhookSelector: Locator;
   private readonly runQueryButton: Locator;
   private readonly saveButton: Locator;
@@ -31,7 +32,8 @@ export class ChartEditorComponent {
     this.sourceSelector = page.getByTestId('source-selector');
     this.metricSelector = page.getByTestId('metric-name-selector');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
-    this.addOrRemoveAlertButton = page.getByTestId('alert-button');
+    this.addAlertButton = page.getByTestId('alert-button');
+    this.removeAlertButton = page.getByTestId('remove-alert-button');
     this.webhookSelector = page.getByTestId('select-webhook');
     this.addNewWebhookButton = page.getByTestId('add-new-webhook-button');
     this.webhookAlertModal = new WebhookAlertModalComponent(page);
@@ -129,7 +131,7 @@ export class ChartEditorComponent {
   }
 
   async clickAddAlert() {
-    await this.addOrRemoveAlertButton.click();
+    await this.addAlertButton.click();
     this.addNewWebhookButton.waitFor({
       state: 'visible',
       timeout: 2000,
@@ -137,8 +139,8 @@ export class ChartEditorComponent {
   }
 
   async clickRemoveAlert() {
-    await this.addOrRemoveAlertButton.click();
-    this.addNewWebhookButton.waitFor({
+    await this.removeAlertButton.click();
+    this.removeAlertButton.waitFor({
       state: 'hidden',
       timeout: 2000,
     });
@@ -284,7 +286,7 @@ export class ChartEditorComponent {
   }
 
   get alertButton() {
-    return this.addOrRemoveAlertButton;
+    return this.addAlertButton;
   }
 
   get runButton() {

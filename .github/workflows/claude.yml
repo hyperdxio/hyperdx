@@ -51,4 +51,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           use_sticky_comment: 'true'
           include_fix_links: 'true'
-          claude_args: '--max-turns 20'
+          claude_args: '--max-turns 60'

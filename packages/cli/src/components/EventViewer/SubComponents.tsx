@@ -1,0 +1,219 @@
+import React from 'react';
+import { Box, Text } from 'ink';
+import TextInput from 'ink-text-input';
+import Spinner from 'ink-spinner';
+
+import type { TimeRange } from '@/utils/editor';
+import type { Column, SwitchItem } from './types';
+import { formatShortDate } from './utils';
+
+// ---- Header --------------------------------------------------------
+
+type HeaderProps = {
+  sourceName: string;
+  dbName: string;
+  tableName: string;
+  isFollowing: boolean;
+  loading: boolean;
+  timeRange: TimeRange;
+};
+
+export const Header = React.memo(function Header({
+  sourceName,
+  dbName,
+  tableName,
+  isFollowing,
+  loading,
+  timeRange,
+}: HeaderProps) {
+  return (
+    <Box>
+      <Text bold color="cyan">
+        HyperDX
+      </Text>
+      <Text> — </Text>
+      <Text color="green">{sourceName}</Text>
+      <Text dimColor>
+        {' '}
+        ({dbName}.{tableName})
+      </Text>
+      <Text dimColor>
+        {' '}
+        {formatShortDate(timeRange.start)} → {formatShortDate(timeRange.end)}
+      </Text>
+      {isFollowing && <Text color="yellow"> [FOLLOWING]</Text>}
+      {loading && (
+        <Text>
+          {' '}
+          <Spinner type="dots" />
+        </Text>
+      )}
+    </Box>
+  );
+});
+
+// ---- TabBar --------------------------------------------------------
+
+type TabBarProps = {
+  items: SwitchItem[];
+  activeIdx: number;
+};
+
+export const TabBar = React.memo(function TabBar({
+  items,
+  activeIdx,
+}: TabBarProps) {
+  if (items.length <= 1) return null;
+  return (
+    <Box height={1} overflowX="hidden" overflowY="hidden">
+      {items.map((item, i) => (
+        <Box key={`${item.type}-${i}`} marginRight={2}>
+          <Text
+            color={i === activeIdx ? 'cyan' : undefined}
+            bold={i === activeIdx}
+            dimColor={i !== activeIdx}
+            wrap="truncate"
+          >
+            {i === activeIdx ? '▸ ' : '  '}
+            {item.label}
+          </Text>
+        </Box>
+      ))}
+    </Box>
+  );
+});
+
+// ---- SearchBar -----------------------------------------------------
+
+type SearchBarProps = {
+  focused: boolean;
+  query: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+};
+
+export const SearchBar = React.memo(function SearchBar({
+  focused,
+  query,
+  onChange,
+  onSubmit,
+}: SearchBarProps) {
+  return (
+    <Box>
+      <Text color={focused ? 'cyan' : 'gray'}>Search: </Text>
+      {focused ? (
+        <TextInput
+          value={query}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          placeholder="Lucene query…"
+        />
+      ) : (
+        <Text dimColor>{query || '(empty)'}</Text>
+      )}
+    </Box>
+  );
+});
+
+// ---- Footer --------------------------------------------------------
+
+type FooterProps = {
+  rowCount: number;
+  cursorPos: number;
+  wrapLines: boolean;
+  isFollowing: boolean;
+  loadingMore: boolean;
+  scrollInfo?: string;
+};
+
+export const Footer = React.memo(function Footer({
+  rowCount,
+  cursorPos,
+  wrapLines,
+  isFollowing,
+  loadingMore,
+  scrollInfo,
+}: FooterProps) {
+  return (
+    <Box marginTop={1} justifyContent="space-between">
+      <Text dimColor>
+        {isFollowing ? '[FOLLOWING] ' : ''}
+        {wrapLines ? '[WRAP] ' : ''}
+        {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
+      </Text>
+      <Text dimColor>
+        {scrollInfo ? `${scrollInfo}  ` : ''}
+        {cursorPos}/{rowCount}
+      </Text>
+    </Box>
+  );
+});
+
+// ---- HelpScreen ----------------------------------------------------
+
+export const HelpScreen = React.memo(function HelpScreen() {
+  const keys: Array<[string, string]> = [
+    ['j / ↓', 'Move selection down'],
+    ['k / ↑', 'Move selection up'],
+    ['l / Enter', 'Expand row detail (SELECT *)'],
+    ['h / Esc', 'Close row detail'],
+    ['Tab (detail)', 'Switch Column Values / Trace'],
+    ['G', 'Jump to last item'],
+    ['g', 'Jump to first item'],
+    ['Ctrl+D', 'Page down (half page)'],
+    ['Ctrl+U', 'Page up (half page)'],
+    ['/', 'Search (global or detail filter)'],
+    ['Esc', 'Blur search bar'],
+    ['Tab', 'Next source / saved search'],
+    ['Shift+Tab', 'Previous source / saved search'],
+    ['t', 'Edit time range in $EDITOR'],
+    ['s', 'Edit select clause in $EDITOR'],
+    ['f', 'Toggle follow mode (live tail)'],
+    ['w', 'Toggle line wrap'],
+    ['?', 'Toggle this help'],
+    ['q', 'Quit'],
+  ];
+
+  return (
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Text bold color="cyan">
+        Keybindings
+      </Text>
+      <Text> </Text>
+      {keys.map(([key, desc]) => (
+        <Box key={key}>
+          <Box width={20}>
+            <Text bold color="yellow">
+              {key}
+            </Text>
+          </Box>
+          <Text>{desc}</Text>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Text dimColor>Press ? or Esc to close</Text>
+    </Box>
+  );
+});
+
+// ---- TableHeader ---------------------------------------------------
+
+type TableHeaderProps = {
+  columns: Column[];
+};
+
+export const TableHeader = React.memo(function TableHeader({
+  columns,
+}: TableHeaderProps) {
+  return (
+    <Box overflowX="hidden">
+      {columns.map((col, i) => (
+        <Box key={i} width={col.width} overflowX="hidden">
+          <Text bold dimColor wrap="truncate">
+            {col.header}
+          </Text>
+        </Box>
+      ))}
+    </Box>
+  );
+});
