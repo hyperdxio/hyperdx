@@ -242,6 +242,7 @@ export default function SQLInlineEditor({
       // Enable line wrapping when multiline is allowed (regardless of focus)
       ...(allowMultiline ? [EditorView.lineWrapping] : []),
 
+      // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
         clickhouseSql({
           upperCaseKeywords: true,
