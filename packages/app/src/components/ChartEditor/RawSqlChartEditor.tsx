@@ -133,38 +133,49 @@ export default function RawSqlChartEditor({
   }, [sources, connection]);
 
   return (
-    <Stack>
-      <Group align="center" gap={0}>
-        <Text pe="md" size="sm">
-          Connection
-        </Text>
-        <ConnectionSelectControlled
-          control={control}
-          name="connection"
-          size="xs"
-        />
-        <Group align="center" gap={8} mx="md">
-          <Text size="sm" ps="md">
-            Source
+    <Stack gap="xs">
+      <Group align="center" gap={0} justify="space-between">
+        <Group align="center" gap={0}>
+          <Text pe="md" size="sm">
+            Connection
           </Text>
-          {isDashboardForm && (
-            <Tooltip
-              label="Optional. Required to apply dashboard filters to this chart."
-              pe="md"
-            >
-              <IconHelpCircle size={14} className="cursor-pointer" />
-            </Tooltip>
-          )}
+          <ConnectionSelectControlled
+            control={control}
+            name="connection"
+            size="xs"
+          />
+          <Group align="center" gap={8} mx="md">
+            <Text size="sm" ps="md">
+              Source
+            </Text>
+            {isDashboardForm && (
+              <Tooltip
+                label="Optional. Required to apply dashboard filters to this chart."
+                pe="md"
+              >
+                <IconHelpCircle size={14} className="cursor-pointer" />
+              </Tooltip>
+            )}
+          </Group>
+          <SourceSelectControlled
+            control={control}
+            name="source"
+            connectionId={connection}
+            size="xs"
+            clearable
+            placeholder="None"
+            sourceSchemaPreview={sourceSchemaPreview}
+          />
         </Group>
-        <SourceSelectControlled
-          control={control}
-          name="source"
-          connectionId={connection}
-          size="xs"
-          clearable
-          placeholder="None"
-          sourceSchemaPreview={sourceSchemaPreview}
-        />
+        <Group gap="xs">
+          <Button
+            onClick={onOpenDisplaySettings}
+            size="compact-sm"
+            variant="secondary"
+          >
+            Display Settings
+          </Button>
+        </Group>
       </Group>
       <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
       <Box style={{ position: 'relative' }}>
@@ -179,15 +190,6 @@ export default function RawSqlChartEditor({
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
-      <Group justify="flex-end">
-        <Button
-          onClick={onOpenDisplaySettings}
-          size="compact-sm"
-          variant="secondary"
-        >
-          Display Settings
-        </Button>
-      </Group>
     </Stack>
   );
 }
