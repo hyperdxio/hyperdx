@@ -57,7 +57,7 @@ export function useCreateSavedSearch() {
       }).json<SavedSearch>();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['saved-search'] });
+      return queryClient.invalidateQueries({ queryKey: ['saved-search'] });
     },
   });
 }
