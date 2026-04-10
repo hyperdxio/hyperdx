@@ -438,6 +438,6 @@ export interface AlertItem {
   };
 }
 
-export interface AlertsResponse {
+interface AlertsResponse {
   data: AlertItem[];
 }
