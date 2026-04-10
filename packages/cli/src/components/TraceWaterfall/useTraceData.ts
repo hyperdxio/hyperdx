@@ -22,6 +22,7 @@ export interface UseTraceDataReturn {
   error: Error | null;
   selectedRowData: Record<string, unknown> | null;
   selectedRowLoading: boolean;
+  selectedRowError: Error | null;
   fetchSelectedRow: (node: SpanNode | null) => void;
 }
 
@@ -42,6 +43,7 @@ export function useTraceData({
     unknown
   > | null>(null);
   const [selectedRowLoading, setSelectedRowLoading] = useState(false);
+  const [selectedRowError, setSelectedRowError] = useState<Error | null>(null);
 
   const fetchIdRef = useRef(0);
 
@@ -166,6 +168,7 @@ export function useTraceData({
     const fetchId = ++fetchIdRef.current;
     // Don't clear existing data or set loading — keep old data visible
     // while fetching to avoid flashing
+    setSelectedRowError(null);
 
     (async () => {
       try {
@@ -180,10 +183,13 @@ export function useTraceData({
           setSelectedRowData(row ?? null);
           setSelectedRowLoading(false);
         }
-      } catch {
+      } catch (err) {
         if (fetchId === fetchIdRef.current) {
           setSelectedRowData(null);
           setSelectedRowLoading(false);
+          setSelectedRowError(
+            err instanceof Error ? err : new Error(String(err)),
+          );
         }
       }
     })();
@@ -196,6 +202,7 @@ export function useTraceData({
     error,
     selectedRowData,
     selectedRowLoading,
+    selectedRowError,
     fetchSelectedRow,
   };
 }

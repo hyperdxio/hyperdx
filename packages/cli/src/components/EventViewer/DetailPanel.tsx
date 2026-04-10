@@ -21,6 +21,7 @@ type DetailPanelProps = {
   detailTab: DetailTab;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
+  expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
   traceSelectedIndex: number | null;
@@ -50,6 +51,7 @@ export function DetailPanel({
   detailTab,
   expandedRowData,
   expandedRowLoading,
+  expandedRowError,
   expandedTraceId,
   expandedSpanId,
   traceSelectedIndex,
@@ -138,13 +140,12 @@ export function DetailPanel({
             </Text>
           ) : expandedRowData ? (
             <>
-              {expandedRowData.__fetch_error && (
+              {expandedRowError && (
                 <Box marginBottom={1}>
                   <ErrorDisplay
-                    error={String(expandedRowData.__fetch_error)}
+                    error={expandedRowError}
                     severity="warning"
                     detail="Showing partial row data — full row fetch failed."
-                    compact
                   />
                 </Box>
               )}
@@ -231,13 +232,12 @@ export function DetailPanel({
             </Text>
           ) : expandedRowData ? (
             <>
-              {expandedRowData.__fetch_error && (
+              {expandedRowError && (
                 <Box marginBottom={1}>
                   <ErrorDisplay
-                    error={String(expandedRowData.__fetch_error)}
+                    error={expandedRowError}
                     severity="warning"
                     detail="Showing partial row data — full row fetch failed."
-                    compact
                   />
                 </Box>
               )}

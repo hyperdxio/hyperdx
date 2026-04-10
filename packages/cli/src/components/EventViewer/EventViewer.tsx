@@ -72,6 +72,7 @@ export default function EventViewer({
     paginationError,
     expandedRowData,
     expandedRowLoading,
+    expandedRowError,
     expandedTraceId,
     expandedSpanId,
     fetchNextPage,
@@ -227,6 +228,7 @@ export default function EventViewer({
           detailTab={detailTab}
           expandedRowData={expandedRowData}
           expandedRowLoading={expandedRowLoading}
+          expandedRowError={expandedRowError}
           expandedTraceId={expandedTraceId}
           expandedSpanId={expandedSpanId}
           traceSelectedIndex={traceSelectedIndex}

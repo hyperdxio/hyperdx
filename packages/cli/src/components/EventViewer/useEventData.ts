@@ -33,6 +33,7 @@ export interface UseEventDataReturn {
   paginationError: Error | null;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
+  expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
   fetchNextPage: () => Promise<void>;
@@ -64,6 +65,7 @@ export function useEventData({
     unknown
   > | null>(null);
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
+  const [expandedRowError, setExpandedRowError] = useState<Error | null>(null);
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
   const [expandedSpanId, setExpandedSpanId] = useState<string | null>(null);
 
@@ -219,6 +221,7 @@ export function useEventData({
   useEffect(() => {
     if (expandedRow === null) {
       setExpandedRowData(null);
+      setExpandedRowError(null);
       setExpandedTraceId(null);
       setExpandedSpanId(null);
       return;
@@ -228,6 +231,7 @@ export function useEventData({
 
     let cancelled = false;
     setExpandedRowLoading(true);
+    setExpandedRowError(null);
 
     (async () => {
       try {
@@ -272,17 +276,14 @@ export function useEventData({
           }
         }
       } catch (err) {
-        // Non-fatal — fall back to partial row data, but include error
-        const errMsg = err instanceof Error ? err.message : String(err);
-        // Truncate HTML errors to a readable length
-        const shortErr = errMsg.startsWith('<!')
-          ? errMsg.slice(0, 200)
-          : errMsg;
+        // Non-fatal — fall back to partial row data, surface the error
+        // separately so ErrorDisplay can render query context from
+        // ClickHouseQueryError.
         if (!cancelled) {
-          setExpandedRowData({
-            ...(row as Record<string, unknown>),
-            __fetch_error: shortErr,
-          });
+          setExpandedRowData(row as Record<string, unknown>);
+          setExpandedRowError(
+            err instanceof Error ? err : new Error(String(err)),
+          );
         }
       } finally {
         if (!cancelled) setExpandedRowLoading(false);
@@ -303,6 +304,7 @@ export function useEventData({
     paginationError,
     expandedRowData,
     expandedRowLoading,
+    expandedRowError,
     expandedTraceId,
     expandedSpanId,
     fetchNextPage,

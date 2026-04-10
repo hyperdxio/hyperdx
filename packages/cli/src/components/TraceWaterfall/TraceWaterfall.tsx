@@ -59,6 +59,7 @@ export default function TraceWaterfall({
     error,
     selectedRowData,
     selectedRowLoading,
+    selectedRowError,
     fetchSelectedRow,
   } = useTraceData({ clickhouseClient, source, logSource, traceId });
 
@@ -308,6 +309,12 @@ export default function TraceWaterfall({
           <Text>
             <Spinner type="dots" /> Loading event details…
           </Text>
+        ) : selectedRowError ? (
+          <ErrorDisplay
+            error={selectedRowError}
+            severity="warning"
+            detail="Could not load event details for this span."
+          />
         ) : selectedRowData ? (
           <ColumnValues
             data={selectedRowData}
