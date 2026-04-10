@@ -68,6 +68,7 @@ jest.mock('@/source', () => ({
     return { data: undefined };
   }),
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
+  getTraceDurationNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../../MetricNameSelect', () => ({

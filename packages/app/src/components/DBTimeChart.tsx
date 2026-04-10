@@ -40,7 +40,7 @@ import {
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
+import { useResolvedNumberFormat, useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -364,6 +364,8 @@ function DBTimeChartComponent({
   const { data: source } = useSource({
     id: sourceId || config.source,
   });
+
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const {
     error: resultFormattingError,
@@ -722,7 +724,7 @@ function DBTimeChartComponent({
             lineData={lineData}
             isLoading={isLoadingOrPlaceholder}
             logReferenceTimestamp={logReferenceTimestamp}
-            numberFormat={config.numberFormat}
+            numberFormat={resolvedNumberFormat}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
             setIsClickActive={setActiveClickPayloadIfSourceAvailable}

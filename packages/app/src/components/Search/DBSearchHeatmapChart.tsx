@@ -29,9 +29,9 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
 
-import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
+import type { NumberFormat } from '@/types';
 
 import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
@@ -121,7 +121,10 @@ export function DBSearchHeatmapChart({
             displayType: DisplayType.Heatmap,
             numberFormat:
               fields.value === getDurationMsExpression(source)
-                ? MS_NUMBER_FORMAT
+                ? ({
+                    output: 'duration',
+                    factor: 0.001,
+                  } satisfies NumberFormat)
                 : undefined,
           }}
           enabled={isReady}
