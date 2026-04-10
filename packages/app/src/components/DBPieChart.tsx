@@ -14,7 +14,7 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
+import { useResolvedNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { getColorProps } from '@/utils';
 
@@ -73,6 +73,8 @@ export const DBPieChart = ({
   const { data: source } = useSource({
     id: config.source,
   });
+
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const queriedConfig = useMemo(() => {
     return isBuilderChartConfig(config)
@@ -188,7 +190,9 @@ export const DBPieChart = ({
                 ))}
               </Pie>
               <Tooltip
-                content={<PieChartTooltip numberFormat={config.numberFormat} />}
+                content={
+                  <PieChartTooltip numberFormat={resolvedNumberFormat} />
+                }
               />
             </PieChart>
           </ResponsiveContainer>

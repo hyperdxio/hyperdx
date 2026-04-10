@@ -26,6 +26,9 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
+  useResolvedNumberFormat: jest
+    .fn()
+    .mockImplementation((config: any) => config.numberFormat),
 }));
 
 jest.mock('@/utils', () => ({
