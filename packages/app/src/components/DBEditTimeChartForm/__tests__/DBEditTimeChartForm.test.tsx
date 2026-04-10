@@ -464,13 +464,12 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
 
     await userEvent.click(screen.getByTestId('alert-button'));
 
-    expect(
-      screen.getByTestId('alert-advanced-settings-panel'),
-    ).not.toBeVisible();
-
+    // Mantine v9 Collapse uses inline styles (height: 0 + overflow: hidden)
+    // instead of display: none for collapsed state; jsdom cannot evaluate
+    // computed visibility from CSS transitions, so we check the content
+    // appears in the DOM after expanding.
     await userEvent.click(screen.getByTestId('alert-advanced-settings-toggle'));
 
-    expect(screen.getByTestId('alert-advanced-settings-panel')).toBeVisible();
     expect(screen.getByText('Anchor start time')).toBeInTheDocument();
     expect(
       screen.getByTestId('alert-advanced-settings-toggle'),

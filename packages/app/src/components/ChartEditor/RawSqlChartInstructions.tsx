@@ -91,7 +91,7 @@ export function RawSqlChartInstructions({
             SQL Chart Instructions
           </Text>
         </Group>
-        <Collapse in={helpOpened}>
+        <Collapse expanded={helpOpened}>
           <Stack gap={6} pl="xs" pt="md">
             {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 

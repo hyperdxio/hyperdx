@@ -78,7 +78,7 @@ export function TileAlertEditor({
           </ActionIcon>
         </Tooltip>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>

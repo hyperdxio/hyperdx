@@ -96,7 +96,7 @@ export function AlertScheduleFields<T extends FieldValues>({
           </Text>
         </Group>
       </UnstyledButton>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box data-testid="alert-advanced-settings-panel">
           <Text size="xs" c="dimmed" mt="xs">
             Optional schedule controls for aligning alert windows.
@@ -174,7 +174,7 @@ export function AlertScheduleFields<T extends FieldValues>({
                     field.value as string | null | undefined,
                   )}
                   onChange={value =>
-                    field.onChange(value?.toISOString() ?? null)
+                    field.onChange(value ? new Date(value).toISOString() : null)
                   }
                   error={error?.message}
                 />

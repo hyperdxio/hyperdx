@@ -277,7 +277,7 @@ export const KubeTimeline = ({
 
   if (isLoading) {
     return (
-      <Text color="muted" ta="center">
+      <Text c="muted" ta="center">
         Loading...
       </Text>
     );
@@ -285,7 +285,7 @@ export const KubeTimeline = ({
 
   if (allPodEvents.length === 0) {
     return (
-      <Text color="muted" ta="center">
+      <Text c="muted" ta="center">
         No events
       </Text>
     );

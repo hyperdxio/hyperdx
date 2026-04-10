@@ -22,6 +22,7 @@ const makeTheme = ({
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
+  defaultRadius: 'sm',
   fontFamily,
   focusClassName: focusClasses.focusRing,
   primaryColor: 'green',
