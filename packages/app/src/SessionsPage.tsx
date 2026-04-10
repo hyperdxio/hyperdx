@@ -12,12 +12,10 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  Alert,
   Anchor,
   Box,
   Button,
   Code,
-  Divider,
   Flex,
   Group,
   Paper,
@@ -25,7 +23,6 @@ import {
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
-  IconInfoCircleFilled,
   IconPlayerPlay,
   IconRefresh,
 } from '@tabler/icons-react';
@@ -36,6 +33,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
+import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
@@ -394,6 +392,7 @@ export default function SessionsPage() {
       <Head>
         <title>Client Sessions - {brandName}</title>
       </Head>
+      <OnboardingModal />
       {selectedSession != null &&
         traceTrace != null &&
         sessionSource != null &&
