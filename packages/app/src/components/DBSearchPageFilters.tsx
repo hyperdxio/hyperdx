@@ -19,7 +19,6 @@ import {
   Group,
   Loader,
   MantineStyleProps,
-  Menu,
   NumberInput,
   ScrollArea,
   Stack,
@@ -39,14 +38,11 @@ import {
   IconChevronUp,
   IconFilterOff,
   IconMinus,
-  IconPin,
-  IconPinFilled,
   IconPlus,
   IconRefresh,
   IconSearch,
   IconShadow,
   IconSitemap,
-  IconUsers,
 } from '@tabler/icons-react';
 
 import { IS_CLICKHOUSE_BUILD } from '@/config';
@@ -72,6 +68,10 @@ import { mergePath, useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
+import {
+  PinShareIndicator,
+  PinShareMenu,
+} from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
 
@@ -163,124 +163,6 @@ const TextButton = ({
     </UnstyledButton>
   );
 };
-
-/**
- * Shared pin/share dropdown menu used on both value rows and group headers.
- * Shows contextual actions: "Remove from Shared" / "Pin for me" / "Share with team"
- * with the most relevant action first.
- *
- * Icon logic:
- *  - sharedPinned → IconUsers (people icon)
- *  - personalPinned → IconPinFilled
- *  - neither → IconPin (outline)
- */
-function PinShareMenu({
-  personalPinned,
-  sharedPinned,
-  onTogglePersonalPin,
-  onToggleSharedPin,
-  size = 14,
-  onChange,
-  'data-testid': dataTestId,
-  'aria-label': ariaLabel,
-}: {
-  personalPinned: boolean;
-  sharedPinned: boolean;
-  onTogglePersonalPin: VoidFunction;
-  onToggleSharedPin?: VoidFunction;
-  size?: number;
-  onChange?: (opened: boolean) => void;
-  'data-testid'?: string;
-  'aria-label'?: string;
-}) {
-  const isPinnedAny = personalPinned || sharedPinned;
-
-  // Personal pin icon takes priority over shared icon
-  const triggerIcon = personalPinned ? (
-    <IconPinFilled size={size} />
-  ) : sharedPinned ? (
-    <IconUsers size={size} />
-  ) : (
-    <IconPin size={size} />
-  );
-
-  return (
-    <Menu
-      position="right"
-      withArrow
-      shadow="sm"
-      width={200}
-      onChange={onChange}
-    >
-      <Menu.Target>
-        <ActionIcon
-          size="xs"
-          variant="subtle"
-          color="gray"
-          aria-label={ariaLabel ?? (isPinnedAny ? 'Unpin' : 'Pin')}
-          data-testid={dataTestId}
-        >
-          {triggerIcon}
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        {onToggleSharedPin && sharedPinned && (
-          <Menu.Item
-            leftSection={<IconUsers size={14} />}
-            onClick={onToggleSharedPin}
-            fz="xs"
-          >
-            Remove from Shared
-          </Menu.Item>
-        )}
-        <Menu.Item
-          leftSection={
-            personalPinned ? <IconPinFilled size={14} /> : <IconPin size={14} />
-          }
-          onClick={onTogglePersonalPin}
-          fz="xs"
-        >
-          {personalPinned ? 'Unpin for me' : 'Pin for me'}
-        </Menu.Item>
-        {onToggleSharedPin && !sharedPinned && (
-          <Menu.Item
-            leftSection={<IconUsers size={14} />}
-            onClick={onToggleSharedPin}
-            fz="xs"
-          >
-            Share with team
-          </Menu.Item>
-        )}
-      </Menu.Dropdown>
-    </Menu>
-  );
-}
-
-/**
- * Small indicator icon shown persistently on pinned/shared values.
- */
-function PinShareIndicator({
-  personalPinned,
-  sharedPinned,
-  'data-testid': dataTestId,
-}: {
-  personalPinned: boolean;
-  sharedPinned: boolean;
-  'data-testid'?: string;
-}) {
-  if (!personalPinned && !sharedPinned) return null;
-
-  // Personal pin icon takes priority over shared icon
-  return (
-    <Center me="1px">
-      {personalPinned ? (
-        <IconPinFilled size={12} data-testid={dataTestId} />
-      ) : (
-        <IconUsers size={12} data-testid={dataTestId} />
-      )}
-    </Center>
-  );
-}
 
 type FilterPercentageProps = {
   percentage: number;
@@ -1291,7 +1173,8 @@ const DBSearchPageFiltersComponent = ({
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
           field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
           Object.keys(filterState).includes(field.path) || // keep selected fields
-          isFieldPinned(field.path), // keep pinned fields
+          isFieldPinned(field.path) || // keep personally pinned fields
+          isSharedFieldPinned(field.path), // keep team-shared fields
       )
       .map(({ path }) => path)
       .filter(
@@ -1299,7 +1182,14 @@ const DBSearchPageFiltersComponent = ({
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
     return strings;
-  }, [data, jsonColumns, filterState, showMoreFields, isFieldPinned]);
+  }, [
+    data,
+    jsonColumns,
+    filterState,
+    showMoreFields,
+    isFieldPinned,
+    isSharedFieldPinned,
+  ]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1413,19 +1303,37 @@ const DBSearchPageFiltersComponent = ({
       const teamVals = pinnedFiltersApiData?.team?.filters[key] ?? [];
       const dynamicValues = facetMap.get(key) ?? [];
 
+      let merged: (string | boolean)[];
       if (teamVals.length > 0) {
-        const merged = [...teamVals];
+        merged = [...teamVals];
         for (const v of dynamicValues) {
           if (!merged.some(existing => existing === v)) {
             merged.push(v);
           }
         }
-        return { key, value: merged };
+      } else {
+        // Field-only pin — show dynamic values
+        merged = [...dynamicValues];
       }
-      // Field-only pin — show dynamic values
-      return { key, value: dynamicValues };
+
+      // Merge in extra values loaded via "Load more"
+      const extraValues = extraFacets[key];
+      if (extraValues && extraValues.length > 0) {
+        for (const v of extraValues) {
+          if (!merged.includes(v)) {
+            merged.push(v);
+          }
+        }
+      }
+
+      return { key, value: merged };
     });
-  }, [sharedFilterKeys, facetsWithPinnedValues, pinnedFiltersApiData]);
+  }, [
+    sharedFilterKeys,
+    facetsWithPinnedValues,
+    pinnedFiltersApiData,
+    extraFacets,
+  ]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
@@ -1656,6 +1564,7 @@ const DBSearchPageFiltersComponent = ({
               isFieldPinned={key => isFieldPinned(key)}
               onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
               isSharedFieldPinned={key => isSharedFieldPinned(key)}
+              showFilterCounts={showFilterCounts}
               onColumnToggle={onColumnToggle}
               displayedColumns={displayedColumns}
               onLoadMore={loadMoreFilterValuesForKey}

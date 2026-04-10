@@ -27,7 +27,7 @@ router.get(
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
-      const source = req.query.source as string;
+      const { source } = req.query;
 
       // Verify the source belongs to this team
       const sourceDoc = await getSource(teamId.toString(), source);
@@ -68,9 +68,7 @@ router.put(
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
-      const source = req.body.source as string;
-      const fields = req.body.fields as string[];
-      const filters = req.body.filters as Record<string, (string | boolean)[]>;
+      const { source, fields, filters } = req.body;
 
       // Verify the source belongs to this team
       const sourceDoc = await getSource(teamId.toString(), source);

@@ -14,7 +14,6 @@ export async function getPinnedFilters(
   return PinnedFilterModel.findOne({
     team: new mongoose.Types.ObjectId(teamId),
     source: new mongoose.Types.ObjectId(sourceId),
-    user: null,
   });
 }
 
@@ -29,7 +28,6 @@ export async function updatePinnedFilters(
   const filter = {
     team: new mongoose.Types.ObjectId(teamId),
     source: new mongoose.Types.ObjectId(sourceId),
-    user: null,
   };
 
   return PinnedFilterModel.findOneAndUpdate(

@@ -4,11 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterState } from '@/searchFilters';
 
-import {
-  type FieldPinHandlers,
-  FilterGroup,
-  type ValuePinHandlers,
-} from '../DBSearchPageFilters';
+import { FilterGroup } from '../DBSearchPageFilters';
 
 import classes from '../../../styles/SearchPage.module.scss';
 
@@ -32,6 +28,7 @@ type NestedFilterGroupProps = {
   isFieldPinned?: (key: string) => boolean;
   onToggleSharedFieldPin?: (key: string) => void;
   isSharedFieldPinned?: (key: string) => boolean;
+  showFilterCounts?: boolean;
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onLoadMore: (key: string) => void;
@@ -62,6 +59,7 @@ export const NestedFilterGroup = ({
   isFieldPinned,
   onToggleSharedFieldPin,
   isSharedFieldPinned,
+  showFilterCounts,
   onColumnToggle,
   displayedColumns,
   onLoadMore,
@@ -255,6 +253,7 @@ export const NestedFilterGroup = ({
                                 loadMoreLoading[child.key] || false
                               }
                               hasLoadedMore={hasLoadedMore[child.key] || false}
+                              showFilterCounts={showFilterCounts}
                               isDefaultExpanded={childHasSelections}
                               chartConfig={chartConfig}
                               isLive={isLive}
