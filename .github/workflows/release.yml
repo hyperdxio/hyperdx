@@ -2,6 +2,13 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_cli_only:
+        description: 'Only release CLI binaries (skip Docker builds)'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: write
   packages: write
@@ -426,7 +433,11 @@ jobs:
   release-cli:
     name: Release CLI Binaries
     needs: [check_changesets, check_version]
-    if: needs.check_version.outputs.should_release == 'true'
+    if: >-
+      always() && (
+        inputs.release_cli_only == true ||
+        needs.check_version.outputs.should_release == 'true'
+      )
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -443,6 +454,8 @@ jobs:
           bun-version: '1.3.11'
       - name: Install dependencies
         run: yarn install
+      - name: Build common-utils
+        run: make ci-build
       - name: Get CLI version
         id: cli_version
         run: |
