@@ -337,7 +337,11 @@ export function useKeybindings(params: KeybindingParams): void {
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
-    if (input === 'f') setIsFollowing(prev => !prev);
+    // f = toggle follow mode (disabled in detail panel — follow is
+    // automatically paused on expand and restored on close)
+    if (input === 'f' && expandedRow === null) {
+      setIsFollowing(prev => !prev);
+    }
     // D = show generated SQL
     if (input === 'D') {
       setShowSql(true);
