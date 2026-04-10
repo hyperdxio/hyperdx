@@ -272,6 +272,7 @@ export default function EventViewer({
             source={source}
             sources={sources}
             clickhouseClient={clickhouseClient}
+            metadata={metadata}
             detailTab={detailTab}
             expandedRowData={expandedRowData}
             expandedRowLoading={expandedRowLoading}

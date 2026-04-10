@@ -33,9 +33,11 @@ import { useTraceData } from './useTraceData';
 
 export default function TraceWaterfall({
   clickhouseClient,
+  metadata,
   source,
   logSource,
   traceId,
+  eventTimestamp,
   searchQuery,
   highlightHint,
   selectedIndex,
@@ -63,7 +65,14 @@ export default function TraceWaterfall({
     selectedRowError,
     lastTraceChSql,
     fetchSelectedRow,
-  } = useTraceData({ clickhouseClient, source, logSource, traceId });
+  } = useTraceData({
+    clickhouseClient,
+    metadata,
+    source,
+    logSource,
+    traceId,
+    eventTimestamp,
+  });
 
   // Notify parent when the trace SQL changes
   useEffect(() => {

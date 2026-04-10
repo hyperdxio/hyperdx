@@ -1,8 +1,14 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import SqlString from 'sqlstring';
+import { useState, useEffect, useRef } from 'react';
+
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
-import { buildTraceSpansSql, buildTraceLogsSql } from '@/api/eventQuery';
+import {
+  buildTraceSpansQuery,
+  buildTraceLogsQuery,
+  buildTraceRowDetailQuery,
+} from '@/api/eventQuery';
+import { deriveDateRange } from '@/shared/traceConfig';
 
 import type { SpanRow, TaggedSpanRow, SpanNode } from './types';
 
@@ -10,9 +16,15 @@ import type { SpanRow, TaggedSpanRow, SpanNode } from './types';
 
 export interface UseTraceDataParams {
   clickhouseClient: ProxyClickhouseClient;
+  metadata: Metadata;
   source: SourceResponse;
   logSource?: SourceResponse | null;
   traceId: string;
+  /**
+   * Timestamp of the originating event row. Used to derive a tight
+   * dateRange for partition pruning.
+   */
+  eventTimestamp?: string;
 }
 
 export interface UseTraceDataReturn {
@@ -32,9 +44,11 @@ export interface UseTraceDataReturn {
 
 export function useTraceData({
   clickhouseClient,
+  metadata,
   source,
   logSource,
   traceId,
+  eventTimestamp,
 }: UseTraceDataParams): UseTraceDataReturn {
   const [traceSpans, setTraceSpans] = useState<TaggedSpanRow[]>([]);
   const [logEvents, setLogEvents] = useState<TaggedSpanRow[]>([]);
@@ -46,18 +60,10 @@ export function useTraceData({
   > | null>(null);
   const [selectedRowLoading, setSelectedRowLoading] = useState(false);
   const [selectedRowError, setSelectedRowError] = useState<Error | null>(null);
-
-  // Compute the trace query eagerly so the SQL is available on the first
-  // render (before the async query dispatches). buildTraceSpansSql is
-  // synchronous.
-  const traceQuery = useMemo(
-    () => buildTraceSpansSql({ source, traceId }),
-    [source, traceId],
-  );
-  const lastTraceChSql = useMemo(
-    () => ({ sql: traceQuery.sql, params: {} as Record<string, unknown> }),
-    [traceQuery],
-  );
+  const [lastTraceChSql, setLastTraceChSql] = useState<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
 
   const fetchIdRef = useRef(0);
 
@@ -68,13 +74,25 @@ export function useTraceData({
     setLoading(true);
     setError(null);
 
+    const dateRange = deriveDateRange(eventTimestamp);
+
     (async () => {
       try {
-        // Fetch trace spans — reuse the memoized query
+        // Build and execute trace spans query via renderChartConfig
+        const traceChSql = await buildTraceSpansQuery(
+          { source, traceId, dateRange },
+          metadata,
+        );
+
+        if (!cancelled) {
+          setLastTraceChSql(traceChSql);
+        }
+
         const traceResultSet = await clickhouseClient.query({
-          query: traceQuery.sql,
+          query: traceChSql.sql,
+          query_params: traceChSql.params,
           format: 'JSON',
-          connectionId: traceQuery.connectionId,
+          connectionId: source.connection,
         });
         const traceJson = await traceResultSet.json<SpanRow>();
         const spans = ((traceJson.data ?? []) as SpanRow[]).map(r => ({
@@ -85,14 +103,15 @@ export function useTraceData({
         // Fetch correlated log events (if log source exists)
         let logs: TaggedSpanRow[] = [];
         if (logSource) {
-          const logQuery = buildTraceLogsSql({
-            source: logSource,
-            traceId,
-          });
+          const logChSql = await buildTraceLogsQuery(
+            { source: logSource, traceId, dateRange },
+            metadata,
+          );
           const logResultSet = await clickhouseClient.query({
-            query: logQuery.sql,
+            query: logChSql.sql,
+            query_params: logChSql.params,
             format: 'JSON',
-            connectionId: logQuery.connectionId,
+            connectionId: logSource.connection,
           });
           const logJson = await logResultSet.json<SpanRow>();
           logs = ((logJson.data ?? []) as SpanRow[]).map(r => ({
@@ -118,7 +137,7 @@ export function useTraceData({
     return () => {
       cancelled = true;
     };
-  }, [clickhouseClient, source, logSource, traceId, traceQuery]);
+  }, [clickhouseClient, metadata, source, logSource, traceId, eventTimestamp]);
 
   // ---- Fetch SELECT * for the selected span/log --------------------
   // Stable scalar deps (SpanId, Timestamp, kind) are used to avoid
@@ -155,29 +174,6 @@ export function useTraceData({
     const isLog = kind === 'log';
     const rowSource = isLog && logSource ? logSource : source;
 
-    const db = rowSource.from.databaseName;
-    const table = rowSource.from.tableName;
-    const spanIdExpr = rowSource.spanIdExpression ?? 'SpanId';
-    const tsExpr =
-      rowSource.displayedTimestampValueExpression ??
-      rowSource.timestampValueExpression ??
-      'TimestampTime';
-
-    const traceIdExpr = rowSource.traceIdExpression ?? 'TraceId';
-    const escapedTs = SqlString.escape(timestamp);
-    const escapedTraceId = SqlString.escape(traceId);
-
-    // Build WHERE: always use TraceId + Timestamp; add SpanId if available
-    const clauses = [
-      `${traceIdExpr} = ${escapedTraceId}`,
-      `${tsExpr} = parseDateTime64BestEffort(${escapedTs}, 9)`,
-    ];
-    if (spanId) {
-      clauses.push(`${spanIdExpr} = ${SqlString.escape(spanId)}`);
-    }
-    const where = clauses.join(' AND ');
-    const sql = `SELECT * FROM ${db}.${table} WHERE ${where} LIMIT 1`;
-
     const fetchId = ++fetchIdRef.current;
     // Don't clear existing data or set loading — keep old data visible
     // while fetching to avoid flashing
@@ -185,8 +181,18 @@ export function useTraceData({
 
     (async () => {
       try {
+        const chSql = await buildTraceRowDetailQuery(
+          {
+            source: rowSource,
+            traceId,
+            spanId: spanId ?? undefined,
+            timestamp,
+          },
+          metadata,
+        );
         const resultSet = await clickhouseClient.query({
-          query: sql,
+          query: chSql.sql,
+          query_params: chSql.params,
           format: 'JSON',
           connectionId: rowSource.connection,
         });
