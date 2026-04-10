@@ -39,7 +39,7 @@ export default function TraceWaterfall({
   traceId,
   eventTimestamp,
   searchQuery,
-  highlightHint,
+  highlightHint: _highlightHint,
   selectedIndex,
   onSelectedIndexChange,
   detailExpanded = false,
@@ -119,21 +119,15 @@ export default function TraceWaterfall({
 
   const totalDurationMs = maxMs - minMs;
 
-  // Determine the effective selected index over ALL filtered nodes:
-  // - If selectedIndex is set (j/k navigation), use it (clamped)
-  // - Otherwise, find the highlightHint row
+  // Determine the effective selected index over ALL filtered nodes.
+  // Default to 0 (first span) so the cursor always starts at the top.
   const effectiveIndex = useMemo(() => {
+    if (filteredNodes.length === 0) return null;
     if (selectedIndex != null) {
       return Math.max(0, Math.min(selectedIndex, filteredNodes.length - 1));
     }
-    if (highlightHint) {
-      const idx = filteredNodes.findIndex(
-        n => n.SpanId === highlightHint.spanId && n.kind === highlightHint.kind,
-      );
-      return idx >= 0 ? idx : null;
-    }
-    return null;
-  }, [selectedIndex, highlightHint, filteredNodes]);
+    return 0;
+  }, [selectedIndex, filteredNodes]);
 
   // Clamp selectedIndex if it exceeds bounds
   useEffect(() => {
