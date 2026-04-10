@@ -1,0 +1,41 @@
+name: Test CLI Release Build
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-cli-release.yml'
+      - '.github/workflows/release.yml'
+      - 'packages/cli/**'
+      - 'packages/common-utils/**'
+permissions:
+  contents: read
+jobs:
+  test-cli-build:
+    name: Test CLI Compilation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.11'
+      - name: Install dependencies
+        run: yarn install
+      - name: Build common-utils
+        run: make ci-build
+      - name: Compile CLI binaries
+        working-directory: packages/cli
+        run: |
+          yarn compile:linux
+          yarn compile:macos
+          yarn compile:macos-x64
+      - name: Verify binaries exist
+        run: |
+          ls -lh packages/cli/dist/hdx-*
