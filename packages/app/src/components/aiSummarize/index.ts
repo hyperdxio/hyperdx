@@ -1,5 +1,7 @@
-// Easter egg: April Fools 2026 — AI Summarize public API.
-export type { RowData } from './helpers';
-export { dismissEasterEgg, isEasterEggVisible } from './helpers';
-export type { Theme } from './logic';
-export { generatePatternSummary, generateSummary } from './logic';
+export type { AISummaryTone, RowData } from './helpers';
+export {
+  AI_SUMMARY_TONE_LABELS,
+  getAISummaryTonePreference,
+  isSmartSummaryModeEnabled,
+  setAISummaryTonePreference,
+} from './helpers';

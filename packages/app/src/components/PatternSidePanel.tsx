@@ -3,7 +3,6 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
-// Easter egg: April Fools 2026 — see aiSummarize/ for details.
 import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';

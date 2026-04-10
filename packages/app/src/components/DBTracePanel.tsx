@@ -20,6 +20,7 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import AISummarizeTraceButton from '@/components/AISummarizeTraceButton';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
@@ -96,13 +97,6 @@ export default function DBTracePanel({
       : childSourceData?.kind === SourceKind.Trace
         ? childSourceData
         : null;
-
-  const isTraceSourceLoading =
-    childSourceData?.kind === SourceKind.Trace
-      ? isChildSourceDataLoading
-      : parentSourceData?.kind === SourceKind.Trace
-        ? isParentSourceDataLoading
-        : false;
 
   const { mutate: updateTableSource } = useUpdateSource();
 
@@ -230,16 +224,25 @@ export default function DBTracePanel({
       )}
       <Divider my="sm" />
       {traceSourceData?.kind === SourceKind.Trace && traceId && (
-        <DBTraceWaterfallChartContainer
-          traceTableSource={traceSourceData}
-          logTableSource={logSourceData}
-          traceId={traceId}
-          dateRange={dateRange}
-          focusDate={focusDate}
-          highlightedRowWhere={eventRowWhere?.id}
-          onClick={setEventRowWhere}
-          initialRowHighlightHint={initialRowHighlightHint}
-        />
+        <>
+          <AISummarizeTraceButton
+            traceId={traceId}
+            traceTableSource={traceSourceData}
+            logTableSource={logSourceData}
+            dateRange={dateRange}
+            focusDate={focusDate}
+          />
+          <DBTraceWaterfallChartContainer
+            traceTableSource={traceSourceData}
+            logTableSource={logSourceData}
+            traceId={traceId}
+            dateRange={dateRange}
+            focusDate={focusDate}
+            highlightedRowWhere={eventRowWhere?.id}
+            onClick={setEventRowWhere}
+            initialRowHighlightHint={initialRowHighlightHint}
+          />
+        </>
       )}
       {traceSourceData != null && eventRowWhere != null && (
         <>

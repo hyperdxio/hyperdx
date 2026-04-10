@@ -1,42 +1,21 @@
-// Easter egg: April Fools 2026 — see aiSummarize/ for details.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   Pattern,
-  PATTERN_COLUMN_ALIAS,
   SEVERITY_TEXT_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
-  dismissEasterEgg,
-  generatePatternSummary,
-  isEasterEggVisible,
-  RowData,
-  Theme,
+  AISummaryTone,
+  getAISummaryTonePreference,
+  isSmartSummaryModeEnabled,
+  setAISummaryTonePreference,
 } from './aiSummarize';
-
-/**
- * Build a synthetic RowData from the first sample event so the summary
- * generators can extract OTel facts (service, severity, body, etc.).
- */
-function buildRowDataFromSample(
-  pattern: Pattern,
-  serviceNameExpression: string,
-): { rowData: RowData; severityText?: string } {
-  const sample = pattern.samples[0];
-  if (!sample) return { rowData: {} };
-  return {
-    rowData: {
-      __hdx_body: sample[PATTERN_COLUMN_ALIAS],
-      ServiceName: sample[serviceNameExpression],
-      __hdx_severity_text: sample[SEVERITY_TEXT_COLUMN_ALIAS],
-      // Pass through any other fields the sample may have (attributes, etc.)
-      ...sample,
-    },
-    severityText: sample[SEVERITY_TEXT_COLUMN_ALIAS],
-  };
-}
+import {
+  buildPatternSummaryPayload,
+  requestAISummary,
+} from './aiSummarize/request';
 
 export default function AISummarizePatternButton({
   pattern,
@@ -45,19 +24,21 @@ export default function AISummarizePatternButton({
   pattern: Pattern;
   serviceNameExpression: string;
 }) {
+  const isSmartMode = isSmartSummaryModeEnabled();
   const [result, setResult] = useState<{
     text: string;
-    theme: Theme;
+    tone?: AISummaryTone;
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tone, setTone] = useState<AISummaryTone>(() =>
+    getAISummaryTonePreference(),
+  );
+  const requestIdRef = useRef(0);
 
-  // Clean up pending timer on unmount.
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      requestIdRef.current += 1;
     };
   }, []);
 
@@ -66,65 +47,54 @@ export default function AISummarizePatternButton({
     setResult(null);
     setIsOpen(false);
     setIsGenerating(false);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
   }, [pattern]);
+
+  const generateSummary = useCallback(async () => {
+    const currentRequestId = ++requestIdRef.current;
+    setIsGenerating(true);
+    try {
+      const summary = await requestAISummary({
+        ...buildPatternSummaryPayload({
+          patternName: pattern.pattern,
+          count: pattern.count,
+          severityText: pattern.samples[0]?.[SEVERITY_TEXT_COLUMN_ALIAS],
+          samples: pattern.samples,
+          serviceNameExpression,
+        }),
+        tone,
+      });
+
+      if (requestIdRef.current !== currentRequestId) {
+        return;
+      }
+      setResult({ text: summary, tone });
+    } catch {
+      if (requestIdRef.current !== currentRequestId) {
+        return;
+      }
+      setResult({
+        text: 'Unable to generate AI summary right now. Please try again.',
+        tone,
+      });
+    } finally {
+      if (requestIdRef.current === currentRequestId) {
+        setIsGenerating(false);
+      }
+    }
+  }, [pattern, serviceNameExpression, tone]);
 
   const handleClick = useCallback(() => {
     if (result) {
       setIsOpen(prev => !prev);
       return;
     }
-    setIsGenerating(true);
     setIsOpen(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
-    timerRef.current = setTimeout(() => {
-      setResult(
-        generatePatternSummary(
-          pattern.pattern,
-          pattern.count,
-          rowData,
-          severityText,
-        ),
-      );
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1800);
-  }, [pattern, serviceNameExpression, result]);
+    void generateSummary();
+  }, [generateSummary, result]);
 
   const handleRegenerate = useCallback(() => {
-    setIsGenerating(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
-    timerRef.current = setTimeout(() => {
-      setResult(
-        generatePatternSummary(
-          pattern.pattern,
-          pattern.count,
-          rowData,
-          severityText,
-        ),
-      );
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1200);
-  }, [pattern, serviceNameExpression]);
-
-  const handleDismiss = useCallback(() => {
-    dismissEasterEgg();
-    setIsOpen(false);
-    // Let Collapse animate closed before unmounting.
-    setTimeout(() => setDismissed(true), 300);
-  }, []);
-
-  if (dismissed || !isEasterEggVisible()) return null;
+    void generateSummary();
+  }, [generateSummary]);
 
   return (
     <AISummaryPanel
@@ -133,7 +103,15 @@ export default function AISummarizePatternButton({
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
-      onDismiss={handleDismiss}
+      tone={tone}
+      onToneChange={nextTone => {
+        if (!isSmartMode) {
+          return;
+        }
+        setAISummaryTonePreference(nextTone);
+        setTone(nextTone);
+        setResult(null);
+      }}
       analyzingLabel="Analyzing pattern data..."
     />
   );

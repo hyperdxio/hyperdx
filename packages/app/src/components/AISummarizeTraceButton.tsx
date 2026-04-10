@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import {
+  TLogSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
   AISummaryTone,
   getAISummaryTonePreference,
   isSmartSummaryModeEnabled,
-  RowData,
   setAISummaryTonePreference,
 } from './aiSummarize';
 import {
-  buildEventSummaryPayload,
+  buildTraceSummaryPayload,
   requestAISummary,
 } from './aiSummarize/request';
+import { useEventsAroundFocus } from './DBTraceWaterfallChart';
 
-export default function AISummarizeButton({
-  rowData,
-  severityText,
+export default function AISummarizeTraceButton({
+  traceId,
+  traceTableSource,
+  logTableSource,
+  dateRange,
+  focusDate,
 }: {
-  rowData?: RowData;
-  severityText?: string;
+  traceId: string;
+  traceTableSource: TTraceSource;
+  logTableSource: TLogSource | null;
+  dateRange: [Date, Date];
+  focusDate: Date;
 }) {
   const isSmartMode = isSmartSummaryModeEnabled();
   const [result, setResult] = useState<{
@@ -32,23 +43,49 @@ export default function AISummarizeButton({
   );
   const requestIdRef = useRef(0);
 
+  const { rows: traceRows } = useEventsAroundFocus({
+    tableSource: traceTableSource,
+    focusDate,
+    dateRange,
+    traceId,
+    enabled: true,
+  });
+  const { rows: logRows } = useEventsAroundFocus({
+    tableSource: logTableSource ?? traceTableSource,
+    focusDate,
+    dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]],
+    traceId,
+    enabled: logTableSource != null,
+  });
+  const rows = useMemo(
+    () => [...traceRows, ...logRows] as Array<Record<string, unknown>>,
+    [traceRows, logRows],
+  );
+
   useEffect(() => {
     return () => {
       requestIdRef.current += 1;
     };
   }, []);
 
+  useEffect(() => {
+    setResult(null);
+    setIsOpen(false);
+    setIsGenerating(false);
+  }, [traceId]);
+
   const generateSummary = useCallback(async () => {
     const currentRequestId = ++requestIdRef.current;
     setIsGenerating(true);
     try {
       const summary = await requestAISummary({
-        ...buildEventSummaryPayload({
-          rowData: rowData ?? {},
-          severityText,
+        ...buildTraceSummaryPayload({
+          traceId,
+          rows,
         }),
         tone,
       });
+
       if (requestIdRef.current !== currentRequestId) {
         return;
       }
@@ -66,7 +103,7 @@ export default function AISummarizeButton({
         setIsGenerating(false);
       }
     }
-  }, [rowData, severityText, tone]);
+  }, [traceId, rows, tone]);
 
   const handleClick = useCallback(() => {
     if (result) {
@@ -97,7 +134,7 @@ export default function AISummarizeButton({
         setTone(nextTone);
         setResult(null);
       }}
-      analyzingLabel="Analyzing event data..."
+      analyzingLabel="Analyzing trace data..."
     />
   );
 }

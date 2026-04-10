@@ -12,6 +12,11 @@ import {
   getAIModel,
   getChartConfigFromResolvedConfig,
 } from '@/controllers/ai';
+import {
+  AISummaryRequestSchema,
+  compactSummaryRequest,
+  getSummaryPrompt,
+} from '@/controllers/aiSummary';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { Api404Error, Api500Error } from '@/utils/errors';
@@ -19,6 +24,7 @@ import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+const summaryBodySchema = AISummaryRequestSchema;
 
 router.post(
   '/assistant',
@@ -108,6 +114,59 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
         );
 
         return res.json(chartConfig);
+      } catch (err) {
+        if (err instanceof APICallError) {
+          throw new Api500Error(
+            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
+          );
+        }
+        throw err;
+      }
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  '/summarize',
+  validateRequest({
+    body: summaryBodySchema,
+  }),
+  async (req, res, next) => {
+    try {
+      const model = getAIModel();
+      const requestPayload = compactSummaryRequest(req.body);
+      const { system, prompt, maxOutputTokens } =
+        getSummaryPrompt(requestPayload);
+      logger.info(
+        {
+          kind: requestPayload.kind,
+          tone: requestPayload.tone ?? 'default',
+        },
+        'Generating AI summary',
+      );
+
+      try {
+        const result = await generateText({
+          model,
+          system,
+          prompt,
+          maxOutputTokens,
+          temperature: 0.2,
+          experimental_telemetry: { isEnabled: true },
+        });
+
+        const summary = result.text.trim();
+        if (!summary) {
+          throw new Api500Error('AI summary response was empty');
+        }
+
+        return res.json({
+          summary,
+          tone: requestPayload.tone ?? 'default',
+          kind: requestPayload.kind,
+        });
       } catch (err) {
         if (err instanceof APICallError) {
           throw new Api500Error(

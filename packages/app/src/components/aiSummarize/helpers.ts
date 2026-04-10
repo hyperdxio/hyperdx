@@ -1,106 +1,75 @@
-// Easter egg: April Fools 2026 — shared helpers and types for AI Summarize.
+export const AI_SUMMARY_TONES = [
+  'default',
+  'noir',
+  'shakespeare',
+  'attenborough',
+] as const;
 
-import { renderMs } from '../TimelineChart/utils';
+export type AISummaryTone = (typeof AI_SUMMARY_TONES)[number];
 
-// ---------------------------------------------------------------------------
-// Visibility gate
-// ---------------------------------------------------------------------------
-// Apr 1–6: always visible.
-// Apr 7–30: only visible with ?smart=true in URL.
-// May 1+: off entirely.
-// Evaluated once at module load so it's stable across re-renders.
+export const AI_SUMMARY_TONE_LABELS: Record<AISummaryTone, string> = {
+  default: 'Standard',
+  noir: 'Detective Noir',
+  shakespeare: 'Shakespearean Drama',
+  attenborough: 'Nature Documentary',
+};
 
-const ALWAYS_ON_END = new Date('2026-04-07T00:00:00').getTime();
-const HARD_OFF = new Date('2026-05-01T00:00:00').getTime();
-const DISMISS_KEY = 'hdx-ai-summarize-dismissed';
+export type RowData = Record<string, unknown>;
 
-// eslint-disable-next-line no-restricted-syntax -- one-time module-level check
-const NOW_MS = new Date().getTime();
+const SMART_URL_PARAM = 'smart';
+const TONE_STORAGE_KEY = 'hdx-ai-summary-tone';
 
-function isDismissed(): boolean {
+export function shortText(value: string | undefined, maxChars: number): string {
+  if (!value) return '';
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars - 3)}...`;
+}
+
+export function stringifyValue(value: unknown, maxChars = 240): string {
+  if (typeof value === 'string') return shortText(value, maxChars);
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value == null) return '';
   try {
-    return (
-      typeof window !== 'undefined' &&
-      window.localStorage.getItem(DISMISS_KEY) === '1'
-    );
+    return shortText(JSON.stringify(value), maxChars);
   } catch {
-    return false;
+    return shortText(String(value), maxChars);
   }
 }
 
-export function isEasterEggVisible(): boolean {
-  if (NOW_MS >= HARD_OFF) return false;
-  if (isDismissed()) return false;
-  if (NOW_MS < ALWAYS_ON_END) return true;
-  // Apr 7–30: require ?smart=true
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('smart') === 'true';
-  }
-  return false;
+function isSummaryTone(value: string | null | undefined): value is AISummaryTone {
+  if (!value) return false;
+  return (AI_SUMMARY_TONES as readonly string[]).includes(value);
 }
 
-export function dismissEasterEgg(): void {
+export function isSmartSummaryModeEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get(SMART_URL_PARAM) === 'true';
+}
+
+export function getAISummaryTonePreference(): AISummaryTone {
+  if (!isSmartSummaryModeEnabled()) {
+    return 'default';
+  }
+
   try {
-    window.localStorage.setItem(DISMISS_KEY, '1');
+    const fromStorage = window.localStorage.getItem(TONE_STORAGE_KEY);
+    if (isSummaryTone(fromStorage)) {
+      return fromStorage;
+    }
   } catch {
-    // localStorage unavailable — ignore
+    // Ignore unavailable localStorage.
   }
+
+  return 'default';
 }
 
-export type RowData = Record<string, any>;
-
-export interface EventFacts {
-  service?: string;
-  serviceVersion?: string;
-  spanName?: string;
-  spanKind?: string;
-  durationMs?: number;
-  statusCode?: string;
-  severity?: string;
-  httpMethod?: string;
-  httpUrl?: string;
-  httpStatus?: number;
-  dbSystem?: string;
-  dbStatement?: string;
-  rpcMethod?: string;
-  rpcService?: string;
-  messagingSystem?: string;
-  messagingDestination?: string;
-  exceptionType?: string;
-  exceptionMessage?: string;
-  k8sPod?: string;
-  k8sNamespace?: string;
-  k8sDeployment?: string;
-  k8sCluster?: string;
-  sdkLanguage?: string;
-  hostName?: string;
-  body?: string;
-}
-
-export type Mood = 'error' | 'warn' | 'slow' | 'normal';
-
-export function short(s: string | undefined, max: number): string {
-  if (!s) return '';
-  return s.length > max ? s.slice(0, max - 3) + '...' : s;
-}
-
-export function fmtDuration(ms: number): string {
-  // Use the same formatter as the trace waterfall for normal ranges
-  if (ms < 60_000) return renderMs(ms);
-  // Extended ranges for readability
-  if (ms < 3_600_000) {
-    const mins = (ms / 60_000).toFixed(1);
-    return `~${mins}min`;
+export function setAISummaryTonePreference(tone: AISummaryTone): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TONE_STORAGE_KEY, tone);
+  } catch {
+    // Ignore unavailable localStorage.
   }
-  if (ms < 86_400_000) {
-    const hrs = (ms / 3_600_000).toFixed(1);
-    return `~${hrs}h`;
-  }
-  const days = Math.round(ms / 86_400_000);
-  return `~${days} day${days !== 1 ? 's' : ''}`;
-}
-
-export function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
 }
