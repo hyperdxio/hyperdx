@@ -73,11 +73,12 @@ function normalizeHeatmapExpressions(form: ChartEditorFormState) {
     Array.isArray(form.series) && form.series.length > 0
       ? form.series[0]
       : null;
-  const valueExpression = firstSeries?.valueExpression?.trim() ?? '';
-  const countExpression = firstSeries?.countExpression?.trim() ?? '';
+  const valueExpression =
+    form.heatmapValueExpression?.trim() ?? firstSeries?.valueExpression?.trim();
+  const countExpression = form.heatmapCountExpression?.trim();
 
   return {
-    heatmapValueExpression: valueExpression || undefined,
+    heatmapValueExpression: valueExpression?.trim() || undefined,
     heatmapCountExpression: countExpression || undefined,
     heatmapScaleType: form.heatmapScaleType ?? 'log',
   };
@@ -206,9 +207,6 @@ export function convertSavedChartConfigToFormState(
               valueExpression: '',
             }),
             aggFn: 'heatmap' as const,
-            countExpression:
-              config.heatmapCountExpression ??
-              config.select[0]?.countExpression,
             valueExpression:
               config.heatmapValueExpression ??
               config.select[0]?.valueExpression,
@@ -227,6 +225,20 @@ export function convertSavedChartConfigToFormState(
       isBuilderSavedChartConfig(config) &&
       config.displayType === DisplayType.Heatmap
         ? (config.heatmapScaleType ?? 'log')
+        : undefined,
+    heatmapValueExpression:
+      isBuilderSavedChartConfig(config) &&
+      config.displayType === DisplayType.Heatmap
+        ? (config.heatmapValueExpression ??
+          (Array.isArray(config.select)
+            ? config.select[0]?.valueExpression
+            : undefined) ??
+          '')
+        : undefined,
+    heatmapCountExpression:
+      isBuilderSavedChartConfig(config) &&
+      config.displayType === DisplayType.Heatmap
+        ? (config.heatmapCountExpression ?? 'count()')
         : undefined,
     series:
       isBuilderSavedChartConfig(config) &&
@@ -279,16 +291,18 @@ export const validateChartForm = (
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {
-    form.series.forEach((s, index) => {
-      if (
-        form.displayType === DisplayType.Heatmap &&
-        !s.valueExpression?.trim()
-      ) {
+    if (form.displayType === DisplayType.Heatmap) {
+      if (!form.heatmapValueExpression?.trim()) {
         errors.push({
-          path: `series.${index}.valueExpression`,
+          path: 'heatmapValueExpression',
           message: 'Heatmap value expression is required',
         });
-      } else if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
+      }
+      return errors;
+    }
+
+    form.series.forEach((s, index) => {
+      if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
         errors.push({
           path: `series.${index}.valueExpression`,
           message: `Expression is required for series ${index + 1}`,

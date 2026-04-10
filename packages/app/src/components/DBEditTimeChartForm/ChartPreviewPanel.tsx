@@ -44,8 +44,8 @@ type ChartPreviewPanelProps = {
   setValue: (
     name:
       | 'orderBy'
-      | 'series.0.valueExpression'
-      | 'series.0.countExpression'
+      | 'heatmapValueExpression'
+      | 'heatmapCountExpression'
       | 'heatmapScaleType',
     value: string,
   ) => void;
@@ -166,9 +166,9 @@ export function ChartPreviewPanel({
               countExpression={queriedConfig.heatmapCountExpression}
               scaleType={queriedConfig.heatmapScaleType ?? 'log'}
               onSettingsChange={settings => {
-                setValue('series.0.valueExpression', settings.valueExpression);
+                setValue('heatmapValueExpression', settings.valueExpression);
                 setValue(
-                  'series.0.countExpression',
+                  'heatmapCountExpression',
                   settings.countExpression ?? 'count()',
                 );
                 setValue('heatmapScaleType', settings.scaleType);

@@ -343,10 +343,11 @@ describe('convertFormStateToChartConfig', () => {
           aggFn: 'heatmap',
           aggCondition: '',
           aggConditionLanguage: 'lucene',
-          valueExpression: 'DurationMs',
-          countExpression: 'count()',
+          valueExpression: '',
         },
       ],
+      heatmapValueExpression: 'DurationMs',
+      heatmapCountExpression: 'count()',
       heatmapScaleType: 'linear',
     };
     const result = convertFormStateToChartConfig(
@@ -458,7 +459,6 @@ describe('convertSavedChartConfigToFormState', () => {
           aggCondition: '',
           aggConditionLanguage: 'lucene',
           valueExpression: '',
-          countExpression: '',
         },
       ],
       where: '',
@@ -468,9 +468,10 @@ describe('convertSavedChartConfigToFormState', () => {
     };
     const result = convertSavedChartConfigToFormState(config);
     expect(result.heatmapScaleType).toBe('linear');
+    expect(result.heatmapValueExpression).toBe('DurationMs');
+    expect(result.heatmapCountExpression).toBe('count()');
     expect(result.series[0]?.aggFn).toBe('heatmap');
     expect(result.series[0]?.valueExpression).toBe('DurationMs');
-    expect(result.series[0]?.countExpression).toBe('count()');
   });
 });
 
@@ -795,7 +796,7 @@ describe('validateChartForm', () => {
     );
     expect(errors).toContainEqual(
       expect.objectContaining({
-        path: 'series.0.valueExpression',
+        path: 'heatmapValueExpression',
         message: 'Heatmap value expression is required',
       }),
     );

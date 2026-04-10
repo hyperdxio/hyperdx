@@ -392,7 +392,6 @@ export default function EditTimeChartForm({
                   aggCondition: '',
                   aggConditionLanguage: getStoredLanguage() ?? 'lucene',
                   valueExpression: '',
-                  countExpression: 'count()',
                 },
               ]
             : [
@@ -406,6 +405,11 @@ export default function EditTimeChartForm({
         setValue('where', '');
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
+        if (displayType === DisplayType.Heatmap) {
+          setValue('heatmapValueExpression', '');
+          setValue('heatmapCountExpression', 'count()');
+          setValue('heatmapScaleType', 'log');
+        }
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
