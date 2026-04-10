@@ -82,6 +82,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
   switch (displayType) {
     case DisplayType.Search:
       return 'search';
+    case DisplayType.Heatmap:
+      return 'heatmap';
     case DisplayType.Markdown:
       return 'markdown';
     case DisplayType.Table:
@@ -98,6 +100,7 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
 export const TABS_WITH_GENERATED_SQL = new Set([
   'table',
   'time',
+  'heatmap',
   'number',
   'pie',
 ]);

@@ -60,6 +60,29 @@ export const isRawSqlDisplayType = (
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Number;
 
+function normalizeHeatmapExpressions(form: ChartEditorFormState) {
+  if (form.displayType !== DisplayType.Heatmap) {
+    return {
+      heatmapValueExpression: undefined,
+      heatmapCountExpression: undefined,
+      heatmapScaleType: undefined,
+    };
+  }
+
+  const firstSeries =
+    Array.isArray(form.series) && form.series.length > 0
+      ? form.series[0]
+      : null;
+  const valueExpression = firstSeries?.valueExpression?.trim() ?? '';
+  const countExpression = firstSeries?.countExpression?.trim() ?? '';
+
+  return {
+    heatmapValueExpression: valueExpression || undefined,
+    heatmapCountExpression: countExpression || undefined,
+    heatmapScaleType: form.heatmapScaleType ?? 'log',
+  };
+}
+
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
@@ -84,6 +107,7 @@ export function convertFormStateToSavedChartConfig(
   }
 
   if (source) {
+    const heatmapExpressions = normalizeHeatmapExpressions(form);
     // Merge the series and select fields back together, and prevent the series field from being submitted
     const config: BuilderSavedChartConfig = {
       ...omit(form, ['series', 'configType', 'sqlTemplate']),
@@ -94,6 +118,7 @@ export function convertFormStateToSavedChartConfig(
             ? form.select
             : ''
           : form.series,
+      ...heatmapExpressions,
       where: form.where ?? '',
       source: source.id,
     };
@@ -139,6 +164,7 @@ export function convertFormStateToChartConfig(
     const mergedSelect =
       form.displayType === DisplayType.Search ? form.select : form.series;
     const isSelectEmpty = !mergedSelect || mergedSelect.length === 0;
+    const heatmapExpressions = normalizeHeatmapExpressions(form);
 
     const newConfig: ChartConfigWithDateRange = {
       ...omit(form, ['series', 'configType', 'sqlTemplate']),
@@ -158,6 +184,7 @@ export function convertFormStateToChartConfig(
             source.defaultTableSelectExpression) ||
           ''
         : mergedSelect,
+      ...heatmapExpressions,
     };
 
     return structuredClone(normalizeChartConfig(newConfig, source));
@@ -167,17 +194,51 @@ export function convertFormStateToChartConfig(
 export function convertSavedChartConfigToFormState(
   config: SavedChartConfig,
 ): ChartEditorFormState {
+  const builderHeatmapSeries =
+    isBuilderSavedChartConfig(config) &&
+    config.displayType === DisplayType.Heatmap &&
+    Array.isArray(config.select)
+      ? [
+          {
+            ...(config.select[0] ?? {
+              aggFn: 'heatmap' as const,
+              aggCondition: '',
+              valueExpression: '',
+            }),
+            aggFn: 'heatmap' as const,
+            countExpression:
+              config.heatmapCountExpression ??
+              config.select[0]?.countExpression,
+            valueExpression:
+              config.heatmapValueExpression ??
+              config.select[0]?.valueExpression,
+            aggConditionLanguage:
+              config.select[0]?.aggConditionLanguage ??
+              getStoredLanguage() ??
+              'lucene',
+          },
+        ]
+      : [];
+
   return {
     ...config,
     configType: isRawSqlSavedChartConfig(config) ? 'sql' : 'builder',
+    heatmapScaleType:
+      isBuilderSavedChartConfig(config) &&
+      config.displayType === DisplayType.Heatmap
+        ? (config.heatmapScaleType ?? 'log')
+        : undefined,
     series:
-      isBuilderSavedChartConfig(config) && Array.isArray(config.select)
-        ? config.select.map(s => ({
-            ...s,
-            aggConditionLanguage:
-              s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
-          }))
-        : [],
+      isBuilderSavedChartConfig(config) &&
+      config.displayType === DisplayType.Heatmap
+        ? builderHeatmapSeries
+        : isBuilderSavedChartConfig(config) && Array.isArray(config.select)
+          ? config.select.map(s => ({
+              ...s,
+              aggConditionLanguage:
+                s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
+            }))
+          : [],
   };
 }
 
@@ -219,7 +280,15 @@ export const validateChartForm = (
     form.displayType !== DisplayType.Search
   ) {
     form.series.forEach((s, index) => {
-      if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
+      if (
+        form.displayType === DisplayType.Heatmap &&
+        !s.valueExpression?.trim()
+      ) {
+        errors.push({
+          path: `series.${index}.valueExpression`,
+          message: 'Heatmap value expression is required',
+        });
+      } else if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
         errors.push({
           path: `series.${index}.valueExpression`,
           message: `Expression is required for series ${index + 1}`,

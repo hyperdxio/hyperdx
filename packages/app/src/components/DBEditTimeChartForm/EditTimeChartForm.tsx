@@ -22,6 +22,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconChartDots,
   IconChartLine,
   IconChartPie,
   IconList,
@@ -383,14 +384,25 @@ export default function EditTimeChartForm({
       }
 
       if (displayType !== DisplayType.Search && !Array.isArray(select)) {
-        const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
-          {
-            aggFn: 'count',
-            aggCondition: '',
-            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
-            valueExpression: '',
-          },
-        ];
+        const defaultSeries: SavedChartConfigWithSelectArray['select'] =
+          displayType === DisplayType.Heatmap
+            ? [
+                {
+                  aggFn: 'heatmap',
+                  aggCondition: '',
+                  aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+                  valueExpression: '',
+                  countExpression: 'count()',
+                },
+              ]
+            : [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+                  valueExpression: '',
+                },
+              ];
         setValue('where', '');
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
@@ -505,6 +517,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconChartPie size={16} />}
                 >
                   Pie
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Heatmap}
+                  leftSection={<IconChartDots size={16} />}
+                >
+                  Heatmap
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
@@ -640,7 +658,9 @@ export default function EditTimeChartForm({
         showGeneratedSql={showGeneratedSql}
         showSampleEvents={showSampleEvents}
         dbTimeChartConfig={dbTimeChartConfig}
-        setValue={(name, value) => setValue(name, value)}
+        setValue={(name, value) =>
+          setValue(name, value as ChartEditorFormState[typeof name])
+        }
         onSubmit={onSubmit}
       />
       <SaveToDashboardModal

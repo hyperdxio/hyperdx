@@ -14,6 +14,7 @@ import { buildTableRowSearchUrl } from '@/ChartUtils';
 import { getAlertReferenceLines } from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
+import DBHeatmapWithDeltasChart from '@/components/DBHeatmapWithDeltasChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
@@ -40,7 +41,14 @@ type ChartPreviewPanelProps = {
   showGeneratedSql: boolean;
   showSampleEvents: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
-  setValue: (name: 'orderBy', value: string) => void;
+  setValue: (
+    name:
+      | 'orderBy'
+      | 'series.0.valueExpression'
+      | 'series.0.countExpression'
+      | 'heatmapScaleType',
+    value: string,
+  ) => void;
   onSubmit: () => void;
 };
 
@@ -141,6 +149,34 @@ export function ChartPreviewPanel({
           />
         </div>
       )}
+      {queryReady &&
+        queriedConfig != null &&
+        tableSource != null &&
+        isBuilderChartConfig(queriedConfig) &&
+        activeTab === 'heatmap' && (
+          <div
+            className="flex-grow-1 d-flex flex-column"
+            style={{ height: 700 }}
+          >
+            <DBHeatmapWithDeltasChart
+              chartConfig={queriedConfig}
+              source={tableSource}
+              isReady
+              valueExpression={queriedConfig.heatmapValueExpression ?? ''}
+              countExpression={queriedConfig.heatmapCountExpression}
+              scaleType={queriedConfig.heatmapScaleType ?? 'log'}
+              onSettingsChange={settings => {
+                setValue('series.0.valueExpression', settings.valueExpression);
+                setValue(
+                  'series.0.countExpression',
+                  settings.countExpression ?? 'count()',
+                );
+                setValue('heatmapScaleType', settings.scaleType);
+                onSubmit();
+              }}
+            />
+          </div>
+        )}
       {queryReady && queriedConfig != null && activeTab === 'pie' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBPieChart

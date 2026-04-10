@@ -215,6 +215,7 @@ describe('seriesToFilters', () => {
 describe('displayTypeToActiveTab', () => {
   it.each([
     [DisplayType.Search, 'search'],
+    [DisplayType.Heatmap, 'heatmap'],
     [DisplayType.Markdown, 'markdown'],
     [DisplayType.Table, 'table'],
     [DisplayType.Pie, 'pie'],
@@ -230,9 +231,10 @@ describe('displayTypeToActiveTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('TABS_WITH_GENERATED_SQL', () => {
-  it('includes table, time, number, pie', () => {
+  it('includes table, time, heatmap, number, pie', () => {
     expect(TABS_WITH_GENERATED_SQL.has('table')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('time')).toBe(true);
+    expect(TABS_WITH_GENERATED_SQL.has('heatmap')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('number')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('pie')).toBe(true);
   });

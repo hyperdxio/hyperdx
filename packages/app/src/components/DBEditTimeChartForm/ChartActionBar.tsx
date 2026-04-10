@@ -108,7 +108,7 @@ export function ChartActionBar({
               }}
             />
           )}
-        {activeTab === 'time' && (
+        {(activeTab === 'time' || activeTab === 'heatmap') && (
           <GranularityPickerControlled control={control} name="granularity" />
         )}
         {activeTab !== 'markdown' && (

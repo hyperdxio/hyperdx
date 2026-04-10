@@ -97,6 +97,7 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
+import DBHeatmapWithDeltasChart from './components/DBHeatmapWithDeltasChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -596,6 +597,26 @@ const Tile = forwardRef(
                     config={queriedConfig}
                   />
                 )}
+                {queriedConfig?.displayType === DisplayType.Heatmap &&
+                  isBuilderChartConfig(queriedConfig) &&
+                  source != null && (
+                    <ChartContainer
+                      title={title}
+                      toolbarItems={toolbar}
+                      disableReactiveContainer
+                    >
+                      <DBHeatmapWithDeltasChart
+                        chartConfig={queriedConfig}
+                        source={source}
+                        isReady
+                        valueExpression={
+                          queriedConfig.heatmapValueExpression ?? ''
+                        }
+                        countExpression={queriedConfig.heatmapCountExpression}
+                        scaleType={queriedConfig.heatmapScaleType ?? 'log'}
+                      />
+                    </ChartContainer>
+                  )}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (

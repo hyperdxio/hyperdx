@@ -168,6 +168,12 @@ describe('ChartActionBar', () => {
     expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
   });
 
+  it('should render granularity picker for heatmap tab', () => {
+    renderActionBar({ activeTab: 'heatmap' });
+
+    expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
+  });
+
   it('should not render granularity picker for non-time tabs', () => {
     renderActionBar({ activeTab: 'table' });
 

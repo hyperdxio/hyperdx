@@ -23,6 +23,11 @@ jest.mock('@/components/DBNumberChart', () => ({
   default: () => <div data-testid="db-number-chart">Number Chart</div>,
 }));
 
+jest.mock('@/components/DBHeatmapWithDeltasChart', () => ({
+  __esModule: true,
+  default: () => <div data-testid="db-heatmap-with-deltas">Heatmap Chart</div>,
+}));
+
 jest.mock('@/components/DBPieChart', () => ({
   DBPieChart: () => <div data-testid="db-pie-chart">Pie Chart</div>,
 }));
@@ -138,6 +143,21 @@ describe('ChartPreviewPanel', () => {
       });
 
       expect(screen.getByTestId('db-pie-chart')).toBeInTheDocument();
+    });
+
+    it('should render heatmap chart for heatmap tab', () => {
+      renderPanel({
+        queriedConfig: {
+          ...baseBuilderConfig,
+          heatmapValueExpression: 'DurationMs',
+          heatmapCountExpression: 'count()',
+          heatmapScaleType: 'log',
+        },
+        tableSource: mockTableSource,
+        activeTab: 'heatmap',
+      });
+
+      expect(screen.getByTestId('db-heatmap-with-deltas')).toBeInTheDocument();
     });
 
     it('should not render time chart when dbTimeChartConfig is missing', () => {

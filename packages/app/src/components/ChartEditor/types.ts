@@ -26,6 +26,7 @@ export type SavedChartConfigWithSelectArray = Omit<
  **/
 export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
   Partial<Omit<RawSqlSavedChartConfig, 'configType'>> & {
+    heatmapScaleType?: 'log' | 'linear';
     alert?: BuilderSavedChartConfig['alert'] & {
       createdBy?: AlertWithCreatedBy['createdBy'];
     };

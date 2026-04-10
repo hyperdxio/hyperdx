@@ -593,6 +593,8 @@ export const NumberFormatSchema = z.object({
 });
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+export const HeatmapScaleTypeSchema = z.enum(['log', 'linear']);
+export type HeatmapScaleType = z.infer<typeof HeatmapScaleTypeSchema>;
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
@@ -623,6 +625,10 @@ export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
+  // Heatmap visualization settings used by the heatmap + event-delta chart.
+  heatmapValueExpression: z.string().optional(),
+  heatmapCountExpression: z.string().optional(),
+  heatmapScaleType: HeatmapScaleTypeSchema.optional(),
   source: z.string().optional(),
 });
 

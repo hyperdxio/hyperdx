@@ -113,7 +113,9 @@ export function ChartEditorControls({
             )}
         </Group>
       </Flex>
-      {displayType !== DisplayType.Search && Array.isArray(select) ? (
+      {displayType !== DisplayType.Search &&
+      displayType !== DisplayType.Heatmap &&
+      Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (
             <ChartSeriesEditor
@@ -268,6 +270,11 @@ export function ChartEditorControls({
             </Button>
           </Flex>
         </>
+      ) : displayType === DisplayType.Heatmap && Array.isArray(select) ? (
+        <Text size="sm" c="dimmed">
+          Configure the heatmap value/count expressions from the chart preview
+          settings panel.
+        </Text>
       ) : (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled

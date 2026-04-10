@@ -97,7 +97,9 @@ export default function ChartDisplaySettingsDrawer({
   }, [reset, defaultNumberFormat]);
 
   const isTimeChart =
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Heatmap;
 
   return (
     <Drawer

@@ -335,6 +335,30 @@ describe('convertFormStateToChartConfig', () => {
     expect(result?.select).toEqual([seriesItem]);
   });
 
+  it('maps heatmap series fields to persisted heatmap config fields', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Heatmap,
+      series: [
+        {
+          aggFn: 'heatmap',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'DurationMs',
+          countExpression: 'count()',
+        },
+      ],
+      heatmapScaleType: 'linear',
+    };
+    const result = convertFormStateToChartConfig(
+      form,
+      dateRange,
+      logSource,
+    ) as BuilderChartConfig;
+    expect(result.heatmapValueExpression).toBe('DurationMs');
+    expect(result.heatmapCountExpression).toBe('count()');
+    expect(result.heatmapScaleType).toBe('linear');
+  });
+
   it('uses form.select for Search displayType', () => {
     const form: ChartEditorFormState = {
       displayType: DisplayType.Search,
@@ -422,6 +446,31 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.name).toBe('My Chart');
     expect(result.displayType).toBe(DisplayType.Table);
     expect(result.where).toBe('status = 200');
+  });
+
+  it('hydrates heatmap form fields from saved heatmap config', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Heatmap,
+      select: [
+        {
+          aggFn: 'heatmap',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: '',
+          countExpression: '',
+        },
+      ],
+      where: '',
+      heatmapValueExpression: 'DurationMs',
+      heatmapCountExpression: 'count()',
+      heatmapScaleType: 'linear',
+    };
+    const result = convertSavedChartConfigToFormState(config);
+    expect(result.heatmapScaleType).toBe('linear');
+    expect(result.series[0]?.aggFn).toBe('heatmap');
+    expect(result.series[0]?.valueExpression).toBe('DurationMs');
+    expect(result.series[0]?.countExpression).toBe('count()');
   });
 });
 
@@ -725,6 +774,31 @@ describe('validateChartForm', () => {
         e => typeof e.path === 'string' && e.path.includes('valueExpression'),
       ),
     ).toHaveLength(0);
+  });
+
+  it('requires value expression for heatmap series', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-log',
+        series: [
+          {
+            ...seriesItem,
+            aggFn: 'heatmap',
+            valueExpression: '',
+          },
+        ],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'series.0.valueExpression',
+        message: 'Heatmap value expression is required',
+      }),
+    );
   });
 
   it('does not validate valueExpression for metric sources', () => {

@@ -68,6 +68,7 @@ jest.mock('@/source', () => ({
     return { data: undefined };
   }),
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
+  getDurationMsExpression: jest.fn().mockReturnValue('DurationMs'),
   getTraceDurationNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
@@ -475,5 +476,22 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     expect(
       screen.getByTestId('alert-advanced-settings-toggle'),
     ).toHaveTextContent('Advanced Settings');
+  });
+});
+
+describe('DBEditTimeChartForm - Heatmap chart type', () => {
+  const renderHeatmapComponent = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, displayType: DisplayType.Heatmap },
+      ...props,
+    });
+
+  it('shows heatmap tab and granularity controls', async () => {
+    renderHeatmapComponent();
+
+    expect(screen.getByText('Heatmap')).toBeInTheDocument();
+    expect(screen.getByText('Granularity')).toBeInTheDocument();
   });
 });
