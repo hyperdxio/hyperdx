@@ -95,7 +95,14 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
 
       setScreen('pick-source');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Treat auth errors as session issues — bounce back to login
+      if (msg.includes('401') || msg.includes('403')) {
+        setSessionExpired(true);
+        setScreen('login');
+        return;
+      }
+      setError(msg);
     }
   };
 
