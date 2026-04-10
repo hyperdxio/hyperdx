@@ -38,14 +38,18 @@ export function stringifyValue(value: unknown, maxChars = 240): string {
   }
 }
 
-function isSummaryTone(value: string | null | undefined): value is AISummaryTone {
+function isSummaryTone(
+  value: string | null | undefined,
+): value is AISummaryTone {
   if (!value) return false;
   return (AI_SUMMARY_TONES as readonly string[]).includes(value);
 }
 
 export function isSmartSummaryModeEnabled(): boolean {
   if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).get(SMART_URL_PARAM) === 'true';
+  return (
+    new URLSearchParams(window.location.search).get(SMART_URL_PARAM) === 'true'
+  );
 }
 
 export function getAISummaryTonePreference(): AISummaryTone {

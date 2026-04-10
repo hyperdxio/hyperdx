@@ -2,16 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
+  buildEventSummaryPayload,
+  requestAISummary,
+} from './aiSummarize/request';
+import {
   AISummaryTone,
   getAISummaryTonePreference,
   isSmartSummaryModeEnabled,
   RowData,
   setAISummaryTonePreference,
 } from './aiSummarize';
-import {
-  buildEventSummaryPayload,
-  requestAISummary,
-} from './aiSummarize/request';
 
 export default function AISummarizeButton({
   rowData,

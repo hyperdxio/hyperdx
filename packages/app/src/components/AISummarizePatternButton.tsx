@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  Pattern,
-  SEVERITY_TEXT_COLUMN_ALIAS,
-} from '@/hooks/usePatterns';
+import { Pattern, SEVERITY_TEXT_COLUMN_ALIAS } from '@/hooks/usePatterns';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
+import {
+  buildPatternSummaryPayload,
+  requestAISummary,
+} from './aiSummarize/request';
 import {
   AISummaryTone,
   getAISummaryTonePreference,
   isSmartSummaryModeEnabled,
   setAISummaryTonePreference,
 } from './aiSummarize';
-import {
-  buildPatternSummaryPayload,
-  requestAISummary,
-} from './aiSummarize/request';
 
 export default function AISummarizePatternButton({
   pattern,

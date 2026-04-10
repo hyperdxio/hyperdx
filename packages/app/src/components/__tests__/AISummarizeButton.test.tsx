@@ -12,9 +12,9 @@ jest.mock('@/api', () => ({
 }));
 
 function mockWindowLocation(search: string) {
-  const url = `http://localhost:30276/search${search}`;
+  const url = `/search${search}`;
   window.history.replaceState({}, '', url);
-});
+}
 
 describe('AISummarizeButton', () => {
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe('AISummarizeButton', () => {
       kind: 'event',
     });
 
-    render(
+    renderWithMantine(
       <AISummarizeButton
         rowData={{
           __hdx_body: 'request failed',
@@ -65,7 +65,7 @@ describe('AISummarizeButton', () => {
       kind: 'event',
     });
 
-    render(
+    renderWithMantine(
       <AISummarizeButton
         rowData={{
           __hdx_body: 'request failed',
@@ -77,7 +77,7 @@ describe('AISummarizeButton', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /style: standard/i }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /detective noir/i }));
+    fireEvent.click(await screen.findByText(/detective noir/i));
 
     expect(localStorage.getItem('hdx-ai-summary-tone')).toBe('noir');
 
@@ -96,4 +96,4 @@ describe('AISummarizeButton', () => {
       );
     });
   });
-}
+});

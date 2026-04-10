@@ -105,7 +105,9 @@ function topStats(
     }));
 }
 
-function extractAttributes(rowData: RowData): Array<{ key: string; value: string }> {
+function extractAttributes(
+  rowData: RowData,
+): Array<{ key: string; value: string }> {
   const attributes: Array<{ key: string; value: string }> = [];
   const attrCandidates = [
     rowData.__hdx_event_attributes,
@@ -126,7 +128,9 @@ function extractAttributes(rowData: RowData): Array<{ key: string; value: string
   return attributes;
 }
 
-export async function requestAISummary(payload: SummaryPayload): Promise<string> {
+export async function requestAISummary(
+  payload: SummaryPayload,
+): Promise<string> {
   const tone =
     isSmartSummaryModeEnabled() && payload.tone ? payload.tone : 'default';
   const response = await hdxServer('ai/summarize', {
@@ -260,10 +264,17 @@ function computeCriticalPath(spans: TraceSpanNode[]): TraceItem[] {
   if (spans.length === 0) return [];
 
   const bySpanId = new Map<string, TraceSpanNode[]>();
+  const childrenByParentSpanId = new Map<string, TraceSpanNode[]>();
   for (const span of spans) {
     const list = bySpanId.get(span.spanId) ?? [];
     list.push(span);
     bySpanId.set(span.spanId, list);
+
+    if (span.parentSpanId) {
+      const children = childrenByParentSpanId.get(span.parentSpanId) ?? [];
+      children.push(span);
+      childrenByParentSpanId.set(span.parentSpanId, children);
+    }
   }
 
   const memo = new Map<string, { totalMs: number; path: TraceItem[] }>();
@@ -280,7 +291,7 @@ function computeCriticalPath(spans: TraceSpanNode[]): TraceItem[] {
       path: [],
     };
 
-    const children = bySpanId.get(node.spanId) ?? [];
+    const children = childrenByParentSpanId.get(node.spanId) ?? [];
     for (const child of children) {
       if (child === node) continue;
       const candidate = dfs(child);
@@ -385,7 +396,9 @@ export function buildTraceSummaryPayload({
     .filter(item => item.isError)
     .slice(0, 12);
 
-  const slowSpans = sortedByDuration.filter(item => (item.durationMs ?? 0) > 200).slice(0, 10);
+  const slowSpans = sortedByDuration
+    .filter(item => (item.durationMs ?? 0) > 200)
+    .slice(0, 10);
 
   const totalDurationMs = sortedByDuration.reduce(
     (acc, item) => acc + (item.durationMs ?? 0),

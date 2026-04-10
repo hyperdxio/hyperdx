@@ -19,8 +19,8 @@ import {
 } from '@mantine/core';
 import { IconPencil } from '@tabler/icons-react';
 
-import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import AISummarizeTraceButton from '@/components/AISummarizeTraceButton';
+import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
@@ -75,15 +75,13 @@ export default function DBTracePanel({
 
   const sourceId = useWatch({ control, name: 'source' });
 
-  const { data: childSourceData, isLoading: isChildSourceDataLoading } =
-    useSource({
-      id: sourceId,
-    });
+  const { data: childSourceData } = useSource({
+    id: sourceId,
+  });
 
-  const { data: parentSourceData, isLoading: isParentSourceDataLoading } =
-    useSource({
-      id: parentSourceId,
-    });
+  const { data: parentSourceData } = useSource({
+    id: parentSourceId,
+  });
 
   const logSourceData =
     parentSourceData?.kind === SourceKind.Log

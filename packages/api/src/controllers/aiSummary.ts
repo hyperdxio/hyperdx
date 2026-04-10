@@ -85,7 +85,10 @@ export const AISummaryRequestSchema = z.discriminatedUnion('kind', [
 
 export type AISummaryRequest = z.infer<typeof AISummaryRequestSchema>;
 
-function shortText(value: string | undefined, maxChars: number): string | undefined {
+function shortText(
+  value: string | undefined,
+  maxChars: number,
+): string | undefined {
   if (value == null) return undefined;
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars - 3)}...`;
@@ -126,7 +129,9 @@ function trimTraceItems(
   }));
 }
 
-export function compactSummaryRequest(payload: AISummaryRequest): AISummaryRequest {
+export function compactSummaryRequest(
+  payload: AISummaryRequest,
+): AISummaryRequest {
   const tone = payload.tone ?? 'default';
   if (payload.kind === 'event') {
     return {
@@ -150,7 +155,8 @@ export function compactSummaryRequest(payload: AISummaryRequest): AISummaryReque
       tone,
       context: {
         ...payload.context,
-        pattern: shortText(payload.context.pattern, 500) ?? payload.context.pattern,
+        pattern:
+          shortText(payload.context.pattern, 500) ?? payload.context.pattern,
         sampleMessages: payload.context.sampleMessages
           ?.slice(0, 8)
           .map(message => shortText(message, 260) ?? message),
@@ -165,7 +171,8 @@ export function compactSummaryRequest(payload: AISummaryRequest): AISummaryReque
     tone,
     context: {
       ...payload.context,
-      traceId: shortText(payload.context.traceId, 120) ?? payload.context.traceId,
+      traceId:
+        shortText(payload.context.traceId, 120) ?? payload.context.traceId,
       serviceStats: trimKeyValues(payload.context.serviceStats, 10, 100),
       criticalPath: trimTraceItems(payload.context.criticalPath, 18),
       errorEvents: trimTraceItems(payload.context.errorEvents, 12),
@@ -177,8 +184,7 @@ export function compactSummaryRequest(payload: AISummaryRequest): AISummaryReque
 const TONE_INSTRUCTIONS: Record<AISummaryTone, string> = {
   default:
     'Tone: direct, professional, and concise. Avoid jokes and dramatic wording.',
-  noir:
-    'Tone: noir detective voice. Keep it readable, but add subtle noir flavor.',
+  noir: 'Tone: noir detective voice. Keep it readable, but add subtle noir flavor.',
   shakespeare:
     'Tone: light Shakespearean phrasing, while preserving technical clarity.',
   attenborough:

@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMemo } from 'react';
-import {
-  TLogSource,
-  TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
+import {
+  buildTraceSummaryPayload,
+  requestAISummary,
+} from './aiSummarize/request';
 import {
   AISummaryTone,
   getAISummaryTonePreference,
   isSmartSummaryModeEnabled,
   setAISummaryTonePreference,
 } from './aiSummarize';
-import {
-  buildTraceSummaryPayload,
-  requestAISummary,
-} from './aiSummarize/request';
 import { useEventsAroundFocus } from './DBTraceWaterfallChart';
 
 export default function AISummarizeTraceButton({

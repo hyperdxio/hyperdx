@@ -9,12 +9,16 @@ import {
   Popover,
   Text,
 } from '@mantine/core';
-import { IconChevronDown, IconInfoCircle, IconSparkles } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconInfoCircle,
+  IconSparkles,
+} from '@tabler/icons-react';
 
 import {
-  AISummaryTone,
   AI_SUMMARY_TONE_LABELS,
   AI_SUMMARY_TONES,
+  AISummaryTone,
   isSmartSummaryModeEnabled,
 } from './helpers';
 
