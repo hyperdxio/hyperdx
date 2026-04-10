@@ -49,7 +49,8 @@ src/
 │   ├── RowOverview.tsx  # Structured overview (top-level attrs, event attrs, resource attrs)
 │   ├── ColumnValues.tsx # Shared key-value renderer (used by Column Values tab + Event Details)
 │   ├── LoginForm.tsx    # Email/password login form (used inside TUI App)
-│   └── SourcePicker.tsx # Arrow-key source selector
+│   ├── SourcePicker.tsx # Arrow-key source selector
+│   └── Spotlight.tsx    # Ctrl+K spotlight overlay for quick navigation
 └── utils/
     ├── config.ts        # Session persistence (~/.config/hyperdx/cli/session.json)
     ├── editor.ts        # $EDITOR integration for time range and select clause editing
@@ -157,6 +158,7 @@ Key expression mappings from the web frontend's `getConfig()`:
 | `t`           | Edit time range in $EDITOR                 |
 | `f`           | Toggle follow mode (live tail)             |
 | `w`           | Toggle line wrap                           |
+| `Ctrl+K`      | Open spotlight (quick navigation)          |
 | `A` (Shift+A) | Open alerts page                           |
 | `?`           | Toggle help screen                         |
 | `q`           | Quit                                       |
@@ -226,11 +228,13 @@ reorder these checks**:
 
 1. `?` toggles help (except when search focused)
 2. Any key closes help when showing
-3. `focusDetailSearch` — consumes all keys except Esc/Enter
-4. `focusSearch` — consumes all keys except Tab/Esc
-5. Trace tab j/k — when detail panel open and Trace tab active
-6. General j/k, G/g, Enter/Esc, Tab, etc.
-7. Single-key shortcuts: `w`, `f`, `/`, `s`, `t`, `q`
+3. SQL preview — D/Esc close, Ctrl+D/U scroll
+4. `Ctrl+K` — opens spotlight (quick navigation)
+5. `focusDetailSearch` — consumes all keys except Esc/Enter
+6. `focusSearch` — consumes all keys except Tab/Esc
+7. Trace tab j/k — when detail panel open and Trace tab active
+8. General j/k, G/g, Enter/Esc, Tab, etc.
+9. Single-key shortcuts: `w`, `f`, `/`, `s`, `t`, `q`
 
 ### Dynamic Table Columns
 

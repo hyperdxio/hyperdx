@@ -7,16 +7,22 @@ interface SourcePickerProps {
   sources: SourceResponse[];
   onSelect: (source: SourceResponse) => void;
   onOpenAlerts?: () => void;
+  onOpenSpotlight?: () => void;
 }
 
 export default function SourcePicker({
   sources,
   onSelect,
   onOpenAlerts,
+  onOpenSpotlight,
 }: SourcePickerProps) {
   const [selected, setSelected] = useState(0);
 
   useInput((input, key) => {
+    if (key.ctrl && input === 'k' && onOpenSpotlight) {
+      onOpenSpotlight();
+      return;
+    }
     if (input === 'A' && onOpenAlerts) {
       onOpenAlerts();
       return;
@@ -48,7 +54,9 @@ export default function SourcePicker({
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>j/k to navigate, Enter/l to select, A=alerts</Text>
+      <Text dimColor>
+        j/k to navigate, Enter/l to select, Ctrl+K=spotlight, A=alerts
+      </Text>
     </Box>
   );
 }

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Text } from 'ink';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Box, Text, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -13,6 +13,10 @@ import AlertsPage from '@/components/AlertsPage';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginForm from '@/components/LoginForm';
 import SourcePicker from '@/components/SourcePicker';
+import Spotlight, {
+  buildSpotlightItems,
+  type SpotlightItem,
+} from '@/components/Spotlight';
 import EventViewer from '@/components/EventViewer';
 
 type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
@@ -28,6 +32,9 @@ interface AppProps {
 }
 
 export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
+  const { stdout } = useStdout();
+  const termHeight = stdout?.rows ?? 24;
+
   const [screen, setScreen] = useState<Screen>('loading');
   const [client] = useState(() => new ApiClient({ apiUrl }));
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
@@ -37,6 +44,7 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
   );
   const [activeQuery, setActiveQuery] = useState(query ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [showSpotlight, setShowSpotlight] = useState(false);
 
   // Check existing session on mount
   useEffect(() => {
@@ -135,6 +143,54 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     setScreen(preAlertsScreen);
   }, [preAlertsScreen]);
 
+  // ---- Spotlight (Ctrl+K) --------------------------------------------
+
+  const spotlightItems = useMemo(
+    () => buildSpotlightItems(eventSources, savedSearches),
+    [eventSources, savedSearches],
+  );
+
+  const handleOpenSpotlight = useCallback(() => {
+    setShowSpotlight(true);
+  }, []);
+
+  const handleCloseSpotlight = useCallback(() => {
+    setShowSpotlight(false);
+  }, []);
+
+  const handleSpotlightSelect = useCallback(
+    (item: SpotlightItem) => {
+      setShowSpotlight(false);
+      switch (item.type) {
+        case 'source':
+          if (item.source) {
+            setSelectedSource(item.source);
+            setActiveQuery('');
+            setScreen('events');
+          }
+          break;
+        case 'saved-search':
+          if (item.search) {
+            const source = eventSources.find(
+              s => s.id === item.search!.source || s._id === item.search!.source,
+            );
+            if (source) {
+              setSelectedSource(source);
+            }
+            setActiveQuery(item.search.where);
+            setScreen('events');
+          }
+          break;
+        case 'page':
+          if (item.page === 'alerts') {
+            handleOpenAlerts();
+          }
+          break;
+      }
+    },
+    [eventSources, handleOpenAlerts],
+  );
+
   if (error) {
     return (
       <Box paddingX={1}>
@@ -143,53 +199,71 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     );
   }
 
-  switch (screen) {
-    case 'loading':
-      return (
-        <Box paddingX={1}>
-          <Text>
-            <Spinner type="dots" /> Connecting to {apiUrl}…
-          </Text>
-        </Box>
-      );
-
-    case 'login':
-      return <LoginForm apiUrl={apiUrl} onLogin={handleLogin} />;
-
-    case 'pick-source':
-      return (
-        <Box flexDirection="column">
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color="#00c28a" bold>
-              HyperDX TUI
+  const renderScreen = () => {
+    switch (screen) {
+      case 'loading':
+        return (
+          <Box paddingX={1}>
+            <Text>
+              <Spinner type="dots" /> Connecting to {apiUrl}…
             </Text>
-            <Text dimColor>Search and tail events from the terminal</Text>
           </Box>
-          <SourcePicker
+        );
+
+      case 'login':
+        return <LoginForm apiUrl={apiUrl} onLogin={handleLogin} />;
+
+      case 'pick-source':
+        return (
+          <Box flexDirection="column">
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color="#00c28a" bold>
+                HyperDX TUI
+              </Text>
+              <Text dimColor>Search and tail events from the terminal</Text>
+            </Box>
+            <SourcePicker
+              sources={eventSources}
+              onSelect={handleSourceSelect}
+              onOpenAlerts={handleOpenAlerts}
+              onOpenSpotlight={handleOpenSpotlight}
+            />
+          </Box>
+        );
+
+      case 'alerts':
+        return <AlertsPage client={client} onClose={handleCloseAlerts} />;
+
+      case 'events':
+        if (!selectedSource) return null;
+        return (
+          <EventViewer
+            clickhouseClient={client.createClickHouseClient()}
+            metadata={client.createMetadata()}
+            source={selectedSource}
             sources={eventSources}
-            onSelect={handleSourceSelect}
+            savedSearches={savedSearches}
+            onSavedSearchSelect={handleSavedSearchSelect}
             onOpenAlerts={handleOpenAlerts}
+            onOpenSpotlight={handleOpenSpotlight}
+            initialQuery={activeQuery}
+            follow={follow}
           />
-        </Box>
-      );
+        );
+    }
+  };
 
-    case 'alerts':
-      return <AlertsPage client={client} onClose={handleCloseAlerts} />;
-
-    case 'events':
-      if (!selectedSource) return null;
-      return (
-        <EventViewer
-          clickhouseClient={client.createClickHouseClient()}
-          metadata={client.createMetadata()}
-          source={selectedSource}
-          sources={eventSources}
-          savedSearches={savedSearches}
-          onSavedSearchSelect={handleSavedSearchSelect}
-          onOpenAlerts={handleOpenAlerts}
-          initialQuery={activeQuery}
-          follow={follow}
+  if (showSpotlight) {
+    return (
+      <Box flexDirection="column" height={termHeight}>
+        <Spotlight
+          items={spotlightItems}
+          onSelect={handleSpotlightSelect}
+          onClose={handleCloseSpotlight}
         />
-      );
+      </Box>
+    );
   }
+
+  return renderScreen();
 }

@@ -40,6 +40,7 @@ export interface KeybindingParams {
 
   // Navigation
   onOpenAlerts?: () => void;
+  onOpenSpotlight?: () => void;
 
   // State setters
   setFocusSearch: React.Dispatch<React.SetStateAction<boolean>>;
@@ -98,6 +99,7 @@ export function useKeybindings(params: KeybindingParams): void {
     findActiveIndex,
     onSavedSearchSelect,
     onOpenAlerts,
+    onOpenSpotlight,
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,
@@ -172,6 +174,12 @@ export function useKeybindings(params: KeybindingParams): void {
         return;
       }
       if (input === 'q') process.exit(0);
+      return;
+    }
+
+    // Ctrl+K opens spotlight from anywhere (except text inputs)
+    if (key.ctrl && input === 'k' && onOpenSpotlight) {
+      onOpenSpotlight();
       return;
     }
 

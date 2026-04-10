@@ -15,6 +15,7 @@ export interface EventViewerProps {
   savedSearches: SavedSearchResponse[];
   onSavedSearchSelect: (search: SavedSearchResponse) => void;
   onOpenAlerts?: () => void;
+  onOpenSpotlight?: () => void;
   initialQuery?: string;
   follow?: boolean;
 }
