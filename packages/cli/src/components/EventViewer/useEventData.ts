@@ -36,6 +36,8 @@ export interface UseEventDataReturn {
   expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
+  /** The last rendered ChSql (parameterized SQL + params) for the table query */
+  lastChSql: { sql: string; params: Record<string, unknown> } | null;
   fetchNextPage: () => Promise<void>;
 }
 
@@ -307,6 +309,7 @@ export function useEventData({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    lastChSql: lastTableChSqlRef.current,
     fetchNextPage,
   };
 }

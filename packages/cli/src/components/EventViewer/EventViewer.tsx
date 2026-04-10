@@ -5,7 +5,14 @@ import type { TimeRange } from '@/utils/editor';
 
 import type { EventViewerProps, SwitchItem } from './types';
 import { getColumns, getDynamicColumns, formatDynamicRow } from './utils';
-import { Header, TabBar, SearchBar, Footer, HelpScreen } from './SubComponents';
+import {
+  Header,
+  TabBar,
+  SearchBar,
+  Footer,
+  HelpScreen,
+  SqlPreviewScreen,
+} from './SubComponents';
 import { TableView } from './TableView';
 import { DetailPanel } from './DetailPanel';
 import { useEventData } from './useEventData';
@@ -39,6 +46,8 @@ export default function EventViewer({
   const [scrollOffset, setScrollOffset] = useState(0);
   const [focusSearch, setFocusSearch] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+  const [sqlScrollOffset, setSqlScrollOffset] = useState(0);
   const [wrapLines, setWrapLines] = useState(false);
   const [customSelectMap, setCustomSelectMap] = useState<
     Record<string, string>
@@ -75,6 +84,7 @@ export default function EventViewer({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    lastChSql,
     fetchNextPage,
   } = useEventData({
     clickhouseClient,
@@ -139,6 +149,7 @@ export default function EventViewer({
     focusSearch,
     focusDetailSearch,
     showHelp,
+    showSql,
     expandedRow,
     detailTab,
     selectedRow,
@@ -159,6 +170,8 @@ export default function EventViewer({
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,
+    setShowSql,
+    setSqlScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
@@ -190,6 +203,20 @@ export default function EventViewer({
     return (
       <Box flexDirection="column" paddingX={1} height={termHeight}>
         <HelpScreen />
+      </Box>
+    );
+  }
+
+  if (showSql) {
+    // Reserve lines for header, padding, footer hint
+    const sqlMaxRows = Math.max(5, termHeight - 6);
+    return (
+      <Box flexDirection="column" paddingX={1} height={termHeight}>
+        <SqlPreviewScreen
+          chSql={lastChSql}
+          scrollOffset={sqlScrollOffset}
+          maxRows={sqlMaxRows}
+        />
       </Box>
     );
   }
