@@ -17,6 +17,7 @@ import { Box, Text, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 
 import ColumnValues from '@/components/ColumnValues';
+import ErrorDisplay from '@/components/ErrorDisplay';
 
 import type { TraceWaterfallProps } from './types';
 import {
@@ -154,7 +155,7 @@ export default function TraceWaterfall({
   }
 
   if (error) {
-    return <Text color="red">Error loading trace: {error}</Text>;
+    return <ErrorDisplay message={error} severity="error" />;
   }
 
   if (flatNodes.length === 0) {

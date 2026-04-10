@@ -30,6 +30,7 @@ export interface UseEventDataReturn {
   error: string | null;
   hasMore: boolean;
   loadingMore: boolean;
+  paginationError: string | null;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
   expandedTraceId: string | null;
@@ -57,6 +58,7 @@ export function useEventData({
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [paginationError, setPaginationError] = useState<string | null>(null);
   const [expandedRowData, setExpandedRowData] = useState<Record<
     string,
     unknown
@@ -86,6 +88,7 @@ export function useEventData({
     ) => {
       setLoading(true);
       setError(null);
+      setPaginationError(null);
       try {
         const chSql = await buildEventSearchQuery(
           {
@@ -139,6 +142,7 @@ export function useEventData({
   const fetchNextPage = useCallback(async () => {
     if (!hasMore || loadingMore || !dateRangeRef.current) return;
     setLoadingMore(true);
+    setPaginationError(null);
     try {
       const { start, end } = dateRangeRef.current;
       const chSql = await buildEventSearchQuery(
@@ -166,9 +170,10 @@ export function useEventData({
         setEvents(prev => [...prev, ...rows]);
       }
       setHasMore(rows.length >= PAGE_SIZE);
-    } catch {
-      // Non-fatal — just stop pagination
+    } catch (err: unknown) {
+      // Non-fatal — stop pagination but surface the error
       setHasMore(false);
+      setPaginationError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingMore(false);
     }
@@ -295,6 +300,7 @@ export function useEventData({
     error,
     hasMore,
     loadingMore,
+    paginationError,
     expandedRowData,
     expandedRowLoading,
     expandedTraceId,

@@ -69,6 +69,7 @@ export default function EventViewer({
     error,
     hasMore,
     loadingMore,
+    paginationError,
     expandedRowData,
     expandedRowLoading,
     expandedTraceId,
@@ -182,7 +183,7 @@ export default function EventViewer({
     }));
   }, [events, scrollOffset, maxRows, columns]);
 
-  const errorLine = error ? error.slice(0, 200) : '';
+  const errorMessage = error ?? null;
 
   // ---- Render ------------------------------------------------------
 
@@ -256,7 +257,7 @@ export default function EventViewer({
           focusSearch={focusSearch}
           wrapLines={wrapLines}
           maxRows={maxRows}
-          errorLine={errorLine}
+          errorMessage={errorMessage}
           loading={loading}
         />
       )}
@@ -267,6 +268,7 @@ export default function EventViewer({
         wrapLines={wrapLines}
         isFollowing={isFollowing}
         loadingMore={loadingMore}
+        paginationError={paginationError}
         scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
       />
     </Box>

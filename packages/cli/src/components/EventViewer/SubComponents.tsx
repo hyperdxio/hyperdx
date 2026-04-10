@@ -123,6 +123,7 @@ type FooterProps = {
   wrapLines: boolean;
   isFollowing: boolean;
   loadingMore: boolean;
+  paginationError?: string | null;
   scrollInfo?: string;
 };
 
@@ -132,19 +133,27 @@ export const Footer = React.memo(function Footer({
   wrapLines,
   isFollowing,
   loadingMore,
+  paginationError,
   scrollInfo,
 }: FooterProps) {
   return (
-    <Box marginTop={1} justifyContent="space-between">
-      <Text dimColor>
-        {isFollowing ? '[FOLLOWING] ' : ''}
-        {wrapLines ? '[WRAP] ' : ''}
-        {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
-      </Text>
-      <Text dimColor>
-        {scrollInfo ? `${scrollInfo}  ` : ''}
-        {cursorPos}/{rowCount}
-      </Text>
+    <Box flexDirection="column" marginTop={1}>
+      {paginationError && (
+        <Text color="yellow" bold>
+          ⚠ Failed to load more results: {paginationError.slice(0, 120)}
+        </Text>
+      )}
+      <Box justifyContent="space-between">
+        <Text dimColor>
+          {isFollowing ? '[FOLLOWING] ' : ''}
+          {wrapLines ? '[WRAP] ' : ''}
+          {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
+        </Text>
+        <Text dimColor>
+          {scrollInfo ? `${scrollInfo}  ` : ''}
+          {cursorPos}/{rowCount}
+        </Text>
+      </Box>
     </Box>
   );
 });

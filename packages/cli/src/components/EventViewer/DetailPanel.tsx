@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner';
 
 import type { SourceResponse, ProxyClickhouseClient } from '@/api/client';
 import ColumnValues from '@/components/ColumnValues';
+import ErrorDisplay from '@/components/ErrorDisplay';
 import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
 
@@ -136,14 +137,26 @@ export function DetailPanel({
               <Spinner type="dots" /> Loading…
             </Text>
           ) : expandedRowData ? (
-            <RowOverview
-              source={source}
-              rowData={expandedRowData}
-              searchQuery={detailSearchQuery}
-              wrapLines={wrapLines}
-              maxRows={fullDetailMaxRows}
-              scrollOffset={columnValuesScrollOffset}
-            />
+            <>
+              {expandedRowData.__fetch_error && (
+                <Box marginBottom={1}>
+                  <ErrorDisplay
+                    message={String(expandedRowData.__fetch_error)}
+                    severity="warning"
+                    detail="Showing partial row data — full row fetch failed."
+                    compact
+                  />
+                </Box>
+              )}
+              <RowOverview
+                source={source}
+                rowData={expandedRowData}
+                searchQuery={detailSearchQuery}
+                wrapLines={wrapLines}
+                maxRows={fullDetailMaxRows}
+                scrollOffset={columnValuesScrollOffset}
+              />
+            </>
           ) : null}
         </Box>
       )}
@@ -217,13 +230,25 @@ export function DetailPanel({
               <Spinner type="dots" /> Loading all fields…
             </Text>
           ) : expandedRowData ? (
-            <ColumnValues
-              data={expandedRowData}
-              searchQuery={detailSearchQuery}
-              wrapLines={wrapLines}
-              maxRows={fullDetailMaxRows}
-              scrollOffset={columnValuesScrollOffset}
-            />
+            <>
+              {expandedRowData.__fetch_error && (
+                <Box marginBottom={1}>
+                  <ErrorDisplay
+                    message={String(expandedRowData.__fetch_error)}
+                    severity="warning"
+                    detail="Showing partial row data — full row fetch failed."
+                    compact
+                  />
+                </Box>
+              )}
+              <ColumnValues
+                data={expandedRowData}
+                searchQuery={detailSearchQuery}
+                wrapLines={wrapLines}
+                maxRows={fullDetailMaxRows}
+                scrollOffset={columnValuesScrollOffset}
+              />
+            </>
           ) : null}
         </Box>
       )}

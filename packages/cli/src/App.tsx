@@ -9,6 +9,7 @@ import {
   type SourceResponse,
   type SavedSearchResponse,
 } from '@/api/client';
+import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginForm from '@/components/LoginForm';
 import SourcePicker from '@/components/SourcePicker';
 import EventViewer from '@/components/EventViewer';
@@ -124,7 +125,7 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
   if (error) {
     return (
       <Box paddingX={1}>
-        <Text color="red">Error: {error}</Text>
+        <ErrorDisplay message={error} severity="error" />
       </Box>
     );
   }
