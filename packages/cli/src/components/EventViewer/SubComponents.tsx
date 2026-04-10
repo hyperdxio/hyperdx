@@ -187,6 +187,7 @@ export const HelpScreen = React.memo(function HelpScreen() {
     ['D', 'Show generated SQL'],
     ['f', 'Toggle follow mode (live tail)'],
     ['w', 'Toggle line wrap'],
+    ['A (Shift+A)', 'Open alerts page'],
     ['?', 'Toggle this help'],
     ['q', 'Quit'],
   ];
