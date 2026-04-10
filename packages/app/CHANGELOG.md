@@ -1,5 +1,11 @@
 # @hyperdx/app
 
+## 2.23.2
+
+### Patch Changes
+
+- 0daa5299: feat: Generate stable source IDs in local mode
+
 ## 2.23.1
 
 ### Patch Changes
