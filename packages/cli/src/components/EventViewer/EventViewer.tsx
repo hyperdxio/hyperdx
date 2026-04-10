@@ -70,6 +70,7 @@ export default function EventViewer({
   const [traceSelectedIndex, setTraceSelectedIndex] = useState<number | null>(
     null,
   );
+  const [traceDetailExpanded, setTraceDetailExpanded] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
     const now = new Date();
     return { start: new Date(now.getTime() - 60 * 60 * 1000), end: now };
@@ -166,6 +167,7 @@ export default function EventViewer({
     showSql,
     expandedRow,
     detailTab,
+    traceDetailExpanded,
     selectedRow,
     scrollOffset,
     isFollowing,
@@ -176,7 +178,6 @@ export default function EventViewer({
     source,
     timeRange,
     customSelect,
-    detailMaxRows,
     fullDetailMaxRows,
     switchItems,
     findActiveIndex,
@@ -191,6 +192,7 @@ export default function EventViewer({
     setScrollOffset,
     setExpandedRow,
     setDetailTab,
+    setTraceDetailExpanded,
     setIsFollowing,
     setWrapLines,
     setDetailSearchQuery,
@@ -280,6 +282,7 @@ export default function EventViewer({
             expandedTraceId={expandedTraceId}
             expandedSpanId={expandedSpanId}
             traceSelectedIndex={traceSelectedIndex}
+            traceDetailExpanded={traceDetailExpanded}
             onTraceSelectedIndexChange={setTraceSelectedIndex}
             detailSearchQuery={detailSearchQuery}
             focusDetailSearch={focusDetailSearch}

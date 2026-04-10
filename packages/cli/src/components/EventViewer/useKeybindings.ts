@@ -20,6 +20,7 @@ export interface KeybindingParams {
   showSql: boolean;
   expandedRow: number | null;
   detailTab: 'overview' | 'columns' | 'trace';
+  traceDetailExpanded: boolean;
   selectedRow: number;
   scrollOffset: number;
   isFollowing: boolean;
@@ -30,7 +31,6 @@ export interface KeybindingParams {
   source: SourceResponse;
   timeRange: TimeRange;
   customSelect: string | undefined;
-  detailMaxRows: number;
   fullDetailMaxRows: number;
 
   // Tab switching
@@ -53,6 +53,7 @@ export interface KeybindingParams {
   setDetailTab: React.Dispatch<
     React.SetStateAction<'overview' | 'columns' | 'trace'>
   >;
+  setTraceDetailExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   setIsFollowing: React.Dispatch<React.SetStateAction<boolean>>;
   setWrapLines: React.Dispatch<React.SetStateAction<boolean>>;
 
@@ -82,6 +83,7 @@ export function useKeybindings(params: KeybindingParams): void {
     showSql,
     expandedRow,
     detailTab,
+    traceDetailExpanded,
     selectedRow,
     scrollOffset,
     isFollowing,
@@ -92,7 +94,6 @@ export function useKeybindings(params: KeybindingParams): void {
     source,
     timeRange,
     customSelect,
-    detailMaxRows,
     fullDetailMaxRows,
     switchItems,
     findActiveIndex,
@@ -107,6 +108,7 @@ export function useKeybindings(params: KeybindingParams): void {
     setScrollOffset,
     setExpandedRow,
     setDetailTab,
+    setTraceDetailExpanded,
     setIsFollowing,
     setWrapLines,
     setDetailSearchQuery,
@@ -194,28 +196,55 @@ export function useKeybindings(params: KeybindingParams): void {
       }
       return;
     }
-    // j/k in Trace tab: navigate spans/log events in the waterfall
-    // Ctrl+D/U: scroll Event Details section
+    // ---- Trace tab keybindings ----------------------------------------
     if (expandedRow !== null && detailTab === 'trace') {
+      // When detail view is expanded (full-page Event Details):
+      // h/Esc = collapse back to waterfall, Ctrl+D/U = scroll
+      if (traceDetailExpanded) {
+        if (input === 'h' || key.escape) {
+          setTraceDetailExpanded(false);
+          return;
+        }
+        const detailHalfPage = Math.max(1, Math.floor(fullDetailMaxRows / 2));
+        if (key.ctrl && input === 'd') {
+          setTraceDetailScrollOffset(prev => prev + detailHalfPage);
+          return;
+        }
+        if (key.ctrl && input === 'u') {
+          setTraceDetailScrollOffset(prev =>
+            Math.max(0, prev - detailHalfPage),
+          );
+          return;
+        }
+        // Block other keys while in detail view
+        if (input === 'q') process.exit(0);
+        if (input === '/') {
+          setFocusDetailSearch(true);
+          return;
+        }
+        if (input === 'w') {
+          setWrapLines(w => !w);
+          return;
+        }
+        return;
+      }
+
+      // Waterfall view: j/k navigate spans, l expands detail
       if (input === 'j' || key.downArrow) {
         setTraceSelectedIndex(prev => (prev === null ? 0 : prev + 1));
-        setTraceDetailScrollOffset(0); // reset detail scroll on span change
+        setTraceDetailScrollOffset(0);
         return;
       }
       if (input === 'k' || key.upArrow) {
         setTraceSelectedIndex(prev =>
           prev === null ? 0 : Math.max(0, prev - 1),
         );
-        setTraceDetailScrollOffset(0); // reset detail scroll on span change
+        setTraceDetailScrollOffset(0);
         return;
       }
-      const detailHalfPage = Math.max(1, Math.floor(detailMaxRows / 2));
-      if (key.ctrl && input === 'd') {
-        setTraceDetailScrollOffset(prev => prev + detailHalfPage);
-        return;
-      }
-      if (key.ctrl && input === 'u') {
-        setTraceDetailScrollOffset(prev => Math.max(0, prev - detailHalfPage));
+      if (input === 'l' || key.return) {
+        setTraceDetailExpanded(true);
+        setTraceDetailScrollOffset(0);
         return;
       }
     }
@@ -284,6 +313,7 @@ export function useKeybindings(params: KeybindingParams): void {
       if (expandedRow !== null) {
         setExpandedRow(null);
         setDetailTab('columns');
+        setTraceDetailExpanded(false);
         // Restore follow mode if it was active before expanding
         if (wasFollowingRef.current) {
           setIsFollowing(true);
@@ -328,6 +358,7 @@ export function useKeybindings(params: KeybindingParams): void {
           ? ['overview', 'columns', 'trace']
           : ['overview', 'columns'];
         setTraceSelectedIndex(null);
+        setTraceDetailExpanded(false);
         setTraceDetailScrollOffset(0);
         setColumnValuesScrollOffset(0);
         setDetailTab(prev => {

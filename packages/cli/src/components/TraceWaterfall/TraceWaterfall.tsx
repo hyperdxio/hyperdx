@@ -42,6 +42,7 @@ export default function TraceWaterfall({
   highlightHint,
   selectedIndex,
   onSelectedIndexChange,
+  detailExpanded = false,
   wrapLines,
   detailScrollOffset = 0,
   detailMaxRows,
@@ -196,7 +197,9 @@ export default function TraceWaterfall({
   const visibleNodes = filteredNodes.slice(0, maxRows);
   const truncated = filteredNodes.length > maxRows;
 
-  return (
+  // ---- Waterfall view ----------------------------------------------
+
+  const waterfallView = (
     <Box flexDirection="column">
       {/* Summary */}
       <Box>
@@ -312,39 +315,52 @@ export default function TraceWaterfall({
         </Text>
       )}
 
-      {/* Event Details for selected span/log — fixed height viewport */}
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        height={(detailMaxRows ?? 10) + 3}
-        overflowY="hidden"
-      >
-        <Text bold>Event Details</Text>
-        <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
-        {selectedRowLoading ? (
-          <Text>
-            <Spinner type="dots" /> Loading event details…
-          </Text>
-        ) : selectedRowError ? (
-          <ErrorDisplay
-            error={selectedRowError}
-            severity="warning"
-            detail="Could not load event details for this span."
-          />
-        ) : selectedRowData ? (
-          <ColumnValues
-            data={selectedRowData}
-            searchQuery={searchQuery}
-            wrapLines={wrapLines}
-            maxRows={detailMaxRows}
-            scrollOffset={detailScrollOffset}
-          />
-        ) : effectiveIndex == null ? (
-          <Text dimColor>Use j/k to select a span or log event.</Text>
-        ) : (
-          <Text dimColor>No details available.</Text>
-        )}
-      </Box>
+      {/* Hint for entering detail view */}
+      {effectiveIndex != null && !detailExpanded && (
+        <Text dimColor>l=expand details</Text>
+      )}
     </Box>
   );
+
+  // ---- Detail view (full-page Event Details) -----------------------
+
+  const detailView = (
+    <Box flexDirection="column">
+      <Text dimColor>h=back to waterfall</Text>
+      <Box marginTop={1}>
+        <Text bold>Event Details</Text>
+        {selectedNode && (
+          <Text dimColor>
+            {' '}
+            — {selectedNode.ServiceName ? `${selectedNode.ServiceName} > ` : ''}
+            {selectedNode.SpanName || '(unknown)'}
+          </Text>
+        )}
+      </Box>
+      <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
+      {selectedRowLoading ? (
+        <Text>
+          <Spinner type="dots" /> Loading event details…
+        </Text>
+      ) : selectedRowError ? (
+        <ErrorDisplay
+          error={selectedRowError}
+          severity="warning"
+          detail="Could not load event details for this span."
+        />
+      ) : selectedRowData ? (
+        <ColumnValues
+          data={selectedRowData}
+          searchQuery={searchQuery}
+          wrapLines={wrapLines}
+          maxRows={detailMaxRows}
+          scrollOffset={detailScrollOffset}
+        />
+      ) : (
+        <Text dimColor>No details available.</Text>
+      )}
+    </Box>
+  );
+
+  return detailExpanded ? detailView : waterfallView;
 }

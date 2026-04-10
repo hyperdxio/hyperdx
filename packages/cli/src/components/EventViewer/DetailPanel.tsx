@@ -30,6 +30,7 @@ type DetailPanelProps = {
   expandedTraceId: string | null;
   expandedSpanId: string | null;
   traceSelectedIndex: number | null;
+  traceDetailExpanded: boolean;
   onTraceSelectedIndexChange: (index: number | null) => void;
   detailSearchQuery: string;
   focusDetailSearch: boolean;
@@ -65,6 +66,7 @@ export function DetailPanel({
   expandedTraceId,
   expandedSpanId,
   traceSelectedIndex,
+  traceDetailExpanded,
   onTraceSelectedIndexChange,
   detailSearchQuery,
   focusDetailSearch,
@@ -227,6 +229,7 @@ export function DetailPanel({
               searchQuery={detailSearchQuery}
               selectedIndex={traceSelectedIndex}
               onSelectedIndexChange={onTraceSelectedIndexChange}
+              detailExpanded={traceDetailExpanded}
               maxRows={waterfallMaxRows}
               highlightHint={
                 expandedSpanId

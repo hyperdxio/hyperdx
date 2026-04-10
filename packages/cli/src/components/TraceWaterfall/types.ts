@@ -49,6 +49,12 @@ export interface TraceWaterfallProps {
   onSelectedIndexChange?: (index: number | null) => void;
   /** Toggle line wrap in Event Details */
   wrapLines?: boolean;
+  /**
+   * When true, the waterfall hides and a full-page Event Details view
+   * is shown for the selected span/log. Toggled via l (expand) and
+   * h/Esc (collapse) keybindings.
+   */
+  detailExpanded?: boolean;
   /** Scroll offset for Event Details */
   detailScrollOffset?: number;
   /** Max visible rows for Event Details */
