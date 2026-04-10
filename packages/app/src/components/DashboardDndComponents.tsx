@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Box, Button } from '@mantine/core';
+import { Box, Button, Center } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 
 import { type DragData, type DragHandleProps } from './DashboardDndContext';
@@ -21,24 +21,13 @@ export function EmptyContainerPlaceholder({
   onAddTile?: () => void;
 }) {
   return (
-    <div
+    <Box
       data-testid={`container-placeholder-${containerId}`}
-      style={{
-        minHeight: isEmpty ? 80 : undefined,
-        position: 'relative',
-      }}
+      mih={isEmpty ? 80 : undefined}
+      pos="relative"
     >
       {isEmpty && (
-        <Box
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0 16px',
-          }}
-        >
+        <Center pos="absolute" top={0} bottom={0} left={0} right={0} px="md">
           <Button
             variant="secondary"
             fw={400}
@@ -48,10 +37,10 @@ export function EmptyContainerPlaceholder({
           >
             Add
           </Button>
-        </Box>
+        </Center>
       )}
       {children}
-    </div>
+    </Box>
   );
 }
 
@@ -89,8 +78,8 @@ export function SortableContainerWrapper({
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <Box ref={setNodeRef} style={style}>
       {children({ ...attributes, ...listeners })}
-    </div>
+    </Box>
   );
 }

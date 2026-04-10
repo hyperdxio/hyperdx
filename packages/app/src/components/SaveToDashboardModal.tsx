@@ -75,8 +75,8 @@ export default function SaveToDashboardModal({
   ];
 
   const createNewTile = (dashboard: Dashboard): Tile => {
-    const position = calculateNextTilePosition(dashboard.tiles);
     const size = getDefaultTileSize(chartConfig.displayType);
+    const position = calculateNextTilePosition(dashboard.tiles, size.w, size.h);
 
     return {
       id: makeId(),

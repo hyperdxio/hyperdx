@@ -5,8 +5,8 @@ import { Tile } from '@/dashboard';
 const GRID_COLS = 24;
 
 /**
- * Generate a unique ID for a tile
- * @returns A random string ID in base 36
+ * Generate a unique ID for tiles, containers, and tabs.
+ * Uses two random values concatenated for lower collision risk.
  */
 export const makeId = () =>
   Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -21,8 +21,8 @@ export const makeId = () =>
  */
 export function calculateNextTilePosition(
   tiles: Tile[],
-  newW: number = 12,
-  newH: number = 10,
+  newW: number,
+  newH: number,
 ): { x: number; y: number } {
   if (tiles.length === 0) {
     return { x: 0, y: 0 };

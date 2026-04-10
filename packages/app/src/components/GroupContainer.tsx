@@ -1,31 +1,25 @@
 import { useState } from 'react';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Flex, Menu, Tabs, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Flex,
+  Menu,
+  Tabs,
+  Text,
+  TextInput,
+  Tooltip,
+} from '@mantine/core';
 import {
   IconChevronRight,
   IconDotsVertical,
   IconGripVertical,
-  IconPencil,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
 
 import { type DragHandleProps } from '@/components/DashboardDndContext';
-
-function AlertDot({ size = 6 }: { size?: number }) {
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        backgroundColor: 'var(--color-bg-danger)',
-        flexShrink: 0,
-      }}
-    />
-  );
-}
+import GroupTabBar, { AlertDot } from '@/components/GroupTabBar';
 
 type GroupContainerProps = {
   container: DashboardContainer;
@@ -75,12 +69,9 @@ export default function GroupContainer({
   confirm,
   alertingTabIds,
 }: GroupContainerProps) {
-  const [editing, setEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState(container.title);
+  const [isRenamingGroup, setIsRenamingGroup] = useState(false);
+  const [groupRenameValue, setGroupRenameValue] = useState(container.title);
   const [hovered, setHovered] = useState(false);
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const [editedTabTitle, setEditedTabTitle] = useState('');
-  const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const tabs = container.tabs ?? [];
@@ -94,8 +85,8 @@ export default function GroupContainer({
   const firstTab = tabs[0];
   const headerTitle = firstTab?.title ?? container.title;
 
-  const handleSaveRename = () => {
-    const trimmed = editedTitle.trim();
+  const handleSaveGroupRename = () => {
+    const trimmed = groupRenameValue.trim();
     if (trimmed && trimmed !== headerTitle) {
       if (firstTab) {
         onRenameTab?.(firstTab.id, trimmed);
@@ -103,37 +94,17 @@ export default function GroupContainer({
         onRename?.(trimmed);
       }
     } else {
-      setEditedTitle(headerTitle);
+      setGroupRenameValue(headerTitle);
     }
-    setEditing(false);
+    setIsRenamingGroup(false);
   };
 
-  const handleSaveTabRename = (tabId: string) => {
-    const trimmed = editedTabTitle.trim();
-    const tab = tabs.find(t => t.id === tabId);
-    if (trimmed && tab && trimmed !== tab.title) {
-      onRenameTab?.(tabId, trimmed);
-    }
-    setEditingTabId(null);
-  };
-
-  const handleDeleteTab = async (tabId: string) => {
-    if (confirm) {
-      const tab = tabs.find(t => t.id === tabId);
-      const confirmed = await confirm(
-        <>
-          Delete tab{' '}
-          <Text component="span" fw={700}>
-            {tab?.title ?? 'this tab'}
-          </Text>
-          ? Tiles will be moved to the first remaining tab.
-        </>,
-        'Delete',
-        { variant: 'danger' },
-      );
-      if (!confirmed) return;
-    }
-    onDeleteTab?.(tabId);
+  // Visibility style for controls that appear on hover
+  const hoverControlStyle = {
+    opacity: showControls ? 1 : 0,
+    pointerEvents: (showControls
+      ? 'auto'
+      : 'none') as React.CSSProperties['pointerEvents'],
   };
 
   const chevron = collapsible ? (
@@ -161,17 +132,13 @@ export default function GroupContainer({
     />
   ) : null;
 
-  // Single "Add Tile" button (1 click) shown on hover, plus "Add Tab" in overflow
   const addTileButton = !isCollapsed && onAddTile && (
     <Tooltip label="Add Tile" position="top" withArrow>
       <ActionIcon
         variant="subtle"
         size="sm"
         tabIndex={showControls ? 0 : -1}
-        style={{
-          opacity: showControls ? 1 : 0,
-          pointerEvents: showControls ? 'auto' : 'none',
-        }}
+        style={hoverControlStyle}
         onClick={onAddTile}
         data-testid={`group-add-tile-${container.id}`}
       >
@@ -187,10 +154,7 @@ export default function GroupContainer({
           variant="subtle"
           size="sm"
           tabIndex={showControls ? 0 : -1}
-          style={{
-            opacity: showControls ? 1 : 0,
-            pointerEvents: showControls ? 'auto' : 'none',
-          }}
+          style={hoverControlStyle}
         >
           <IconDotsVertical size={14} />
         </ActionIcon>
@@ -249,13 +213,12 @@ export default function GroupContainer({
   );
 
   const dragHandle = dragHandleProps && (
-    <div
+    <Flex
       {...dragHandleProps}
+      align="center"
+      p={2}
       style={{
         cursor: 'grab',
-        display: 'flex',
-        alignItems: 'center',
-        padding: 2,
         flexShrink: 0,
         opacity: showControls ? 1 : 0,
         transition: 'opacity 150ms',
@@ -266,7 +229,7 @@ export default function GroupContainer({
         size={14}
         style={{ color: 'var(--color-text-muted)' }}
       />
-    </div>
+    </Flex>
   );
 
   // Collapsed header: pipe-separated tab names (max 4, then "\u2026")
@@ -279,21 +242,20 @@ export default function GroupContainer({
           .join(' | ') + (tabs.length > MAX_COLLAPSED_TABS ? ' | \u2026' : '')
       : null;
 
-  // Tab IDs with active alerts (for indicators)
   const hasContainerAlert = alertingTabIds != null && alertingTabIds.size > 0;
 
   // Fixed header height to prevent jump on collapse/expand
   const headerHeight = 36;
 
   return (
-    <div
+    <Box
       data-testid={`group-container-${container.id}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      mt={8}
       style={{
         border: bordered ? '1px solid var(--color-border)' : undefined,
         borderRadius: bordered ? 4 : undefined,
-        marginTop: 8,
       }}
     >
       {hasTabs && !isCollapsed ? (
@@ -306,170 +268,73 @@ export default function GroupContainer({
             align="center"
             px="sm"
             gap={6}
-            style={{
-              borderBottom: '1px solid var(--color-border)',
-              minHeight: headerHeight,
-            }}
+            mih={headerHeight}
+            style={{ borderBottom: '1px solid var(--color-border)' }}
           >
             {dragHandle}
             {chevron}
-            <Tabs.List style={{ flex: 1, border: 'none' }}>
-              {tabs.map(tab => (
-                <Tabs.Tab
-                  key={tab.id}
-                  value={tab.id}
-                  size="sm"
-                  onMouseEnter={() => setHoveredTabId(tab.id)}
-                  onMouseLeave={() => setHoveredTabId(null)}
-                  rightSection={
-                    onDeleteTab && tabs.length > 1 ? (
-                      <ActionIcon
-                        variant="subtle"
-                        size={16}
-                        style={{
-                          opacity: hoveredTabId === tab.id ? 1 : 0,
-                          transition: 'opacity 150ms',
-                        }}
-                        onClick={e => {
-                          e.stopPropagation();
-                          handleDeleteTab(tab.id);
-                        }}
-                        title="Delete tab"
-                        data-testid={`tab-delete-${tab.id}`}
-                      >
-                        <IconTrash size={12} />
-                      </ActionIcon>
-                    ) : undefined
-                  }
-                  onDoubleClick={
-                    onRenameTab
-                      ? () => {
-                          setEditingTabId(tab.id);
-                          setEditedTabTitle(tab.title);
-                        }
-                      : undefined
-                  }
-                >
-                  {editingTabId === tab.id ? (
-                    <form
-                      onSubmit={e => {
-                        e.preventDefault();
-                        handleSaveTabRename(tab.id);
-                      }}
-                      onClick={e => e.stopPropagation()}
-                      style={{ display: 'inline' }}
-                    >
-                      <input
-                        value={editedTabTitle}
-                        onChange={e => setEditedTabTitle(e.target.value)}
-                        onBlur={() => handleSaveTabRename(tab.id)}
-                        onKeyDown={e => {
-                          e.stopPropagation();
-                          if (e.key === 'Escape') setEditingTabId(null);
-                        }}
-                        autoFocus
-                        style={{
-                          border: 'none',
-                          outline: 'none',
-                          background: 'transparent',
-                          font: 'inherit',
-                          color: 'inherit',
-                          padding: 0,
-                          margin: 0,
-                          width: `${Math.max(editedTabTitle.length, 3)}ch`,
-                        }}
-                        data-testid={`tab-rename-input-${tab.id}`}
-                      />
-                    </form>
-                  ) : (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      {tab.title}
-                      {alertingTabIds?.has(tab.id) && <AlertDot size={5} />}
-                    </span>
-                  )}
-                </Tabs.Tab>
-              ))}
-            </Tabs.List>
-            {/* Rename active tab button */}
-            {onRenameTab && resolvedActiveTabId && (
-              <Tooltip label="Rename Tab" position="top" withArrow>
-                <ActionIcon
-                  variant="subtle"
-                  size="sm"
-                  tabIndex={showControls ? 0 : -1}
-                  style={{
-                    opacity: showControls ? 1 : 0,
-                    pointerEvents: showControls ? 'auto' : 'none',
-                  }}
-                  onClick={() => {
-                    const tab = tabs.find(t => t.id === resolvedActiveTabId);
-                    if (tab) {
-                      setEditingTabId(tab.id);
-                      setEditedTabTitle(tab.title);
-                    }
-                  }}
-                  data-testid={`tab-rename-btn-${container.id}`}
-                >
-                  <IconPencil size={14} />
-                </ActionIcon>
-              </Tooltip>
-            )}
+            <GroupTabBar
+              tabs={tabs}
+              activeTabId={resolvedActiveTabId}
+              showControls={showControls}
+              onTabChange={onTabChange}
+              onRenameTab={onRenameTab}
+              onDeleteTab={onDeleteTab}
+              containerId={container.id}
+              alertingTabIds={alertingTabIds}
+              confirm={confirm}
+              hoverControlStyle={hoverControlStyle}
+            />
             {addTileButton}
             {overflowMenu}
           </Flex>
         </Tabs>
       ) : (
-        /* Plain header (1 tab or collapsed) \u2014 shows title + chevron */
+        /* Plain header (1 tab or collapsed) — shows title + chevron */
         <Flex
           align="center"
           gap={6}
           px="sm"
+          mih={headerHeight}
           style={{
             borderBottom: isCollapsed
               ? undefined
               : '1px solid var(--color-border)',
-            minHeight: headerHeight,
           }}
         >
           {dragHandle}
           {chevron}
-          {editing ? (
+          {isRenamingGroup ? (
             <form
               onSubmit={e => {
                 e.preventDefault();
-                handleSaveRename();
+                handleSaveGroupRename();
               }}
               style={{ flex: 1 }}
             >
-              <input
-                value={editedTitle}
-                onChange={e => setEditedTitle(e.target.value)}
-                onBlur={handleSaveRename}
+              <TextInput
+                variant="unstyled"
+                value={groupRenameValue}
+                onChange={e => setGroupRenameValue(e.target.value)}
+                onBlur={handleSaveGroupRename}
                 onKeyDown={e => {
                   e.stopPropagation();
                   if (e.key === 'Escape') {
-                    setEditedTitle(headerTitle);
-                    setEditing(false);
+                    setGroupRenameValue(headerTitle);
+                    setIsRenamingGroup(false);
                   }
                 }}
                 autoFocus
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
-                  font: 'inherit',
-                  fontSize: 'var(--mantine-font-size-sm)',
-                  fontWeight: 500,
-                  color: 'inherit',
-                  padding: 0,
-                  margin: 0,
-                  width: '100%',
+                size="sm"
+                fw={500}
+                w="100%"
+                styles={{
+                  input: {
+                    padding: 0,
+                    margin: 0,
+                    minHeight: 'auto',
+                    height: 'auto',
+                  },
                 }}
                 data-testid={`group-rename-input-${container.id}`}
               />
@@ -478,11 +343,9 @@ export default function GroupContainer({
             <Flex
               align="center"
               gap="xs"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                cursor: collapsible ? 'pointer' : undefined,
-              }}
+              flex={1}
+              miw={0}
+              style={{ cursor: collapsible ? 'pointer' : undefined }}
               onClick={collapsible ? onToggle : undefined}
             >
               <Text
@@ -499,8 +362,8 @@ export default function GroupContainer({
                   !collapsedTabLabel && (onRenameTab || onRename)
                     ? e => {
                         e.stopPropagation();
-                        setEditedTitle(headerTitle);
-                        setEditing(true);
+                        setGroupRenameValue(headerTitle);
+                        setIsRenamingGroup(true);
                       }
                     : undefined
                 }
@@ -515,10 +378,8 @@ export default function GroupContainer({
         </Flex>
       )}
       {!isCollapsed && (
-        <div style={{ padding: 0 }}>
-          {children(hasTabs ? resolvedActiveTabId : undefined)}
-        </div>
+        <Box>{children(hasTabs ? resolvedActiveTabId : undefined)}</Box>
       )}
-    </div>
+    </Box>
   );
 }

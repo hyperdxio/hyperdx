@@ -711,7 +711,7 @@ const Tile = forwardRef(
             ...style,
             ...(isSelected
               ? {
-                  outline: '2px solid var(--mantine-color-blue-5)',
+                  outline: '2px solid var(--color-outline-focus)',
                   outlineOffset: -2,
                 }
               : {}),
@@ -867,6 +867,111 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
   document.body.appendChild(downloadAnchorNode); // required for firefox
   downloadAnchorNode.click();
   downloadAnchorNode.remove();
+}
+
+// Extracted component for rendering a single dashboard group/container.
+// Eliminates the double-nested inline function rendering pattern.
+function DashboardGroupItem({
+  container,
+  containerTiles,
+  isCollapsed,
+  alertingTabIds,
+  onToggleCollapse,
+  onToggleDefaultCollapsed,
+  onToggleCollapsible,
+  onToggleBordered,
+  onDeleteContainer,
+  onAddTile,
+  onAddTab,
+  onRenameTab,
+  onDeleteTab,
+  onRenameContainer,
+  onTabChange,
+  dragHandleProps,
+  confirm,
+  layoutChangeHandler,
+  tileToLayoutItem,
+  renderTileComponent,
+}: {
+  container: DashboardContainer;
+  containerTiles: Tile[];
+  isCollapsed: boolean;
+  alertingTabIds?: Set<string>;
+  onToggleCollapse: () => void;
+  onToggleDefaultCollapsed: () => void;
+  onToggleCollapsible: () => void;
+  onToggleBordered: () => void;
+  onDeleteContainer: () => void;
+  onAddTile: (containerId: string, tabId?: string) => void;
+  onAddTab: () => void;
+  onRenameTab: (tabId: string, newTitle: string) => void;
+  onDeleteTab: (tabId: string) => void;
+  onRenameContainer: (newTitle: string) => void;
+  onTabChange: (tabId: string) => void;
+  dragHandleProps: DragHandleProps;
+  confirm: (
+    message: React.ReactNode,
+    confirmLabel?: string,
+    options?: { variant?: 'primary' | 'danger' },
+  ) => Promise<boolean>;
+  layoutChangeHandler?: (newLayout: RGL.Layout[]) => void;
+  tileToLayoutItem: (tile: Tile) => RGL.Layout;
+  renderTileComponent: (tile: Tile) => React.ReactNode;
+}) {
+  const groupTabs = container.tabs ?? [];
+  const groupActiveTabId = container.activeTabId ?? groupTabs[0]?.id;
+  const hasTabs = groupTabs.length >= 2;
+
+  return (
+    <GroupContainer
+      container={container}
+      collapsed={isCollapsed}
+      defaultCollapsed={container.collapsed ?? false}
+      onToggle={onToggleCollapse}
+      onToggleDefaultCollapsed={onToggleDefaultCollapsed}
+      onToggleCollapsible={onToggleCollapsible}
+      onToggleBordered={onToggleBordered}
+      onDelete={onDeleteContainer}
+      onAddTile={() =>
+        onAddTile(container.id, hasTabs ? groupActiveTabId : undefined)
+      }
+      activeTabId={groupActiveTabId}
+      onTabChange={onTabChange}
+      onAddTab={onAddTab}
+      onRenameTab={onRenameTab}
+      onDeleteTab={onDeleteTab}
+      onRename={onRenameContainer}
+      dragHandleProps={dragHandleProps}
+      confirm={confirm}
+      alertingTabIds={alertingTabIds}
+    >
+      {(currentTabId: string | undefined) => {
+        const visibleTiles = currentTabId
+          ? containerTiles.filter(t => t.tabId === currentTabId)
+          : containerTiles;
+        const visibleIsEmpty = visibleTiles.length === 0;
+        return (
+          <EmptyContainerPlaceholder
+            containerId={currentTabId ?? container.id}
+            isEmpty={visibleIsEmpty}
+            onAddTile={() => onAddTile(container.id, currentTabId)}
+          >
+            {visibleTiles.length > 0 && (
+              <ReactGridLayout
+                layout={visibleTiles.map(tileToLayoutItem)}
+                containerPadding={[0, 0]}
+                onLayoutChange={layoutChangeHandler}
+                cols={24}
+                rowHeight={32}
+              >
+                {visibleTiles.map(renderTileComponent)}
+              </ReactGridLayout>
+            )}
+          </EmptyContainerPlaceholder>
+        );
+      }}
+    </GroupContainer>
+  );
 }
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
@@ -1555,6 +1660,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     return map;
   }, [containers, allTiles]);
 
+  // Pre-compute which tabs have alerting tiles per container
+  const alertingTabIdsByContainer = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const container of containers) {
+      const tiles = tilesByContainerId.get(container.id) ?? [];
+      const firstTabId = container.tabs?.[0]?.id;
+      const alerting = new Set<string>();
+      for (const tile of tiles) {
+        if (
+          isBuilderSavedChartConfig(tile.config) &&
+          tile.config.alert?.state === AlertState.ALERT
+        ) {
+          const attributedTabId = tile.tabId ?? firstTabId;
+          if (attributedTabId) alerting.add(attributedTabId);
+        }
+      }
+      if (alerting.size > 0) map.set(container.id, alerting);
+    }
+    return map;
+  }, [containers, tilesByContainerId]);
+
   const ungroupedTiles = useMemo(
     () =>
       hasContainers
@@ -1973,130 +2099,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               containers={containers}
               onReorderContainers={handleReorderContainers}
             >
-              {hasContainers ? (
-                <>
-                  {ungroupedTiles.length > 0 && (
-                    <ReactGridLayout
-                      layout={ungroupedTiles.map(tileToLayoutItem)}
-                      containerPadding={[0, 0]}
-                      onLayoutChange={onUngroupedLayoutChange}
-                      cols={24}
-                      rowHeight={32}
-                    >
-                      {ungroupedTiles.map(renderTileComponent)}
-                    </ReactGridLayout>
-                  )}
-                  {containers.map(container => {
-                    const containerTiles =
-                      tilesByContainerId.get(container.id) ?? [];
-                    const groupTabs = container.tabs ?? [];
-                    const groupActiveTabId =
-                      container.activeTabId ?? groupTabs[0]?.id;
-                    const hasTabs = groupTabs.length >= 2;
-                    const containerCollapsed = isContainerCollapsed(container);
-
-                    // Compute which tabs have tiles with active alerts.
-                    // Tiles without tabId (single-tab groups) are attributed
-                    // to the first tab so the indicator still shows.
-                    const firstTabId = groupTabs[0]?.id;
-                    const alertingTabIds = new Set<string>();
-                    for (const tile of containerTiles) {
-                      if (
-                        isBuilderSavedChartConfig(tile.config) &&
-                        tile.config.alert?.state === AlertState.ALERT
-                      ) {
-                        const attributedTabId = tile.tabId ?? firstTabId;
-                        if (attributedTabId)
-                          alertingTabIds.add(attributedTabId);
-                      }
-                    }
-
-                    return (
-                      <SortableContainerWrapper
-                        key={container.id}
-                        containerId={container.id}
-                        containerTitle={container.title}
-                      >
-                        {(dragHandleProps: DragHandleProps) => (
-                          <GroupContainer
-                            container={container}
-                            collapsed={containerCollapsed}
-                            defaultCollapsed={container.collapsed ?? false}
-                            onToggle={() => handleToggleCollapse(container.id)}
-                            onToggleDefaultCollapsed={() =>
-                              handleToggleDefaultCollapsed(container.id)
-                            }
-                            onToggleCollapsible={() =>
-                              handleToggleCollapsible(container.id)
-                            }
-                            onToggleBordered={() =>
-                              handleToggleBordered(container.id)
-                            }
-                            onDelete={() => handleDeleteContainer(container.id)}
-                            onAddTile={() =>
-                              onAddTile(
-                                container.id,
-                                hasTabs ? groupActiveTabId : undefined,
-                              )
-                            }
-                            activeTabId={groupActiveTabId}
-                            onTabChange={tabId =>
-                              handleTabChange(container.id, tabId)
-                            }
-                            onAddTab={() => handleAddTab(container.id)}
-                            onRenameTab={(tabId, newTitle) =>
-                              handleRenameTab(container.id, tabId, newTitle)
-                            }
-                            onDeleteTab={tabId =>
-                              handleDeleteTab(container.id, tabId)
-                            }
-                            onRename={newTitle =>
-                              handleRenameContainer(container.id, newTitle)
-                            }
-                            dragHandleProps={dragHandleProps}
-                            confirm={confirm}
-                            alertingTabIds={alertingTabIds}
-                          >
-                            {(currentTabId: string | undefined) => {
-                              const visibleTiles = currentTabId
-                                ? containerTiles.filter(
-                                    t => t.tabId === currentTabId,
-                                  )
-                                : containerTiles;
-                              const visibleIsEmpty = visibleTiles.length === 0;
-                              return (
-                                <EmptyContainerPlaceholder
-                                  containerId={currentTabId ?? container.id}
-                                  isEmpty={visibleIsEmpty}
-                                  onAddTile={() =>
-                                    onAddTile(container.id, currentTabId)
-                                  }
-                                >
-                                  {visibleTiles.length > 0 && (
-                                    <ReactGridLayout
-                                      layout={visibleTiles.map(
-                                        tileToLayoutItem,
-                                      )}
-                                      containerPadding={[0, 0]}
-                                      onLayoutChange={containerLayoutChangeHandlers.get(
-                                        container.id,
-                                      )}
-                                      cols={24}
-                                      rowHeight={32}
-                                    >
-                                      {visibleTiles.map(renderTileComponent)}
-                                    </ReactGridLayout>
-                                  )}
-                                </EmptyContainerPlaceholder>
-                              );
-                            }}
-                          </GroupContainer>
-                        )}
-                      </SortableContainerWrapper>
-                    );
-                  })}
-                </>
-              ) : (
+              {ungroupedTiles.length > 0 && (
                 <ReactGridLayout
                   layout={ungroupedTiles.map(tileToLayoutItem)}
                   containerPadding={[0, 0]}
@@ -2107,6 +2110,62 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   {ungroupedTiles.map(renderTileComponent)}
                 </ReactGridLayout>
               )}
+              {containers.map(container => (
+                <SortableContainerWrapper
+                  key={container.id}
+                  containerId={container.id}
+                  containerTitle={container.title}
+                >
+                  {(dragHandleProps: DragHandleProps) => (
+                    <DashboardGroupItem
+                      container={container}
+                      containerTiles={
+                        tilesByContainerId.get(container.id) ?? []
+                      }
+                      isCollapsed={isContainerCollapsed(container)}
+                      alertingTabIds={alertingTabIdsByContainer.get(
+                        container.id,
+                      )}
+                      onToggleCollapse={() =>
+                        handleToggleCollapse(container.id)
+                      }
+                      onToggleDefaultCollapsed={() =>
+                        handleToggleDefaultCollapsed(container.id)
+                      }
+                      onToggleCollapsible={() =>
+                        handleToggleCollapsible(container.id)
+                      }
+                      onToggleBordered={() =>
+                        handleToggleBordered(container.id)
+                      }
+                      onDeleteContainer={() =>
+                        handleDeleteContainer(container.id)
+                      }
+                      onAddTile={onAddTile}
+                      onAddTab={() => handleAddTab(container.id)}
+                      onRenameTab={(tabId, title) =>
+                        handleRenameTab(container.id, tabId, title)
+                      }
+                      onDeleteTab={tabId =>
+                        handleDeleteTab(container.id, tabId)
+                      }
+                      onRenameContainer={title =>
+                        handleRenameContainer(container.id, title)
+                      }
+                      onTabChange={tabId =>
+                        handleTabChange(container.id, tabId)
+                      }
+                      dragHandleProps={dragHandleProps}
+                      confirm={confirm}
+                      layoutChangeHandler={containerLayoutChangeHandlers.get(
+                        container.id,
+                      )}
+                      tileToLayoutItem={tileToLayoutItem}
+                      renderTileComponent={renderTileComponent}
+                    />
+                  )}
+                </SortableContainerWrapper>
+              ))}
             </DashboardDndProvider>
           </ErrorBoundary>
         ) : null}

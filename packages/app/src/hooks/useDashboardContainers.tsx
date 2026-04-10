@@ -12,6 +12,13 @@ type ConfirmFn = (
   options?: { variant?: 'primary' | 'danger' },
 ) => Promise<boolean>;
 
+// Tab/title semantics:
+// Every container has a `title` field used as the display name.
+// When a container has a single tab, `container.title` and `tabs[0].title`
+// are kept in sync — renaming either updates both. This means the header
+// always shows the tab's title. When there are 2+ tabs, `container.title`
+// tracks the first tab's title (for collapsed/serialized views) while each
+// tab has its own independent title shown in the tab bar.
 export default function useDashboardContainers({
   dashboard,
   setDashboard,
@@ -162,21 +169,9 @@ export default function useDashboardContainers({
           const c = draft.containers?.find(c => c.id === containerId);
           if (!c) return;
 
-          if (existingTabs.length === 1) {
-            // Group already has 1 tab (the default); just add a second tab
-            const newTabId = makeId();
-            if (!c.tabs) c.tabs = [];
-            c.tabs.push({ id: newTabId, title: 'New Tab' });
-            c.activeTabId = newTabId;
-            // Ensure existing tiles are assigned to the first tab
-            const firstTabId = existingTabs[0].id;
-            for (const tile of draft.tiles) {
-              if (tile.containerId === containerId && !tile.tabId) {
-                tile.tabId = firstTabId;
-              }
-            }
-          } else if (existingTabs.length === 0) {
-            // Legacy container with no tabs: create 2 tabs
+          if (existingTabs.length === 0) {
+            // Legacy container with no tabs: create 2 tabs and assign
+            // all existing tiles to the first tab
             const tab1Id = makeId();
             const tab2Id = makeId();
             c.tabs = [
@@ -190,7 +185,7 @@ export default function useDashboardContainers({
               }
             }
           } else {
-            // Already has 2+ tabs, add one more
+            // 1+ tabs: add a new tab and ensure tiles have a tabId
             if (!c.tabs) c.tabs = [];
             const newTabId = makeId();
             c.tabs.push({
@@ -198,6 +193,13 @@ export default function useDashboardContainers({
               title: `Tab ${existingTabs.length + 1}`,
             });
             c.activeTabId = newTabId;
+            // Assign any orphaned tiles (no tabId) to the first tab
+            const firstTabId = existingTabs[0].id;
+            for (const tile of draft.tiles) {
+              if (tile.containerId === containerId && !tile.tabId) {
+                tile.tabId = firstTabId;
+              }
+            }
           }
         }),
       );
