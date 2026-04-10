@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner';
 
 import type { SourceResponse, ProxyClickhouseClient } from '@/api/client';
 import ColumnValues from '@/components/ColumnValues';
+import ErrorDisplay from '@/components/ErrorDisplay';
 import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
 
@@ -20,6 +21,7 @@ type DetailPanelProps = {
   detailTab: DetailTab;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
+  expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
   traceSelectedIndex: number | null;
@@ -40,6 +42,10 @@ type DetailPanelProps = {
   };
   scrollOffset: number;
   expandedRow: number;
+  /** Callback when the trace tab's SQL changes */
+  onTraceChSqlChange?: (
+    chSql: { sql: string; params: Record<string, unknown> } | null,
+  ) => void;
 };
 
 export function DetailPanel({
@@ -49,6 +55,7 @@ export function DetailPanel({
   detailTab,
   expandedRowData,
   expandedRowLoading,
+  expandedRowError,
   expandedTraceId,
   expandedSpanId,
   traceSelectedIndex,
@@ -66,6 +73,7 @@ export function DetailPanel({
   expandedFormattedRow,
   scrollOffset,
   expandedRow,
+  onTraceChSqlChange,
 }: DetailPanelProps) {
   const hasTrace =
     source.kind === 'trace' || (source.kind === 'log' && source.traceSourceId);
@@ -136,14 +144,25 @@ export function DetailPanel({
               <Spinner type="dots" /> Loading…
             </Text>
           ) : expandedRowData ? (
-            <RowOverview
-              source={source}
-              rowData={expandedRowData}
-              searchQuery={detailSearchQuery}
-              wrapLines={wrapLines}
-              maxRows={fullDetailMaxRows}
-              scrollOffset={columnValuesScrollOffset}
-            />
+            <>
+              {expandedRowError && (
+                <Box marginBottom={1}>
+                  <ErrorDisplay
+                    error={expandedRowError}
+                    severity="warning"
+                    detail="Showing partial row data — full row fetch failed."
+                  />
+                </Box>
+              )}
+              <RowOverview
+                source={source}
+                rowData={expandedRowData}
+                searchQuery={detailSearchQuery}
+                wrapLines={wrapLines}
+                maxRows={fullDetailMaxRows}
+                scrollOffset={columnValuesScrollOffset}
+              />
+            </>
           ) : null}
         </Box>
       )}
@@ -201,6 +220,7 @@ export function DetailPanel({
               wrapLines={wrapLines}
               detailScrollOffset={traceDetailScrollOffset}
               detailMaxRows={detailMaxRows}
+              onChSqlChange={onTraceChSqlChange}
             />
           );
         })()}
@@ -217,13 +237,24 @@ export function DetailPanel({
               <Spinner type="dots" /> Loading all fields…
             </Text>
           ) : expandedRowData ? (
-            <ColumnValues
-              data={expandedRowData}
-              searchQuery={detailSearchQuery}
-              wrapLines={wrapLines}
-              maxRows={fullDetailMaxRows}
-              scrollOffset={columnValuesScrollOffset}
-            />
+            <>
+              {expandedRowError && (
+                <Box marginBottom={1}>
+                  <ErrorDisplay
+                    error={expandedRowError}
+                    severity="warning"
+                    detail="Showing partial row data — full row fetch failed."
+                  />
+                </Box>
+              )}
+              <ColumnValues
+                data={expandedRowData}
+                searchQuery={detailSearchQuery}
+                wrapLines={wrapLines}
+                maxRows={fullDetailMaxRows}
+                scrollOffset={columnValuesScrollOffset}
+              />
+            </>
           ) : null}
         </Box>
       )}

@@ -138,6 +138,12 @@ export class ApiClient {
     return res.json() as Promise<DashboardResponse[]>;
   }
 
+  async getAlerts(): Promise<AlertsResponse> {
+    const res = await this.get('/alerts');
+    if (!res.ok) throw new Error(`GET /alerts failed: ${res.status}`);
+    return res.json() as Promise<AlertsResponse>;
+  }
+
   // ---- ClickHouse client via proxy ---------------------------------
 
   createClickHouseClient(
@@ -378,4 +384,60 @@ interface DashboardResponse {
   savedQueryLanguage?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// ---- Alerts --------------------------------------------------------
+
+export interface AlertHistoryItem {
+  counts: number;
+  createdAt: string;
+  lastValues: Array<{ startTime: string; count: number }>;
+  state: 'ALERT' | 'OK' | 'INSUFFICIENT_DATA' | 'DISABLED';
+}
+
+export interface AlertItem {
+  _id: string;
+  interval: string;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
+  threshold: number;
+  thresholdType: 'above' | 'below';
+  channel: { type?: string | null };
+  state?: 'ALERT' | 'OK' | 'INSUFFICIENT_DATA' | 'DISABLED';
+  source?: 'saved_search' | 'tile';
+  dashboardId?: string;
+  savedSearchId?: string;
+  tileId?: string;
+  name?: string | null;
+  message?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: AlertHistoryItem[];
+  dashboard?: {
+    _id: string;
+    name: string;
+    updatedAt: string;
+    tags: string[];
+    tiles: Array<{ id: string; config: { name?: string } }>;
+  };
+  savedSearch?: {
+    _id: string;
+    createdAt: string;
+    name: string;
+    updatedAt: string;
+    tags: string[];
+  };
+  createdBy?: {
+    email: string;
+    name?: string;
+  };
+  silenced?: {
+    by: string;
+    at: string;
+    until: string;
+  };
+}
+
+interface AlertsResponse {
+  data: AlertItem[];
 }

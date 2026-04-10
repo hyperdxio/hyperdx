@@ -3,6 +3,8 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 
+import ErrorDisplay from '@/components/ErrorDisplay';
+
 interface LoginFormProps {
   apiUrl: string;
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -44,7 +46,7 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
       <Text dimColor>Server: {apiUrl}</Text>
       <Text> </Text>
 
-      {error && <Text color="red">{error}</Text>}
+      {error && <ErrorDisplay error={error} severity="error" compact />}
 
       {loading ? (
         <Text>

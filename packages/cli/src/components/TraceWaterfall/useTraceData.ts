@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import SqlString from 'sqlstring';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
@@ -19,9 +19,12 @@ export interface UseTraceDataReturn {
   traceSpans: TaggedSpanRow[];
   logEvents: TaggedSpanRow[];
   loading: boolean;
-  error: string | null;
+  error: Error | null;
   selectedRowData: Record<string, unknown> | null;
   selectedRowLoading: boolean;
+  selectedRowError: Error | null;
+  /** The SQL used to fetch trace spans (first query in the trace tab) */
+  lastTraceChSql: { sql: string; params: Record<string, unknown> } | null;
   fetchSelectedRow: (node: SpanNode | null) => void;
 }
 
@@ -36,12 +39,25 @@ export function useTraceData({
   const [traceSpans, setTraceSpans] = useState<TaggedSpanRow[]>([]);
   const [logEvents, setLogEvents] = useState<TaggedSpanRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [selectedRowData, setSelectedRowData] = useState<Record<
     string,
     unknown
   > | null>(null);
   const [selectedRowLoading, setSelectedRowLoading] = useState(false);
+  const [selectedRowError, setSelectedRowError] = useState<Error | null>(null);
+
+  // Compute the trace query eagerly so the SQL is available on the first
+  // render (before the async query dispatches). buildTraceSpansSql is
+  // synchronous.
+  const traceQuery = useMemo(
+    () => buildTraceSpansSql({ source, traceId }),
+    [source, traceId],
+  );
+  const lastTraceChSql = useMemo(
+    () => ({ sql: traceQuery.sql, params: {} as Record<string, unknown> }),
+    [traceQuery],
+  );
 
   const fetchIdRef = useRef(0);
 
@@ -54,8 +70,7 @@ export function useTraceData({
 
     (async () => {
       try {
-        // Fetch trace spans
-        const traceQuery = buildTraceSpansSql({ source, traceId });
+        // Fetch trace spans — reuse the memoized query
         const traceResultSet = await clickhouseClient.query({
           query: traceQuery.sql,
           format: 'JSON',
@@ -93,7 +108,7 @@ export function useTraceData({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err : new Error(String(err)));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -103,7 +118,7 @@ export function useTraceData({
     return () => {
       cancelled = true;
     };
-  }, [clickhouseClient, source, logSource, traceId]);
+  }, [clickhouseClient, source, logSource, traceId, traceQuery]);
 
   // ---- Fetch SELECT * for the selected span/log --------------------
   // Stable scalar deps (SpanId, Timestamp, kind) are used to avoid
@@ -166,6 +181,7 @@ export function useTraceData({
     const fetchId = ++fetchIdRef.current;
     // Don't clear existing data or set loading — keep old data visible
     // while fetching to avoid flashing
+    setSelectedRowError(null);
 
     (async () => {
       try {
@@ -180,10 +196,13 @@ export function useTraceData({
           setSelectedRowData(row ?? null);
           setSelectedRowLoading(false);
         }
-      } catch {
+      } catch (err) {
         if (fetchId === fetchIdRef.current) {
           setSelectedRowData(null);
           setSelectedRowLoading(false);
+          setSelectedRowError(
+            err instanceof Error ? err : new Error(String(err)),
+          );
         }
       }
     })();
@@ -196,6 +215,8 @@ export function useTraceData({
     error,
     selectedRowData,
     selectedRowLoading,
+    selectedRowError,
+    lastTraceChSql,
     fetchSelectedRow,
   };
 }

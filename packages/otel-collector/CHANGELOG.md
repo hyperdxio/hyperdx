@@ -1,5 +1,7 @@
 # @hyperdx/otel-collector
 
+## 2.23.2
+
 ## 2.23.1
 
 ## 2.23.0
