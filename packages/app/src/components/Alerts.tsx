@@ -1,5 +1,11 @@
 import { useMemo } from 'react';
-import { Control, Controller, useController } from 'react-hook-form';
+import {
+  Control,
+  Controller,
+  FieldValues,
+  Path,
+  useController,
+} from 'react-hook-form';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
@@ -17,11 +23,11 @@ type Webhook = {
   name: string;
 };
 
-const WebhookChannelForm = ({
+const WebhookChannelForm = <T extends FieldValues>({
   control,
   name,
 }: {
-  control?: Control<any>;
+  control?: Control<T>;
   name?: string;
 }) => {
   const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
@@ -52,7 +58,7 @@ const WebhookChannelForm = ({
 
   const { field } = useController({
     control,
-    name: name!,
+    name: name! as Path<T>,
   });
 
   const handleWebhookCreated = async (webhookId?: string) => {
@@ -69,7 +75,7 @@ const WebhookChannelForm = ({
       <Group gap="md" justify="space-between" align="flex-start">
         <Controller
           control={control}
-          name={name!}
+          name={name! as Path<T>}
           render={({ field }) => (
             <Select
               data-testid="select-webhook"
@@ -113,12 +119,12 @@ const WebhookChannelForm = ({
   );
 };
 
-export const AlertChannelForm = ({
+export const AlertChannelForm = <T extends FieldValues>({
   control,
   type,
   namePrefix = '',
 }: {
-  control: Control<any>; // TODO: properly type this
+  control: Control<T>;
   type: AlertChannelType;
   namePrefix?: string;
 }) => {

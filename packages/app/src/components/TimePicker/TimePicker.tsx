@@ -50,7 +50,22 @@ const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 const toDate = (v: Date | string | null): Date | null =>
   v == null ? null : v instanceof Date ? v : new Date(v);
 
-const DateInputCmp = ({ onChange: onChangeProp, ...props }: DateInputProps) => (
+/**
+ * Wrapper around Mantine v9 DateInput that bridges the Date ↔ string gap.
+ * Mantine v9 DateInput expects/emits string values, but the TimePickerForm
+ * stores Date objects (used by date-fns). This wrapper converts in both
+ * directions: value (Date → string) and onChange (string → Date).
+ */
+type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
+  value?: Date | null;
+  onChange?: (value: Date | null) => void;
+};
+
+const DateInputCmp = ({
+  value,
+  onChange: onChangeProp,
+  ...props
+}: DateInputCmpProps) => (
   <DateInput
     size="xs"
     highlightToday
@@ -64,7 +79,8 @@ const DateInputCmp = ({ onChange: onChangeProp, ...props }: DateInputProps) => (
       }
     }}
     {...props}
-    onChange={v => onChangeProp?.(toDate(v) as any)}
+    value={value instanceof Date ? value.toISOString() : (value ?? null)}
+    onChange={v => onChangeProp?.(toDate(v))}
   />
 );
 
