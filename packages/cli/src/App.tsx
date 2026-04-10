@@ -165,7 +165,11 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
             </Text>
             <Text dimColor>Search and tail events from the terminal</Text>
           </Box>
-          <SourcePicker sources={eventSources} onSelect={handleSourceSelect} />
+          <SourcePicker
+            sources={eventSources}
+            onSelect={handleSourceSelect}
+            onOpenAlerts={handleOpenAlerts}
+          />
         </Box>
       );
 
