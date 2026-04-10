@@ -38,6 +38,8 @@ export interface UseEventDataReturn {
   expandedSpanId: string | null;
   /** The last rendered ChSql (parameterized SQL + params) for the table query */
   lastChSql: { sql: string; params: Record<string, unknown> } | null;
+  /** The last rendered ChSql for the expanded row (SELECT *) query */
+  lastExpandedChSql: { sql: string; params: Record<string, unknown> } | null;
   fetchNextPage: () => Promise<void>;
 }
 
@@ -80,6 +82,10 @@ export function useEventData({
   const lastTableMetaRef = useRef<Array<{ name: string; type: string }> | null>(
     null,
   );
+  const lastExpandedChSqlRef = useRef<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
 
   // ---- fetchEvents -------------------------------------------------
 
@@ -226,6 +232,7 @@ export function useEventData({
       setExpandedRowError(null);
       setExpandedTraceId(null);
       setExpandedSpanId(null);
+      lastExpandedChSqlRef.current = null;
       return;
     }
     const row = events[expandedRow];
@@ -249,6 +256,7 @@ export function useEventData({
           tableMeta,
           metadata,
         });
+        lastExpandedChSqlRef.current = chSql;
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -310,6 +318,7 @@ export function useEventData({
     expandedTraceId,
     expandedSpanId,
     lastChSql: lastTableChSqlRef.current,
+    lastExpandedChSql: lastExpandedChSqlRef.current,
     fetchNextPage,
   };
 }

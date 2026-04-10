@@ -23,6 +23,8 @@ export interface UseTraceDataReturn {
   selectedRowData: Record<string, unknown> | null;
   selectedRowLoading: boolean;
   selectedRowError: Error | null;
+  /** The SQL used to fetch trace spans (first query in the trace tab) */
+  lastTraceChSql: { sql: string; params: Record<string, unknown> } | null;
   fetchSelectedRow: (node: SpanNode | null) => void;
 }
 
@@ -44,6 +46,10 @@ export function useTraceData({
   > | null>(null);
   const [selectedRowLoading, setSelectedRowLoading] = useState(false);
   const [selectedRowError, setSelectedRowError] = useState<Error | null>(null);
+  const lastTraceChSqlRef = useRef<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
 
   const fetchIdRef = useRef(0);
 
@@ -58,6 +64,7 @@ export function useTraceData({
       try {
         // Fetch trace spans
         const traceQuery = buildTraceSpansSql({ source, traceId });
+        lastTraceChSqlRef.current = { sql: traceQuery.sql, params: {} };
         const traceResultSet = await clickhouseClient.query({
           query: traceQuery.sql,
           format: 'JSON',
@@ -203,6 +210,7 @@ export function useTraceData({
     selectedRowData,
     selectedRowLoading,
     selectedRowError,
+    lastTraceChSql: lastTraceChSqlRef.current,
     fetchSelectedRow,
   };
 }

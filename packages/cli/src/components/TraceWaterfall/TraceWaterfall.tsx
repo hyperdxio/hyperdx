@@ -45,6 +45,7 @@ export default function TraceWaterfall({
   detailMaxRows,
   width: propWidth,
   maxRows: propMaxRows,
+  onChSqlChange,
 }: TraceWaterfallProps) {
   const { stdout } = useStdout();
   const termWidth = propWidth ?? stdout?.columns ?? 80;
@@ -60,8 +61,14 @@ export default function TraceWaterfall({
     selectedRowData,
     selectedRowLoading,
     selectedRowError,
+    lastTraceChSql,
     fetchSelectedRow,
   } = useTraceData({ clickhouseClient, source, logSource, traceId });
+
+  // Notify parent when the trace SQL changes
+  useEffect(() => {
+    onChSqlChange?.(lastTraceChSql);
+  }, [lastTraceChSql, onChSqlChange]);
 
   // ---- Derived computations ----------------------------------------
 

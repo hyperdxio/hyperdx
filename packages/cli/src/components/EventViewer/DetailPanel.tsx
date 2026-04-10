@@ -42,6 +42,10 @@ type DetailPanelProps = {
   };
   scrollOffset: number;
   expandedRow: number;
+  /** Callback when the trace tab's SQL changes */
+  onTraceChSqlChange?: (
+    chSql: { sql: string; params: Record<string, unknown> } | null,
+  ) => void;
 };
 
 export function DetailPanel({
@@ -69,6 +73,7 @@ export function DetailPanel({
   expandedFormattedRow,
   scrollOffset,
   expandedRow,
+  onTraceChSqlChange,
 }: DetailPanelProps) {
   const hasTrace =
     source.kind === 'trace' || (source.kind === 'log' && source.traceSourceId);
@@ -215,6 +220,7 @@ export function DetailPanel({
               wrapLines={wrapLines}
               detailScrollOffset={traceDetailScrollOffset}
               detailMaxRows={detailMaxRows}
+              onChSqlChange={onTraceChSqlChange}
             />
           );
         })()}

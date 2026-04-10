@@ -48,6 +48,10 @@ export default function EventViewer({
   const [showHelp, setShowHelp] = useState(false);
   const [showSql, setShowSql] = useState(false);
   const [sqlScrollOffset, setSqlScrollOffset] = useState(0);
+  const [traceChSql, setTraceChSql] = useState<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
   const [wrapLines, setWrapLines] = useState(false);
   const [customSelectMap, setCustomSelectMap] = useState<
     Record<string, string>
@@ -85,6 +89,7 @@ export default function EventViewer({
     expandedTraceId,
     expandedSpanId,
     lastChSql,
+    lastExpandedChSql,
     fetchNextPage,
   } = useEventData({
     clickhouseClient,
@@ -142,6 +147,14 @@ export default function EventViewer({
 
   const activeIdx = findActiveIndex();
   const visibleRowCount = Math.min(events.length - scrollOffset, maxRows);
+
+  // Determine which SQL to show based on current context
+  const activeChSql = useMemo(() => {
+    if (expandedRow === null) return lastChSql;
+    if (detailTab === 'trace') return traceChSql;
+    // overview / columns tabs use the expanded row SELECT * query
+    return lastExpandedChSql;
+  }, [expandedRow, detailTab, lastChSql, lastExpandedChSql, traceChSql]);
 
   // ---- Keybindings -------------------------------------------------
 
@@ -213,7 +226,7 @@ export default function EventViewer({
     return (
       <Box flexDirection="column" paddingX={1} height={termHeight}>
         <SqlPreviewScreen
-          chSql={lastChSql}
+          chSql={activeChSql}
           scrollOffset={sqlScrollOffset}
           maxRows={sqlMaxRows}
         />
@@ -275,6 +288,7 @@ export default function EventViewer({
           )}
           scrollOffset={scrollOffset}
           expandedRow={expandedRow}
+          onTraceChSqlChange={setTraceChSql}
         />
       ) : (
         <TableView
