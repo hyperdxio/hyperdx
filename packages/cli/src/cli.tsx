@@ -6,7 +6,7 @@
 import { _origError } from '@/utils/silenceLogs';
 
 import React, { useState, useCallback } from 'react';
-import { render, Box, Text, useApp } from 'ink';
+import { render, Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { Command } from 'commander';
@@ -19,19 +19,59 @@ import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
 
+// Add new login methods here to extend the login flow.
+const LOGIN_METHODS = [
+  { id: 'password', label: 'Email / Password' },
+  // { id: 'oauth', label: 'OAuth / SSO' },
+] as const;
+
+type LoginMethod = (typeof LOGIN_METHODS)[number]['id'];
+
 function LoginPrompt({
-  apiUrl,
-  client,
+  initialAppUrl,
+  initialClient,
 }: {
-  apiUrl: string;
-  client: ApiClient;
+  initialAppUrl?: string;
+  initialClient?: ApiClient;
 }) {
   const { exit } = useApp();
-  const [field, setField] = useState<'email' | 'password'>('email');
+  const [field, setField] = useState<
+    'method' | 'appUrl' | 'email' | 'password'
+  >('method');
+  const [methodIdx, setMethodIdx] = useState(0);
+  const [_method, setMethod] = useState<LoginMethod | null>(null);
+  const [appUrl, setAppUrl] = useState(initialAppUrl ?? '');
+  const [client, setClient] = useState<ApiClient | null>(initialClient ?? null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Arrow-key navigation for login method picker
+  useInput(
+    (input, key) => {
+      if (field !== 'method') return;
+      if (key.upArrow || input === 'k') {
+        setMethodIdx(i => Math.max(0, i - 1));
+      }
+      if (key.downArrow || input === 'j') {
+        setMethodIdx(i => Math.min(LOGIN_METHODS.length - 1, i + 1));
+      }
+      if (key.return) {
+        const selected = LOGIN_METHODS[methodIdx];
+        setMethod(selected.id);
+        setField(initialAppUrl ? 'email' : 'appUrl');
+      }
+    },
+    { isActive: field === 'method' },
+  );
+
+  const handleSubmitAppUrl = useCallback(() => {
+    if (!appUrl.trim()) return;
+    const c = new ApiClient({ appUrl: appUrl.trim() });
+    setClient(c);
+    setField('email');
+  }, [appUrl]);
 
   const handleSubmitEmail = useCallback(() => {
     if (!email.trim()) return;
@@ -39,7 +79,7 @@ function LoginPrompt({
   }, [email]);
 
   const handleSubmitPassword = useCallback(async () => {
-    if (!password) return;
+    if (!password || !client) return;
     setLoading(true);
     setError(null);
     const ok = await client.login(email, password);
@@ -49,7 +89,7 @@ function LoginPrompt({
       // Small delay to let Ink unmount before writing to stdout
       setTimeout(() => {
         process.stdout.write(
-          chalk.green(`\nLogged in as ${email} (${apiUrl})\n`),
+          chalk.green(`\nLogged in as ${email} (${appUrl})\n`),
         );
       }, 50);
     } else {
@@ -58,14 +98,16 @@ function LoginPrompt({
       setEmail('');
       setPassword('');
     }
-  }, [email, password, client, apiUrl, exit]);
+  }, [email, password, client, appUrl, exit]);
 
   return (
     <Box flexDirection="column" paddingX={1}>
       <Text bold color="cyan">
         HyperDX — Login
       </Text>
-      <Text dimColor>Server: {apiUrl}</Text>
+      {field !== 'method' && field !== 'appUrl' && (
+        <Text dimColor>Server: {appUrl}</Text>
+      )}
       <Text> </Text>
 
       {error && <Text color="red">{error}</Text>}
@@ -74,6 +116,29 @@ function LoginPrompt({
         <Text>
           <Spinner type="dots" /> Logging in…
         </Text>
+      ) : field === 'method' ? (
+        <Box flexDirection="column">
+          <Text>Login method:</Text>
+          <Text> </Text>
+          {LOGIN_METHODS.map((m, i) => (
+            <Text key={m.id} color={i === methodIdx ? 'green' : undefined}>
+              {i === methodIdx ? '▸ ' : '  '}
+              {m.label}
+            </Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>↑/↓ to navigate, Enter to select</Text>
+        </Box>
+      ) : field === 'appUrl' ? (
+        <Box>
+          <Text>HyperDX URL: </Text>
+          <TextInput
+            value={appUrl}
+            onChange={setAppUrl}
+            onSubmit={handleSubmitAppUrl}
+            placeholder="http://localhost:8080"
+          />
+        </Box>
       ) : field === 'email' ? (
         <Box>
           <Text>Email: </Text>
@@ -99,16 +164,16 @@ function LoginPrompt({
 }
 
 /**
- * Resolve the server URL: use the provided flag, or fall back to the
- * saved session's apiUrl. Exits with an error if neither is available.
+ * Resolve the app URL: use the provided flag, or fall back to the
+ * saved session's appUrl. Exits with an error if neither is available.
  */
 function resolveServer(flagValue: string | undefined): string {
   if (flagValue) return flagValue;
   const session = loadSession();
-  if (session?.apiUrl) return session.apiUrl;
+  if (session?.appUrl) return session.appUrl;
   _origError(
     chalk.red(
-      `No server specified. Use ${chalk.bold('-s <url>')} or run ${chalk.bold('hdx auth login -s <url>')} first.\n`,
+      `No server specified. Use ${chalk.bold('-a <url>')} or run ${chalk.bold('hdx auth login -a <url>')} first.\n`,
     ),
   );
   process.exit(1);
@@ -127,15 +192,15 @@ program
 program
   .command('tui')
   .description('Interactive TUI for event search and tail')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
   .option('-f, --follow', 'Start in follow/live tail mode')
   .action(opts => {
-    const server = resolveServer(opts.server);
+    const server = resolveServer(opts.appUrl);
     render(
       <App
-        apiUrl={server}
+        appUrl={server}
         query={opts.query}
         sourceName={opts.source}
         follow={opts.follow}
@@ -154,27 +219,37 @@ const auth = program
 auth
   .command('login')
   .description('Sign in to your HyperDX account')
-  .requiredOption('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('-e, --email <email>', 'Email address')
   .option('-p, --password <password>', 'Password')
   .action(async opts => {
-    const client = new ApiClient({ apiUrl: opts.server });
-
     if (opts.email && opts.password) {
-      // Non-interactive login (for scripting/CI)
+      // Non-interactive login (for scripting/CI) — app URL is required
+      if (!opts.appUrl) {
+        _origError(
+          chalk.red(
+            `App URL is required for non-interactive login. Use ${chalk.bold('-a <url>')}.\n`,
+          ),
+        );
+        process.exit(1);
+      }
+      const client = new ApiClient({ appUrl: opts.appUrl });
       const ok = await client.login(opts.email, opts.password);
       if (ok) {
         process.stdout.write(
-          chalk.green(`Logged in as ${opts.email} (${opts.server})\n`),
+          chalk.green(`Logged in as ${opts.email} (${opts.appUrl})\n`),
         );
       } else {
         _origError(chalk.red('Login failed. Check your email and password.\n'));
         process.exit(1);
       }
     } else {
-      // Interactive login via Ink
+      // Interactive login via Ink — prompt for app URL if not provided
+      const client = opts.appUrl
+        ? new ApiClient({ appUrl: opts.appUrl })
+        : undefined;
       const { waitUntilExit } = render(
-        <LoginPrompt apiUrl={opts.server} client={client} />,
+        <LoginPrompt initialAppUrl={opts.appUrl} initialClient={client} />,
       );
       await waitUntilExit();
     }
@@ -196,19 +271,19 @@ auth
     if (!session) {
       process.stdout.write(
         chalk.yellow(
-          `Not logged in. Run ${chalk.bold('hdx auth login -s <url>')} to sign in.\n`,
+          `Not logged in. Run ${chalk.bold('hdx auth login -a <url>')} to sign in.\n`,
         ),
       );
       process.exit(1);
     }
 
-    const client = new ApiClient({ apiUrl: session.apiUrl });
+    const client = new ApiClient({ appUrl: session.appUrl });
     const ok = await client.checkSession();
 
     if (!ok) {
       process.stdout.write(
         chalk.yellow(
-          `Session expired. Run ${chalk.bold('hdx auth login -s <url>')} to sign in again.\n`,
+          `Session expired. Run ${chalk.bold('hdx auth login -a <url>')} to sign in again.\n`,
         ),
       );
       process.exit(1);
@@ -217,10 +292,10 @@ auth
     try {
       const me = await client.getMe();
       process.stdout.write(
-        `${chalk.green('Logged in')} as ${chalk.bold(me.email)} (${session.apiUrl})\n`,
+        `${chalk.green('Logged in')} as ${chalk.bold(me.email)} (${session.appUrl})\n`,
       );
     } catch {
-      process.stdout.write(chalk.green('Logged in') + ` (${session.apiUrl})\n`);
+      process.stdout.write(chalk.green('Logged in') + ` (${session.appUrl})\n`);
     }
   });
 
@@ -231,7 +306,7 @@ program
   .description(
     'List data sources (log, trace, session, metric) with ClickHouse table schemas',
   )
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
   .addHelpText(
     'after',
@@ -288,8 +363,8 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
+    const server = resolveServer(opts.appUrl);
+    const client = new ApiClient({ appUrl: server });
 
     if (!(await client.checkSession())) {
       _origError(
@@ -398,7 +473,7 @@ Examples:
 program
   .command('dashboards')
   .description('List dashboards with tile summaries')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
   .addHelpText(
     'after',
@@ -432,8 +507,8 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
+    const server = resolveServer(opts.appUrl);
+    const client = new ApiClient({ appUrl: server });
 
     if (!(await client.checkSession())) {
       _origError(
@@ -526,7 +601,7 @@ program
   .description('Run a raw SQL query against a ClickHouse source')
   .requiredOption('--source <nameOrId>', 'Source name or ID')
   .requiredOption('--sql <query>', 'SQL query to execute')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--format <format>', 'ClickHouse output format', 'JSON')
   .addHelpText(
     'after',
@@ -553,8 +628,8 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
+    const server = resolveServer(opts.appUrl);
+    const client = new ApiClient({ appUrl: server });
 
     if (!(await client.checkSession())) {
       _origError(
@@ -611,9 +686,10 @@ program
     'Upload JavaScript source maps to HyperDX for stack trace de-obfuscation',
   )
   .option('-k, --serviceKey <string>', 'The HyperDX service account API key')
+  .option('--appUrl [string]', 'HyperDX app URL (for self-hosted deployments)')
   .option(
     '-u, --apiUrl [string]',
-    'An optional api url for self-hosted deployments',
+    '(deprecated, use --appUrl) An optional api url for self-hosted deployments',
   )
   .option(
     '-rid, --releaseId [string]',

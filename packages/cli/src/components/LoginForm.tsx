@@ -6,13 +6,13 @@ import Spinner from 'ink-spinner';
 import ErrorDisplay from '@/components/ErrorDisplay';
 
 interface LoginFormProps {
-  apiUrl: string;
+  appUrl: string;
   onLogin: (email: string, password: string) => Promise<boolean>;
 }
 
 type Field = 'email' | 'password';
 
-export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
+export default function LoginForm({ appUrl, onLogin }: LoginFormProps) {
   const [field, setField] = useState<Field>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +43,7 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
       <Text bold color="cyan">
         HyperDX TUI — Login
       </Text>
-      <Text dimColor>Server: {apiUrl}</Text>
+      <Text dimColor>Server: {appUrl}</Text>
       <Text> </Text>
 
       {error && <ErrorDisplay error={error} severity="error" compact />}

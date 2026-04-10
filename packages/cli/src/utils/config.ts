@@ -6,8 +6,10 @@ const CONFIG_DIR = path.join(os.homedir(), '.config', 'hyperdx', 'cli');
 const SESSION_FILE = path.join(CONFIG_DIR, 'session.json');
 
 export interface SessionConfig {
-  apiUrl: string;
+  appUrl: string;
   cookies: string[];
+  /** @deprecated Kept for backward compat with old session files. */
+  apiUrl?: string;
 }
 
 function ensureConfigDir() {
@@ -27,7 +29,19 @@ export function loadSession(): SessionConfig | null {
   try {
     if (!fs.existsSync(SESSION_FILE)) return null;
     const data = fs.readFileSync(SESSION_FILE, 'utf-8');
-    return JSON.parse(data) as SessionConfig;
+    const parsed = JSON.parse(data) as SessionConfig;
+
+    // Migrate legacy sessions that only have apiUrl (no appUrl).
+    // Old sessions stored the API URL directly; new sessions store
+    // the app URL and derive the API URL by appending '/api'.
+    if (!parsed.appUrl && parsed.apiUrl) {
+      parsed.appUrl = parsed.apiUrl.replace(/\/api\/?$/, '');
+      delete parsed.apiUrl;
+      // Re-save in the new format
+      saveSession(parsed);
+    }
+
+    return parsed;
   } catch {
     return null;
   }

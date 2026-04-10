@@ -18,7 +18,7 @@ import EventViewer from '@/components/EventViewer';
 type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
 
 interface AppProps {
-  apiUrl: string;
+  appUrl: string;
   /** Pre-set search query from CLI flags */
   query?: string;
   /** Pre-set source name from CLI flags */
@@ -27,9 +27,9 @@ interface AppProps {
   follow?: boolean;
 }
 
-export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
+export default function App({ appUrl, query, sourceName, follow }: AppProps) {
   const [screen, setScreen] = useState<Screen>('loading');
-  const [client] = useState(() => new ApiClient({ apiUrl }));
+  const [client] = useState(() => new ApiClient({ appUrl }));
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchResponse[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceResponse | null>(
@@ -148,13 +148,13 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
       return (
         <Box paddingX={1}>
           <Text>
-            <Spinner type="dots" /> Connecting to {apiUrl}…
+            <Spinner type="dots" /> Connecting to {appUrl}…
           </Text>
         </Box>
       );
 
     case 'login':
-      return <LoginForm apiUrl={apiUrl} onLogin={handleLogin} />;
+      return <LoginForm appUrl={appUrl} onLogin={handleLogin} />;
 
     case 'pick-source':
       return (

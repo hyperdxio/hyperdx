@@ -31,20 +31,26 @@ import { loadSession, saveSession, clearSession } from '@/utils/config';
 // ------------------------------------------------------------------
 
 interface ApiClientOptions {
-  apiUrl: string;
+  appUrl: string;
 }
 
 export class ApiClient {
+  private appUrl: string;
   private apiUrl: string;
   private cookies: string[] = [];
 
   constructor(opts: ApiClientOptions) {
-    this.apiUrl = opts.apiUrl.replace(/\/+$/, '');
+    this.appUrl = opts.appUrl.replace(/\/+$/, '');
+    this.apiUrl = `${this.appUrl}/api`;
 
     const saved = loadSession();
-    if (saved && saved.apiUrl === this.apiUrl) {
+    if (saved && saved.appUrl === this.appUrl) {
       this.cookies = saved.cookies;
     }
+  }
+
+  getAppUrl(): string {
+    return this.appUrl;
   }
 
   getApiUrl(): string {
@@ -67,7 +73,7 @@ export class ApiClient {
 
     if (res.status === 302 || res.status === 200) {
       this.extractCookies(res);
-      saveSession({ apiUrl: this.apiUrl, cookies: this.cookies });
+      saveSession({ appUrl: this.appUrl, cookies: this.cookies });
       return true;
     }
 
