@@ -6,7 +6,7 @@
 import { _origError } from '@/utils/silenceLogs';
 
 import React, { useState, useCallback } from 'react';
-import { render, Box, Text, useApp } from 'ink';
+import { render, Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { Command } from 'commander';
@@ -19,19 +19,75 @@ import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
 
+/** Returns true if the string is a valid HTTP(S) URL. */
+function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// Add new login methods here to extend the login flow.
+const LOGIN_METHODS = [
+  { id: 'password', label: 'Email / Password' },
+  // { id: 'oauth', label: 'OAuth / SSO' },
+] as const;
+
+type LoginMethod = (typeof LOGIN_METHODS)[number]['id'];
+
 function LoginPrompt({
-  apiUrl,
-  client,
+  initialAppUrl,
+  initialClient,
 }: {
-  apiUrl: string;
-  client: ApiClient;
+  initialAppUrl?: string;
+  initialClient?: ApiClient;
 }) {
   const { exit } = useApp();
-  const [field, setField] = useState<'email' | 'password'>('email');
+  const [field, setField] = useState<
+    'method' | 'appUrl' | 'email' | 'password'
+  >('method');
+  const [methodIdx, setMethodIdx] = useState(0);
+  const [_method, setMethod] = useState<LoginMethod | null>(null);
+  const [appUrl, setAppUrl] = useState(initialAppUrl ?? '');
+  const [client, setClient] = useState<ApiClient | null>(initialClient ?? null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Arrow-key navigation for login method picker
+  useInput(
+    (input, key) => {
+      if (field !== 'method') return;
+      if (key.upArrow || input === 'k') {
+        setMethodIdx(i => Math.max(0, i - 1));
+      }
+      if (key.downArrow || input === 'j') {
+        setMethodIdx(i => Math.min(LOGIN_METHODS.length - 1, i + 1));
+      }
+      if (key.return) {
+        const selected = LOGIN_METHODS[methodIdx];
+        setMethod(selected.id);
+        setField(initialAppUrl ? 'email' : 'appUrl');
+      }
+    },
+    { isActive: field === 'method' },
+  );
+
+  const handleSubmitAppUrl = useCallback(() => {
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    if (!isValidUrl(trimmed)) {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    const c = new ApiClient({ appUrl: trimmed });
+    setClient(c);
+    setField('email');
+  }, [appUrl]);
 
   const handleSubmitEmail = useCallback(() => {
     if (!email.trim()) return;
@@ -39,7 +95,7 @@ function LoginPrompt({
   }, [email]);
 
   const handleSubmitPassword = useCallback(async () => {
-    if (!password) return;
+    if (!password || !client) return;
     setLoading(true);
     setError(null);
     const ok = await client.login(email, password);
@@ -49,23 +105,25 @@ function LoginPrompt({
       // Small delay to let Ink unmount before writing to stdout
       setTimeout(() => {
         process.stdout.write(
-          chalk.green(`\nLogged in as ${email} (${apiUrl})\n`),
+          chalk.green(`\nLogged in as ${email} (${appUrl})\n`),
         );
       }, 50);
     } else {
-      setError('Login failed. Check your email and password.');
+      setError('Login failed. Check your credentials and server URL.');
       setField('email');
       setEmail('');
       setPassword('');
     }
-  }, [email, password, client, apiUrl, exit]);
+  }, [email, password, client, appUrl, exit]);
 
   return (
     <Box flexDirection="column" paddingX={1}>
       <Text bold color="cyan">
         HyperDX — Login
       </Text>
-      <Text dimColor>Server: {apiUrl}</Text>
+      {field !== 'method' && field !== 'appUrl' && (
+        <Text dimColor>Server: {appUrl}</Text>
+      )}
       <Text> </Text>
 
       {error && <Text color="red">{error}</Text>}
@@ -74,6 +132,29 @@ function LoginPrompt({
         <Text>
           <Spinner type="dots" /> Logging in…
         </Text>
+      ) : field === 'method' ? (
+        <Box flexDirection="column">
+          <Text>Login method:</Text>
+          <Text> </Text>
+          {LOGIN_METHODS.map((m, i) => (
+            <Text key={m.id} color={i === methodIdx ? 'green' : undefined}>
+              {i === methodIdx ? '▸ ' : '  '}
+              {m.label}
+            </Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>↑/↓ to navigate, Enter to select</Text>
+        </Box>
+      ) : field === 'appUrl' ? (
+        <Box>
+          <Text>HyperDX URL: </Text>
+          <TextInput
+            value={appUrl}
+            onChange={setAppUrl}
+            onSubmit={handleSubmitAppUrl}
+            placeholder="http://localhost:8080"
+          />
+        </Box>
       ) : field === 'email' ? (
         <Box>
           <Text>Email: </Text>
@@ -99,19 +180,196 @@ function LoginPrompt({
 }
 
 /**
- * Resolve the server URL: use the provided flag, or fall back to the
- * saved session's apiUrl. Exits with an error if neither is available.
+ * Resolve the app URL: use the provided flag, or fall back to the
+ * saved session's appUrl. Returns undefined if neither is available.
  */
-function resolveServer(flagValue: string | undefined): string {
+function resolveServer(flagValue: string | undefined): string | undefined {
   if (flagValue) return flagValue;
   const session = loadSession();
-  if (session?.apiUrl) return session.apiUrl;
-  _origError(
-    chalk.red(
-      `No server specified. Use ${chalk.bold('-s <url>')} or run ${chalk.bold('hdx auth login -s <url>')} first.\n`,
-    ),
+  if (session?.appUrl) return session.appUrl;
+  return undefined;
+}
+
+/**
+ * Ensure the user has a valid session. If the session is expired or
+ * missing, launches the interactive LoginPrompt (with the last URL
+ * autofilled) and waits for re-authentication.
+ *
+ * Returns an authenticated ApiClient ready for use.
+ */
+async function ensureSession(
+  flagAppUrl: string | undefined,
+): Promise<ApiClient> {
+  const appUrl = resolveServer(flagAppUrl);
+
+  // If we have an appUrl, try the existing session first
+  if (appUrl) {
+    const client = new ApiClient({ appUrl });
+    if (await client.checkSession()) {
+      return client;
+    }
+    // Session expired — show message and re-login
+    process.stderr.write(
+      chalk.yellow('Session expired — launching login…\n\n'),
+    );
+  }
+
+  // Launch interactive login prompt (appUrl autofilled if available)
+  return new Promise<ApiClient>(resolve => {
+    const { waitUntilExit } = render(
+      <ReLoginPrompt defaultAppUrl={appUrl} onAuthenticated={resolve} />,
+    );
+    // If the user ctrl-c's out of the prompt, exit the process
+    waitUntilExit().then(() => {
+      // If the promise was already resolved, this is a no-op.
+      // Otherwise the user quit without logging in.
+    });
+  });
+}
+
+/**
+ * Lightweight wrapper around LoginPrompt for non-TUI commands.
+ * Resolves the onAuthenticated callback with a ready ApiClient.
+ */
+function ReLoginPrompt({
+  defaultAppUrl,
+  onAuthenticated,
+}: {
+  defaultAppUrl?: string;
+  onAuthenticated: (client: ApiClient) => void;
+}) {
+  const { exit } = useApp();
+  const [field, setField] = useState<
+    'method' | 'appUrl' | 'email' | 'password'
+  >('method');
+  const [methodIdx, setMethodIdx] = useState(0);
+  const [_method, setMethod] = useState<LoginMethod | null>(null);
+  const [appUrl, setAppUrl] = useState(defaultAppUrl ?? '');
+  const [client, setClient] = useState<ApiClient | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useInput(
+    (input, key) => {
+      if (field !== 'method') return;
+      if (key.upArrow || input === 'k') {
+        setMethodIdx(i => Math.max(0, i - 1));
+      }
+      if (key.downArrow || input === 'j') {
+        setMethodIdx(i => Math.min(LOGIN_METHODS.length - 1, i + 1));
+      }
+      if (key.return) {
+        const selected = LOGIN_METHODS[methodIdx];
+        setMethod(selected.id);
+        setField('appUrl');
+      }
+    },
+    { isActive: field === 'method' },
   );
-  process.exit(1);
+
+  const handleSubmitAppUrl = useCallback(() => {
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    if (!isValidUrl(trimmed)) {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    const c = new ApiClient({ appUrl: trimmed });
+    setClient(c);
+    setField('email');
+  }, [appUrl]);
+
+  const handleSubmitEmail = useCallback(() => {
+    if (!email.trim()) return;
+    setField('password');
+  }, [email]);
+
+  const handleSubmitPassword = useCallback(async () => {
+    if (!password || !client) return;
+    setLoading(true);
+    setError(null);
+    const ok = await client.login(email, password);
+    setLoading(false);
+    if (ok) {
+      exit();
+      setTimeout(() => {
+        process.stdout.write(
+          chalk.green(`Logged in as ${email} (${appUrl})\n\n`),
+        );
+        onAuthenticated(client);
+      }, 50);
+    } else {
+      setError('Login failed. Check your credentials and server URL.');
+      setField('email');
+      setEmail('');
+      setPassword('');
+    }
+  }, [email, password, client, appUrl, exit, onAuthenticated]);
+
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <Text bold color="cyan">
+        HyperDX — Login
+      </Text>
+      {field !== 'method' && field !== 'appUrl' && (
+        <Text dimColor>Server: {appUrl}</Text>
+      )}
+      <Text> </Text>
+
+      {error && <Text color="red">{error}</Text>}
+
+      {loading ? (
+        <Text>
+          <Spinner type="dots" /> Logging in…
+        </Text>
+      ) : field === 'method' ? (
+        <Box flexDirection="column">
+          <Text>Login method:</Text>
+          <Text> </Text>
+          {LOGIN_METHODS.map((m, i) => (
+            <Text key={m.id} color={i === methodIdx ? 'green' : undefined}>
+              {i === methodIdx ? '▸ ' : '  '}
+              {m.label}
+            </Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>↑/↓ to navigate, Enter to select</Text>
+        </Box>
+      ) : field === 'appUrl' ? (
+        <Box>
+          <Text>HyperDX URL: </Text>
+          <TextInput
+            value={appUrl}
+            onChange={setAppUrl}
+            onSubmit={handleSubmitAppUrl}
+            placeholder="http://localhost:8080"
+          />
+        </Box>
+      ) : field === 'email' ? (
+        <Box>
+          <Text>Email: </Text>
+          <TextInput
+            value={email}
+            onChange={setEmail}
+            onSubmit={handleSubmitEmail}
+          />
+        </Box>
+      ) : (
+        <Box>
+          <Text>Password: </Text>
+          <TextInput
+            value={password}
+            onChange={setPassword}
+            onSubmit={handleSubmitPassword}
+            mask="*"
+          />
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 const program = new Command();
@@ -127,20 +385,33 @@ program
 program
   .command('tui')
   .description('Interactive TUI for event search and tail')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
   .option('-f, --follow', 'Start in follow/live tail mode')
-  .action(opts => {
-    const server = resolveServer(opts.server);
-    render(
-      <App
-        apiUrl={server}
-        query={opts.query}
-        sourceName={opts.source}
-        follow={opts.follow}
-      />,
-    );
+  .action(async opts => {
+    const server = resolveServer(opts.appUrl);
+    if (!server) {
+      // No saved session and no -a flag — need to login first
+      const client = await ensureSession(undefined);
+      render(
+        <App
+          appUrl={client.getAppUrl()}
+          query={opts.query}
+          sourceName={opts.source}
+          follow={opts.follow}
+        />,
+      );
+    } else {
+      render(
+        <App
+          appUrl={server}
+          query={opts.query}
+          sourceName={opts.source}
+          follow={opts.follow}
+        />,
+      );
+    }
   });
 
 // ---- Auth (login / logout / status) --------------------------------
@@ -154,27 +425,37 @@ const auth = program
 auth
   .command('login')
   .description('Sign in to your HyperDX account')
-  .requiredOption('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('-e, --email <email>', 'Email address')
   .option('-p, --password <password>', 'Password')
   .action(async opts => {
-    const client = new ApiClient({ apiUrl: opts.server });
-
     if (opts.email && opts.password) {
-      // Non-interactive login (for scripting/CI)
+      // Non-interactive login (for scripting/CI) — app URL is required
+      if (!opts.appUrl) {
+        _origError(
+          chalk.red(
+            `App URL is required for non-interactive login. Use ${chalk.bold('-a <url>')}.\n`,
+          ),
+        );
+        process.exit(1);
+      }
+      const client = new ApiClient({ appUrl: opts.appUrl });
       const ok = await client.login(opts.email, opts.password);
       if (ok) {
         process.stdout.write(
-          chalk.green(`Logged in as ${opts.email} (${opts.server})\n`),
+          chalk.green(`Logged in as ${opts.email} (${opts.appUrl})\n`),
         );
       } else {
         _origError(chalk.red('Login failed. Check your email and password.\n'));
         process.exit(1);
       }
     } else {
-      // Interactive login via Ink
+      // Interactive login via Ink — prompt for app URL if not provided
+      const client = opts.appUrl
+        ? new ApiClient({ appUrl: opts.appUrl })
+        : undefined;
       const { waitUntilExit } = render(
-        <LoginPrompt apiUrl={opts.server} client={client} />,
+        <LoginPrompt initialAppUrl={opts.appUrl} initialClient={client} />,
       );
       await waitUntilExit();
     }
@@ -196,19 +477,19 @@ auth
     if (!session) {
       process.stdout.write(
         chalk.yellow(
-          `Not logged in. Run ${chalk.bold('hdx auth login -s <url>')} to sign in.\n`,
+          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
         ),
       );
       process.exit(1);
     }
 
-    const client = new ApiClient({ apiUrl: session.apiUrl });
+    const client = new ApiClient({ appUrl: session.appUrl });
     const ok = await client.checkSession();
 
     if (!ok) {
       process.stdout.write(
         chalk.yellow(
-          `Session expired. Run ${chalk.bold('hdx auth login -s <url>')} to sign in again.\n`,
+          `Session expired. Run ${chalk.bold('hdx auth login')} to sign in again.\n`,
         ),
       );
       process.exit(1);
@@ -217,10 +498,10 @@ auth
     try {
       const me = await client.getMe();
       process.stdout.write(
-        `${chalk.green('Logged in')} as ${chalk.bold(me.email)} (${session.apiUrl})\n`,
+        `${chalk.green('Logged in')} as ${chalk.bold(me.email)} (${session.appUrl})\n`,
       );
     } catch {
-      process.stdout.write(chalk.green('Logged in') + ` (${session.apiUrl})\n`);
+      process.stdout.write(chalk.green('Logged in') + ` (${session.appUrl})\n`);
     }
   });
 
@@ -231,7 +512,7 @@ program
   .description(
     'List data sources (log, trace, session, metric) with ClickHouse table schemas',
   )
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
   .addHelpText(
     'after',
@@ -288,17 +569,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const sources = await client.getSources();
     if (sources.length === 0) {
@@ -398,7 +669,7 @@ Examples:
 program
   .command('dashboards')
   .description('List dashboards with tile summaries')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
   .addHelpText(
     'after',
@@ -432,17 +703,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const dashboards = await client.getDashboards();
     if (dashboards.length === 0) {
@@ -526,7 +787,7 @@ program
   .description('Run a raw SQL query against a ClickHouse source')
   .requiredOption('--source <nameOrId>', 'Source name or ID')
   .requiredOption('--sql <query>', 'SQL query to execute')
-  .option('-s, --server <url>', 'HyperDX API server URL')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--format <format>', 'ClickHouse output format', 'JSON')
   .addHelpText(
     'after',
@@ -553,17 +814,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.server);
-    const client = new ApiClient({ apiUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const sources = await client.getSources();
     const source = sources.find(
