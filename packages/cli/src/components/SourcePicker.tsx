@@ -6,12 +6,21 @@ import type { SourceResponse } from '@/api/client';
 interface SourcePickerProps {
   sources: SourceResponse[];
   onSelect: (source: SourceResponse) => void;
+  onOpenAlerts?: () => void;
 }
 
-export default function SourcePicker({ sources, onSelect }: SourcePickerProps) {
+export default function SourcePicker({
+  sources,
+  onSelect,
+  onOpenAlerts,
+}: SourcePickerProps) {
   const [selected, setSelected] = useState(0);
 
   useInput((input, key) => {
+    if (input === 'A' && onOpenAlerts) {
+      onOpenAlerts();
+      return;
+    }
     if (key.upArrow || input === 'k') {
       setSelected(s => Math.max(0, s - 1));
     }
@@ -39,7 +48,7 @@ export default function SourcePicker({ sources, onSelect }: SourcePickerProps) {
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>j/k to navigate, Enter/l to select</Text>
+      <Text dimColor>j/k to navigate, Enter/l to select, A=alerts</Text>
     </Box>
   );
 }

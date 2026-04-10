@@ -48,4 +48,8 @@ export interface TraceWaterfallProps {
   width?: number;
   /** Max visible rows before truncation */
   maxRows?: number;
+  /** Callback when the trace query SQL changes (for SQL preview) */
+  onChSqlChange?: (
+    chSql: { sql: string; params: Record<string, unknown> } | null,
+  ) => void;
 }

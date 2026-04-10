@@ -9,11 +9,13 @@ import {
   type SourceResponse,
   type SavedSearchResponse,
 } from '@/api/client';
+import AlertsPage from '@/components/AlertsPage';
+import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginForm from '@/components/LoginForm';
 import SourcePicker from '@/components/SourcePicker';
 import EventViewer from '@/components/EventViewer';
 
-type Screen = 'loading' | 'login' | 'pick-source' | 'events';
+type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
 
 interface AppProps {
   apiUrl: string;
@@ -121,10 +123,22 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     [eventSources],
   );
 
+  // Track the screen before alerts so we can return to it
+  const [preAlertsScreen, setPreAlertsScreen] = useState<Screen>('events');
+
+  const handleOpenAlerts = useCallback(() => {
+    setPreAlertsScreen(screen);
+    setScreen('alerts');
+  }, [screen]);
+
+  const handleCloseAlerts = useCallback(() => {
+    setScreen(preAlertsScreen);
+  }, [preAlertsScreen]);
+
   if (error) {
     return (
       <Box paddingX={1}>
-        <Text color="red">Error: {error}</Text>
+        <ErrorDisplay error={error} severity="error" />
       </Box>
     );
   }
@@ -151,9 +165,16 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
             </Text>
             <Text dimColor>Search and tail events from the terminal</Text>
           </Box>
-          <SourcePicker sources={eventSources} onSelect={handleSourceSelect} />
+          <SourcePicker
+            sources={eventSources}
+            onSelect={handleSourceSelect}
+            onOpenAlerts={handleOpenAlerts}
+          />
         </Box>
       );
+
+    case 'alerts':
+      return <AlertsPage client={client} onClose={handleCloseAlerts} />;
 
     case 'events':
       if (!selectedSource) return null;
@@ -165,6 +186,7 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
           sources={eventSources}
           savedSearches={savedSearches}
           onSavedSearchSelect={handleSavedSearchSelect}
+          onOpenAlerts={handleOpenAlerts}
           initialQuery={activeQuery}
           follow={follow}
         />

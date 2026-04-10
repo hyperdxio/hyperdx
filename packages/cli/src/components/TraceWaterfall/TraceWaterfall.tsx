@@ -17,6 +17,7 @@ import { Box, Text, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 
 import ColumnValues from '@/components/ColumnValues';
+import ErrorDisplay from '@/components/ErrorDisplay';
 
 import type { TraceWaterfallProps } from './types';
 import {
@@ -44,6 +45,7 @@ export default function TraceWaterfall({
   detailMaxRows,
   width: propWidth,
   maxRows: propMaxRows,
+  onChSqlChange,
 }: TraceWaterfallProps) {
   const { stdout } = useStdout();
   const termWidth = propWidth ?? stdout?.columns ?? 80;
@@ -58,8 +60,15 @@ export default function TraceWaterfall({
     error,
     selectedRowData,
     selectedRowLoading,
+    selectedRowError,
+    lastTraceChSql,
     fetchSelectedRow,
   } = useTraceData({ clickhouseClient, source, logSource, traceId });
+
+  // Notify parent when the trace SQL changes
+  useEffect(() => {
+    onChSqlChange?.(lastTraceChSql);
+  }, [lastTraceChSql, onChSqlChange]);
 
   // ---- Derived computations ----------------------------------------
 
@@ -154,7 +163,7 @@ export default function TraceWaterfall({
   }
 
   if (error) {
-    return <Text color="red">Error loading trace: {error}</Text>;
+    return <ErrorDisplay error={error} severity="error" />;
   }
 
   if (flatNodes.length === 0) {
@@ -307,6 +316,12 @@ export default function TraceWaterfall({
           <Text>
             <Spinner type="dots" /> Loading event details…
           </Text>
+        ) : selectedRowError ? (
+          <ErrorDisplay
+            error={selectedRowError}
+            severity="warning"
+            detail="Could not load event details for this span."
+          />
         ) : selectedRowData ? (
           <ColumnValues
             data={selectedRowData}
