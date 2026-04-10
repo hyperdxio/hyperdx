@@ -212,107 +212,113 @@ export default function EventViewer({
 
   // ---- Render ------------------------------------------------------
 
-  if (showHelp) {
-    return (
-      <Box flexDirection="column" paddingX={1} height={termHeight}>
-        <HelpScreen />
-      </Box>
-    );
-  }
+  // Reserve lines for header, padding, footer hint in SQL preview
+  const sqlMaxRows = Math.max(5, termHeight - 6);
 
-  if (showSql) {
-    // Reserve lines for header, padding, footer hint
-    const sqlMaxRows = Math.max(5, termHeight - 6);
-    return (
-      <Box flexDirection="column" paddingX={1} height={termHeight}>
-        <SqlPreviewScreen
-          chSql={activeChSql}
-          scrollOffset={sqlScrollOffset}
-          maxRows={sqlMaxRows}
-        />
-      </Box>
-    );
-  }
+  // Overlays (help, SQL preview) hide the main content via display="none"
+  // instead of unmounting it, so hooks keep running and cached data
+  // (e.g. trace tab results) is preserved.
+  const overlay = showHelp ? 'help' : showSql ? 'sql' : null;
 
   return (
-    <Box flexDirection="column" paddingX={1} height={termHeight}>
-      <Header
-        sourceName={source.name}
-        dbName={source.from.databaseName}
-        tableName={source.from.tableName}
-        isFollowing={isFollowing}
-        loading={loading}
-        timeRange={timeRange}
-      />
-      {expandedRow === null && (
-        <>
-          <TabBar items={switchItems} activeIdx={activeIdx} />
-          <SearchBar
-            focused={focusSearch}
-            query={searchQuery}
-            onChange={setSearchQuery}
-            onSubmit={() => {
-              setSubmittedQuery(searchQuery);
-              setScrollOffset(0);
-              setFocusSearch(false);
-            }}
+    <Box flexDirection="column" height={termHeight}>
+      {overlay === 'help' && (
+        <Box flexDirection="column" paddingX={1} height={termHeight}>
+          <HelpScreen />
+        </Box>
+      )}
+      {overlay === 'sql' && (
+        <Box flexDirection="column" paddingX={1} height={termHeight}>
+          <SqlPreviewScreen
+            chSql={activeChSql}
+            scrollOffset={sqlScrollOffset}
+            maxRows={sqlMaxRows}
           />
-        </>
+        </Box>
       )}
-
-      {expandedRow !== null ? (
-        <DetailPanel
-          source={source}
-          sources={sources}
-          clickhouseClient={clickhouseClient}
-          detailTab={detailTab}
-          expandedRowData={expandedRowData}
-          expandedRowLoading={expandedRowLoading}
-          expandedRowError={expandedRowError}
-          expandedTraceId={expandedTraceId}
-          expandedSpanId={expandedSpanId}
-          traceSelectedIndex={traceSelectedIndex}
-          onTraceSelectedIndexChange={setTraceSelectedIndex}
-          detailSearchQuery={detailSearchQuery}
-          focusDetailSearch={focusDetailSearch}
-          onDetailSearchQueryChange={setDetailSearchQuery}
-          onDetailSearchSubmit={() => setFocusDetailSearch(false)}
-          wrapLines={wrapLines}
-          termHeight={termHeight}
-          fullDetailMaxRows={fullDetailMaxRows}
-          detailMaxRows={detailMaxRows}
-          columnValuesScrollOffset={columnValuesScrollOffset}
-          traceDetailScrollOffset={traceDetailScrollOffset}
-          expandedFormattedRow={visibleRows.find(
-            (_, i) => scrollOffset + i === expandedRow,
-          )}
-          scrollOffset={scrollOffset}
-          expandedRow={expandedRow}
-          onTraceChSqlChange={setTraceChSql}
-        />
-      ) : (
-        <TableView
-          columns={columns}
-          visibleRows={visibleRows}
-          selectedRow={selectedRow}
-          focusSearch={focusSearch}
-          wrapLines={wrapLines}
-          maxRows={maxRows}
-          error={error}
-          searchQuery={submittedQuery}
+      <Box
+        flexDirection="column"
+        paddingX={1}
+        display={overlay ? 'none' : 'flex'}
+      >
+        <Header
+          sourceName={source.name}
+          dbName={source.from.databaseName}
+          tableName={source.from.tableName}
+          isFollowing={isFollowing}
           loading={loading}
+          timeRange={timeRange}
         />
-      )}
+        {expandedRow === null && (
+          <>
+            <TabBar items={switchItems} activeIdx={activeIdx} />
+            <SearchBar
+              focused={focusSearch}
+              query={searchQuery}
+              onChange={setSearchQuery}
+              onSubmit={() => {
+                setSubmittedQuery(searchQuery);
+                setScrollOffset(0);
+                setFocusSearch(false);
+              }}
+            />
+          </>
+        )}
 
-      <Footer
-        rowCount={events.length}
-        cursorPos={scrollOffset + selectedRow + 1}
-        wrapLines={wrapLines}
-        isFollowing={isFollowing}
-        loadingMore={loadingMore}
-        paginationError={paginationError}
-        scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
-      />
+        {expandedRow !== null ? (
+          <DetailPanel
+            source={source}
+            sources={sources}
+            clickhouseClient={clickhouseClient}
+            detailTab={detailTab}
+            expandedRowData={expandedRowData}
+            expandedRowLoading={expandedRowLoading}
+            expandedRowError={expandedRowError}
+            expandedTraceId={expandedTraceId}
+            expandedSpanId={expandedSpanId}
+            traceSelectedIndex={traceSelectedIndex}
+            onTraceSelectedIndexChange={setTraceSelectedIndex}
+            detailSearchQuery={detailSearchQuery}
+            focusDetailSearch={focusDetailSearch}
+            onDetailSearchQueryChange={setDetailSearchQuery}
+            onDetailSearchSubmit={() => setFocusDetailSearch(false)}
+            wrapLines={wrapLines}
+            termHeight={termHeight}
+            fullDetailMaxRows={fullDetailMaxRows}
+            detailMaxRows={detailMaxRows}
+            columnValuesScrollOffset={columnValuesScrollOffset}
+            traceDetailScrollOffset={traceDetailScrollOffset}
+            expandedFormattedRow={visibleRows.find(
+              (_, i) => scrollOffset + i === expandedRow,
+            )}
+            scrollOffset={scrollOffset}
+            expandedRow={expandedRow}
+            onTraceChSqlChange={setTraceChSql}
+          />
+        ) : (
+          <TableView
+            columns={columns}
+            visibleRows={visibleRows}
+            selectedRow={selectedRow}
+            focusSearch={focusSearch}
+            wrapLines={wrapLines}
+            maxRows={maxRows}
+            error={error}
+            searchQuery={submittedQuery}
+            loading={loading}
+          />
+        )}
+
+        <Footer
+          rowCount={events.length}
+          cursorPos={scrollOffset + selectedRow + 1}
+          wrapLines={wrapLines}
+          isFollowing={isFollowing}
+          loadingMore={loadingMore}
+          paginationError={paginationError}
+          scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
+        />
+      </Box>
     </Box>
   );
 }

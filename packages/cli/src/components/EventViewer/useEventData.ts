@@ -75,6 +75,12 @@ export function useEventData({
 
   const lastTimestampRef = useRef<string | null>(null);
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
+  const [lastChSql, setLastChSql] = useState<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
+  // Keep a ref copy for use inside the expanded row effect (which needs
+  // the table ChSql to build the WHERE clause for the SELECT * query).
   const lastTableChSqlRef = useRef<{
     sql: string;
     params: Record<string, unknown>;
@@ -82,7 +88,7 @@ export function useEventData({
   const lastTableMetaRef = useRef<Array<{ name: string; type: string }> | null>(
     null,
   );
-  const lastExpandedChSqlRef = useRef<{
+  const [lastExpandedChSql, setLastExpandedChSql] = useState<{
     sql: string;
     params: Record<string, unknown>;
   } | null>(null);
@@ -112,6 +118,7 @@ export function useEventData({
           metadata,
         );
         lastTableChSqlRef.current = chSql;
+        setLastChSql(chSql);
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -232,7 +239,7 @@ export function useEventData({
       setExpandedRowError(null);
       setExpandedTraceId(null);
       setExpandedSpanId(null);
-      lastExpandedChSqlRef.current = null;
+      setLastExpandedChSql(null);
       return;
     }
     const row = events[expandedRow];
@@ -256,7 +263,7 @@ export function useEventData({
           tableMeta,
           metadata,
         });
-        lastExpandedChSqlRef.current = chSql;
+        setLastExpandedChSql(chSql);
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -317,8 +324,8 @@ export function useEventData({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
-    lastChSql: lastTableChSqlRef.current,
-    lastExpandedChSql: lastExpandedChSqlRef.current,
+    lastChSql,
+    lastExpandedChSql,
     fetchNextPage,
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import SqlString from 'sqlstring';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
@@ -46,10 +46,18 @@ export function useTraceData({
   > | null>(null);
   const [selectedRowLoading, setSelectedRowLoading] = useState(false);
   const [selectedRowError, setSelectedRowError] = useState<Error | null>(null);
-  const lastTraceChSqlRef = useRef<{
-    sql: string;
-    params: Record<string, unknown>;
-  } | null>(null);
+
+  // Compute the trace query eagerly so the SQL is available on the first
+  // render (before the async query dispatches). buildTraceSpansSql is
+  // synchronous.
+  const traceQuery = useMemo(
+    () => buildTraceSpansSql({ source, traceId }),
+    [source, traceId],
+  );
+  const lastTraceChSql = useMemo(
+    () => ({ sql: traceQuery.sql, params: {} as Record<string, unknown> }),
+    [traceQuery],
+  );
 
   const fetchIdRef = useRef(0);
 
@@ -62,9 +70,7 @@ export function useTraceData({
 
     (async () => {
       try {
-        // Fetch trace spans
-        const traceQuery = buildTraceSpansSql({ source, traceId });
-        lastTraceChSqlRef.current = { sql: traceQuery.sql, params: {} };
+        // Fetch trace spans — reuse the memoized query
         const traceResultSet = await clickhouseClient.query({
           query: traceQuery.sql,
           format: 'JSON',
@@ -112,7 +118,7 @@ export function useTraceData({
     return () => {
       cancelled = true;
     };
-  }, [clickhouseClient, source, logSource, traceId]);
+  }, [clickhouseClient, source, logSource, traceId, traceQuery]);
 
   // ---- Fetch SELECT * for the selected span/log --------------------
   // Stable scalar deps (SpanId, Timestamp, kind) are used to avoid
@@ -210,7 +216,7 @@ export function useTraceData({
     selectedRowData,
     selectedRowLoading,
     selectedRowError,
-    lastTraceChSql: lastTraceChSqlRef.current,
+    lastTraceChSql,
     fetchSelectedRow,
   };
 }
