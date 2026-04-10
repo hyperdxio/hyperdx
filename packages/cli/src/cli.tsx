@@ -19,6 +19,16 @@ import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
 
+/** Returns true if the string is a valid HTTP(S) URL. */
+function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // Add new login methods here to extend the login flow.
 const LOGIN_METHODS = [
   { id: 'password', label: 'Email / Password' },
@@ -67,8 +77,14 @@ function LoginPrompt({
   );
 
   const handleSubmitAppUrl = useCallback(() => {
-    if (!appUrl.trim()) return;
-    const c = new ApiClient({ appUrl: appUrl.trim() });
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    if (!isValidUrl(trimmed)) {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    const c = new ApiClient({ appUrl: trimmed });
     setClient(c);
     setField('email');
   }, [appUrl]);
@@ -93,7 +109,7 @@ function LoginPrompt({
         );
       }, 50);
     } else {
-      setError('Login failed. Check your email and password.');
+      setError('Login failed. Check your credentials and server URL.');
       setField('email');
       setEmail('');
       setPassword('');
@@ -254,8 +270,14 @@ function ReLoginPrompt({
   );
 
   const handleSubmitAppUrl = useCallback(() => {
-    if (!appUrl.trim()) return;
-    const c = new ApiClient({ appUrl: appUrl.trim() });
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    if (!isValidUrl(trimmed)) {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    const c = new ApiClient({ appUrl: trimmed });
     setClient(c);
     setField('email');
   }, [appUrl]);
@@ -280,7 +302,7 @@ function ReLoginPrompt({
         onAuthenticated(client);
       }, 50);
     } else {
-      setError('Login failed. Check your email and password.');
+      setError('Login failed. Check your credentials and server URL.');
       setField('email');
       setEmail('');
       setPassword('');

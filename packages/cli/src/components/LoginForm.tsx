@@ -33,7 +33,20 @@ export default function LoginForm({
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmitAppUrl = () => {
-    if (!appUrl.trim()) return;
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+        return;
+      }
+    } catch {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    setAppUrl(trimmed);
     setField('email');
   };
 
@@ -49,7 +62,7 @@ export default function LoginForm({
     const ok = await onLogin(appUrl.trim(), email, password);
     setLoading(false);
     if (!ok) {
-      setError('Login failed. Check your email and password.');
+      setError('Login failed. Check your credentials and server URL.');
       setField('email');
       setEmail('');
       setPassword('');

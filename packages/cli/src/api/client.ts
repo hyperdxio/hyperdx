@@ -64,20 +64,24 @@ export class ApiClient {
   // ---- Auth --------------------------------------------------------
 
   async login(email: string, password: string): Promise<boolean> {
-    const res = await fetch(`${this.apiUrl}/login/password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      redirect: 'manual',
-    });
+    try {
+      const res = await fetch(`${this.apiUrl}/login/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        redirect: 'manual',
+      });
 
-    if (res.status === 302 || res.status === 200) {
-      this.extractCookies(res);
-      saveSession({ appUrl: this.appUrl, cookies: this.cookies });
-      return true;
+      if (res.status === 302 || res.status === 200) {
+        this.extractCookies(res);
+        saveSession({ appUrl: this.appUrl, cookies: this.cookies });
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
     }
-
-    return false;
   }
 
   async checkSession(): Promise<boolean> {
