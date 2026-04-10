@@ -335,7 +335,7 @@ export function ColorLegend({ colors }: { colors: string[] }) {
   );
 }
 
-export type HeatmapScaleType = 'log' | 'linear';
+type HeatmapScaleType = 'log' | 'linear';
 
 function HeatmapContainer({
   config,
