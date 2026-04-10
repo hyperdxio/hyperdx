@@ -141,7 +141,7 @@ export function DetailPanel({
               {expandedRowData.__fetch_error && (
                 <Box marginBottom={1}>
                   <ErrorDisplay
-                    message={String(expandedRowData.__fetch_error)}
+                    error={String(expandedRowData.__fetch_error)}
                     severity="warning"
                     detail="Showing partial row data — full row fetch failed."
                     compact
@@ -234,7 +234,7 @@ export function DetailPanel({
               {expandedRowData.__fetch_error && (
                 <Box marginBottom={1}>
                   <ErrorDisplay
-                    message={String(expandedRowData.__fetch_error)}
+                    error={String(expandedRowData.__fetch_error)}
                     severity="warning"
                     detail="Showing partial row data — full row fetch failed."
                     compact

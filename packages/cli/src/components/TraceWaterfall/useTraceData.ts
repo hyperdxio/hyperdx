@@ -19,7 +19,7 @@ export interface UseTraceDataReturn {
   traceSpans: TaggedSpanRow[];
   logEvents: TaggedSpanRow[];
   loading: boolean;
-  error: string | null;
+  error: Error | null;
   selectedRowData: Record<string, unknown> | null;
   selectedRowLoading: boolean;
   fetchSelectedRow: (node: SpanNode | null) => void;
@@ -36,7 +36,7 @@ export function useTraceData({
   const [traceSpans, setTraceSpans] = useState<TaggedSpanRow[]>([]);
   const [logEvents, setLogEvents] = useState<TaggedSpanRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [selectedRowData, setSelectedRowData] = useState<Record<
     string,
     unknown
@@ -93,7 +93,7 @@ export function useTraceData({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err : new Error(String(err)));
         }
       } finally {
         if (!cancelled) setLoading(false);

@@ -15,7 +15,8 @@ type TableViewProps = {
   focusSearch: boolean;
   wrapLines: boolean;
   maxRows: number;
-  errorMessage: string | null;
+  error: Error | null;
+  searchQuery?: string;
   loading: boolean;
 };
 
@@ -26,15 +27,20 @@ export function TableView({
   focusSearch,
   wrapLines,
   maxRows,
-  errorMessage,
+  error,
+  searchQuery,
   loading,
 }: TableViewProps) {
   return (
     <Box flexDirection="column" marginTop={1} height={maxRows + 1}>
       <TableHeader columns={columns} />
 
-      {errorMessage ? (
-        <ErrorDisplay message={errorMessage} severity="error" />
+      {error ? (
+        <ErrorDisplay
+          error={error}
+          severity="error"
+          searchQuery={searchQuery}
+        />
       ) : visibleRows.length === 0 && !loading ? (
         <Text dimColor>No events found.</Text>
       ) : null}

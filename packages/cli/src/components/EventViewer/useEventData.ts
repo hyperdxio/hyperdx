@@ -27,10 +27,10 @@ export interface UseEventDataParams {
 export interface UseEventDataReturn {
   events: EventRow[];
   loading: boolean;
-  error: string | null;
+  error: Error | null;
   hasMore: boolean;
   loadingMore: boolean;
-  paginationError: string | null;
+  paginationError: Error | null;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
   expandedTraceId: string | null;
@@ -55,10 +55,10 @@ export function useEventData({
 
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [paginationError, setPaginationError] = useState<string | null>(null);
+  const [paginationError, setPaginationError] = useState<Error | null>(null);
   const [expandedRowData, setExpandedRowData] = useState<Record<
     string,
     unknown
@@ -129,7 +129,7 @@ export function useEventData({
           if (ts) lastTimestampRef.current = String(ts);
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         setLoading(false);
       }
@@ -173,7 +173,7 @@ export function useEventData({
     } catch (err: unknown) {
       // Non-fatal — stop pagination but surface the error
       setHasMore(false);
-      setPaginationError(err instanceof Error ? err.message : String(err));
+      setPaginationError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoadingMore(false);
     }

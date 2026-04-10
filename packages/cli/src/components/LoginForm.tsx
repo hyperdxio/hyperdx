@@ -46,7 +46,7 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
       <Text dimColor>Server: {apiUrl}</Text>
       <Text> </Text>
 
-      {error && <ErrorDisplay message={error} severity="error" compact />}
+      {error && <ErrorDisplay error={error} severity="error" compact />}
 
       {loading ? (
         <Text>

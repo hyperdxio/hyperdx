@@ -183,8 +183,6 @@ export default function EventViewer({
     }));
   }, [events, scrollOffset, maxRows, columns]);
 
-  const errorMessage = error ?? null;
-
   // ---- Render ------------------------------------------------------
 
   if (showHelp) {
@@ -257,7 +255,8 @@ export default function EventViewer({
           focusSearch={focusSearch}
           wrapLines={wrapLines}
           maxRows={maxRows}
-          errorMessage={errorMessage}
+          error={error}
+          searchQuery={submittedQuery}
           loading={loading}
         />
       )}

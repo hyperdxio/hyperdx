@@ -125,7 +125,7 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
   if (error) {
     return (
       <Box paddingX={1}>
-        <ErrorDisplay message={error} severity="error" />
+        <ErrorDisplay error={error} severity="error" />
       </Box>
     );
   }

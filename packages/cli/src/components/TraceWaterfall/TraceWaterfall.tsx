@@ -155,7 +155,7 @@ export default function TraceWaterfall({
   }
 
   if (error) {
-    return <ErrorDisplay message={error} severity="error" />;
+    return <ErrorDisplay error={error} severity="error" />;
   }
 
   if (flatNodes.length === 0) {

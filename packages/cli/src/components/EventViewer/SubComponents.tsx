@@ -3,7 +3,9 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 
+import ErrorDisplay from '@/components/ErrorDisplay';
 import type { TimeRange } from '@/utils/editor';
+
 import type { Column, SwitchItem } from './types';
 import { formatShortDate } from './utils';
 
@@ -123,7 +125,7 @@ type FooterProps = {
   wrapLines: boolean;
   isFollowing: boolean;
   loadingMore: boolean;
-  paginationError?: string | null;
+  paginationError?: Error | null;
   scrollInfo?: string;
 };
 
@@ -139,9 +141,12 @@ export const Footer = React.memo(function Footer({
   return (
     <Box flexDirection="column" marginTop={1}>
       {paginationError && (
-        <Text color="yellow" bold>
-          ⚠ Failed to load more results: {paginationError.slice(0, 120)}
-        </Text>
+        <ErrorDisplay
+          error={paginationError}
+          severity="warning"
+          detail="Failed to load more results."
+          compact
+        />
       )}
       <Box justifyContent="space-between">
         <Text dimColor>

@@ -4,20 +4,33 @@
  * Renders errors and warnings with clear visual highlighting
  * so they are immediately noticeable and distinguishable from
  * normal output.
+ *
+ * Mirrors the error rendering patterns from the web frontend:
+ * @source packages/app/src/DBSearchPage.tsx (queryError + ClickHouseQueryError rendering)
+ * @source packages/app/src/components/DBTableChart.tsx (error message + sent query)
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+
+import { useSqlSuggestions, type Suggestion } from '@/shared/useSqlSuggestions';
 import { parseError, type ErrorSeverity } from '@/utils/parseError';
 
 interface ErrorDisplayProps {
-  /** Raw error message string */
-  message: string;
+  /** The error — accepts a string, Error, or ClickHouseQueryError */
+  error: string | Error | ClickHouseQueryError;
   /** Severity level — defaults to 'error' */
   severity?: ErrorSeverity;
-  /** Optional additional context (e.g. the query that caused it) */
+  /** Optional additional context shown below the error message */
   detail?: string;
+  /**
+   * The user's search query — when provided alongside a ClickHouseQueryError,
+   * SQL suggestions (e.g. double-quote correction) will be shown.
+   * @source packages/app/src/DBSearchPage.tsx (whereSuggestions)
+   */
+  searchQuery?: string;
   /** Whether to render in compact (single-line) mode */
   compact?: boolean;
 }
@@ -41,23 +54,34 @@ const SEVERITY_CONFIG = {
  * Renders a visually prominent error or warning message.
  *
  * Full mode (default):
- * ┌─────────────────────────────────────┐
- * │ ✖ Error                             │
- * │ Syntax error: failed at position 5  │
- * │ Query: SELECT * FROM ...            │
- * └─────────────────────────────────────┘
+ * ╭─────────────────────────────────────────────────╮
+ * │ ✖ Error                                         │
+ * │ Syntax error: failed at position 5 ...          │
+ * │                                                 │
+ * │ Sent Query:                                     │
+ * │ SELECT * FROM default.logs WHERE "name" = 'foo' │
+ * │                                                 │
+ * │ 💡 ClickHouse does not support double quotes ... │
+ * ╰─────────────────────────────────────────────────╯
  *
  * Compact mode:
  * ✖ Error: Syntax error: failed at position 5
  */
 export default function ErrorDisplay({
-  message,
+  error,
   severity = 'error',
   detail,
+  searchQuery,
   compact = false,
 }: ErrorDisplayProps) {
   const config = SEVERITY_CONFIG[severity];
-  const parsed = parseError(message, severity);
+  const parsed = parseError(error, severity);
+
+  // SQL suggestions — only when we have a search query and there's an error
+  const suggestions = useSqlSuggestions({
+    input: searchQuery ?? '',
+    enabled: !!searchQuery && severity === 'error',
+  });
 
   if (compact) {
     return (
@@ -83,11 +107,36 @@ export default function ErrorDisplay({
         {config.icon} {config.label}
       </Text>
       <Text color={config.color}>{parsed.message}</Text>
+
+      {/* Original query — shown when the error is a ClickHouseQueryError */}
+      {parsed.query && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor bold>
+            Sent Query:
+          </Text>
+          <Text dimColor wrap="wrap">
+            {parsed.query}
+          </Text>
+        </Box>
+      )}
+
+      {/* Additional context */}
       {detail && (
         <Box marginTop={1}>
           <Text dimColor wrap="wrap">
             {detail}
           </Text>
+        </Box>
+      )}
+
+      {/* SQL suggestions */}
+      {suggestions && suggestions.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {suggestions.map((s: Suggestion, i: number) => (
+            <Text key={i} color="cyan">
+              💡 {s.userMessage('where')}
+            </Text>
+          ))}
         </Box>
       )}
     </Box>

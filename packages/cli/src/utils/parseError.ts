@@ -2,7 +2,13 @@
  * Utilities for parsing and classifying error messages,
  * particularly ClickHouse DB errors that can be verbose HTML
  * or include DB::Exception stack traces.
+ *
+ * Mirrors the error handling patterns from the web frontend:
+ * @source packages/app/src/DBSearchPage.tsx (queryError rendering)
+ * @source packages/app/src/components/DBTableChart.tsx (ClickHouseQueryError handling)
  */
+
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 
 export type ErrorSeverity = 'error' | 'warning';
 
@@ -10,8 +16,8 @@ export interface ParsedError {
   severity: ErrorSeverity;
   /** Human-readable summary of the error */
   message: string;
-  /** Optional additional context (e.g. the query that caused it) */
-  detail?: string;
+  /** The original SQL query that caused the error (from ClickHouseQueryError) */
+  query?: string;
 }
 
 const MAX_MESSAGE_LENGTH = 500;
@@ -63,16 +69,9 @@ function stripHtml(raw: string): string {
 }
 
 /**
- * Parse a raw error message/string into a structured ParsedError.
+ * Clean up a raw error message string (handle HTML, DB::Exception, truncation).
  */
-export function parseError(
-  raw: string,
-  severity: ErrorSeverity = 'error',
-): ParsedError {
-  if (!raw || raw.trim().length === 0) {
-    return { severity, message: 'An unknown error occurred.' };
-  }
-
+function cleanMessage(raw: string): string {
   let message = raw.trim();
 
   // Handle HTML error responses
@@ -90,5 +89,46 @@ export function parseError(
     message = message.slice(0, MAX_MESSAGE_LENGTH) + '…';
   }
 
-  return { severity, message };
+  return message;
+}
+
+/**
+ * Parse an error into a structured ParsedError.
+ *
+ * Accepts:
+ * - `ClickHouseQueryError` — extracts both `.message` and `.query`
+ *   (mirrors DBSearchPage.tsx and DBTableChart.tsx patterns)
+ * - `Error` — uses `.message`
+ * - `string` — raw message with heuristic parsing
+ */
+export function parseError(
+  err: string | Error | ClickHouseQueryError,
+  severity: ErrorSeverity = 'error',
+): ParsedError {
+  if (!err) {
+    return { severity, message: 'An unknown error occurred.' };
+  }
+
+  // ClickHouseQueryError — structured error with query context
+  if (err instanceof ClickHouseQueryError) {
+    return {
+      severity,
+      message: cleanMessage(err.message),
+      query: err.query,
+    };
+  }
+
+  // Generic Error object
+  if (err instanceof Error) {
+    return {
+      severity,
+      message: cleanMessage(err.message),
+    };
+  }
+
+  // Raw string
+  return {
+    severity,
+    message: cleanMessage(err),
+  };
 }
