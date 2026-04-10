@@ -1038,12 +1038,17 @@ export function displayTypeSupportsBuilderAlerts(
 export function isSqlTemplateValidForAlert(
   chartConfig: RawSqlChartConfig,
 ): boolean {
-  const sql = replaceMacros(chartConfig);
-  const hasInterval =
-    sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
-    sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
-  const hasTimeFilter =
-    sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
-    sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
-  return hasInterval && hasTimeFilter;
+  try {
+    const sql = replaceMacros(chartConfig);
+    const hasInterval =
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
+    const hasTimeFilter =
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
+    return hasInterval && hasTimeFilter;
+  } catch {
+    // replaceMacros will often fail as users type in the SQL template
+    return false;
+  }
 }
