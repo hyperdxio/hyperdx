@@ -19,7 +19,7 @@ export type RowData = Record<string, unknown>;
 const SMART_URL_PARAM = 'smart';
 const TONE_STORAGE_KEY = 'hdx-ai-summary-tone';
 
-export function shortText(value: string | undefined, maxChars: number): string {
+function shortText(value: string | undefined, maxChars: number): string {
   if (!value) return '';
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars - 3)}...`;

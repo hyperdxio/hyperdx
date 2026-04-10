@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
-export const AI_SUMMARY_TONES = [
+const AI_SUMMARY_TONES = [
   'default',
   'noir',
   'shakespeare',
   'attenborough',
 ] as const;
 
-export type AISummaryTone = (typeof AI_SUMMARY_TONES)[number];
+type AISummaryTone = (typeof AI_SUMMARY_TONES)[number];
 
 const summaryToneSchema = z.enum(AI_SUMMARY_TONES).default('default');
 
