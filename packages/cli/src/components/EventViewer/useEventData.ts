@@ -27,13 +27,19 @@ export interface UseEventDataParams {
 export interface UseEventDataReturn {
   events: EventRow[];
   loading: boolean;
-  error: string | null;
+  error: Error | null;
   hasMore: boolean;
   loadingMore: boolean;
+  paginationError: Error | null;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
+  expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
+  /** The last rendered ChSql (parameterized SQL + params) for the table query */
+  lastChSql: { sql: string; params: Record<string, unknown> } | null;
+  /** The last rendered ChSql for the expanded row (SELECT *) query */
+  lastExpandedChSql: { sql: string; params: Record<string, unknown> } | null;
   fetchNextPage: () => Promise<void>;
 }
 
@@ -54,19 +60,27 @@ export function useEventData({
 
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [paginationError, setPaginationError] = useState<Error | null>(null);
   const [expandedRowData, setExpandedRowData] = useState<Record<
     string,
     unknown
   > | null>(null);
   const [expandedRowLoading, setExpandedRowLoading] = useState(false);
+  const [expandedRowError, setExpandedRowError] = useState<Error | null>(null);
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
   const [expandedSpanId, setExpandedSpanId] = useState<string | null>(null);
 
   const lastTimestampRef = useRef<string | null>(null);
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
+  const [lastChSql, setLastChSql] = useState<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
+  // Keep a ref copy for use inside the expanded row effect (which needs
+  // the table ChSql to build the WHERE clause for the SELECT * query).
   const lastTableChSqlRef = useRef<{
     sql: string;
     params: Record<string, unknown>;
@@ -74,6 +88,10 @@ export function useEventData({
   const lastTableMetaRef = useRef<Array<{ name: string; type: string }> | null>(
     null,
   );
+  const [lastExpandedChSql, setLastExpandedChSql] = useState<{
+    sql: string;
+    params: Record<string, unknown>;
+  } | null>(null);
 
   // ---- fetchEvents -------------------------------------------------
 
@@ -86,6 +104,7 @@ export function useEventData({
     ) => {
       setLoading(true);
       setError(null);
+      setPaginationError(null);
       try {
         const chSql = await buildEventSearchQuery(
           {
@@ -99,6 +118,7 @@ export function useEventData({
           metadata,
         );
         lastTableChSqlRef.current = chSql;
+        setLastChSql(chSql);
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -126,7 +146,7 @@ export function useEventData({
           if (ts) lastTimestampRef.current = String(ts);
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         setLoading(false);
       }
@@ -139,6 +159,7 @@ export function useEventData({
   const fetchNextPage = useCallback(async () => {
     if (!hasMore || loadingMore || !dateRangeRef.current) return;
     setLoadingMore(true);
+    setPaginationError(null);
     try {
       const { start, end } = dateRangeRef.current;
       const chSql = await buildEventSearchQuery(
@@ -166,9 +187,10 @@ export function useEventData({
         setEvents(prev => [...prev, ...rows]);
       }
       setHasMore(rows.length >= PAGE_SIZE);
-    } catch {
-      // Non-fatal — just stop pagination
+    } catch (err: unknown) {
+      // Non-fatal — stop pagination but surface the error
       setHasMore(false);
+      setPaginationError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoadingMore(false);
     }
@@ -214,8 +236,10 @@ export function useEventData({
   useEffect(() => {
     if (expandedRow === null) {
       setExpandedRowData(null);
+      setExpandedRowError(null);
       setExpandedTraceId(null);
       setExpandedSpanId(null);
+      setLastExpandedChSql(null);
       return;
     }
     const row = events[expandedRow];
@@ -223,6 +247,7 @@ export function useEventData({
 
     let cancelled = false;
     setExpandedRowLoading(true);
+    setExpandedRowError(null);
 
     (async () => {
       try {
@@ -238,6 +263,7 @@ export function useEventData({
           tableMeta,
           metadata,
         });
+        setLastExpandedChSql(chSql);
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -267,17 +293,14 @@ export function useEventData({
           }
         }
       } catch (err) {
-        // Non-fatal — fall back to partial row data, but include error
-        const errMsg = err instanceof Error ? err.message : String(err);
-        // Truncate HTML errors to a readable length
-        const shortErr = errMsg.startsWith('<!')
-          ? errMsg.slice(0, 200)
-          : errMsg;
+        // Non-fatal — fall back to partial row data, surface the error
+        // separately so ErrorDisplay can render query context from
+        // ClickHouseQueryError.
         if (!cancelled) {
-          setExpandedRowData({
-            ...(row as Record<string, unknown>),
-            __fetch_error: shortErr,
-          });
+          setExpandedRowData(row as Record<string, unknown>);
+          setExpandedRowError(
+            err instanceof Error ? err : new Error(String(err)),
+          );
         }
       } finally {
         if (!cancelled) setExpandedRowLoading(false);
@@ -295,10 +318,14 @@ export function useEventData({
     error,
     hasMore,
     loadingMore,
+    paginationError,
     expandedRowData,
     expandedRowLoading,
+    expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    lastChSql,
+    lastExpandedChSql,
     fetchNextPage,
   };
 }
