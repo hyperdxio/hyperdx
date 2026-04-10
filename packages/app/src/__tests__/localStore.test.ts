@@ -16,6 +16,7 @@ jest.mock('../utils', () => ({
 
 import {
   createEntityStore,
+  generateDeterministicId,
   localSavedSearches,
   localSources,
 } from '../localStore';
@@ -103,6 +104,56 @@ describe('createEntityStore', () => {
       store.create({ name: 'third' });
 
       expect(store.getAll()).toHaveLength(3);
+    });
+
+    describe('with generateDeterministicId', () => {
+      it('generates deterministic ids from item content', () => {
+        const storeA = createEntityStore<Item>(
+          'store-det-a',
+          undefined,
+          generateDeterministicId,
+        );
+        const storeB = createEntityStore<Item>(
+          'store-det-b',
+          undefined,
+          generateDeterministicId,
+        );
+
+        const a = storeA.create({ name: 'demo-source' });
+        const b = storeB.create({ name: 'demo-source' });
+
+        expect(a.id).toBe(b.id);
+      });
+
+      it('generates the same id regardless of property insertion order', () => {
+        type MultiProp = { id: string; name: string; kind: string };
+        const storeA = createEntityStore<MultiProp>(
+          'store-ord-a',
+          undefined,
+          generateDeterministicId,
+        );
+        const storeB = createEntityStore<MultiProp>(
+          'store-ord-b',
+          undefined,
+          generateDeterministicId,
+        );
+
+        const a = storeA.create({ name: 'demo', kind: 'log' });
+        const b = storeB.create({ kind: 'log', name: 'demo' });
+
+        expect(a.id).toBe(b.id);
+      });
+
+      it('generates different ids for items with different content', () => {
+        const store = createEntityStore<Item>(
+          TEST_KEY,
+          undefined,
+          generateDeterministicId,
+        );
+        const a = store.create({ name: 'alpha' });
+        const b = store.create({ name: 'beta' });
+        expect(a.id).not.toBe(b.id);
+      });
     });
   });
 
