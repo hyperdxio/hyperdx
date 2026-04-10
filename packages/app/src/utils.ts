@@ -643,7 +643,7 @@ export const usePrevious = <T>(value: T): T | undefined => {
   useEffect(() => {
     ref.current = value;
   });
-
+  // eslint-disable-next-line react-hooks/refs
   return ref.current;
 };
 
@@ -839,6 +839,12 @@ export const formatNumber = (
     return value.toFixed(mantissa);
   }
 
+  if (options.output === 'duration') {
+    const factor = options.factor ?? 1;
+    const ms = value * factor * 1000;
+    return formatDurationMs(ms);
+  }
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
@@ -862,6 +868,49 @@ export const formatNumber = (
     (options.unit ? ` ${options.unit}` : '')
   );
 };
+
+/**
+ * Formats a duration value given in milliseconds into a human-readable
+ * adaptive string (e.g. "120.41s", "45ms", "3µs"). Mirrors the trace
+ * waterfall rendering style.
+ */
+export function formatDurationMs(ms: number): string {
+  if (ms < 0) {
+    return `-${formatDurationMs(-ms)}`;
+  }
+
+  if (ms === 0) {
+    return '0ms';
+  }
+
+  if (ms < 1) {
+    const µs = ms * 1000;
+    if (µs < 10) {
+      return `${parseFloat(µs.toPrecision(2))}µs`;
+    }
+    const µsRounded = Math.round(µs);
+    if (µsRounded < 1000) {
+      return `${µsRounded}µs`;
+    }
+  }
+
+  if (ms < 1000) {
+    if (ms < 10) {
+      return `${parseFloat(ms.toPrecision(3))}ms`;
+    }
+    return `${parseFloat(ms.toFixed(1))}ms`;
+  }
+
+  if (ms < 60_000) {
+    return `${parseFloat((ms / 1000).toFixed(2))}s`;
+  }
+
+  if (ms < 3_600_000) {
+    return `${parseFloat((ms / 60_000).toFixed(2))}min`;
+  }
+
+  return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
+}
 
 // format uptime as days, hours, minutes or seconds
 export const formatUptime = (seconds: number) => {

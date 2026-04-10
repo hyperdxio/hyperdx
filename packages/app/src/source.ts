@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
@@ -9,8 +9,11 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  ChartConfigWithOptDateRange,
   MetricsDataType,
+  NumberFormat,
   SourceKind,
   SourceSchema,
   TLogSource,
@@ -390,6 +393,95 @@ export function getDurationMsExpression(source: TTraceSource) {
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
+}
+
+// Aggregate functions whose output preserves the unit of the input value.
+// count and count_distinct produce dimensionless counts and should not
+// inherit the duration format.
+const DURATION_PRESERVING_AGG_FNS = new Set([
+  'avg',
+  'min',
+  'max',
+  'sum',
+  'any',
+  'last_value',
+  'quantile',
+  'quantileMerge',
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+  'heatmap',
+  'histogram',
+  'histogramMerge',
+]);
+
+function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
+  if (!aggFn) return true; // no aggFn means raw expression — preserve unit
+  // Handle combinator forms like "avgIf", "quantileIfState"
+  const baseFn = aggFn.replace(/If(State|Merge)?$/, '');
+  return DURATION_PRESERVING_AGG_FNS.has(baseFn);
+}
+
+/**
+ * Returns a NumberFormat for duration display if the chart config's select
+ * expressions exactly match a trace source's durationExpression. Returns
+ * undefined if no match is detected.
+ *
+ * Only applies when the aggregate function preserves the unit of the input
+ * (e.g. avg, min, max, sum, p95). Functions like count and count_distinct
+ * produce dimensionless values and are skipped.
+ *
+ * Uses exact match only — the duration expression can be arbitrary SQL,
+ * so substring or regex matching would be fragile.
+ */
+export function getTraceDurationNumberFormat(
+  source: TSource | undefined,
+  selectExpressions:
+    | Array<{ valueExpression?: string; aggFn?: string }>
+    | undefined,
+): NumberFormat | undefined {
+  if (!source || source.kind !== SourceKind.Trace || !source.durationExpression)
+    return undefined;
+  if (!selectExpressions || selectExpressions.length === 0) return undefined;
+
+  const durationExpr = source.durationExpression;
+  const precision = source.durationPrecision ?? 9;
+
+  for (const sel of selectExpressions) {
+    if (!sel.valueExpression) continue;
+    if (!isDurationPreservingAggFn(sel.aggFn)) continue;
+
+    if (sel.valueExpression === durationExpr) {
+      return {
+        output: 'duration',
+        factor: Math.pow(10, -precision),
+      };
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Hook that resolves the effective numberFormat for a chart config.
+ * If the config already has an explicit numberFormat, it's returned as-is.
+ * Otherwise, auto-detects duration format when the chart uses a trace source
+ * with duration expressions.
+ */
+export function useResolvedNumberFormat(
+  config: ChartConfigWithOptDateRange,
+): NumberFormat | undefined {
+  const { data: source } = useSource({ id: config.source });
+
+  return useMemo(() => {
+    if (config.numberFormat) return config.numberFormat;
+
+    if (!isBuilderChartConfig(config)) return undefined;
+
+    const select = Array.isArray(config.select) ? config.select : undefined;
+    return getTraceDurationNumberFormat(source, select);
+  }, [config, source]);
 }
 
 // defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto

@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.17.1
+
+### Patch Changes
+
+- 24767c58: fix: Ensure correct bounds for date-based timestampValueExpr
+
 ## 0.17.0
 
 ### Minor Changes
