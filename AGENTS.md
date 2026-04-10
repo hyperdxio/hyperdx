@@ -206,6 +206,49 @@ formatting checks pass. Fix any issues before creating the commit.
    manual intervention rather than guessing. A wrong guess silently breaks
    things; asking is always cheaper than debugging later.
 
+## Cursor Cloud specific instructions
+
+### Docker requirement
+
+Docker must be installed and running before starting the dev stack or running
+integration/E2E tests. The VM update script handles `yarn install` and
+`yarn build:common-utils`, but Docker daemon startup is a prerequisite that must
+already be available.
+
+### Starting the dev stack
+
+`yarn dev` uses `sh -c` to source `scripts/dev-env.sh`, which contains
+bash-specific syntax (`BASH_SOURCE`). On systems where `/bin/sh` is `dash`
+(e.g. Ubuntu), this fails with "Bad substitution". Work around it by running
+with bash directly:
+
+```bash
+bash -c 'export PATH="/workspace/node_modules/.bin:$PATH" && source ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p "$HDX_DEV_PROJECT" -f docker-compose.dev.yml up -d && yarn app:dev'
+```
+
+Port isolation assigns a slot based on the worktree directory name. In the
+default `/workspace` directory, the slot is **76**, so services are at:
+
+- **App**: http://localhost:30276
+- **API**: http://localhost:30176
+- **ClickHouse**: http://localhost:30576
+- **MongoDB**: localhost:30476
+
+### Key commands reference
+
+See `AGENTS.md` above and `agent_docs/development.md` for the full command
+reference. Quick summary:
+
+- `make ci-lint` — lint + TypeScript type check
+- `make ci-unit` — unit tests (all packages)
+- `make dev-int FILE=<name>` — integration tests (spins up Docker services)
+- `make dev-e2e FILE=<name>` — E2E tests (Playwright)
+
+### First-time registration
+
+When the dev stack starts fresh (empty MongoDB), the app shows a registration
+page. Create any account to get started — no external auth provider is needed.
+
 ---
 
 _Need more details? Check the `agent_docs/` directory or ask which documentation

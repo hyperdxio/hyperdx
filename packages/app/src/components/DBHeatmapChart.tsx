@@ -28,7 +28,7 @@ import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatNumber } from '@/utils';
+import { formatDurationMs, formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
@@ -843,24 +843,12 @@ function Heatmap({
       // to the actual value before formatting.
       const actualValue = scaleType === 'log' ? Math.exp(value) : value;
 
-      if (numberFormat?.unit === 'ms') {
-        // Auto-scale duration: ms → s → min, picking the most compact unit
-        const abs = Math.abs(actualValue);
-        if (abs >= 60_000) {
-          const v = actualValue / 60_000;
-          return `${Number.isInteger(v) ? v : v.toFixed(1)}m`;
-        }
-        if (abs >= 1_000) {
-          const v = actualValue / 1_000;
-          return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
-        }
-        if (abs >= 1) {
-          return `${Math.round(actualValue)}ms`;
-        }
-        if (abs >= 0.001) {
-          return `${+(actualValue * 1_000).toPrecision(2)}µs`;
-        }
-        return `${actualValue.toPrecision(2)}ms`;
+      if (numberFormat?.unit === 'ms' || numberFormat?.output === 'duration') {
+        const msValue =
+          numberFormat?.output === 'duration'
+            ? actualValue * (numberFormat?.factor ?? 1) * 1000
+            : actualValue;
+        return formatDurationMs(msValue);
       }
 
       return numberFormat
@@ -953,7 +941,7 @@ function Heatmap({
       },
       plugins: [
         // legendAsTooltipPlugin()
-
+        // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
         highlightDataPlugin({
           proximity: 20,
           yFormatter: tickFormatter,

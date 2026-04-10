@@ -31,6 +31,7 @@ jest.mock('@/api', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn(),
+  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>

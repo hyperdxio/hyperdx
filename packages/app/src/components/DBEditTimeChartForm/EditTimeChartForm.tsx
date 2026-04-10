@@ -51,7 +51,7 @@ import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import { useSource } from '@/source';
+import { getTraceDurationNumberFormat, useSource } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 import { ChartActionBar } from './ChartActionBar';
@@ -188,6 +188,15 @@ export default function EditTimeChartForm({
       'numberFormat',
     ],
   });
+
+  const autoDetectedNumberFormat = useMemo(
+    () =>
+      getTraceDurationNumberFormat(
+        tableSource,
+        Array.isArray(select) ? select : undefined,
+      ),
+    [tableSource, select],
+  );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
     () => ({
@@ -642,6 +651,7 @@ export default function EditTimeChartForm({
       <ChartDisplaySettingsDrawer
         opened={displaySettingsOpened}
         settings={displaySettings}
+        defaultNumberFormat={autoDetectedNumberFormat}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
         onChange={handleUpdateDisplaySettings}
