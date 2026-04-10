@@ -37,8 +37,6 @@ function urlJoin(base: string, ...segments: string[]): string {
 export interface UploadSourcemapsOptions {
   allowNoop?: boolean;
   serviceKey: string;
-  appUrl?: string;
-  /** @deprecated Use appUrl instead. */
   apiUrl?: string;
   apiVersion?: string;
   basePath?: string;
@@ -49,7 +47,6 @@ export interface UploadSourcemapsOptions {
 export async function uploadSourcemaps({
   allowNoop,
   serviceKey,
-  appUrl,
   apiUrl,
   apiVersion,
   basePath,
@@ -64,14 +61,7 @@ export async function uploadSourcemaps({
     }
   }
 
-  if (apiUrl && !appUrl) {
-    logError(
-      '[HyperDX] Warning: --apiUrl is deprecated. Use --appUrl instead (the HyperDX app URL).',
-    );
-    appUrl = apiUrl;
-  }
-
-  const backend = appUrl || 'https://api.hyperdx.io';
+  const backend = apiUrl || 'https://api.hyperdx.io';
   const version = apiVersion || 'v1';
 
   const res = await fetch(urlJoin(backend, 'api', version), {
@@ -84,7 +74,7 @@ export async function uploadSourcemaps({
     .then(response => {
       if (!response.ok) {
         throw new Error(
-          `Authentication failed (${response.status}). Check your --serviceKey and --appUrl.`,
+          `Authentication failed (${response.status}). Check your --serviceKey and --apiUrl.`,
         );
       }
       return response.json();

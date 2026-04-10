@@ -840,10 +840,9 @@ program
     'Upload JavaScript source maps to HyperDX for stack trace de-obfuscation',
   )
   .option('-k, --serviceKey <string>', 'The HyperDX service account API key')
-  .option('--appUrl [string]', 'HyperDX app URL (for self-hosted deployments)')
   .option(
     '-u, --apiUrl [string]',
-    '(deprecated, use --appUrl) An optional api url for self-hosted deployments',
+    'An optional api url for self-hosted deployments',
   )
   .option(
     '-rid, --releaseId [string]',
