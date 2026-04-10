@@ -106,7 +106,8 @@ src/
 │   ├── RowOverview.tsx    # Structured overview (Top Level, Attributes, Resources)
 │   ├── ColumnValues.tsx   # Shared key-value renderer with scroll support
 │   ├── LoginForm.tsx      # Email/password login form (used inside TUI App)
-│   └── SourcePicker.tsx   # j/k source selector
+│   ├── SourcePicker.tsx   # j/k source selector
+│   └── Spotlight.tsx      # Ctrl+K spotlight overlay for quick navigation
 ├── shared/                # Logic ported from packages/app (@source annotated)
 │   ├── useRowWhere.ts     # processRowToWhereClause, buildColumnMap, getRowWhere
 │   ├── source.ts          # getDisplayedTimestampValueExpression, getEventBody, etc.
@@ -181,12 +182,14 @@ reorder these checks**:
 
 1. `?` toggles help (except when search focused)
 2. Any key closes help when showing
-3. `focusDetailSearch` — consumes all keys except Esc/Enter
-4. `focusSearch` — consumes all keys except Tab/Esc
-5. Trace tab j/k + Ctrl+D/U — when detail panel open and Trace tab active
-6. Column Values / Overview Ctrl+D/U — scroll detail view
-7. General j/k, G/g, Enter/Esc, Tab, etc.
-8. Single-key shortcuts: `w`, `f`, `/`, `s`, `t`, `q`
+3. SQL preview — D/Esc close, Ctrl+D/U scroll
+4. `Ctrl+K` — opens spotlight (quick navigation)
+5. `focusDetailSearch` — consumes all keys except Esc/Enter
+6. `focusSearch` — consumes all keys except Tab/Esc
+7. Trace tab j/k + Ctrl+D/U — when detail panel open and Trace tab active
+8. Column Values / Overview Ctrl+D/U — scroll detail view
+9. General j/k, G/g, Enter/Esc, Tab, etc.
+10. Single-key shortcuts: `w`, `f`, `/`, `s`, `t`, `q`
 
 ### Follow Mode
 
