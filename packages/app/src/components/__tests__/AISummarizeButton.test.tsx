@@ -3,12 +3,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AISummarizeButton from '@/components/AISummarizeButton';
 
 const mockJson = jest.fn();
-const mockHdxServer = jest.fn(() => ({
+const mockHdxServer = jest.fn((_path: string, _options?: unknown) => ({
   json: mockJson,
 }));
 
 jest.mock('@/api', () => ({
-  hdxServer: (...args: unknown[]) => mockHdxServer(...args),
+  hdxServer: (...args: [string, unknown?]) => mockHdxServer(...args),
 }));
 
 function mockWindowLocation(search: string) {
