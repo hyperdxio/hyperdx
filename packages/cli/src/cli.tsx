@@ -165,18 +165,189 @@ function LoginPrompt({
 
 /**
  * Resolve the app URL: use the provided flag, or fall back to the
- * saved session's appUrl. Exits with an error if neither is available.
+ * saved session's appUrl. Returns undefined if neither is available.
  */
-function resolveServer(flagValue: string | undefined): string {
+function resolveServer(flagValue: string | undefined): string | undefined {
   if (flagValue) return flagValue;
   const session = loadSession();
   if (session?.appUrl) return session.appUrl;
-  _origError(
-    chalk.red(
-      `No server specified. Use ${chalk.bold('-a <url>')} or run ${chalk.bold('hdx auth login -a <url>')} first.\n`,
-    ),
+  return undefined;
+}
+
+/**
+ * Ensure the user has a valid session. If the session is expired or
+ * missing, launches the interactive LoginPrompt (with the last URL
+ * autofilled) and waits for re-authentication.
+ *
+ * Returns an authenticated ApiClient ready for use.
+ */
+async function ensureSession(
+  flagAppUrl: string | undefined,
+): Promise<ApiClient> {
+  const appUrl = resolveServer(flagAppUrl);
+
+  // If we have an appUrl, try the existing session first
+  if (appUrl) {
+    const client = new ApiClient({ appUrl });
+    if (await client.checkSession()) {
+      return client;
+    }
+    // Session expired — show message and re-login
+    process.stderr.write(
+      chalk.yellow('Session expired — launching login…\n\n'),
+    );
+  }
+
+  // Launch interactive login prompt (appUrl autofilled if available)
+  return new Promise<ApiClient>(resolve => {
+    const { waitUntilExit } = render(
+      <ReLoginPrompt defaultAppUrl={appUrl} onAuthenticated={resolve} />,
+    );
+    // If the user ctrl-c's out of the prompt, exit the process
+    waitUntilExit().then(() => {
+      // If the promise was already resolved, this is a no-op.
+      // Otherwise the user quit without logging in.
+    });
+  });
+}
+
+/**
+ * Lightweight wrapper around LoginPrompt for non-TUI commands.
+ * Resolves the onAuthenticated callback with a ready ApiClient.
+ */
+function ReLoginPrompt({
+  defaultAppUrl,
+  onAuthenticated,
+}: {
+  defaultAppUrl?: string;
+  onAuthenticated: (client: ApiClient) => void;
+}) {
+  const { exit } = useApp();
+  const [field, setField] = useState<
+    'method' | 'appUrl' | 'email' | 'password'
+  >('method');
+  const [methodIdx, setMethodIdx] = useState(0);
+  const [_method, setMethod] = useState<LoginMethod | null>(null);
+  const [appUrl, setAppUrl] = useState(defaultAppUrl ?? '');
+  const [client, setClient] = useState<ApiClient | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useInput(
+    (input, key) => {
+      if (field !== 'method') return;
+      if (key.upArrow || input === 'k') {
+        setMethodIdx(i => Math.max(0, i - 1));
+      }
+      if (key.downArrow || input === 'j') {
+        setMethodIdx(i => Math.min(LOGIN_METHODS.length - 1, i + 1));
+      }
+      if (key.return) {
+        const selected = LOGIN_METHODS[methodIdx];
+        setMethod(selected.id);
+        setField('appUrl');
+      }
+    },
+    { isActive: field === 'method' },
   );
-  process.exit(1);
+
+  const handleSubmitAppUrl = useCallback(() => {
+    if (!appUrl.trim()) return;
+    const c = new ApiClient({ appUrl: appUrl.trim() });
+    setClient(c);
+    setField('email');
+  }, [appUrl]);
+
+  const handleSubmitEmail = useCallback(() => {
+    if (!email.trim()) return;
+    setField('password');
+  }, [email]);
+
+  const handleSubmitPassword = useCallback(async () => {
+    if (!password || !client) return;
+    setLoading(true);
+    setError(null);
+    const ok = await client.login(email, password);
+    setLoading(false);
+    if (ok) {
+      exit();
+      setTimeout(() => {
+        process.stdout.write(
+          chalk.green(`Logged in as ${email} (${appUrl})\n\n`),
+        );
+        onAuthenticated(client);
+      }, 50);
+    } else {
+      setError('Login failed. Check your email and password.');
+      setField('email');
+      setEmail('');
+      setPassword('');
+    }
+  }, [email, password, client, appUrl, exit, onAuthenticated]);
+
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <Text bold color="cyan">
+        HyperDX — Login
+      </Text>
+      {field !== 'method' && field !== 'appUrl' && (
+        <Text dimColor>Server: {appUrl}</Text>
+      )}
+      <Text> </Text>
+
+      {error && <Text color="red">{error}</Text>}
+
+      {loading ? (
+        <Text>
+          <Spinner type="dots" /> Logging in…
+        </Text>
+      ) : field === 'method' ? (
+        <Box flexDirection="column">
+          <Text>Login method:</Text>
+          <Text> </Text>
+          {LOGIN_METHODS.map((m, i) => (
+            <Text key={m.id} color={i === methodIdx ? 'green' : undefined}>
+              {i === methodIdx ? '▸ ' : '  '}
+              {m.label}
+            </Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>↑/↓ to navigate, Enter to select</Text>
+        </Box>
+      ) : field === 'appUrl' ? (
+        <Box>
+          <Text>HyperDX URL: </Text>
+          <TextInput
+            value={appUrl}
+            onChange={setAppUrl}
+            onSubmit={handleSubmitAppUrl}
+            placeholder="http://localhost:8080"
+          />
+        </Box>
+      ) : field === 'email' ? (
+        <Box>
+          <Text>Email: </Text>
+          <TextInput
+            value={email}
+            onChange={setEmail}
+            onSubmit={handleSubmitEmail}
+          />
+        </Box>
+      ) : (
+        <Box>
+          <Text>Password: </Text>
+          <TextInput
+            value={password}
+            onChange={setPassword}
+            onSubmit={handleSubmitPassword}
+            mask="*"
+          />
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 const program = new Command();
@@ -196,16 +367,29 @@ program
   .option('-q, --query <query>', 'Initial Lucene search query')
   .option('--source <name>', 'Source name (skips picker)')
   .option('-f, --follow', 'Start in follow/live tail mode')
-  .action(opts => {
+  .action(async opts => {
     const server = resolveServer(opts.appUrl);
-    render(
-      <App
-        appUrl={server}
-        query={opts.query}
-        sourceName={opts.source}
-        follow={opts.follow}
-      />,
-    );
+    if (!server) {
+      // No saved session and no -a flag — need to login first
+      const client = await ensureSession(undefined);
+      render(
+        <App
+          appUrl={client.getAppUrl()}
+          query={opts.query}
+          sourceName={opts.source}
+          follow={opts.follow}
+        />,
+      );
+    } else {
+      render(
+        <App
+          appUrl={server}
+          query={opts.query}
+          sourceName={opts.source}
+          follow={opts.follow}
+        />,
+      );
+    }
   });
 
 // ---- Auth (login / logout / status) --------------------------------
@@ -271,7 +455,7 @@ auth
     if (!session) {
       process.stdout.write(
         chalk.yellow(
-          `Not logged in. Run ${chalk.bold('hdx auth login -a <url>')} to sign in.\n`,
+          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
         ),
       );
       process.exit(1);
@@ -283,7 +467,7 @@ auth
     if (!ok) {
       process.stdout.write(
         chalk.yellow(
-          `Session expired. Run ${chalk.bold('hdx auth login -a <url>')} to sign in again.\n`,
+          `Session expired. Run ${chalk.bold('hdx auth login')} to sign in again.\n`,
         ),
       );
       process.exit(1);
@@ -363,17 +547,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.appUrl);
-    const client = new ApiClient({ appUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const sources = await client.getSources();
     if (sources.length === 0) {
@@ -507,17 +681,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.appUrl);
-    const client = new ApiClient({ appUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const dashboards = await client.getDashboards();
     if (dashboards.length === 0) {
@@ -628,17 +792,7 @@ Examples:
 `,
   )
   .action(async opts => {
-    const server = resolveServer(opts.appUrl);
-    const client = new ApiClient({ appUrl: server });
-
-    if (!(await client.checkSession())) {
-      _origError(
-        chalk.red(
-          `Not logged in. Run ${chalk.bold('hdx auth login')} to sign in.\n`,
-        ),
-      );
-      process.exit(1);
-    }
+    const client = await ensureSession(opts.appUrl);
 
     const sources = await client.getSources();
     const source = sources.find(

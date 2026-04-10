@@ -29,7 +29,9 @@ interface AppProps {
 
 export default function App({ appUrl, query, sourceName, follow }: AppProps) {
   const [screen, setScreen] = useState<Screen>('loading');
-  const [client] = useState(() => new ApiClient({ appUrl }));
+  const [client, setClient] = useState(() => new ApiClient({ appUrl }));
+  const [currentAppUrl, setCurrentAppUrl] = useState(appUrl);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchResponse[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceResponse | null>(
@@ -43,18 +45,19 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
     (async () => {
       const valid = await client.checkSession();
       if (valid) {
-        await loadData();
+        await loadData(client);
       } else {
+        setSessionExpired(true);
         setScreen('login');
       }
     })();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (apiClient: ApiClient) => {
     try {
       const [sources, searches] = await Promise.all([
-        client.getSources(),
-        client.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
+        apiClient.getSources(),
+        apiClient.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
       ]);
 
       const queryableSources = sources.filter(
@@ -96,10 +99,23 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
     }
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    const ok = await client.login(email, password);
+  const handleLogin = async (
+    loginAppUrl: string,
+    email: string,
+    password: string,
+  ) => {
+    // Recreate client if the user changed the URL
+    let activeClient = client;
+    if (loginAppUrl !== currentAppUrl) {
+      activeClient = new ApiClient({ appUrl: loginAppUrl });
+      setClient(activeClient);
+      setCurrentAppUrl(loginAppUrl);
+    }
+
+    const ok = await activeClient.login(email, password);
     if (ok) {
-      await loadData();
+      setSessionExpired(false);
+      await loadData(activeClient);
     }
     return ok;
   };
@@ -148,13 +164,23 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
       return (
         <Box paddingX={1}>
           <Text>
-            <Spinner type="dots" /> Connecting to {appUrl}…
+            <Spinner type="dots" /> Connecting to {currentAppUrl}…
           </Text>
         </Box>
       );
 
     case 'login':
-      return <LoginForm appUrl={appUrl} onLogin={handleLogin} />;
+      return (
+        <LoginForm
+          defaultAppUrl={currentAppUrl}
+          onLogin={handleLogin}
+          message={
+            sessionExpired
+              ? 'Session expired — please log in again.'
+              : undefined
+          }
+        />
+      );
 
     case 'pick-source':
       return (
