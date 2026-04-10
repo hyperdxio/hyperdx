@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 
+import ErrorDisplay from '@/components/ErrorDisplay';
+
 import type { Column, FormattedRow } from './types';
 import { TableHeader } from './SubComponents';
 
@@ -13,7 +15,8 @@ type TableViewProps = {
   focusSearch: boolean;
   wrapLines: boolean;
   maxRows: number;
-  errorLine: string;
+  error: Error | null;
+  searchQuery?: string;
   loading: boolean;
 };
 
@@ -24,17 +27,20 @@ export function TableView({
   focusSearch,
   wrapLines,
   maxRows,
-  errorLine,
+  error,
+  searchQuery,
   loading,
 }: TableViewProps) {
   return (
     <Box flexDirection="column" marginTop={1} height={maxRows + 1}>
       <TableHeader columns={columns} />
 
-      {errorLine ? (
-        <Text color="red" wrap="truncate">
-          {errorLine}
-        </Text>
+      {error ? (
+        <ErrorDisplay
+          error={error}
+          severity="error"
+          searchQuery={searchQuery}
+        />
       ) : visibleRows.length === 0 && !loading ? (
         <Text dimColor>No events found.</Text>
       ) : null}

@@ -3,7 +3,11 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 
+import { parameterizedQueryToSql } from '@hyperdx/common-utils/dist/clickhouse';
+
+import ErrorDisplay from '@/components/ErrorDisplay';
 import type { TimeRange } from '@/utils/editor';
+
 import type { Column, SwitchItem } from './types';
 import { formatShortDate } from './utils';
 
@@ -123,6 +127,7 @@ type FooterProps = {
   wrapLines: boolean;
   isFollowing: boolean;
   loadingMore: boolean;
+  paginationError?: Error | null;
   scrollInfo?: string;
 };
 
@@ -132,19 +137,30 @@ export const Footer = React.memo(function Footer({
   wrapLines,
   isFollowing,
   loadingMore,
+  paginationError,
   scrollInfo,
 }: FooterProps) {
   return (
-    <Box marginTop={1} justifyContent="space-between">
-      <Text dimColor>
-        {isFollowing ? '[FOLLOWING] ' : ''}
-        {wrapLines ? '[WRAP] ' : ''}
-        {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
-      </Text>
-      <Text dimColor>
-        {scrollInfo ? `${scrollInfo}  ` : ''}
-        {cursorPos}/{rowCount}
-      </Text>
+    <Box flexDirection="column" marginTop={1}>
+      {paginationError && (
+        <ErrorDisplay
+          error={paginationError}
+          severity="warning"
+          detail="Failed to load more results."
+          compact
+        />
+      )}
+      <Box justifyContent="space-between">
+        <Text dimColor>
+          {isFollowing ? '[FOLLOWING] ' : ''}
+          {wrapLines ? '[WRAP] ' : ''}
+          {loadingMore ? '[LOADING…] ' : ''}?=help q=quit
+        </Text>
+        <Text dimColor>
+          {scrollInfo ? `${scrollInfo}  ` : ''}
+          {cursorPos}/{rowCount}
+        </Text>
+      </Box>
     </Box>
   );
 });
@@ -168,6 +184,7 @@ export const HelpScreen = React.memo(function HelpScreen() {
     ['Shift+Tab', 'Previous source / saved search'],
     ['t', 'Edit time range in $EDITOR'],
     ['s', 'Edit select clause in $EDITOR'],
+    ['D', 'Show generated SQL'],
     ['f', 'Toggle follow mode (live tail)'],
     ['w', 'Toggle line wrap'],
     ['?', 'Toggle this help'],
@@ -214,6 +231,67 @@ export const TableHeader = React.memo(function TableHeader({
           </Text>
         </Box>
       ))}
+    </Box>
+  );
+});
+
+// ---- SqlPreviewScreen ----------------------------------------------
+
+type SqlPreviewScreenProps = {
+  chSql: { sql: string; params: Record<string, unknown> } | null;
+  scrollOffset: number;
+  maxRows: number;
+};
+
+export const SqlPreviewScreen = React.memo(function SqlPreviewScreen({
+  chSql,
+  scrollOffset,
+  maxRows,
+}: SqlPreviewScreenProps) {
+  let resolvedSql = '';
+  if (chSql) {
+    try {
+      resolvedSql = parameterizedQueryToSql({
+        sql: chSql.sql,
+        params: chSql.params,
+      });
+    } catch {
+      // Fall back to the raw parameterized SQL if resolution fails
+      resolvedSql = chSql.sql;
+    }
+  }
+
+  const lines = resolvedSql ? resolvedSql.split('\n') : [];
+  const visibleLines = lines.slice(scrollOffset, scrollOffset + maxRows);
+  const totalLines = lines.length;
+
+  return (
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Text bold color="cyan">
+        Generated SQL
+      </Text>
+      <Text> </Text>
+      {resolvedSql ? (
+        visibleLines.map((line, i) => (
+          <Text key={i} wrap="wrap">
+            {line}
+          </Text>
+        ))
+      ) : (
+        <Text dimColor>No query has been executed yet.</Text>
+      )}
+      {totalLines > maxRows && (
+        <>
+          <Text> </Text>
+          <Text dimColor>
+            Lines {scrollOffset + 1}–
+            {Math.min(scrollOffset + maxRows, totalLines)} of {totalLines}{' '}
+            (Ctrl+D/U to scroll)
+          </Text>
+        </>
+      )}
+      <Text> </Text>
+      <Text dimColor>Press D or Esc to close</Text>
     </Box>
   );
 });

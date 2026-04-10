@@ -17,6 +17,7 @@ export interface KeybindingParams {
   focusSearch: boolean;
   focusDetailSearch: boolean;
   showHelp: boolean;
+  showSql: boolean;
   expandedRow: number | null;
   detailTab: 'overview' | 'columns' | 'trace';
   selectedRow: number;
@@ -41,6 +42,8 @@ export interface KeybindingParams {
   setFocusSearch: React.Dispatch<React.SetStateAction<boolean>>;
   setFocusDetailSearch: React.Dispatch<React.SetStateAction<boolean>>;
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowSql: React.Dispatch<React.SetStateAction<boolean>>;
+  setSqlScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setSelectedRow: React.Dispatch<React.SetStateAction<number>>;
   setScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setExpandedRow: React.Dispatch<React.SetStateAction<number | null>>;
@@ -73,6 +76,7 @@ export function useKeybindings(params: KeybindingParams): void {
     focusSearch,
     focusDetailSearch,
     showHelp,
+    showSql,
     expandedRow,
     detailTab,
     selectedRow,
@@ -93,6 +97,8 @@ export function useKeybindings(params: KeybindingParams): void {
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,
+    setShowSql,
+    setSqlScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
@@ -143,6 +149,25 @@ export function useKeybindings(params: KeybindingParams): void {
     // When help is showing, any key closes it
     if (showHelp) {
       setShowHelp(false);
+      return;
+    }
+
+    // When SQL preview is showing, D/Esc close it, Ctrl+D/U scroll
+    if (showSql) {
+      if (input === 'D' || key.escape) {
+        setShowSql(false);
+        setSqlScrollOffset(0);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        setSqlScrollOffset(prev => prev + 5);
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        setSqlScrollOffset(prev => Math.max(0, prev - 5));
+        return;
+      }
+      if (input === 'q') process.exit(0);
       return;
     }
 
@@ -312,7 +337,17 @@ export function useKeybindings(params: KeybindingParams): void {
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
-    if (input === 'f') setIsFollowing(prev => !prev);
+    // f = toggle follow mode (disabled in detail panel — follow is
+    // automatically paused on expand and restored on close)
+    if (input === 'f' && expandedRow === null) {
+      setIsFollowing(prev => !prev);
+    }
+    // D = show generated SQL
+    if (input === 'D') {
+      setShowSql(true);
+      setSqlScrollOffset(0);
+      return;
+    }
     if (input === '/') {
       if (expandedRow !== null) {
         setFocusDetailSearch(true);
