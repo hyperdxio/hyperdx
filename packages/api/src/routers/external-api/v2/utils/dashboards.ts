@@ -467,7 +467,7 @@ export function convertToInternalTileConfig(
   // Omit keys that are null/undefined, so that they're not saved as null in Mongo.
   // We know that the resulting object will conform to SavedChartConfig since we're just
   // removing null properties and anything that is null will just be undefined instead.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
   const strippedConfig = _.omitBy(internalConfig, _.isNil) as SavedChartConfig;
 
   return {

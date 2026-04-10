@@ -300,6 +300,9 @@ const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      styles: {
+        tabLabel: { textAlign: 'left' },
+      },
     }),
     Checkbox: Checkbox.extend({
       vars: () => ({

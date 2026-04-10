@@ -8,11 +8,11 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { NumberInput } from 'react-hook-form-mantine';
 import {
   Box,
   Collapse,
   Group,
+  NumberInput,
   Text,
   Tooltip,
   UnstyledButton,
@@ -120,15 +120,20 @@ export function AlertScheduleFields<T extends FieldValues>({
                     </Box>
                   </Tooltip>
                 </Group>
-                <NumberInput
-                  min={0}
-                  max={maxScheduleOffsetMinutes}
-                  step={1}
-                  size="xs"
-                  w={100}
+                <Controller
                   control={control}
                   name={scheduleOffsetName}
-                  disabled={hasScheduleStartAtAnchor}
+                  render={({ field }) => (
+                    <NumberInput
+                      min={0}
+                      max={maxScheduleOffsetMinutes}
+                      step={1}
+                      size="xs"
+                      w={100}
+                      disabled={hasScheduleStartAtAnchor}
+                      {...field}
+                    />
+                  )}
                 />
                 <Text size="sm" opacity={0.7}>
                   {offsetWindowLabel}
