@@ -119,44 +119,55 @@ export default function TraceWaterfall({
 
   const totalDurationMs = maxMs - minMs;
 
-  const visibleNodesForIndex = useMemo(
-    () => filteredNodes.slice(0, propMaxRows ?? 50),
-    [filteredNodes, propMaxRows],
-  );
-
-  // Determine the effective highlighted index:
+  // Determine the effective selected index over ALL filtered nodes:
   // - If selectedIndex is set (j/k navigation), use it (clamped)
   // - Otherwise, find the highlightHint row
   const effectiveIndex = useMemo(() => {
     if (selectedIndex != null) {
-      return Math.max(
-        0,
-        Math.min(selectedIndex, visibleNodesForIndex.length - 1),
-      );
+      return Math.max(0, Math.min(selectedIndex, filteredNodes.length - 1));
     }
     if (highlightHint) {
-      const idx = visibleNodesForIndex.findIndex(
+      const idx = filteredNodes.findIndex(
         n => n.SpanId === highlightHint.spanId && n.kind === highlightHint.kind,
       );
       return idx >= 0 ? idx : null;
     }
     return null;
-  }, [selectedIndex, highlightHint, visibleNodesForIndex]);
+  }, [selectedIndex, highlightHint, filteredNodes]);
 
   // Clamp selectedIndex if it exceeds bounds
   useEffect(() => {
     if (
       selectedIndex != null &&
-      visibleNodesForIndex.length > 0 &&
-      selectedIndex >= visibleNodesForIndex.length
+      filteredNodes.length > 0 &&
+      selectedIndex >= filteredNodes.length
     ) {
-      onSelectedIndexChange?.(visibleNodesForIndex.length - 1);
+      onSelectedIndexChange?.(filteredNodes.length - 1);
     }
-  }, [selectedIndex, visibleNodesForIndex.length, onSelectedIndexChange]);
+  }, [selectedIndex, filteredNodes.length, onSelectedIndexChange]);
+
+  // Derive scroll offset so the selected row stays in the viewport.
+  // The viewport shows `maxRows` rows starting at `scrollOffset`.
+  const scrollOffset = useMemo(() => {
+    if (effectiveIndex == null) return 0;
+    // Keep the selected row visible — scroll just enough
+    if (effectiveIndex < maxRows) return 0;
+    // Centre-ish: put selected row near the middle of the viewport
+    return Math.min(
+      effectiveIndex - Math.floor(maxRows / 2),
+      Math.max(0, filteredNodes.length - maxRows),
+    );
+  }, [effectiveIndex, maxRows, filteredNodes.length]);
+
+  // The visible window of nodes for rendering
+  const visibleNodes = useMemo(
+    () => filteredNodes.slice(scrollOffset, scrollOffset + maxRows),
+    [filteredNodes, scrollOffset, maxRows],
+  );
 
   // Fetch SELECT * for the selected span/log
   const selectedNode =
-    effectiveIndex != null ? visibleNodesForIndex[effectiveIndex] : null;
+    effectiveIndex != null ? filteredNodes[effectiveIndex] : null;
 
   useEffect(() => {
     fetchSelectedRow(selectedNode);
@@ -194,7 +205,6 @@ export default function TraceWaterfall({
     }
     return n.StatusCode === '2' || n.StatusCode === 'Error';
   }).length;
-  const visibleNodes = filteredNodes.slice(0, maxRows);
   const truncated = filteredNodes.length > maxRows;
 
   // ---- Waterfall view ----------------------------------------------
@@ -267,7 +277,7 @@ export default function TraceWaterfall({
         const statusColor = getStatusColor(node);
         const barClr = getBarColor(node);
 
-        const isHighlighted = effectiveIndex === i;
+        const isHighlighted = effectiveIndex === scrollOffset + i;
 
         return (
           <Box key={`${node.SpanId}-${node.kind}-${i}`} overflowX="hidden">
@@ -311,7 +321,13 @@ export default function TraceWaterfall({
 
       {truncated && (
         <Text dimColor>
-          … and {filteredNodes.length - maxRows} more (showing first {maxRows})
+          {scrollOffset + maxRows < filteredNodes.length
+            ? `↓ ${filteredNodes.length - scrollOffset - maxRows} more below`
+            : ''}
+          {scrollOffset > 0
+            ? `${scrollOffset + maxRows < filteredNodes.length ? ' | ' : ''}↑ ${scrollOffset} above`
+            : ''}
+          {` (${filteredNodes.length} total)`}
         </Text>
       )}
 
