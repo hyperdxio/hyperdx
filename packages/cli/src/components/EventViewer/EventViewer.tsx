@@ -25,6 +25,7 @@ export default function EventViewer({
   sources,
   savedSearches,
   onSavedSearchSelect,
+  onOpenAlerts,
   initialQuery = '',
   follow = true,
 }: EventViewerProps) {
@@ -180,6 +181,7 @@ export default function EventViewer({
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
+    onOpenAlerts,
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,

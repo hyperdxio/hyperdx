@@ -38,6 +38,9 @@ export interface KeybindingParams {
   findActiveIndex: () => number;
   onSavedSearchSelect: (search: SavedSearchResponse) => void;
 
+  // Navigation
+  onOpenAlerts?: () => void;
+
   // State setters
   setFocusSearch: React.Dispatch<React.SetStateAction<boolean>>;
   setFocusDetailSearch: React.Dispatch<React.SetStateAction<boolean>>;
@@ -94,6 +97,7 @@ export function useKeybindings(params: KeybindingParams): void {
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
+    onOpenAlerts,
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,
@@ -334,6 +338,10 @@ export function useKeybindings(params: KeybindingParams): void {
         return;
       }
       handleTabSwitch(key.shift ? -1 : 1);
+      return;
+    }
+    if (input === 'A' && onOpenAlerts) {
+      onOpenAlerts();
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
