@@ -492,6 +492,6 @@ describe('DBEditTimeChartForm - Heatmap chart type', () => {
     renderHeatmapComponent();
 
     expect(screen.getByText('Heatmap')).toBeInTheDocument();
-    expect(screen.getByText('Granularity')).toBeInTheDocument();
+    expect(screen.getByTestId('chart-run-query-button')).toBeInTheDocument();
   });
 });
