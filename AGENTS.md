@@ -206,6 +206,67 @@ formatting checks pass. Fix any issues before creating the commit.
    manual intervention rather than guessing. A wrong guess silently breaks
    things; asking is always cheaper than debugging later.
 
+## Cursor Cloud specific instructions
+
+### Environment
+
+- **Docker** is required and pre-installed. The Docker daemon must be started
+  before running `yarn dev` or any integration/E2E tests:
+  `sudo dockerd &>/dev/null &` then `sudo chmod 666 /var/run/docker.sock`.
+- **Node.js 22.21.1** (from `.nvmrc`) is the required version; use `nvm` to
+  switch if needed.
+- **`sh` is dash** on this VM (Ubuntu). The `yarn dev` script uses `sh -c` but
+  `scripts/dev-env.sh` requires bash (uses `BASH_SOURCE`). To start the dev
+  stack, run `make dev` or invoke the dev command via bash directly:
+  ```bash
+  bash -c '. ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p "$HDX_DEV_PROJECT" -f docker-compose.dev.yml up -d && yarn app:dev; dotenvx run --convention=nextjs -- docker compose -p "$HDX_DEV_PROJECT" -f docker-compose.dev.yml down'
+  ```
+  Ensure `node_modules/.bin` is on `PATH` (or use `npx`/`yarn`) so `dotenvx`
+  resolves correctly.
+
+### Dev stack ports
+
+Ports are slot-based (see `agent_docs/development.md`). The slot is computed
+from the directory name. For the default `/workspace` directory, the slot is
+typically **76**, giving:
+
+| Service        | Port  |
+| -------------- | ----- |
+| API            | 30176 |
+| App (Next.js)  | 30276 |
+| MongoDB        | 30476 |
+| ClickHouse     | 30576 |
+| OTel HTTP      | 30976 |
+
+Check the startup banner or `docker ps` for actual ports.
+
+### Quick verification commands
+
+Refer to the `AGENTS.md` **Running Tests** section for lint, unit, and
+integration test commands. Key commands:
+
+- `make ci-lint` — lint + TypeScript check
+- `make ci-unit` — unit tests across all packages
+- `cd packages/app && yarn ci:unit` — app unit tests (76 suites)
+- `cd packages/common-utils && yarn ci:unit` — common-utils unit tests (11 suites)
+
+### Creating a test user
+
+After starting the dev stack, create a user via the API:
+```bash
+curl -X POST http://localhost:$HYPERDX_API_PORT/register/password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"TestPassword123!","confirmPassword":"TestPassword123!"}'
+```
+
+### Gotchas
+
+- The TanStack Query DevTools overlay is visible in dev mode and can intercept
+  Playwright clicks. Use `{ force: true }` on click actions when automating.
+- `yarn dev:down` / `make dev-down` stops the dev stack and Docker containers.
+- The `.next` cache is automatically cleaned when `dev-env.sh` runs; if you see
+  stale webpack errors, delete `packages/app/.next` manually.
+
 ---
 
 _Need more details? Check the `agent_docs/` directory or ask which documentation
