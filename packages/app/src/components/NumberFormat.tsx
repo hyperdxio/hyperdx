@@ -19,6 +19,7 @@ import {
   IconClock,
   IconCurrencyDollar,
   IconDatabase,
+  IconHourglass,
   IconNumbers,
   IconPercentage,
 } from '@tabler/icons-react';
@@ -33,6 +34,7 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   percent: <IconPercentage size={14} />,
   byte: <IconDatabase size={14} />,
   time: <IconClock size={14} />,
+  duration: <IconHourglass size={14} />,
   data_rate: <IconDatabase size={14} />,
   throughput: <IconNumbers size={14} />,
 };
@@ -131,7 +133,8 @@ const OUTPUT_CATEGORY_OPTIONS: OutputGroup[] = [
       { value: 'number', label: 'Number' },
       { value: 'currency', label: 'Currency' },
       { value: 'percent', label: 'Percentage' },
-      { value: 'time', label: 'Time' },
+      { value: 'duration', label: 'Duration' },
+      { value: 'time', label: 'Time (clock)' },
     ],
   },
   {
@@ -249,7 +252,7 @@ export const NumberFormatForm: React.FC<{
           </Paper>
         </div>
 
-        {format.output !== 'time' && (
+        {format.output !== 'time' && format.output !== 'duration' && (
           <div>
             <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
             <Controller
@@ -293,7 +296,7 @@ export const NumberFormatForm: React.FC<{
                 );
               }}
             />
-          ) : format.output === 'time' ? (
+          ) : format.output === 'time' || format.output === 'duration' ? (
             <Controller
               control={control}
               key="numberFormat.factor"
