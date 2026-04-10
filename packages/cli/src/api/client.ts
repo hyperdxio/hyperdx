@@ -74,6 +74,13 @@ export class ApiClient {
 
       if (res.status === 302 || res.status === 200) {
         this.extractCookies(res);
+
+        // Verify the session is actually valid — some servers return
+        // 302/200 without setting a real session (e.g. SSO redirects).
+        if (!(await this.checkSession())) {
+          return false;
+        }
+
         saveSession({ appUrl: this.appUrl, cookies: this.cookies });
         return true;
       }
