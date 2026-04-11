@@ -929,14 +929,14 @@ function Heatmap({
       height,
       cursor: {
         drag: {
-          setScale: false, // Disable zooming
-          x: true,
-          y: true,
-          dist: 5, // Only trigger drag if distance is greater than 5 pixels
+          setScale: false,
+          x: !!onFilter,
+          y: !!onFilter,
+          dist: 5,
         },
-        show: true, // Ensure the cursor is enabled
+        show: true,
         focus: {
-          prox: 100, // Proximity to the cursor line to trigger focus
+          prox: 100,
         },
       },
       plugins: [
@@ -1011,7 +1011,7 @@ function Heatmap({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette]);
+  }, [width, height, tickFormatter, scaleType, palette, onFilter]);
 
   return (
     <div
@@ -1075,10 +1075,14 @@ function Heatmap({
               pointerEvents: 'none',
             }}
           >
-            <Text size="10px" pt="4px">
-              Click & Drag to Select Data
-            </Text>
-            <Divider my="xs" />
+            {onFilter && (
+              <>
+                <Text size="10px" pt="4px">
+                  Click & Drag to Select Data
+                </Text>
+                <Divider my="xs" />
+              </>
+            )}
             <div>
               <FormatTime value={highlightedPoint.xVal} />
             </div>

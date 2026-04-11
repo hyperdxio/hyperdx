@@ -365,6 +365,7 @@ export default function EditTimeChartForm({
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
   const prevConfigTypeRef = useRef(configType);
+  const prevSourceIdRef = useRef(sourceId);
 
   useEffect(() => {
     // Emulate the granularity picker auto-searching similar to dashboards
@@ -435,6 +436,33 @@ export default function EditTimeChartForm({
       }
     }
   }, [displayType, select, setValue, onSubmit, configType, tableSource]);
+
+  // Auto-populate heatmap defaults when source changes while in heatmap mode
+  useEffect(() => {
+    const sourceChanged = sourceId !== prevSourceIdRef.current;
+    prevSourceIdRef.current = sourceId;
+
+    if (
+      sourceChanged &&
+      displayType === DisplayType.Heatmap &&
+      tableSource?.kind === SourceKind.Trace &&
+      tableSource.durationExpression
+    ) {
+      const durationExpr = getDurationMsExpression(tableSource);
+      const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+          valueExpression: durationExpr,
+        },
+      ];
+      setValue('select', heatmapSeries);
+      setValue('series', heatmapSeries);
+      setValue('numberFormat', { output: 'duration', factor: 0.001 });
+      onSubmit(true);
+    }
+  }, [sourceId, displayType, tableSource, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
