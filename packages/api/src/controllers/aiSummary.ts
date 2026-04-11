@@ -227,24 +227,26 @@ Prioritize:
 2) severity/impact cues
 3) immediate next checks`;
 
-  const outputFormat =
+  const outputGuidance =
     compacted.kind === 'trace'
-      ? `Output format:
-- 2-3 sentence summary
-- "Evidence" bullets (3-5 bullets)
-- "Next checks" bullets (2-4 bullets)
-Keep under 220 words.`
-      : `Output format:
-- 1-2 sentence summary
-- "Evidence" bullets (2-4 bullets)
-- "Next checks" bullets (2-3 bullets)
-Keep under 170 words.`;
+      ? `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Then use whatever structure best fits the data (short paragraph and/or bullets).
+- Focus on why this matters for SRE outcomes: availability, latency/performance, and operational risk.
+- Mention user impact and urgency when inferable.
+- Keep reasonably concise (typically <= 200 words).`
+      : `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Then use whatever structure best fits the data (short paragraph and/or bullets).
+- Focus on why this matters for SRE outcomes: availability, latency/performance, and operational risk.
+- Mention user impact and urgency when inferable.
+- Keep reasonably concise (typically <= 160 words).`;
 
   const prompt = `${TONE_INSTRUCTIONS[tone]}
 
 ${kindInstructions}
 
-${outputFormat}
+${outputGuidance}
 
 Context:
 ${JSON.stringify(compacted.context, null, 2)}`;
