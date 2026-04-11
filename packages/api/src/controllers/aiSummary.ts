@@ -17,6 +17,11 @@ const keyValueSchema = z.object({
   count: z.number().int().nonnegative().optional(),
 });
 
+const keyCountSchema = z.object({
+  key: z.string().min(1).max(500),
+  count: z.number().int().nonnegative(),
+});
+
 const eventContextSchema = z.object({
   title: z.string().max(240).optional(),
   body: z.string().max(4000).optional(),
@@ -37,8 +42,8 @@ const patternContextSchema = z.object({
   count: z.number().int().nonnegative(),
   sampledRows: z.number().int().nonnegative().optional(),
   representativeSeverity: z.string().max(80).optional(),
-  topServices: z.array(keyValueSchema).max(30).optional(),
-  topAttributes: z.array(keyValueSchema).max(50).optional(),
+  topServices: z.array(keyCountSchema).max(30).optional(),
+  topAttributes: z.array(keyCountSchema).max(50).optional(),
   sampleMessages: z.array(z.string().min(1).max(1000)).max(30).optional(),
 });
 
@@ -59,7 +64,7 @@ const traceContextSchema = z.object({
   errorCount: z.number().int().nonnegative(),
   warnCount: z.number().int().nonnegative(),
   durationMs: z.number().nonnegative().optional(),
-  serviceStats: z.array(keyValueSchema).max(40).optional(),
+  serviceStats: z.array(keyCountSchema).max(40).optional(),
   criticalPath: z.array(traceItemSchema).max(80).optional(),
   errorEvents: z.array(traceItemSchema).max(80).optional(),
   slowSpans: z.array(traceItemSchema).max(80).optional(),
@@ -103,6 +108,18 @@ function trimKeyValues(
   return items.slice(0, maxItems).map(item => ({
     ...item,
     value: shortText(item.value, maxValueChars) ?? item.value,
+  }));
+}
+
+function trimKeyCounts(
+  items: Array<{ key: string; count: number }> | undefined,
+  maxItems: number,
+  maxKeyChars: number,
+) {
+  if (!items?.length) return [];
+  return items.slice(0, maxItems).map(item => ({
+    ...item,
+    key: shortText(item.key, maxKeyChars) ?? item.key,
   }));
 }
 
@@ -160,8 +177,8 @@ export function compactSummaryRequest(
         sampleMessages: payload.context.sampleMessages
           ?.slice(0, 8)
           .map(message => shortText(message, 260) ?? message),
-        topServices: trimKeyValues(payload.context.topServices, 10, 120),
-        topAttributes: trimKeyValues(payload.context.topAttributes, 16, 120),
+        topServices: trimKeyCounts(payload.context.topServices, 10, 120),
+        topAttributes: trimKeyCounts(payload.context.topAttributes, 16, 120),
       },
     };
   }
@@ -173,7 +190,7 @@ export function compactSummaryRequest(
       ...payload.context,
       traceId:
         shortText(payload.context.traceId, 120) ?? payload.context.traceId,
-      serviceStats: trimKeyValues(payload.context.serviceStats, 10, 100),
+      serviceStats: trimKeyCounts(payload.context.serviceStats, 10, 100),
       criticalPath: trimTraceItems(payload.context.criticalPath, 18),
       errorEvents: trimTraceItems(payload.context.errorEvents, 12),
       slowSpans: trimTraceItems(payload.context.slowSpans, 10),

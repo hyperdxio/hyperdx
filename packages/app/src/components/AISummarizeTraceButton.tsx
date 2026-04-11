@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';

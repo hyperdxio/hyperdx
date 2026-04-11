@@ -14,7 +14,6 @@ import {
 } from '@/controllers/ai';
 import {
   AISummaryRequestSchema,
-  compactSummaryRequest,
   getSummaryPrompt,
 } from '@/controllers/aiSummary';
 import { getSource } from '@/controllers/sources';
@@ -151,9 +150,8 @@ router.post(
         }
         throw err;
       }
-      const requestPayload = compactSummaryRequest(req.body);
-      const { system, prompt, maxOutputTokens } =
-        getSummaryPrompt(requestPayload);
+      const requestPayload = req.body;
+      const { system, prompt, maxOutputTokens } = getSummaryPrompt(req.body);
       logger.info(
         {
           kind: requestPayload.kind,
