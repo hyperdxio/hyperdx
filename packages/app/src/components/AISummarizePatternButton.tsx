@@ -34,7 +34,7 @@ function buildRowDataFromSample(
   };
 }
 
-function formatPatternContent(
+export function formatPatternContent(
   pattern: Pattern,
   serviceNameExpression: string,
 ): string {
@@ -177,12 +177,15 @@ export default function AISummarizePatternButton({
   }, [aiEnabled, handleRealAI, pattern, serviceNameExpression]);
 
   const handleDismiss = useCallback(() => {
-    dismissEasterEgg();
+    if (!aiEnabled) {
+      dismissEasterEgg();
+    }
     setIsOpen(false);
     setTimeout(() => setDismissed(true), 300);
-  }, []);
+  }, [aiEnabled]);
 
-  if (!aiEnabled && (dismissed || !showEasterEgg)) return null;
+  if (dismissed) return null;
+  if (!aiEnabled && !showEasterEgg) return null;
 
   return (
     <AISummaryPanel
@@ -191,7 +194,7 @@ export default function AISummarizePatternButton({
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
-      onDismiss={aiEnabled ? undefined : handleDismiss}
+      onDismiss={handleDismiss}
       analyzingLabel="Analyzing pattern data..."
       isRealAI={aiEnabled}
       error={error}

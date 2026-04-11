@@ -57,6 +57,16 @@ export default function AISummaryPanel({
             Regenerate
           </Button>
         )}
+        {onDismiss && !isOpen && (
+          <Anchor
+            size="xs"
+            c="dimmed"
+            onClick={onDismiss}
+            style={{ cursor: 'pointer' }}
+          >
+            Don&apos;t show
+          </Anchor>
+        )}
       </Flex>
       <Collapse expanded={isOpen}>
         <Paper
@@ -96,7 +106,7 @@ export default function AISummaryPanel({
                     </Text>
                   )}
                 </Text>
-                {!isRealAI && onDismiss && (
+                {!isRealAI && (
                   <Popover
                     opened={infoOpen}
                     onChange={setInfoOpen}
@@ -122,17 +132,19 @@ export default function AISummaryPanel({
                         generated locally from hand-written phrase templates.
                         Your data never left the browser.
                       </Text>
-                      <Anchor
-                        size="xs"
-                        c="dimmed"
-                        onClick={() => {
-                          setInfoOpen(false);
-                          onDismiss();
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        Don&apos;t show again
-                      </Anchor>
+                      {onDismiss && (
+                        <Anchor
+                          size="xs"
+                          c="dimmed"
+                          onClick={() => {
+                            setInfoOpen(false);
+                            onDismiss();
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Don&apos;t show again
+                        </Anchor>
+                      )}
                     </Popover.Dropdown>
                   </Popover>
                 )}

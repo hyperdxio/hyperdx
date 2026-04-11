@@ -12,7 +12,10 @@ import {
   Theme,
 } from './aiSummarize';
 
-function formatEventContent(rowData: RowData, severityText?: string): string {
+export function formatEventContent(
+  rowData: RowData,
+  severityText?: string,
+): string {
   const parts: string[] = [];
 
   if (severityText) parts.push(`Severity: ${severityText}`);
@@ -150,12 +153,17 @@ export default function AISummarizeButton({
   }, [aiEnabled, handleRealAI, rowData, severityText]);
 
   const handleDismiss = useCallback(() => {
-    dismissEasterEgg();
+    if (!aiEnabled) {
+      dismissEasterEgg();
+    }
     setIsOpen(false);
     setTimeout(() => setDismissed(true), 300);
-  }, []);
+  }, [aiEnabled]);
 
-  if (!aiEnabled && (dismissed || !showEasterEgg)) return null;
+  // Real AI: always visible unless user dismissed this instance.
+  // Easter egg: visible only within the time-gated window + not dismissed.
+  if (dismissed) return null;
+  if (!aiEnabled && !showEasterEgg) return null;
 
   return (
     <AISummaryPanel
@@ -164,7 +172,7 @@ export default function AISummarizeButton({
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
-      onDismiss={aiEnabled ? undefined : handleDismiss}
+      onDismiss={handleDismiss}
       analyzingLabel="Analyzing event data..."
       isRealAI={aiEnabled}
       error={error}
