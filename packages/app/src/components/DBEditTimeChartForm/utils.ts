@@ -90,6 +90,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'pie';
     case DisplayType.Number:
       return 'number';
+    case DisplayType.Heatmap:
+      return 'heatmap';
     default:
       return 'time';
   }
@@ -100,6 +102,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'time',
   'number',
   'pie',
+  'heatmap',
 ]);
 
 export function computeDbTimeChartConfig(
@@ -228,6 +231,8 @@ export function buildChartConfigForExplanations({
     return convertToTableChartConfig(config);
   } else if (activeTab === 'pie') {
     return convertToPieChartConfig(config);
+  } else if (activeTab === 'heatmap') {
+    return config;
   }
 
   return config;

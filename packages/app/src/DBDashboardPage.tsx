@@ -97,6 +97,7 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
+import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -596,6 +597,38 @@ const Tile = forwardRef(
                     config={queriedConfig}
                   />
                 )}
+                {queriedConfig?.displayType === DisplayType.Heatmap &&
+                  isBuilderChartConfig(queriedConfig) && (
+                    <DBHeatmapChart
+                      key={`${keyPrefix}-${chart.id}`}
+                      title={title}
+                      toolbarPrefix={toolbar}
+                      config={{
+                        ...queriedConfig,
+                        displayType: DisplayType.Heatmap,
+                        select: [
+                          {
+                            aggFn: 'heatmap' as const,
+                            valueExpression:
+                              (Array.isArray(queriedConfig.select)
+                                ? queriedConfig.select[0]?.valueExpression
+                                : undefined) ?? '',
+                            countExpression: (Array.isArray(
+                              queriedConfig.select,
+                            )
+                              ? (
+                                  queriedConfig.select[0] as Record<
+                                    string,
+                                    unknown
+                                  >
+                                )?.countExpression
+                              : undefined) as string | undefined,
+                          },
+                        ],
+                        granularity: 'auto',
+                      }}
+                    />
+                  )}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (

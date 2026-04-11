@@ -246,17 +246,32 @@ export const validateChartForm = (
     });
   }
 
-  // Validate number and pie charts only have one series
+  // Validate number, pie, and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Number ||
-      form.displayType === DisplayType.Pie) &&
+      form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {
     errors.push({
       path: `series`,
       message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  // Validate heatmap requires a value expression
+  if (
+    !isRawSqlChart &&
+    form.displayType === DisplayType.Heatmap &&
+    Array.isArray(form.series) &&
+    form.series.length > 0 &&
+    !form.series[0]?.valueExpression
+  ) {
+    errors.push({
+      path: `series.0.valueExpression`,
+      message: 'Value expression is required for heatmap charts',
     });
   }
 

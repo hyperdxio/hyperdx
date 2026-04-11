@@ -24,6 +24,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
   IconChartPie,
+  IconGrid3x3,
   IconList,
   IconMarkdown,
   IconNumbers,
@@ -396,6 +397,19 @@ export default function EditTimeChartForm({
         setValue('series', defaultSeries);
       }
 
+      if (displayType === DisplayType.Heatmap && Array.isArray(select)) {
+        const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+            valueExpression: select[0]?.valueExpression ?? '',
+          },
+        ];
+        setValue('select', heatmapSeries);
+        setValue('series', heatmapSeries);
+      }
+
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
       if (displayTypeChanged) {
         // true = Suppress error notification (because we're auto-submitting)
@@ -511,6 +525,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconList size={16} />}
                 >
                   Search
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Heatmap}
+                  leftSection={<IconGrid3x3 size={16} />}
+                >
+                  Heatmap
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}

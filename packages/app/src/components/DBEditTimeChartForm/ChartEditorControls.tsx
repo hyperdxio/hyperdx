@@ -29,6 +29,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ChartSeriesEditor } from './ChartSeriesEditor';
+import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
 
 type ChartEditorControlsProps = {
@@ -113,7 +114,16 @@ export function ChartEditorControls({
             )}
         </Group>
       </Flex>
-      {displayType !== DisplayType.Search && Array.isArray(select) ? (
+      {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
+        <HeatmapSeriesEditor
+          control={control}
+          setValue={setValue}
+          tableConnection={tableConnection}
+          tableSource={tableSource}
+          parentRef={parentRef}
+          onSubmit={onSubmit}
+        />
+      ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (
             <ChartSeriesEditor
@@ -208,7 +218,8 @@ export function ChartEditorControls({
           <Flex mt={4} align="center" justify="space-between">
             <Group gap="xs">
               {displayType !== DisplayType.Number &&
-                displayType !== DisplayType.Pie && (
+                displayType !== DisplayType.Pie &&
+                displayType !== DisplayType.Heatmap && (
                   <Button
                     variant="subtle"
                     size="sm"
