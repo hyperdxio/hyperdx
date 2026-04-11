@@ -434,7 +434,7 @@ export default function EditTimeChartForm({
         onSubmit(true);
       }
     }
-  }, [displayType, select, setValue, onSubmit, configType]);
+  }, [displayType, select, setValue, onSubmit, configType, tableSource]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
