@@ -628,6 +628,15 @@ const Tile = forwardRef(
                         granularity: 'auto',
                         numberFormat: queriedConfig.numberFormat,
                       }}
+                      scaleType={
+                        (Array.isArray(queriedConfig.select)
+                          ? ((
+                              queriedConfig.select[0] as Record<string, unknown>
+                            )?.heatmapScaleType as string)
+                          : undefined) === 'linear'
+                          ? 'linear'
+                          : 'log'
+                      }
                     />
                   )}
                 {effectiveMarkdownConfig?.displayType ===

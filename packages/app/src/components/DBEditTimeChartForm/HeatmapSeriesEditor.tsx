@@ -1,16 +1,20 @@
-import { Control, UseFormSetValue } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Flex, Text } from '@mantine/core';
+import { useCallback, useMemo, useState } from 'react';
+import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { Button, Divider, Flex } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
+import HeatmapSettingsDrawer, {
+  HeatmapSettingsValues,
+} from '@/components/HeatmapSettingsDrawer';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 type HeatmapSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
-  tableConnection: TableConnection;
   tableSource?: TSource;
   parentRef?: HTMLElement | null;
   onSubmit: () => void;
@@ -19,55 +23,82 @@ type HeatmapSeriesEditorProps = {
 export function HeatmapSeriesEditor({
   control,
   setValue,
-  tableConnection,
+  tableSource,
   parentRef,
   onSubmit,
 }: HeatmapSeriesEditorProps) {
+  const [settingsOpened, settingsHandlers] = useDisclosure(false);
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+
+  const valueExpression = useWatch({
+    control,
+    name: 'series.0.valueExpression',
+  });
+  const countExpression = useWatch({
+    control,
+    name: 'series.0.countExpression' as any,
+  });
+
+  const scaleTypeRaw = useWatch({
+    control,
+    name: 'series.0.heatmapScaleType' as any,
+  });
+  const scaleType: HeatmapScaleType = scaleTypeRaw ?? 'log';
+
+  const connection = useMemo(() => tcFromSource(tableSource), [tableSource]);
+
+  const handleSettingsSubmit = useCallback(
+    (data: HeatmapSettingsValues) => {
+      setValue('series.0.valueExpression', data.value);
+      setValue('series.0.countExpression' as any, data.count || 'count()');
+      onSubmit();
+      settingsHandlers.close();
+    },
+    [setValue, onSubmit, settingsHandlers],
+  );
+
+  const handleScaleTypeChange = useCallback(
+    (v: HeatmapScaleType) => {
+      setValue('series.0.heatmapScaleType' as any, v);
+    },
+    [setValue],
+  );
+
   return (
-    <Flex direction="column" gap="sm">
-      <div
-        className="gap-2 align-items-center"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'auto minmax(0, 1fr)',
+    <Flex direction="column" gap="sm" ref={setContainer}>
+      <SearchWhereInput
+        tableConnection={connection}
+        control={control}
+        name="where"
+        onSubmit={onSubmit}
+        onLanguageChange={(lang: 'sql' | 'lucene') =>
+          setValue('whereLanguage', lang)
+        }
+        showLabel={false}
+      />
+      <Divider />
+      <Flex justify="flex-end">
+        <Button
+          onClick={settingsHandlers.open}
+          size="compact-sm"
+          variant="secondary"
+        >
+          Heatmap Settings
+        </Button>
+      </Flex>
+      <HeatmapSettingsDrawer
+        opened={settingsOpened}
+        onClose={settingsHandlers.close}
+        connection={connection}
+        parentRef={container}
+        defaultValues={{
+          value: valueExpression || '',
+          count: countExpression || 'count()',
         }}
-      >
-        <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-          Value
-        </Text>
-        <SQLInlineEditorControlled
-          parentRef={parentRef}
-          tableConnection={tableConnection}
-          control={control}
-          name="series.0.valueExpression"
-          placeholder="Y-axis expression (e.g. Duration)"
-          tooltipText="Expression for the Y-axis of the heatmap. Each row's value is bucketed into a cell."
-          onSubmit={onSubmit}
-        />
-        <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-          Count
-        </Text>
-        <SQLInlineEditorControlled
-          parentRef={parentRef}
-          tableConnection={tableConnection}
-          control={control}
-          name="series.0.countExpression"
-          placeholder="count() (default)"
-          tooltipText="Expression for cell intensity. Defaults to count() if left empty."
-          onSubmit={onSubmit}
-        />
-        <Text size="sm">Where</Text>
-        <SearchWhereInput
-          tableConnection={tableConnection}
-          control={control}
-          name="where"
-          onSubmit={onSubmit}
-          onLanguageChange={(lang: 'sql' | 'lucene') =>
-            setValue('whereLanguage', lang)
-          }
-          showLabel={false}
-        />
-      </div>
+        scaleType={scaleType}
+        onScaleTypeChange={handleScaleTypeChange}
+        onSubmit={handleSettingsSubmit}
+      />
     </Flex>
   );
 }

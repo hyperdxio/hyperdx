@@ -1,12 +1,6 @@
 import { useCallback, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  TableConnection,
-  tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   DisplayType,
@@ -15,21 +9,14 @@ import {
 import {
   ActionIcon,
   Box,
-  Button,
-  Divider,
-  Drawer,
   Flex,
-  Group,
-  SegmentedControl,
-  Stack,
-  Text,
   Tooltip,
   useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
+import { IconSettings } from '@tabler/icons-react';
 
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
 import { getDurationMsExpression } from '@/source';
 import type { NumberFormat } from '@/types';
 
@@ -41,11 +28,6 @@ import DBHeatmapChart, {
   type HeatmapScaleType,
   lightPalette,
 } from '../DBHeatmapChart';
-
-const Schema = z.object({
-  value: z.string().trim().min(1),
-  count: z.string().trim().optional(),
-});
 
 export function DBSearchHeatmapChart({
   chartConfig,
@@ -157,7 +139,7 @@ export function DBSearchHeatmapChart({
         parentRef={container}
         defaultValues={{
           value: fields.value,
-          count: fields.count,
+          count: fields.count ?? 'count()',
         }}
         scaleType={scaleType}
         onScaleTypeChange={setScaleType}
@@ -188,109 +170,5 @@ export function DBSearchHeatmapChart({
         />
       </Box>
     </Flex>
-  );
-}
-
-function HeatmapSettingsDrawer({
-  opened,
-  onClose,
-  connection,
-  parentRef,
-  defaultValues,
-  scaleType,
-  onScaleTypeChange,
-  onSubmit,
-}: {
-  opened: boolean;
-  onClose: () => void;
-  connection: TableConnection;
-  parentRef?: HTMLElement | null;
-  defaultValues: z.infer<typeof Schema>;
-  scaleType: HeatmapScaleType;
-  onScaleTypeChange: (v: HeatmapScaleType) => void;
-  onSubmit: (v: z.infer<typeof Schema>) => void;
-}) {
-  const form = useForm({
-    resolver: zodResolver(Schema),
-    defaultValues,
-  });
-
-  const handleClose = useCallback(() => {
-    form.reset(defaultValues);
-    onClose();
-  }, [onClose, form, defaultValues]);
-
-  return (
-    <Drawer
-      title="Heatmap Settings"
-      opened={opened}
-      onClose={handleClose}
-      position="right"
-      size="sm"
-    >
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Stack gap="md">
-          <Box>
-            <Text size="sm" fw={500} mb={4}>
-              Scale
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={scaleType}
-              onChange={v => onScaleTypeChange(v as HeatmapScaleType)}
-              data={[
-                { label: 'Log', value: 'log' },
-                { label: 'Linear', value: 'linear' },
-              ]}
-            />
-          </Box>
-
-          <Divider />
-
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="value"
-            size="xs"
-            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-            placeholder="SQL expression"
-            language="sql"
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Value"
-            error={form.formState.errors.value?.message}
-            rules={{ required: true }}
-          />
-
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="count"
-            placeholder="SQL expression"
-            language="sql"
-            size="xs"
-            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Count"
-            error={form.formState.errors.count?.message}
-          />
-
-          <Divider />
-          <Group gap="xs" justify="flex-end">
-            <Button variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              leftSection={<IconPlayerPlay size={16} />}
-            >
-              Apply
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Drawer>
   );
 }
