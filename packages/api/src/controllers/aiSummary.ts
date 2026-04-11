@@ -191,6 +191,24 @@ const TONE_INSTRUCTIONS: Record<AISummaryTone, string> = {
     'Tone: naturalist documentary narration with calm, observational style.',
 };
 
+function hasErrorSignal(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes('error') ||
+    normalized.includes('fatal') ||
+    normalized.includes('critical') ||
+    normalized.includes('5xx') ||
+    normalized === 'exception'
+  );
+}
+
+function hasWarnSignal(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return normalized.includes('warn') || normalized.includes('4xx');
+}
+
 export function getSummaryPrompt(payload: AISummaryRequest): {
   system: string;
   prompt: string;
@@ -198,6 +216,43 @@ export function getSummaryPrompt(payload: AISummaryRequest): {
 } {
   const compacted = compactSummaryRequest(payload);
   const tone = compacted.tone ?? 'default';
+  const eventContext = compacted.kind === 'event' ? compacted.context : null;
+  const eventHasErrorSignal =
+    eventContext != null &&
+    (hasErrorSignal(eventContext.severity) ||
+      hasErrorSignal(eventContext.status));
+  const eventHasWarnSignal =
+    eventContext != null &&
+    (hasWarnSignal(eventContext.severity) ||
+      hasWarnSignal(eventContext.status));
+  const eventLooksRoutine =
+    eventContext != null && !eventHasErrorSignal && !eventHasWarnSignal;
+  const patternContext =
+    compacted.kind === 'pattern' ? compacted.context : null;
+  const patternHasErrorSignal =
+    patternContext != null &&
+    (hasErrorSignal(patternContext.representativeSeverity) ||
+      patternContext.sampleMessages?.some(message =>
+        hasErrorSignal(message),
+      ) === true);
+  const patternHasWarnSignal =
+    patternContext != null &&
+    (hasWarnSignal(patternContext.representativeSeverity) ||
+      patternContext.sampleMessages?.some(message => hasWarnSignal(message)) ===
+        true);
+  const patternLooksRoutine =
+    patternContext != null && !patternHasErrorSignal && !patternHasWarnSignal;
+  const traceContext = compacted.kind === 'trace' ? compacted.context : null;
+  const traceHasCriticalSignals =
+    traceContext != null &&
+    (traceContext.errorCount > 0 ||
+      (traceContext.slowSpans?.length ?? 0) >= 2 ||
+      (traceContext.warnCount ?? 0) >= 5);
+  const traceLooksRoutine =
+    traceContext != null &&
+    !traceHasCriticalSignals &&
+    traceContext.errorCount === 0 &&
+    (traceContext.warnCount ?? 0) === 0;
 
   const system = `You are an AI assistant for HyperDX, an observability platform.
 - Use only the provided context; do not invent facts.
@@ -211,7 +266,11 @@ export function getSummaryPrompt(payload: AISummaryRequest): {
 Prioritize:
 1) failures/errors and likely blast radius
 2) critical path bottlenecks and latency
-3) concrete next investigation steps`
+3) concrete next investigation steps
+Adaptive behavior:
+- First classify the trace as critical, elevated, or routine based on the provided signals.
+- If routine (no meaningful risk signals), keep the summary brief and avoid incident-style analysis.
+- If critical/elevated, analyze likely impact and highest-value next checks.`
       : compacted.kind === 'pattern'
         ? `Task: Summarize this recurring log pattern.
 Important:
@@ -220,22 +279,52 @@ Important:
 Prioritize:
 1) strongest severity/service/environment signals
 2) unusual concentrations, outliers, or drift from expected behavior
-3) practical follow-up checks tied to impact`
+3) practical follow-up checks tied to impact
+Adaptive behavior:
+- If signals look routine/healthy, keep this very brief and avoid generic reassurance.`
         : `Task: Summarize this single event/log/span.
 Prioritize:
 1) what happened
 2) severity/impact cues
-3) immediate next checks`;
+3) immediate next checks
+Adaptive behavior:
+- If this looks routine/healthy, keep this very brief and avoid generic reassurance.`;
 
   const outputGuidance =
     compacted.kind === 'trace'
-      ? `Output guidance:
+      ? traceLooksRoutine
+        ? `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Keep this concise (typically <= 120 words).
+- Use only minimal bullets if they add value; no fixed section template is required.
+- Mention SRE impact only if there is meaningful risk or user-facing impact.`
+        : `Output guidance:
 - Start with "TL;DR:" as one short sentence.
 - Then use whatever structure best fits the data (short paragraph and/or bullets).
 - Focus on why this matters for SRE outcomes: availability, latency/performance, and operational risk.
 - Mention user impact and urgency when inferable.
-- Keep reasonably concise (typically <= 200 words).`
-      : `Output guidance:
+- Keep reasonably concise (typically <= 200 words).
+- Do not force fixed section headings when they do not add value.`
+      : compacted.kind === 'event'
+        ? eventLooksRoutine
+          ? `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Keep this very short (typically <= 60 words total).
+- Do not add section headings.
+- Avoid generic "everything is fine" filler; state the concrete observation and whether action is needed.`
+          : `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Then use whatever structure best fits the data (short paragraph and/or bullets).
+- Focus on why this matters for SRE outcomes: availability, latency/performance, and operational risk.
+- Mention user impact and urgency when inferable.
+- Keep reasonably concise (typically <= 160 words).`
+        : patternLooksRoutine
+          ? `Output guidance:
+- Start with "TL;DR:" as one short sentence.
+- Keep this short (typically <= 90 words total).
+- Do not add section headings.
+- Avoid generic reassurance; only mention concrete signals and whether action is needed.`
+          : `Output guidance:
 - Start with "TL;DR:" as one short sentence.
 - Then use whatever structure best fits the data (short paragraph and/or bullets).
 - Focus on why this matters for SRE outcomes: availability, latency/performance, and operational risk.
@@ -254,6 +343,17 @@ ${JSON.stringify(compacted.context, null, 2)}`;
   return {
     system,
     prompt,
-    maxOutputTokens: compacted.kind === 'trace' ? 500 : 360,
+    maxOutputTokens:
+      compacted.kind === 'trace'
+        ? traceLooksRoutine
+          ? 260
+          : 500
+        : compacted.kind === 'event'
+          ? eventLooksRoutine
+            ? 140
+            : 360
+          : patternLooksRoutine
+            ? 200
+            : 360,
   };
 }
