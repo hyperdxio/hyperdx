@@ -10,6 +10,7 @@ import type {
 import { chSqlToAliasMap } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type {
   BuilderChartConfigWithDateRange,
@@ -101,6 +102,149 @@ export async function buildEventSearchQuery(
     orderBy,
     limit: { limit, offset },
     dateRange: [startTime, endTime],
+  };
+
+  return renderChartConfig(config, metadata, source.querySettings);
+}
+
+// ---- Alias WITH clauses from source select --------------------------
+
+/**
+ * Compute WITH clauses from the source's default select expression.
+ * When a source defines `SeverityText as level`, searches for `level:error`
+ * need `WITH SeverityText AS level` so the alias is available in WHERE.
+ */
+async function buildAliasWithClauses(
+  source: SourceResponse,
+  metadata: Metadata,
+): Promise<BuilderChartConfigWithDateRange['with']> {
+  const selectExpr = source.defaultTableSelectExpression;
+  if (!selectExpr) return undefined;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+
+  // Render a dummy query with the source's select to extract aliases
+  const dummyConfig: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Search,
+    select: selectExpr,
+    from: source.from,
+    where: '',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    limit: { limit: 0 },
+    dateRange: [new Date(), new Date()],
+  };
+
+  const dummySql = await renderChartConfig(
+    dummyConfig,
+    metadata,
+    source.querySettings,
+  );
+  const aliasMap = chSqlToAliasMap(dummySql);
+  return aliasMapToWithClauses(aliasMap);
+}
+
+// ---- Pattern sampling query -----------------------------------------
+
+export interface PatternSampleQueryOptions {
+  source: SourceResponse;
+  searchQuery?: string;
+  startTime: Date;
+  endTime: Date;
+  /** Number of random rows to sample (default 100_000) */
+  sampleLimit?: number;
+}
+
+/**
+ * Build a query that randomly samples events for pattern mining.
+ * Selects the body column and timestamp, ordered by rand().
+ */
+export async function buildPatternSampleQuery(
+  opts: PatternSampleQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const {
+    source,
+    searchQuery = '',
+    startTime,
+    endTime,
+    sampleLimit = 100_000,
+  } = opts;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+  const firstTsExpr = getFirstTimestampValueExpression(tsExpr) ?? tsExpr;
+
+  // Determine the body column
+  let bodyExpr: string;
+  if (source.kind === 'trace') {
+    bodyExpr = source.spanNameExpression ?? 'SpanName';
+  } else {
+    bodyExpr = source.bodyExpression ?? 'Body';
+  }
+
+  const selectExpr = `${bodyExpr}, ${firstTsExpr}`;
+
+  // Compute alias WITH clauses so search aliases (e.g. `level`) resolve in WHERE
+  const aliasWith = searchQuery
+    ? await buildAliasWithClauses(source, metadata)
+    : undefined;
+
+  const config: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Search,
+    select: selectExpr,
+    from: source.from,
+    where: searchQuery,
+    whereLanguage: searchQuery ? 'lucene' : 'sql',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    orderBy: 'rand()',
+    limit: { limit: sampleLimit },
+    dateRange: [startTime, endTime],
+    ...(aliasWith ? { with: aliasWith } : {}),
+  };
+
+  return renderChartConfig(config, metadata, source.querySettings);
+}
+
+// ---- Total count query ----------------------------------------------
+
+export interface TotalCountQueryOptions {
+  source: SourceResponse;
+  searchQuery?: string;
+  startTime: Date;
+  endTime: Date;
+}
+
+/**
+ * Build a query to get the total count of events matching the search.
+ */
+export async function buildTotalCountQuery(
+  opts: TotalCountQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const { source, searchQuery = '', startTime, endTime } = opts;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+
+  // Compute alias WITH clauses so search aliases (e.g. `level`) resolve in WHERE
+  const aliasWith = searchQuery
+    ? await buildAliasWithClauses(source, metadata)
+    : undefined;
+
+  const config: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Table,
+    select: 'count() as total',
+    from: source.from,
+    where: searchQuery,
+    whereLanguage: searchQuery ? 'lucene' : 'sql',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    limit: { limit: 1 },
+    dateRange: [startTime, endTime],
+    ...(aliasWith ? { with: aliasWith } : {}),
   };
 
   return renderChartConfig(config, metadata, source.querySettings);

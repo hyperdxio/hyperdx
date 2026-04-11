@@ -122,9 +122,19 @@ export default function EventViewer({
 
   // ---- Pattern mining -----------------------------------------------
 
-  const { patterns } = usePatternData({
-    events: showPatterns ? events : [],
+  const {
+    patterns,
+    loading: patternsLoading,
+    error: patternsError,
+    totalCount: patternsTotalCount,
+  } = usePatternData({
+    clickhouseClient,
+    metadata,
     source,
+    submittedQuery,
+    startTime: timeRange.start,
+    endTime: timeRange.end,
+    enabled: showPatterns,
   });
 
   // ---- Derived values ----------------------------------------------
@@ -362,7 +372,9 @@ export default function EventViewer({
             selectedRow={patternSelectedRow}
             scrollOffset={patternScrollOffset}
             maxRows={maxRows}
-            totalEvents={events.length}
+            totalCount={patternsTotalCount}
+            loading={patternsLoading}
+            error={patternsError}
           />
         ) : (
           <TableView
@@ -401,9 +413,11 @@ export default function EventViewer({
             expandedRow !== null
               ? 'Ctrl+D/U to scroll'
               : showPatterns && expandedPattern !== null
-                ? `[SAMPLES] h to go back`
+                ? '[SAMPLES] h to go back'
                 : showPatterns
-                  ? `[PATTERNS] ${patterns.length} patterns from ${events.length} events — l to expand, P/Esc to close`
+                  ? patternsLoading
+                    ? '[PATTERNS] Sampling…'
+                    : `[PATTERNS] ${patterns.length} patterns${patternsTotalCount != null ? ` from ~${patternsTotalCount.toLocaleString()} events` : ''} — l to expand, P/Esc to close`
                   : undefined
           }
         />

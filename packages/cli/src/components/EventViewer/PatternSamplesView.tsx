@@ -41,7 +41,10 @@ export function PatternSamplesView({
         <Text wrap="truncate">{pattern.pattern}</Text>
       </Box>
       <Box>
-        <Text dimColor>{pattern.count} events — h to go back</Text>
+        <Text dimColor>
+          ~{pattern.estimatedCount.toLocaleString()} estimated events (
+          {pattern.count.toLocaleString()} sampled) — h to go back
+        </Text>
       </Box>
       <Text> </Text>
 

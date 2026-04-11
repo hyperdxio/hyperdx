@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import Spinner from 'ink-spinner';
 
 import type { PatternGroup } from './usePatternData';
 
@@ -10,7 +11,9 @@ type PatternViewProps = {
   selectedRow: number;
   scrollOffset: number;
   maxRows: number;
-  totalEvents: number;
+  totalCount: number | null;
+  loading: boolean;
+  error: Error | null;
 };
 
 // ---- Component -----------------------------------------------------
@@ -20,7 +23,9 @@ export function PatternView({
   selectedRow,
   scrollOffset,
   maxRows,
-  totalEvents,
+  totalCount,
+  loading,
+  error,
 }: PatternViewProps) {
   const visible = patterns.slice(scrollOffset, scrollOffset + maxRows);
   const emptyRows = maxRows - visible.length;
@@ -29,9 +34,9 @@ export function PatternView({
     <Box flexDirection="column" marginTop={1} height={maxRows + 1}>
       {/* Header */}
       <Box overflowX="hidden">
-        <Box width="10%">
+        <Box width="12%">
           <Text bold dimColor wrap="truncate">
-            Count
+            Est. Count
           </Text>
         </Box>
         <Box width="8%">
@@ -39,65 +44,76 @@ export function PatternView({
             Pct
           </Text>
         </Box>
-        <Box width="82%">
+        <Box width="80%">
           <Text bold dimColor wrap="truncate">
             Pattern
           </Text>
         </Box>
       </Box>
 
-      {visible.length === 0 ? <Text dimColor>No patterns found.</Text> : null}
+      {loading ? (
+        <Text>
+          <Spinner type="dots" /> Sampling events and mining patterns…
+        </Text>
+      ) : error ? (
+        <Text color="red">Error: {error.message}</Text>
+      ) : visible.length === 0 ? (
+        <Text dimColor>No patterns found.</Text>
+      ) : null}
 
-      {visible.map((p, i) => {
-        const isSelected = i === selectedRow;
-        const pct =
-          totalEvents > 0
-            ? `${((p.count / totalEvents) * 100).toFixed(1)}%`
-            : '-';
+      {!loading &&
+        !error &&
+        visible.map((p, i) => {
+          const isSelected = i === selectedRow;
+          const pct =
+            totalCount != null && totalCount > 0
+              ? `${((p.estimatedCount / totalCount) * 100).toFixed(1)}%`
+              : '-';
 
-        return (
-          <Box key={p.id} overflowX="hidden">
-            <Box width={2}>
-              <Text color="cyan" bold>
-                {isSelected ? '▸' : ' '}
-              </Text>
+          return (
+            <Box key={p.id} overflowX="hidden">
+              <Box width={2}>
+                <Text color="cyan" bold>
+                  {isSelected ? '▸' : ' '}
+                </Text>
+              </Box>
+              <Box width="12%" overflowX="hidden">
+                <Text
+                  color={isSelected ? 'cyan' : 'yellow'}
+                  bold={isSelected}
+                  inverse={isSelected}
+                  wrap="truncate"
+                >
+                  ~{p.estimatedCount.toLocaleString()}
+                </Text>
+              </Box>
+              <Box width="8%" overflowX="hidden">
+                <Text
+                  color={isSelected ? 'cyan' : undefined}
+                  dimColor={!isSelected}
+                  bold={isSelected}
+                  inverse={isSelected}
+                  wrap="truncate"
+                >
+                  {pct}
+                </Text>
+              </Box>
+              <Box width="80%" overflowX="hidden">
+                <Text
+                  color={isSelected ? 'cyan' : undefined}
+                  bold={isSelected}
+                  inverse={isSelected}
+                  wrap="truncate"
+                >
+                  {p.pattern}
+                </Text>
+              </Box>
             </Box>
-            <Box width="10%" overflowX="hidden">
-              <Text
-                color={isSelected ? 'cyan' : 'yellow'}
-                bold={isSelected}
-                inverse={isSelected}
-                wrap="truncate"
-              >
-                {String(p.count)}
-              </Text>
-            </Box>
-            <Box width="8%" overflowX="hidden">
-              <Text
-                color={isSelected ? 'cyan' : undefined}
-                dimColor={!isSelected}
-                bold={isSelected}
-                inverse={isSelected}
-                wrap="truncate"
-              >
-                {pct}
-              </Text>
-            </Box>
-            <Box width="82%" overflowX="hidden">
-              <Text
-                color={isSelected ? 'cyan' : undefined}
-                bold={isSelected}
-                inverse={isSelected}
-                wrap="truncate"
-              >
-                {p.pattern}
-              </Text>
-            </Box>
-          </Box>
-        );
-      })}
+          );
+        })}
 
       {emptyRows > 0 &&
+        !loading &&
         Array.from({ length: emptyRows }).map((_, i) => (
           <Text key={`pad-${i}`}> </Text>
         ))}
