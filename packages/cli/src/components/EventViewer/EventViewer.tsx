@@ -15,8 +15,11 @@ import {
   SqlPreviewScreen,
 } from './SubComponents';
 import { TableView } from './TableView';
+import { PatternView } from './PatternView';
+import { PatternSamplesView } from './PatternSamplesView';
 import { DetailPanel } from './DetailPanel';
 import { useEventData } from './useEventData';
+import { usePatternData } from './usePatternData';
 import { useKeybindings } from './useKeybindings';
 
 export default function EventViewer({
@@ -76,6 +79,12 @@ export default function EventViewer({
   const [traceSelectedNode, setTraceSelectedNode] = useState<SpanNode | null>(
     null,
   );
+  const [showPatterns, setShowPatterns] = useState(false);
+  const [patternSelectedRow, setPatternSelectedRow] = useState(0);
+  const [patternScrollOffset, setPatternScrollOffset] = useState(0);
+  const [expandedPattern, setExpandedPattern] = useState<number | null>(null);
+  const [sampleSelectedRow, setSampleSelectedRow] = useState(0);
+  const [sampleScrollOffset, setSampleScrollOffset] = useState(0);
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
     const now = new Date();
     return { start: new Date(now.getTime() - 60 * 60 * 1000), end: now };
@@ -109,6 +118,13 @@ export default function EventViewer({
     isFollowing,
     setTimeRange,
     expandedRow,
+  });
+
+  // ---- Pattern mining -----------------------------------------------
+
+  const { patterns } = usePatternData({
+    events: showPatterns ? events : [],
+    source,
   });
 
   // ---- Derived values ----------------------------------------------
@@ -171,11 +187,22 @@ export default function EventViewer({
     focusDetailSearch,
     showHelp,
     showSql,
+    showPatterns,
     expandedRow,
     detailTab,
     traceDetailExpanded,
     selectedRow,
     scrollOffset,
+    patternSelectedRow,
+    patternScrollOffset,
+    patternCount: patterns.length,
+    expandedPattern,
+    sampleSelectedRow,
+    sampleScrollOffset,
+    sampleCount:
+      expandedPattern !== null
+        ? (patterns[expandedPattern]?.samples.length ?? 0)
+        : 0,
     isFollowing,
     hasMore,
     events,
@@ -198,7 +225,13 @@ export default function EventViewer({
     setFocusDetailSearch,
     setShowHelp,
     setShowSql,
+    setShowPatterns,
     setSqlScrollOffset,
+    setPatternSelectedRow,
+    setPatternScrollOffset,
+    setExpandedPattern,
+    setSampleSelectedRow,
+    setSampleScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
@@ -313,6 +346,24 @@ export default function EventViewer({
             onTraceChSqlChange={setTraceChSql}
             onTraceSelectedNodeChange={setTraceSelectedNode}
           />
+        ) : showPatterns &&
+          expandedPattern !== null &&
+          patterns[expandedPattern] ? (
+          <PatternSamplesView
+            pattern={patterns[expandedPattern]}
+            columns={columns}
+            selectedRow={sampleSelectedRow}
+            scrollOffset={sampleScrollOffset}
+            maxRows={maxRows}
+          />
+        ) : showPatterns ? (
+          <PatternView
+            patterns={patterns}
+            selectedRow={patternSelectedRow}
+            scrollOffset={patternScrollOffset}
+            maxRows={maxRows}
+            totalEvents={events.length}
+          />
         ) : (
           <TableView
             columns={columns}
@@ -328,13 +379,33 @@ export default function EventViewer({
         )}
 
         <Footer
-          rowCount={events.length}
-          cursorPos={scrollOffset + selectedRow + 1}
+          rowCount={
+            showPatterns && expandedPattern !== null
+              ? (patterns[expandedPattern]?.samples.length ?? 0)
+              : showPatterns
+                ? patterns.length
+                : events.length
+          }
+          cursorPos={
+            showPatterns && expandedPattern !== null
+              ? sampleScrollOffset + sampleSelectedRow + 1
+              : showPatterns
+                ? patternScrollOffset + patternSelectedRow + 1
+                : scrollOffset + selectedRow + 1
+          }
           wrapLines={wrapLines}
           isFollowing={isFollowing}
           loadingMore={loadingMore}
           paginationError={paginationError}
-          scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
+          scrollInfo={
+            expandedRow !== null
+              ? 'Ctrl+D/U to scroll'
+              : showPatterns && expandedPattern !== null
+                ? `[SAMPLES] h to go back`
+                : showPatterns
+                  ? `[PATTERNS] ${patterns.length} patterns from ${events.length} events — l to expand, P/Esc to close`
+                  : undefined
+          }
         />
       </Box>
     </Box>
