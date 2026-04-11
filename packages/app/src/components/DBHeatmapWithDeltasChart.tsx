@@ -42,6 +42,74 @@ import DBHeatmapChart, {
   lightPalette,
 } from './DBHeatmapChart';
 
+function stripTrailingAlias(expression: string): string {
+  const normalized = expression.trim();
+  if (!normalized) return normalized;
+
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let aliasStartIndex: number | undefined;
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+    const prev = i > 0 ? normalized[i - 1] : '';
+
+    if (char === "'" && !inDoubleQuote && !inBacktick && prev !== '\\') {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && !inSingleQuote && !inBacktick && prev !== '\\') {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (char === '`' && !inSingleQuote && !inDoubleQuote && prev !== '\\') {
+      inBacktick = !inBacktick;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote || inBacktick) continue;
+
+    if (char === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (char === ')') {
+      parenDepth--;
+      continue;
+    }
+    if (char === '[') {
+      bracketDepth++;
+      continue;
+    }
+    if (char === ']') {
+      bracketDepth--;
+      continue;
+    }
+
+    if (parenDepth === 0 && bracketDepth === 0 && /\s/.test(char)) {
+      let j = i;
+      while (j < normalized.length && /\s/.test(normalized[j])) j++;
+      if (
+        normalized.slice(j, j + 2).toUpperCase() === 'AS' &&
+        j + 2 < normalized.length &&
+        /\s/.test(normalized[j + 2])
+      ) {
+        aliasStartIndex = i;
+      }
+    }
+  }
+
+  return aliasStartIndex == null
+    ? normalized
+    : normalized.slice(0, aliasStartIndex).trim();
+}
+
+function sanitizeTimestampExpression(timestampValueExpression: string): string {
+  return stripTrailingAlias(timestampValueExpression);
+}
+
 const Schema = z.object({
   value: z.string().trim().min(1),
   count: z.string().trim().optional(),
@@ -155,6 +223,24 @@ export default function DBHeatmapWithDeltasChart({
   const showHeatmapSetupHint = !resolvedValueExpression.trim();
   const spanIdExpression =
     'spanIdExpression' in source ? source.spanIdExpression : undefined;
+  const deltaChartConfig = useMemo(() => {
+    // DBDeltaChart builds ad-hoc grouped/ordered queries from timestampValueExpression.
+    // If the expression carries a trailing alias (e.g. "toStartOfInterval(...) AS __hdx_time_bucket"),
+    // ClickHouse can fail in generated GROUP BY clauses. Use alias-free timestamp expressions there.
+    const sanitizedTimestampValueExpression = sanitizeTimestampExpression(
+      chartConfig.timestampValueExpression,
+    );
+
+    return {
+      ...chartConfig,
+      with: undefined, // Avoid colliding with DBDeltaChart's internal CTE names
+      select: 'tuple(_part, _part_offset)', // Keep base config minimal for DBDeltaChart's custom SELECTs
+      groupBy: undefined, // Prevent invalid "SELECT * ... GROUP BY" queries in delta queries
+      having: undefined, // DBDeltaChart applies HAVING only for aggregate selection paths
+      granularity: undefined, // Let DBDeltaChart control grouping via timestamp expression when needed
+      timestampValueExpression: sanitizedTimestampValueExpression,
+    };
+  }, [chartConfig]);
 
   return (
     <Flex
@@ -257,10 +343,7 @@ export default function DBHeatmapWithDeltasChart({
           </Flex>
         ) : (
           <DBDeltaChart
-            config={{
-              ...chartConfig,
-              with: undefined,
-            }}
+            config={deltaChartConfig}
             valueExpr={resolvedValueExpression}
             xMin={resolvedSelection.xMin}
             xMax={resolvedSelection.xMax}

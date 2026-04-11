@@ -23,9 +23,13 @@ jest.mock('@/components/DBNumberChart', () => ({
   default: () => <div data-testid="db-number-chart">Number Chart</div>,
 }));
 
+const mockDBHeatmapWithDeltasChart = jest.fn(() => (
+  <div data-testid="db-heatmap-with-deltas">Heatmap Chart</div>
+));
+
 jest.mock('@/components/DBHeatmapWithDeltasChart', () => ({
   __esModule: true,
-  default: () => <div data-testid="db-heatmap-with-deltas">Heatmap Chart</div>,
+  default: (props: unknown) => mockDBHeatmapWithDeltasChart(props),
 }));
 
 jest.mock('@/components/DBPieChart', () => ({
@@ -88,6 +92,7 @@ const renderPanel = (
 describe('ChartPreviewPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDBHeatmapWithDeltasChart.mockClear();
   });
 
   describe('when no query has been run', () => {
