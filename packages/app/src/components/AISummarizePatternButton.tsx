@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import api from '@/api';
 import { Pattern, SEVERITY_TEXT_COLUMN_ALIAS } from '@/hooks/usePatterns';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
@@ -10,7 +11,9 @@ import {
 import {
   AISummaryTone,
   getAISummaryTonePreference,
+  isAISummaryDismissed,
   isSmartSummaryModeEnabled,
+  setAISummaryDismissed,
   setAISummaryTonePreference,
 } from './aiSummarize';
 
@@ -21,6 +24,11 @@ export default function AISummarizePatternButton({
   pattern: Pattern;
   serviceNameExpression: string;
 }) {
+  const { data: me } = api.useMe();
+  const aiEnabled = me?.aiAssistantEnabled ?? true;
+  const [isDismissed, setIsDismissed] = useState<boolean>(() =>
+    isAISummaryDismissed(aiEnabled),
+  );
   const isSmartMode = isSmartSummaryModeEnabled();
   const [result, setResult] = useState<{
     text: string;
@@ -39,6 +47,10 @@ export default function AISummarizePatternButton({
     };
   }, []);
 
+  useEffect(() => {
+    setIsDismissed(isAISummaryDismissed(aiEnabled));
+  }, [aiEnabled]);
+
   // Reset when pattern changes.
   useEffect(() => {
     setResult(null);
@@ -50,16 +62,19 @@ export default function AISummarizePatternButton({
     const currentRequestId = ++requestIdRef.current;
     setIsGenerating(true);
     try {
-      const summary = await requestAISummary({
-        ...buildPatternSummaryPayload({
-          patternName: pattern.pattern,
-          count: pattern.count,
-          severityText: pattern.samples[0]?.[SEVERITY_TEXT_COLUMN_ALIAS],
-          samples: pattern.samples,
-          serviceNameExpression,
-        }),
-        tone,
-      });
+      const summary = await requestAISummary(
+        {
+          ...buildPatternSummaryPayload({
+            patternName: pattern.pattern,
+            count: pattern.count,
+            severityText: pattern.samples[0]?.[SEVERITY_TEXT_COLUMN_ALIAS],
+            samples: pattern.samples,
+            serviceNameExpression,
+          }),
+          tone,
+        },
+        { aiEnabled },
+      );
 
       if (requestIdRef.current !== currentRequestId) {
         return;
@@ -78,28 +93,42 @@ export default function AISummarizePatternButton({
         setIsGenerating(false);
       }
     }
-  }, [pattern, serviceNameExpression, tone]);
+  }, [pattern, serviceNameExpression, tone, aiEnabled]);
 
   const handleClick = useCallback(() => {
+    if (!aiEnabled) {
+      setIsOpen(prev => !prev);
+      return;
+    }
     if (result) {
       setIsOpen(prev => !prev);
       return;
     }
     setIsOpen(true);
     void generateSummary();
-  }, [generateSummary, result]);
+  }, [aiEnabled, generateSummary, result]);
 
   const handleRegenerate = useCallback(() => {
     void generateSummary();
   }, [generateSummary]);
 
+  if (isDismissed) {
+    return null;
+  }
+
   return (
     <AISummaryPanel
+      aiEnabled={aiEnabled}
       isOpen={isOpen}
       isGenerating={isGenerating}
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
+      onDismiss={() => {
+        setAISummaryDismissed(aiEnabled);
+        setIsDismissed(true);
+        setIsOpen(false);
+      }}
       tone={tone}
       onToneChange={nextTone => {
         if (!isSmartMode) {

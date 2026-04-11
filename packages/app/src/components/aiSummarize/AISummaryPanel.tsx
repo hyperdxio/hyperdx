@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import {
   IconChevronDown,
+  IconCloudOff,
   IconInfoCircle,
   IconSparkles,
 } from '@tabler/icons-react';
@@ -23,26 +24,31 @@ import {
 } from './helpers';
 
 export default function AISummaryPanel({
+  aiEnabled,
   isOpen,
   isGenerating,
   result,
   onToggle,
   onRegenerate,
+  onDismiss,
   onToneChange,
   tone,
   analyzingLabel = 'Analyzing event data...',
 }: {
+  aiEnabled: boolean;
   isOpen: boolean;
   isGenerating: boolean;
   result: { text: string; tone?: AISummaryTone } | null;
   onToggle: () => void;
   onRegenerate: () => void;
+  onDismiss: () => void;
   onToneChange: (tone: AISummaryTone) => void;
   tone: AISummaryTone;
   analyzingLabel?: string;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const isSmartMode = isSmartSummaryModeEnabled();
+  const shouldShowUnavailableState = !aiEnabled;
 
   return (
     <div>
@@ -91,8 +97,16 @@ export default function AISummaryPanel({
             </Menu.Dropdown>
           </Menu>
         )}
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          color="gray"
+          onClick={onDismiss}
+        >
+          Don&apos;t show again
+        </Button>
       </Flex>
-      <Collapse in={isOpen}>
+      <Collapse in={isOpen || shouldShowUnavailableState}>
         <Paper
           p="sm"
           mt={6}
@@ -103,7 +117,32 @@ export default function AISummaryPanel({
             lineHeight: 1.55,
           }}
         >
-          {isGenerating ? (
+          {shouldShowUnavailableState ? (
+            <>
+              <Flex align="center" gap={6} mb={4}>
+                <Text size="xs" fw={600} c="orange">
+                  <IconCloudOff
+                    size={11}
+                    style={{
+                      display: 'inline',
+                      verticalAlign: 'middle',
+                      marginRight: 4,
+                    }}
+                  />
+                  AI Summary Not Enabled
+                </Text>
+              </Flex>
+              <Text size="sm" mb={8}>
+                AI summary is not enabled for this HyperDX server.
+              </Text>
+              <Text size="xs" c="dimmed" mb={8}>
+                To enable it, configure <code>AI_PROVIDER</code> and{' '}
+                <code>AI_API_KEY</code> (or legacy{' '}
+                <code>ANTHROPIC_API_KEY</code>) in your API environment, then
+                restart the API service.
+              </Text>
+            </>
+          ) : isGenerating ? (
             <Text size="sm" c="dimmed" fs="italic">
               {analyzingLabel}
             </Text>

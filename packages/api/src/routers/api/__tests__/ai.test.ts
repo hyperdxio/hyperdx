@@ -80,4 +80,29 @@ describe('ai router summarize', () => {
 
     expect(mockGenerateText).not.toHaveBeenCalled();
   });
+
+  it('POST /ai/summarize fails fast when AI is not configured', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    mockGetAIModel.mockImplementationOnce(() => {
+      throw new Error(
+        'No AI provider configured. Set AI_PROVIDER and AI_API_KEY environment variables.',
+      );
+    });
+
+    const response = await agent
+      .post('/ai/summarize')
+      .send({
+        kind: 'event',
+        context: {
+          title: 'Failed request',
+          body: 'timeout while calling payment provider',
+          severity: 'error',
+        },
+      })
+      .expect(400);
+
+    expect(response.body.message).toContain('AI summary is not enabled');
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(mockGetAIModel).toHaveBeenCalledTimes(1);
+  });
 });

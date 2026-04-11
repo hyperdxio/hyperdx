@@ -18,6 +18,8 @@ export type RowData = Record<string, unknown>;
 
 const SMART_URL_PARAM = 'smart';
 const TONE_STORAGE_KEY = 'hdx-ai-summary-tone';
+const SUMMARY_DISMISS_STORAGE_KEY = 'hdx-ai-summary-dismissed-for';
+type AISummaryDismissState = 'enabled' | 'disabled';
 
 function shortText(value: string | undefined, maxChars: number): string {
   if (!value) return '';
@@ -73,6 +75,52 @@ export function setAISummaryTonePreference(tone: AISummaryTone): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(TONE_STORAGE_KEY, tone);
+  } catch {
+    // Ignore unavailable localStorage.
+  }
+}
+
+function getAISummaryDismissState(): AISummaryDismissState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(SUMMARY_DISMISS_STORAGE_KEY);
+    if (value === 'enabled' || value === 'disabled') {
+      return value;
+    }
+  } catch {
+    // Ignore unavailable localStorage.
+  }
+  return null;
+}
+
+function getCurrentDismissState(aiEnabled: boolean): AISummaryDismissState {
+  return aiEnabled ? 'enabled' : 'disabled';
+}
+
+export function isAISummaryDismissed(aiEnabled: boolean): boolean {
+  const storedState = getAISummaryDismissState();
+  if (!storedState) return false;
+
+  const currentState = getCurrentDismissState(aiEnabled);
+  if (storedState === currentState) {
+    return true;
+  }
+
+  try {
+    window.localStorage.removeItem(SUMMARY_DISMISS_STORAGE_KEY);
+  } catch {
+    // Ignore unavailable localStorage.
+  }
+  return false;
+}
+
+export function setAISummaryDismissed(aiEnabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      SUMMARY_DISMISS_STORAGE_KEY,
+      getCurrentDismissState(aiEnabled),
+    );
   } catch {
     // Ignore unavailable localStorage.
   }

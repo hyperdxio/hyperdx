@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import api from '@/api';
+
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
   buildEventSummaryPayload,
@@ -8,8 +10,10 @@ import {
 import {
   AISummaryTone,
   getAISummaryTonePreference,
+  isAISummaryDismissed,
   isSmartSummaryModeEnabled,
   RowData,
+  setAISummaryDismissed,
   setAISummaryTonePreference,
 } from './aiSummarize';
 
@@ -20,7 +24,12 @@ export default function AISummarizeButton({
   rowData?: RowData;
   severityText?: string;
 }) {
+  const { data: me } = api.useMe();
+  const aiEnabled = me?.aiAssistantEnabled ?? true;
   const isSmartMode = isSmartSummaryModeEnabled();
+  const [isDismissed, setIsDismissed] = useState(() =>
+    isAISummaryDismissed(aiEnabled),
+  );
   const [result, setResult] = useState<{
     text: string;
     tone?: AISummaryTone;
@@ -38,17 +47,24 @@ export default function AISummarizeButton({
     };
   }, []);
 
+  useEffect(() => {
+    setIsDismissed(isAISummaryDismissed(aiEnabled));
+  }, [aiEnabled]);
+
   const generateSummary = useCallback(async () => {
     const currentRequestId = ++requestIdRef.current;
     setIsGenerating(true);
     try {
-      const summary = await requestAISummary({
-        ...buildEventSummaryPayload({
-          rowData: rowData ?? {},
-          severityText,
-        }),
-        tone,
-      });
+      const summary = await requestAISummary(
+        {
+          ...buildEventSummaryPayload({
+            rowData: rowData ?? {},
+            severityText,
+          }),
+          tone,
+        },
+        { aiEnabled },
+      );
       if (requestIdRef.current !== currentRequestId) {
         return;
       }
@@ -66,28 +82,42 @@ export default function AISummarizeButton({
         setIsGenerating(false);
       }
     }
-  }, [rowData, severityText, tone]);
+  }, [rowData, severityText, tone, aiEnabled]);
 
   const handleClick = useCallback(() => {
+    if (!aiEnabled) {
+      setIsOpen(prev => !prev);
+      return;
+    }
     if (result) {
       setIsOpen(prev => !prev);
       return;
     }
     setIsOpen(true);
     void generateSummary();
-  }, [generateSummary, result]);
+  }, [aiEnabled, generateSummary, result]);
 
   const handleRegenerate = useCallback(() => {
     void generateSummary();
   }, [generateSummary]);
 
+  if (isDismissed) {
+    return null;
+  }
+
   return (
     <AISummaryPanel
+      aiEnabled={aiEnabled}
       isOpen={isOpen}
       isGenerating={isGenerating}
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
+      onDismiss={() => {
+        setAISummaryDismissed(aiEnabled);
+        setIsDismissed(true);
+        setIsOpen(false);
+      }}
       tone={tone}
       onToneChange={nextTone => {
         if (!isSmartMode) {

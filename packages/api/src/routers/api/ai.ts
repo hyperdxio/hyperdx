@@ -19,7 +19,7 @@ import {
 } from '@/controllers/aiSummary';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { Api404Error, Api500Error } from '@/utils/errors';
+import { Api400Error, Api404Error, Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -135,7 +135,22 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      const model = getAIModel();
+      let model;
+      try {
+        model = getAIModel();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        if (
+          message.includes('No AI provider configured') ||
+          message.includes('No API key defined') ||
+          message.includes('Unknown AI provider')
+        ) {
+          throw new Api400Error(
+            'AI summary is not enabled. Configure AI_PROVIDER and AI_API_KEY (or legacy ANTHROPIC_API_KEY), then restart the API service.',
+          );
+        }
+        throw err;
+      }
       const requestPayload = compactSummaryRequest(req.body);
       const { system, prompt, maxOutputTokens } =
         getSummaryPrompt(requestPayload);

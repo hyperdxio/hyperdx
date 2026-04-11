@@ -84,6 +84,18 @@ type SummaryResponse = {
   kind: SummaryKind;
 };
 
+type AISummaryNotEnabledError = Error & {
+  code: 'AI_SUMMARY_NOT_ENABLED';
+};
+
+function buildAISummaryNotEnabledError(): AISummaryNotEnabledError {
+  const error = new Error(
+    'AI summary is not enabled. Configure AI_PROVIDER and AI_API_KEY (or legacy ANTHROPIC_API_KEY), then restart the API.',
+  ) as AISummaryNotEnabledError;
+  error.code = 'AI_SUMMARY_NOT_ENABLED';
+  return error;
+}
+
 function roundDurationMs(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n) || n < 0) return undefined;
@@ -130,7 +142,11 @@ function extractAttributes(
 
 export async function requestAISummary(
   payload: SummaryPayload,
+  options?: { aiEnabled?: boolean },
 ): Promise<string> {
+  if (options?.aiEnabled === false) {
+    throw buildAISummaryNotEnabledError();
+  }
   const tone =
     isSmartSummaryModeEnabled() && payload.tone ? payload.tone : 'default';
   const response = await hdxServer('ai/summarize', {

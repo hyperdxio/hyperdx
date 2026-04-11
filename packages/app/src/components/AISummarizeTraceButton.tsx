@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMemo } from 'react';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
+import api from '@/api';
+
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
   buildTraceSummaryPayload,
@@ -10,7 +12,9 @@ import {
 import {
   AISummaryTone,
   getAISummaryTonePreference,
+  isAISummaryDismissed,
   isSmartSummaryModeEnabled,
+  setAISummaryDismissed,
   setAISummaryTonePreference,
 } from './aiSummarize';
 import { useEventsAroundFocus } from './DBTraceWaterfallChart';
@@ -28,7 +32,12 @@ export default function AISummarizeTraceButton({
   dateRange: [Date, Date];
   focusDate: Date;
 }) {
+  const { data: me } = api.useMe();
+  const aiEnabled = me?.aiAssistantEnabled ?? true;
   const isSmartMode = isSmartSummaryModeEnabled();
+  const [isDismissed, setIsDismissed] = useState<boolean>(() =>
+    isAISummaryDismissed(aiEnabled),
+  );
   const [result, setResult] = useState<{
     text: string;
     tone?: AISummaryTone;
@@ -71,17 +80,24 @@ export default function AISummarizeTraceButton({
     setIsGenerating(false);
   }, [traceId]);
 
+  useEffect(() => {
+    setIsDismissed(isAISummaryDismissed(aiEnabled));
+  }, [aiEnabled]);
+
   const generateSummary = useCallback(async () => {
     const currentRequestId = ++requestIdRef.current;
     setIsGenerating(true);
     try {
-      const summary = await requestAISummary({
-        ...buildTraceSummaryPayload({
-          traceId,
-          rows,
-        }),
-        tone,
-      });
+      const summary = await requestAISummary(
+        {
+          ...buildTraceSummaryPayload({
+            traceId,
+            rows,
+          }),
+          tone,
+        },
+        { aiEnabled },
+      );
 
       if (requestIdRef.current !== currentRequestId) {
         return;
@@ -100,28 +116,42 @@ export default function AISummarizeTraceButton({
         setIsGenerating(false);
       }
     }
-  }, [traceId, rows, tone]);
+  }, [traceId, rows, tone, aiEnabled]);
 
   const handleClick = useCallback(() => {
+    if (!aiEnabled) {
+      setIsOpen(prev => !prev);
+      return;
+    }
     if (result) {
       setIsOpen(prev => !prev);
       return;
     }
     setIsOpen(true);
     void generateSummary();
-  }, [generateSummary, result]);
+  }, [aiEnabled, generateSummary, result]);
 
   const handleRegenerate = useCallback(() => {
     void generateSummary();
   }, [generateSummary]);
 
+  if (isDismissed) {
+    return null;
+  }
+
   return (
     <AISummaryPanel
+      aiEnabled={aiEnabled}
       isOpen={isOpen}
       isGenerating={isGenerating}
       result={result}
       onToggle={handleClick}
       onRegenerate={handleRegenerate}
+      onDismiss={() => {
+        setAISummaryDismissed(aiEnabled);
+        setIsDismissed(true);
+        setIsOpen(false);
+      }}
       tone={tone}
       onToneChange={nextTone => {
         if (!isSmartMode) {
