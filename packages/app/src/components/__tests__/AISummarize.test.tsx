@@ -1,6 +1,8 @@
 import React from 'react';
 import { act, fireEvent, screen } from '@testing-library/react';
 
+import type { Pattern } from '@/hooks/usePatterns';
+
 import {
   default as AISummarizeButton,
   formatEventContent,
@@ -136,12 +138,8 @@ describe('formatEventContent', () => {
 
 describe('formatPatternContent', () => {
   const makePattern = (
-    overrides: Partial<{
-      pattern: string;
-      count: number;
-      samples: Record<string, any>[];
-    }> = {},
-  ) => ({
+    overrides: Partial<Pick<Pattern, 'pattern' | 'count' | 'samples'>> = {},
+  ): Pattern => ({
     id: 'pat-1',
     pattern: overrides.pattern ?? 'GET /api/<*>',
     count: overrides.count ?? 42,
@@ -157,6 +155,7 @@ describe('formatPatternContent', () => {
   it('includes up to 5 samples', () => {
     const samples = Array.from({ length: 8 }, (_, i) => ({
       __hdx_pattern_field: `body ${i}`,
+      __hdx_timestamp: `2026-01-01T00:00:0${i}`,
       ServiceName: `svc-${i}`,
       __hdx_severity_text: `info`,
     }));
@@ -340,13 +339,14 @@ describe('AISummarizeButton', () => {
 // ---------------------------------------------------------------------------
 
 describe('AISummarizePatternButton', () => {
-  const pattern = {
+  const pattern: Pattern = {
     id: 'pat-test',
     pattern: 'GET /api/<*>',
     count: 100,
     samples: [
       {
         __hdx_pattern_field: 'GET /api/users',
+        __hdx_timestamp: '2026-01-01T00:00:00',
         ServiceName: 'web',
         __hdx_severity_text: 'info',
       },
