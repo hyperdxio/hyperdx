@@ -115,14 +115,26 @@ export function ChartEditorControls({
         </Group>
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
-        <HeatmapSeriesEditor
-          control={control}
-          setValue={setValue}
-          tableConnection={tableConnection}
-          tableSource={tableSource}
-          parentRef={parentRef}
-          onSubmit={onSubmit}
-        />
+        <>
+          <HeatmapSeriesEditor
+            control={control}
+            setValue={setValue}
+            tableConnection={tableConnection}
+            tableSource={tableSource}
+            parentRef={parentRef}
+            onSubmit={onSubmit}
+          />
+          <Divider mt="md" mb="sm" />
+          <Flex justify="flex-end">
+            <Button
+              onClick={openDisplaySettings}
+              size="compact-sm"
+              variant="secondary"
+            >
+              Display Settings
+            </Button>
+          </Flex>
+        </>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (
