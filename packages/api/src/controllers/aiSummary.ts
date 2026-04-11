@@ -214,10 +214,13 @@ Prioritize:
 3) concrete next investigation steps`
       : compacted.kind === 'pattern'
         ? `Task: Summarize this recurring log pattern.
+Important:
+- Do not state the obvious that the pattern repeats.
+- Focus on whether this recurrence looks normal, noisy, or risky.
 Prioritize:
-1) what pattern is happening and how frequently
-2) strongest severity/service signals
-3) practical follow-up checks`
+1) strongest severity/service/environment signals
+2) unusual concentrations, outliers, or drift from expected behavior
+3) practical follow-up checks tied to impact`
         : `Task: Summarize this single event/log/span.
 Prioritize:
 1) what happened
