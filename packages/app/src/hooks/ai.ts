@@ -1,7 +1,4 @@
-import type {
-  AILineTableResponse,
-  SavedChartConfig,
-} from '@hyperdx/common-utils/dist/types';
+import type { AILineTableResponse } from '@hyperdx/common-utils/dist/types';
 import { useMutation } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -18,5 +15,24 @@ export function useChartAssistant() {
         method: 'POST',
         json: { sourceId, text },
       }).json<AILineTableResponse>(),
+  });
+}
+
+type SummarizeInput = {
+  type: 'event' | 'pattern';
+  content: string;
+};
+
+type SummarizeResponse = {
+  summary: string;
+};
+
+export function useAISummarize() {
+  return useMutation<SummarizeResponse, Error, SummarizeInput>({
+    mutationFn: async ({ type, content }: SummarizeInput) =>
+      hdxServer('ai/summarize', {
+        method: 'POST',
+        json: { type, content },
+      }).json<SummarizeResponse>(),
   });
 }

@@ -122,4 +122,60 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /ai/summarize — generate a natural-language summary of a log, trace, or
+// pattern using the configured LLM.
+// ---------------------------------------------------------------------------
+
+const summarizeBodySchema = z.object({
+  type: z.enum(['event', 'pattern']),
+  content: z.string().min(1).max(50000),
+});
+
+router.post(
+  '/summarize',
+  validateRequest({ body: summarizeBodySchema }),
+  async (req, res, next) => {
+    try {
+      const model = getAIModel();
+      const { type, content } = req.body;
+
+      const systemPrompt =
+        type === 'pattern'
+          ? `You are an expert observability engineer. The user will provide a log/trace pattern (a templatized message with occurrence count and sample events). Write a concise, actionable summary (2-4 sentences) that explains:
+1. What the pattern represents (the operation or behaviour).
+2. Whether it looks healthy, degraded, or erroneous.
+3. A concrete next step the operator could take.
+
+Be direct and technical. Do not use bullet points. Do not repeat the raw pattern verbatim — paraphrase.`
+          : `You are an expert observability engineer. The user will provide a single log or trace event (including body, attributes, severity, timing, etc.). Write a concise, actionable summary (2-4 sentences) that explains:
+1. What happened in this event.
+2. Whether it looks healthy or problematic (and why).
+3. A concrete next step the operator could take if there is an issue.
+
+Be direct and technical. Do not use bullet points. Do not repeat the raw event verbatim — paraphrase.`;
+
+      try {
+        const result = await generateText({
+          model,
+          system: systemPrompt,
+          experimental_telemetry: { isEnabled: true },
+          prompt: content,
+        });
+
+        return res.json({ summary: result.text });
+      } catch (err) {
+        if (err instanceof APICallError) {
+          throw new Api500Error(
+            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
+          );
+        }
+        throw err;
+      }
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 export default router;
