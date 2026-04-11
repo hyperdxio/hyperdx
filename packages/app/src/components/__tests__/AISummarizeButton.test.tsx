@@ -67,6 +67,44 @@ describe('AISummarizeButton', () => {
     });
   });
 
+  it('converts event duration using source precision config', async () => {
+    mockJson.mockResolvedValueOnce({
+      summary: 'summary text',
+      tone: 'default',
+      kind: 'event',
+    });
+
+    renderWithMantine(
+      <AISummarizeButton
+        rowData={{
+          __hdx_body: 'request failed',
+          __hdx_timestamp: '2026-04-10T00:00:00.000Z',
+          ServiceName: 'payments',
+          Duration: 26_000_000_000,
+        }}
+        severityText="error"
+        durationConfig={{ precision: 9 }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /summarize/i }));
+
+    await waitFor(() => {
+      expect(mockHdxServer).toHaveBeenCalledWith(
+        'ai/summarize',
+        expect.objectContaining({
+          method: 'POST',
+          json: expect.objectContaining({
+            kind: 'event',
+            context: expect.objectContaining({
+              durationMs: 26000,
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
   it('shows style selector and persists tone in smart mode', async () => {
     mockWindowLocation('?smart=true');
     mockJson.mockResolvedValue({

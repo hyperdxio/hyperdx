@@ -34,6 +34,10 @@ type EventPayload = {
   };
 };
 
+type DurationConfig = {
+  precision: number;
+};
+
 type PatternPayload = {
   kind: 'pattern';
   tone?: AISummaryTone;
@@ -102,6 +106,17 @@ function roundDurationMs(value: unknown): number | undefined {
   return Math.round(n * 100) / 100;
 }
 
+function getDurationMsFromValue(
+  value: unknown,
+  config?: DurationConfig,
+): number | undefined {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  const precision = config?.precision ?? 3;
+  const msValue = n * Math.pow(10, 3 - precision);
+  return roundDurationMs(msValue);
+}
+
 function topStats(
   values: Record<string, number>,
   maxItems: number,
@@ -160,9 +175,11 @@ export async function requestAISummary(
 export function buildEventSummaryPayload({
   rowData,
   severityText,
+  durationConfig,
 }: {
   rowData: RowData;
   severityText?: string;
+  durationConfig?: DurationConfig;
 }): EventPayload {
   return {
     kind: 'event',
@@ -187,7 +204,7 @@ export function buildEventSummaryPayload({
         undefined,
       spanName: stringifyValue(rowData.SpanName, 200) || undefined,
       spanKind: stringifyValue(rowData.SpanKind, 80) || undefined,
-      durationMs: roundDurationMs(rowData.Duration),
+      durationMs: getDurationMsFromValue(rowData.Duration, durationConfig),
       traceId:
         stringifyValue(rowData.TraceId, 120) ||
         stringifyValue(rowData.__hdx_trace_id, 120) ||

@@ -135,6 +135,8 @@ export default function DBRowSidePanelHeader({
   rowData,
   breadcrumbPath,
   onBreadcrumbClick,
+  showAISummary = true,
+  durationConfig,
 }: {
   date: Date;
   mainContent?: string;
@@ -144,6 +146,10 @@ export default function DBRowSidePanelHeader({
   rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  showAISummary?: boolean;
+  durationConfig?: {
+    precision: number;
+  };
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { onPropertyAddClick, generateSearchUrl } =
@@ -283,7 +289,13 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
-      <AISummarizeButton rowData={rowData} severityText={severityText} />
+      {showAISummary && (
+        <AISummarizeButton
+          rowData={rowData}
+          severityText={severityText}
+          durationConfig={durationConfig}
+        />
+      )}
       <Box mt="xs">
         <DBHighlightedAttributesList attributes={attributesWithDefault} />
       </Box>

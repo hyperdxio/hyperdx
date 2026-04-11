@@ -20,9 +20,13 @@ import {
 export default function AISummarizeButton({
   rowData,
   severityText,
+  durationConfig,
 }: {
   rowData?: RowData;
   severityText?: string;
+  durationConfig?: {
+    precision: number;
+  };
 }) {
   const { data: me } = api.useMe();
   const aiEnabled = me?.aiAssistantEnabled ?? true;
@@ -60,6 +64,7 @@ export default function AISummarizeButton({
           ...buildEventSummaryPayload({
             rowData: rowData ?? {},
             severityText,
+            durationConfig,
           }),
           tone,
         },
@@ -82,7 +87,7 @@ export default function AISummarizeButton({
         setIsGenerating(false);
       }
     }
-  }, [rowData, severityText, tone, aiEnabled]);
+  }, [rowData, severityText, tone, aiEnabled, durationConfig]);
 
   const handleClick = useCallback(() => {
     if (!aiEnabled) {

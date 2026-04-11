@@ -329,6 +329,12 @@ const DBRowSidePanel = ({
           rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
+          showAISummary={displayedTab !== Tab.Trace}
+          durationConfig={
+            source.kind === SourceKind.Trace
+              ? { precision: source.durationPrecision ?? 9 }
+              : undefined
+          }
         />
       </Box>
       {/* <SidePanelHeader
