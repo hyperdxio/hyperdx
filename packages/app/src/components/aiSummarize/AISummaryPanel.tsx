@@ -75,14 +75,21 @@ export default function AISummaryPanel({
         {isSmartMode && (
           <Menu withinPortal position="bottom-start">
             <Menu.Target>
-              <Button
-                size="compact-xs"
-                variant="subtle"
-                color="gray"
-                rightSection={<IconChevronDown size={12} />}
+              <Anchor
+                component="button"
+                type="button"
+                size="xs"
+                c="dimmed"
+                style={{
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
               >
                 Style: {AI_SUMMARY_TONE_LABELS[tone]}
-              </Button>
+                <IconChevronDown size={12} />
+              </Anchor>
             </Menu.Target>
             <Menu.Dropdown>
               {AI_SUMMARY_TONES.map(styleTone => (
