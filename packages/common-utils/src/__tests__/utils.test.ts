@@ -30,6 +30,7 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  stripTrailingAlias,
 } from '../core/utils';
 
 describe('utils', () => {
@@ -249,6 +250,26 @@ describe('utils', () => {
         'ServiceName DESC',
       ];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+  });
+
+  describe('stripTrailingAlias', () => {
+    it('removes trailing AS alias from top-level expression', () => {
+      expect(
+        stripTrailingAlias(
+          'toStartOfInterval(toDateTime(TimestampTime), INTERVAL 1 minute) AS `__hdx_time_bucket`',
+        ),
+      ).toBe('toStartOfInterval(toDateTime(TimestampTime), INTERVAL 1 minute)');
+    });
+
+    it('preserves expressions that have no trailing alias', () => {
+      expect(stripTrailingAlias('TimestampTime')).toBe('TimestampTime');
+    });
+
+    it('does not remove nested aliases inside parentheses', () => {
+      expect(
+        stripTrailingAlias('coalesce((SELECT x AS y), 0) AS final_value'),
+      ).toBe('coalesce((SELECT x AS y), 0)');
     });
   });
 

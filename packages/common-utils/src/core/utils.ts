@@ -96,7 +96,81 @@ export function splitAndTrimWithBracket(input: string): string[] {
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return splitAndTrimWithBracket(valueExpression)[0];
+  const firstExpression = splitAndTrimWithBracket(valueExpression)[0];
+  return firstExpression
+    ? stripTrailingAlias(firstExpression)
+    : firstExpression;
+}
+
+/**
+ * Removes a trailing SQL alias from a single expression, e.g.
+ * `toStartOfInterval(ts, INTERVAL 1 minute) AS bucket` -> `toStartOfInterval(ts, INTERVAL 1 minute)`.
+ * Keeps interior aliases untouched by only stripping the last top-level alias token.
+ */
+export function stripTrailingAlias(valueExpression: string): string {
+  const expression = valueExpression.trim();
+  if (!expression) return expression;
+
+  let parenCount = 0;
+  let squareCount = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let aliasSplitIndex: number | undefined;
+
+  for (let i = 0; i < expression.length; i++) {
+    const c = expression[i];
+    const prev = i > 0 ? expression[i - 1] : '';
+
+    if (c === "'" && !inDoubleQuote && !inBacktick && prev !== '\\') {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (c === '"' && !inSingleQuote && !inBacktick && prev !== '\\') {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (c === '`' && !inSingleQuote && !inDoubleQuote && prev !== '\\') {
+      inBacktick = !inBacktick;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote || inBacktick) continue;
+
+    if (c === '(') {
+      parenCount++;
+      continue;
+    }
+    if (c === ')') {
+      parenCount--;
+      continue;
+    }
+    if (c === '[') {
+      squareCount++;
+      continue;
+    }
+    if (c === ']') {
+      squareCount--;
+      continue;
+    }
+
+    if (parenCount === 0 && squareCount === 0) {
+      if (/\s/.test(c)) {
+        let j = i;
+        while (j < expression.length && /\s/.test(expression[j])) j++;
+        if (
+          expression.slice(j, j + 2).toUpperCase() === 'AS' &&
+          j + 2 < expression.length &&
+          /\s/.test(expression[j + 2])
+        ) {
+          aliasSplitIndex = i;
+        }
+      }
+    }
+  }
+
+  return aliasSplitIndex == null
+    ? expression
+    : expression.slice(0, aliasSplitIndex).trim();
 }
 
 /** Returns true if the given expression is a JSON expression, eg. `col.key.nestedKey` or "json_col"."key" */

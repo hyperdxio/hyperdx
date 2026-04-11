@@ -14,6 +14,7 @@ import {
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   splitAndTrimWithBracket,
+  stripTrailingAlias,
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
 import { replaceMacros } from '@/macros';
@@ -615,8 +616,29 @@ function timeBucketExpr({
   dateRange?: [Date, Date];
   alias?: string;
 }) {
+  const bucketExpression = timeBucketExprSql({
+    interval,
+    timestampValueExpression,
+    dateRange,
+  });
+  return chSql`${bucketExpression} AS \`${{
+    UNSAFE_RAW_SQL: alias,
+  }}\``;
+}
+
+function timeBucketExprSql({
+  interval,
+  timestampValueExpression,
+  dateRange,
+}: {
+  interval: SQLInterval | 'auto';
+  timestampValueExpression: string;
+  dateRange?: [Date, Date];
+}) {
   const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: getFirstTimestampValueExpression(timestampValueExpression),
+    UNSAFE_RAW_SQL: stripTrailingAlias(
+      getFirstTimestampValueExpression(timestampValueExpression),
+    ),
   };
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
@@ -625,9 +647,7 @@ function timeBucketExpr({
         : interval,
   };
 
-  return chSql`toStartOfInterval(toDateTime(${unsafeTimestampValueExpression}), INTERVAL ${unsafeInterval}) AS \`${{
-    UNSAFE_RAW_SQL: alias,
-  }}\``;
+  return chSql`toStartOfInterval(toDateTime(${unsafeTimestampValueExpression}), INTERVAL ${unsafeInterval})`;
 }
 
 export async function timeFilterExpr({
@@ -680,7 +700,7 @@ export async function timeFilterExpr({
 
   const whereExprs = await Promise.all(
     valueExpressions.map(async expr => {
-      const col = expr.trim();
+      const col = stripTrailingAlias(expr.trim());
 
       // If the expression includes a toStartOf...(...) function, the RHS of the
       // timestamp comparison must also have the same function
@@ -976,7 +996,7 @@ async function renderGroupBy(
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
       : [],
     isUsingGranularity(chartConfig)
-      ? timeBucketExpr({
+      ? timeBucketExprSql({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
@@ -1016,7 +1036,7 @@ function renderOrderBy(
   return concatChSql(
     ',',
     isIncludingTimeBucket
-      ? timeBucketExpr({
+      ? timeBucketExprSql({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
