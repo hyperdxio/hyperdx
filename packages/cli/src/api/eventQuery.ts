@@ -181,6 +181,12 @@ export interface FullRowQueryOptions {
  *   WITH <aliasWith>
  *   LIMIT 1
  */
+export interface FullRowQueryResult {
+  chSql: ChSql;
+  /** The SQL WHERE clause that uniquely identifies the row (for browser URL) */
+  rowWhere: string;
+}
+
 export async function buildFullRowQuery(
   opts: FullRowQueryOptions & {
     /** The rendered ChSql from the table query (for alias resolution) */
@@ -189,7 +195,7 @@ export async function buildFullRowQuery(
     tableMeta: ColumnMetaType[];
     metadata: Metadata;
   },
-): Promise<ChSql> {
+): Promise<FullRowQueryResult> {
   const { source, row, tableChSql, tableMeta, metadata } = opts;
 
   // Parse the rendered table SQL to get alias → expression mapping
@@ -223,5 +229,6 @@ export async function buildFullRowQuery(
       : {}),
   };
 
-  return renderChartConfig(config, metadata, source.querySettings);
+  const chSql = await renderChartConfig(config, metadata, source.querySettings);
+  return { chSql, rowWhere: rowWhereResult.where };
 }
