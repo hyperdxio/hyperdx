@@ -626,6 +626,7 @@ const Tile = forwardRef(
                           },
                         ],
                         granularity: 'auto',
+                        numberFormat: queriedConfig.numberFormat,
                       }}
                     />
                   )}

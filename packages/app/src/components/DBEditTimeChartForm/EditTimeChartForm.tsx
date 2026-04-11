@@ -52,7 +52,11 @@ import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import { getTraceDurationNumberFormat, useSource } from '@/source';
+import {
+  getDurationMsExpression,
+  getTraceDurationNumberFormat,
+  useSource,
+} from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 import { ChartActionBar } from './ChartActionBar';
@@ -398,16 +402,30 @@ export default function EditTimeChartForm({
       }
 
       if (displayType === DisplayType.Heatmap && Array.isArray(select)) {
+        const traceSource =
+          tableSource?.kind === SourceKind.Trace &&
+          tableSource.durationExpression
+            ? tableSource
+            : undefined;
+        const defaultValue = traceSource
+          ? getDurationMsExpression(traceSource)
+          : (select[0]?.valueExpression ?? '');
         const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
             aggCondition: '',
             aggConditionLanguage: getStoredLanguage() ?? 'lucene',
-            valueExpression: select[0]?.valueExpression ?? '',
+            valueExpression: defaultValue,
           },
         ];
         setValue('select', heatmapSeries);
         setValue('series', heatmapSeries);
+        if (traceSource) {
+          setValue('numberFormat', {
+            output: 'duration',
+            factor: 0.001,
+          });
+        }
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)

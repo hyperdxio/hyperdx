@@ -187,6 +187,7 @@ export function ChartPreviewPanel({
                   },
                 ],
                 granularity: 'auto',
+                numberFormat: queriedConfig.numberFormat,
               }}
             />
           </div>

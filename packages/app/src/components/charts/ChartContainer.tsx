@@ -14,7 +14,7 @@ function ChartContainer({
   disableReactiveContainer,
 }: ChartContainerProps) {
   return (
-    <Stack h="100%" w="100%" style={{ flexGrow: 1 }}>
+    <Stack h="100%" w="100%" gap={4} style={{ flexGrow: 1 }}>
       {(!!title || !!toolbarItems?.length) && (
         <Group justify="space-between" align="start" wrap="nowrap">
           <span
