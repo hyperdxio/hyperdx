@@ -7,7 +7,6 @@ import {
   buildTraceSummaryPayload,
 } from './requestBuilders';
 import type {
-  SummaryKind,
   SummaryPayload,
   SummaryResponse,
 } from './requestTypes';
@@ -47,4 +46,4 @@ export {
   buildTraceSummaryPayload,
 };
 
-export type { SummaryKind, SummaryPayload };
+export type { SummaryPayload };

@@ -146,7 +146,7 @@ function trimTraceItems(
   }));
 }
 
-export function compactSummaryRequest(
+function compactSummaryRequest(
   payload: AISummaryRequest,
 ): AISummaryRequest {
   const tone = payload.tone ?? 'default';
