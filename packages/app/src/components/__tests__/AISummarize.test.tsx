@@ -142,6 +142,7 @@ describe('formatPatternContent', () => {
       samples: Record<string, any>[];
     }> = {},
   ) => ({
+    id: 'pat-1',
     pattern: overrides.pattern ?? 'GET /api/<*>',
     count: overrides.count ?? 42,
     samples: overrides.samples ?? [],
@@ -340,6 +341,7 @@ describe('AISummarizeButton', () => {
 
 describe('AISummarizePatternButton', () => {
   const pattern = {
+    id: 'pat-test',
     pattern: 'GET /api/<*>',
     count: 100,
     samples: [
