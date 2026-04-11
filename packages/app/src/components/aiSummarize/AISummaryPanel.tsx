@@ -97,14 +97,16 @@ export default function AISummaryPanel({
             </Menu.Dropdown>
           </Menu>
         )}
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          color="gray"
+        <Anchor
+          component="button"
+          type="button"
+          size="xs"
+          c="dimmed"
           onClick={onDismiss}
+          style={{ cursor: 'pointer' }}
         >
           Don&apos;t show again
-        </Button>
+        </Anchor>
       </Flex>
       <Collapse in={isOpen || shouldShowUnavailableState}>
         <Paper
