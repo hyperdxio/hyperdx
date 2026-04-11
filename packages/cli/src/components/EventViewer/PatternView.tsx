@@ -11,7 +11,6 @@ type PatternViewProps = {
   selectedRow: number;
   scrollOffset: number;
   maxRows: number;
-  totalCount: number | null;
   loading: boolean;
   error: Error | null;
 };
@@ -23,7 +22,6 @@ export function PatternView({
   selectedRow,
   scrollOffset,
   maxRows,
-  totalCount,
   loading,
   error,
 }: PatternViewProps) {
@@ -39,12 +37,7 @@ export function PatternView({
             Est. Count
           </Text>
         </Box>
-        <Box width="8%">
-          <Text bold dimColor wrap="truncate">
-            Pct
-          </Text>
-        </Box>
-        <Box width="80%">
+        <Box flexGrow={1}>
           <Text bold dimColor wrap="truncate">
             Pattern
           </Text>
@@ -65,11 +58,6 @@ export function PatternView({
         !error &&
         visible.map((p, i) => {
           const isSelected = i === selectedRow;
-          const pct =
-            totalCount != null && totalCount > 0
-              ? `${((p.estimatedCount / totalCount) * 100).toFixed(1)}%`
-              : '-';
-
           return (
             <Box key={p.id} overflowX="hidden">
               <Box width={2}>
@@ -87,18 +75,7 @@ export function PatternView({
                   ~{p.estimatedCount.toLocaleString()}
                 </Text>
               </Box>
-              <Box width="8%" overflowX="hidden">
-                <Text
-                  color={isSelected ? 'cyan' : undefined}
-                  dimColor={!isSelected}
-                  bold={isSelected}
-                  inverse={isSelected}
-                  wrap="truncate"
-                >
-                  {pct}
-                </Text>
-              </Box>
-              <Box width="80%" overflowX="hidden">
+              <Box flexGrow={1} overflowX="hidden">
                 <Text
                   color={isSelected ? 'cyan' : undefined}
                   bold={isSelected}

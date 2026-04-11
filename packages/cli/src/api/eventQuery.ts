@@ -173,17 +173,12 @@ export async function buildPatternSampleQuery(
   } = opts;
 
   const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
-  const firstTsExpr = getFirstTimestampValueExpression(tsExpr) ?? tsExpr;
 
-  // Determine the body column
-  let bodyExpr: string;
-  if (source.kind === 'trace') {
-    bodyExpr = source.spanNameExpression ?? 'SpanName';
-  } else {
-    bodyExpr = source.bodyExpression ?? 'Body';
+  // Use the same select as the main event table so sample rows have all columns
+  let selectExpr = source.defaultTableSelectExpression ?? '';
+  if (!selectExpr && source.kind === 'trace') {
+    selectExpr = buildTraceSelectExpression(source);
   }
-
-  const selectExpr = `${bodyExpr}, ${firstTsExpr}`;
 
   // Compute alias WITH clauses so search aliases (e.g. `level`) resolve in WHERE
   const aliasWith = searchQuery

@@ -372,7 +372,6 @@ export default function EventViewer({
             selectedRow={patternSelectedRow}
             scrollOffset={patternScrollOffset}
             maxRows={maxRows}
-            totalCount={patternsTotalCount}
             loading={patternsLoading}
             error={patternsError}
           />
