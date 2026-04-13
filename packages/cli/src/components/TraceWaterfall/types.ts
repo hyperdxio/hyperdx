@@ -1,3 +1,5 @@
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
 
 export interface SpanRow {
@@ -23,10 +25,17 @@ export interface SpanNode extends TaggedSpanRow {
 
 export interface TraceWaterfallProps {
   clickhouseClient: ProxyClickhouseClient;
+  metadata: Metadata;
   source: SourceResponse;
   /** Correlated log source (optional) */
   logSource?: SourceResponse | null;
   traceId: string;
+  /**
+   * Timestamp of the originating event row. Used to derive a tight
+   * dateRange for trace span queries so ClickHouse can prune time
+   * partitions instead of scanning the entire table.
+   */
+  eventTimestamp?: string;
   /** Fuzzy filter query for span/log names */
   searchQuery?: string;
   /** Hint to identify the initial row to highlight in the waterfall */
@@ -40,6 +49,12 @@ export interface TraceWaterfallProps {
   onSelectedIndexChange?: (index: number | null) => void;
   /** Toggle line wrap in Event Details */
   wrapLines?: boolean;
+  /**
+   * When true, the waterfall hides and a full-page Event Details view
+   * is shown for the selected span/log. Toggled via l (expand) and
+   * h/Esc (collapse) keybindings.
+   */
+  detailExpanded?: boolean;
   /** Scroll offset for Event Details */
   detailScrollOffset?: number;
   /** Max visible rows for Event Details */
