@@ -57,6 +57,7 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
+  openHeatmapSettings?: () => void;
 };
 
 export function ChartEditorControls({
@@ -84,6 +85,7 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
+  openHeatmapSettings,
 }: ChartEditorControlsProps) {
   return (
     <>
@@ -119,8 +121,8 @@ export function ChartEditorControls({
           control={control}
           setValue={setValue}
           tableSource={tableSource}
-          parentRef={parentRef}
           onSubmit={onSubmit}
+          onOpenDisplaySettings={openHeatmapSettings ?? openDisplaySettings}
         />
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>

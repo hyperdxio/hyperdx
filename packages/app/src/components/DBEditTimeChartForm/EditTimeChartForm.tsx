@@ -47,7 +47,11 @@ import {
   isRawSqlDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
+import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import HeatmapSettingsDrawer, {
+  HeatmapSettingsValues,
+} from '@/components/HeatmapSettingsDrawer';
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
@@ -221,6 +225,11 @@ export default function EditTimeChartForm({
   const [
     displaySettingsOpened,
     { open: openDisplaySettings, close: closeDisplaySettings },
+  ] = useDisclosure(false);
+
+  const [
+    heatmapSettingsOpened,
+    { open: openHeatmapSettings, close: closeHeatmapSettings },
   ] = useDisclosure(false);
 
   // Only update this on submit, otherwise we'll have issues
@@ -524,6 +533,37 @@ export default function EditTimeChartForm({
     [setValue, onSubmit],
   );
 
+  const handleUpdateHeatmapSettings = useCallback(
+    (data: HeatmapSettingsValues) => {
+      setValue('series.0.valueExpression', data.value);
+      setValue('series.0.countExpression' as any, data.count || 'count()');
+      onSubmit();
+      closeHeatmapSettings();
+    },
+    [setValue, onSubmit, closeHeatmapSettings],
+  );
+
+  const handleHeatmapScaleTypeChange = useCallback(
+    (v: HeatmapScaleType) => {
+      setValue('series.0.heatmapScaleType' as any, v);
+    },
+    [setValue],
+  );
+
+  const heatmapValueExpression = useWatch({
+    control,
+    name: 'series.0.valueExpression',
+  });
+  const heatmapCountExpression = useWatch({
+    control,
+    name: 'series.0.countExpression' as any,
+  });
+  const heatmapScaleTypeRaw = useWatch({
+    control,
+    name: 'series.0.heatmapScaleType' as any,
+  });
+  const heatmapScaleType: HeatmapScaleType = heatmapScaleTypeRaw ?? 'log';
+
   const tableConnection = useMemo(
     () => tcFromSource(tableSource),
     [tableSource],
@@ -674,6 +714,7 @@ export default function EditTimeChartForm({
             chartConfigForExplanations={chartConfigForExplanations}
             onSubmit={onSubmit}
             openDisplaySettings={openDisplaySettings}
+            openHeatmapSettings={openHeatmapSettings}
           />
         )}
         <ChartActionBar
@@ -724,6 +765,19 @@ export default function EditTimeChartForm({
         displayType={displayType}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
+      />
+      <HeatmapSettingsDrawer
+        opened={heatmapSettingsOpened}
+        onClose={closeHeatmapSettings}
+        connection={tableConnection}
+        parentRef={parentRef}
+        defaultValues={{
+          value: heatmapValueExpression || '',
+          count: heatmapCountExpression || 'count()',
+        }}
+        scaleType={heatmapScaleType}
+        onScaleTypeChange={handleHeatmapScaleTypeChange}
+        onSubmit={handleUpdateHeatmapSettings}
       />
     </div>
   );
