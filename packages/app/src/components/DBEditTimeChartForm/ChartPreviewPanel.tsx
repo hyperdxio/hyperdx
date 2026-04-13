@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -31,6 +32,19 @@ import {
 } from '@/utils';
 
 import { buildSampleEventsConfig, isQueryReady } from './utils';
+
+function HeatmapPreview({
+  config,
+}: {
+  config: BuilderChartConfigWithDateRange;
+}) {
+  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
+  return (
+    <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+      <DBHeatmapChart config={heatmapConfig} scaleType={scaleType} />
+    </div>
+  );
+}
 
 type ChartPreviewPanelProps = {
   queriedConfig?: ChartConfigWithDateRange;
@@ -166,19 +180,7 @@ export function ChartPreviewPanel({
       {queryReady &&
         queriedConfig != null &&
         isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'heatmap' &&
-        (() => {
-          const { heatmapConfig, scaleType } =
-            toHeatmapChartConfig(queriedConfig);
-          return (
-            <div
-              className="flex-grow-1 d-flex flex-column"
-              style={{ height: 400 }}
-            >
-              <DBHeatmapChart config={heatmapConfig} scaleType={scaleType} />
-            </div>
-          );
-        })()}
+        activeTab === 'heatmap' && <HeatmapPreview config={queriedConfig} />}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&

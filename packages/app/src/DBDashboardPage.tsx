@@ -32,6 +32,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import {
   AlertState,
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DashboardContainer,
   DashboardFilter,
@@ -137,6 +138,31 @@ import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+
+function HeatmapTile({
+  keyPrefix,
+  chartId,
+  title,
+  toolbar,
+  queriedConfig,
+}: {
+  keyPrefix: string;
+  chartId: string;
+  title: React.ReactNode;
+  toolbar: React.ReactNode[];
+  queriedConfig: BuilderChartConfigWithDateRange;
+}) {
+  const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
+  return (
+    <DBHeatmapChart
+      key={`${keyPrefix}-${chartId}`}
+      title={title}
+      toolbarPrefix={toolbar}
+      config={heatmapConfig}
+      scaleType={scaleType}
+    />
+  );
+}
 
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
@@ -603,20 +629,15 @@ const Tile = forwardRef(
                   />
                 )}
                 {queriedConfig?.displayType === DisplayType.Heatmap &&
-                  isBuilderChartConfig(queriedConfig) &&
-                  (() => {
-                    const { heatmapConfig, scaleType } =
-                      toHeatmapChartConfig(queriedConfig);
-                    return (
-                      <DBHeatmapChart
-                        key={`${keyPrefix}-${chart.id}`}
-                        title={title}
-                        toolbarPrefix={toolbar}
-                        config={heatmapConfig}
-                        scaleType={scaleType}
-                      />
-                    );
-                  })()}
+                  isBuilderChartConfig(queriedConfig) && (
+                    <HeatmapTile
+                      keyPrefix={keyPrefix}
+                      chartId={chart.id}
+                      title={title}
+                      toolbar={toolbar}
+                      queriedConfig={queriedConfig}
+                    />
+                  )}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (

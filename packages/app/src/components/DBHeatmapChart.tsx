@@ -261,6 +261,7 @@ const opt: uPlot.Options = {
   axes: [
     {
       ...axis,
+      gap: 8,
     },
     {
       ...axis,
