@@ -310,7 +310,7 @@ export type HeatmapChartConfig = {
  * DerivedColumn schema. These aren't part of the Zod schema but are
  * preserved through MongoDB and the form state.
  */
-export type HeatmapSelectExtras = {
+type HeatmapSelectExtras = {
   countExpression?: string;
   heatmapScaleType?: HeatmapScaleType;
 };

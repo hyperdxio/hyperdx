@@ -569,6 +569,14 @@ export default function EditTimeChartForm({
   });
   const heatmapScaleType: HeatmapScaleType = heatmapScaleTypeRaw ?? 'log';
 
+  const heatmapSettingsDefaults = useMemo(
+    () => ({
+      value: heatmapValueExpression || '',
+      count: heatmapCountExpression || 'count()',
+    }),
+    [heatmapValueExpression, heatmapCountExpression],
+  );
+
   const tableConnection = useMemo(
     () => tcFromSource(tableSource),
     [tableSource],
@@ -778,10 +786,7 @@ export default function EditTimeChartForm({
         onClose={closeHeatmapSettings}
         connection={tableConnection}
         parentRef={parentRef}
-        defaultValues={{
-          value: heatmapValueExpression || '',
-          count: heatmapCountExpression || 'count()',
-        }}
+        defaultValues={heatmapSettingsDefaults}
         scaleType={heatmapScaleType}
         onScaleTypeChange={handleHeatmapScaleTypeChange}
         onSubmit={handleUpdateHeatmapSettings}

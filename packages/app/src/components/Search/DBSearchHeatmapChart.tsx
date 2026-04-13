@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -61,6 +61,14 @@ export function DBSearchHeatmapChart({
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
+
+  const heatmapSettingsDefaults = useMemo(
+    () => ({
+      value: fields.value,
+      count: fields.count ?? 'count()',
+    }),
+    [fields.value, fields.count],
+  );
 
   // After applying a filter, clear the heatmap selection so the delta chart
   // resets instead of staying in comparison mode.
@@ -137,10 +145,7 @@ export function DBSearchHeatmapChart({
         onClose={settingsHandlers.close}
         connection={tcFromSource(source)}
         parentRef={container}
-        defaultValues={{
-          value: fields.value,
-          count: fields.count ?? 'count()',
-        }}
+        defaultValues={heatmapSettingsDefaults}
         scaleType={scaleType}
         onScaleTypeChange={setScaleType}
         onSubmit={data => {
