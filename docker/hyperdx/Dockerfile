@@ -9,7 +9,8 @@
 
 ARG NODE_VERSION=22.22
 ARG CLICKHOUSE_VERSION=26.1
-ARG OTEL_COLLECTOR_VERSION=0.147.0
+ARG OTEL_COLLECTOR_VERSION
+ARG OTEL_COLLECTOR_CORE_VERSION
 
 # base #############################################################################################
 # == Otel Collector Image ==
@@ -23,10 +24,13 @@ FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f
 # so we copy the ocb binary into a golang base with a newer toolchain.
 FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
 FROM golang:1.26-alpine AS ocb-builder
+ARG OTEL_COLLECTOR_VERSION
+ARG OTEL_COLLECTOR_CORE_VERSION
 COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
 WORKDIR /build
 COPY packages/otel-collector/builder-config.yaml .
-RUN CGO_ENABLED=0 ocb --config=builder-config.yaml
+RUN sed -i "s/__OTEL_COLLECTOR_VERSION__/${OTEL_COLLECTOR_VERSION}/g; s/__OTEL_COLLECTOR_CORE_VERSION__/${OTEL_COLLECTOR_CORE_VERSION}/g" builder-config.yaml && \
+    CGO_ENABLED=0 ocb --config=builder-config.yaml
 
 # Build the Go migration tool with full TLS support for ClickHouse
 FROM golang:1.26-alpine AS migrate-builder
