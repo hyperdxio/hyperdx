@@ -16,6 +16,13 @@ export const HDX_EXPORTER_ENABLED =
   (process.env.HDX_EXPORTER_ENABLED ?? 'true') === 'true';
 
 export function parseResourceAttributes(raw: string): Record<string, string> {
+  const safeDecode = (s: string) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  };
   return raw
     .split(',')
     .filter(Boolean)
@@ -23,9 +30,7 @@ export function parseResourceAttributes(raw: string): Record<string, string> {
       (acc, pair) => {
         const idx = pair.indexOf('=');
         if (idx > 0) {
-          acc[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(
-            pair.slice(idx + 1),
-          );
+          acc[safeDecode(pair.slice(0, idx))] = safeDecode(pair.slice(idx + 1));
         }
         return acc;
       },
