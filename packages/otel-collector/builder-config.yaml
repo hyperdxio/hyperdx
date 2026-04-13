@@ -1,0 +1,84 @@
+# OpenTelemetry Collector Builder (OCB) manifest for HyperDX.
+# This replaces the pre-built otel/opentelemetry-collector-contrib image with a
+# custom-built binary that includes only the components HyperDX needs, plus any
+# custom receivers/processors we add in the future.
+#
+# To update the OTel Collector version, change the version numbers below.
+# The upstream contrib manifest for reference:
+#   https://github.com/open-telemetry/opentelemetry-collector-releases/blob/main/distributions/otelcol-contrib/manifest.yaml
+
+dist:
+  name: otelcol-hyperdx
+  description: HyperDX OpenTelemetry Collector
+  version: 0.147.0
+  output_path: /build/output
+  build_tags: 'grpcnotrace'
+
+receivers:
+  # Core
+  - gomod: go.opentelemetry.io/collector/receiver/nopreceiver v0.147.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.147.0
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/fluentforwardreceiver
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver
+      v0.147.0
+
+processors:
+  # Core
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.147.0
+  - gomod:
+      go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.147.0
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor
+      v0.147.0
+
+exporters:
+  # Core
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.147.0
+  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.147.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.147.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.147.0
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter
+      v0.147.0
+
+connectors:
+  # Core
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.147.0
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector
+      v0.147.0
+
+extensions:
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension
+      v0.147.0
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension
+      v0.147.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.53.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.53.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.53.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.53.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.53.0

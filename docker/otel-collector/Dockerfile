@@ -1,11 +1,19 @@
 ## base #############################################################################################
-FROM otel/opentelemetry-collector-contrib:0.147.0 AS col
 FROM otel/opentelemetry-collector-opampsupervisor:0.147.0 AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
-# Build the Go migration tool with full TLS support for ClickHouse
+# Build the custom HyperDX collector binary using OCB (OpenTelemetry Collector Builder).
+# This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
+# include custom receiver/processor components alongside the standard contrib ones.
 # Note: Build context must be repo root (use: docker build -f docker/otel-collector/Dockerfile .)
+FROM golang:1.25-alpine AS ocb-builder
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.147.0
+WORKDIR /build
+COPY packages/otel-collector/builder-config.yaml .
+RUN CGO_ENABLED=0 builder --config=builder-config.yaml
+
+# Build the Go migration tool with full TLS support for ClickHouse
 FROM golang:1.25-alpine AS migrate-builder
 WORKDIR /build
 COPY packages/otel-collector/go.mod packages/otel-collector/go.sum ./
@@ -38,7 +46,7 @@ COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 USER ${USER_UID}:${USER_GID}
 
 COPY --from=supervisor --chmod=755 /usr/local/bin/opampsupervisor /opampsupervisor
-COPY --from=col --chmod=755 /otelcol-contrib /otelcontribcol
+COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 
 # Copy entrypoint and log tail wrapper scripts
 COPY --chmod=755 docker/otel-collector/entrypoint.sh /entrypoint.sh
