@@ -33,13 +33,16 @@ import { useTraceData } from './useTraceData';
 
 export default function TraceWaterfall({
   clickhouseClient,
+  metadata,
   source,
   logSource,
   traceId,
+  eventTimestamp,
   searchQuery,
-  highlightHint,
+  highlightHint: _highlightHint,
   selectedIndex,
   onSelectedIndexChange,
+  detailExpanded = false,
   wrapLines,
   detailScrollOffset = 0,
   detailMaxRows,
@@ -63,7 +66,14 @@ export default function TraceWaterfall({
     selectedRowError,
     lastTraceChSql,
     fetchSelectedRow,
-  } = useTraceData({ clickhouseClient, source, logSource, traceId });
+  } = useTraceData({
+    clickhouseClient,
+    metadata,
+    source,
+    logSource,
+    traceId,
+    eventTimestamp,
+  });
 
   // Notify parent when the trace SQL changes
   useEffect(() => {
@@ -109,44 +119,49 @@ export default function TraceWaterfall({
 
   const totalDurationMs = maxMs - minMs;
 
-  const visibleNodesForIndex = useMemo(
-    () => filteredNodes.slice(0, propMaxRows ?? 50),
-    [filteredNodes, propMaxRows],
-  );
-
-  // Determine the effective highlighted index:
-  // - If selectedIndex is set (j/k navigation), use it (clamped)
-  // - Otherwise, find the highlightHint row
+  // Determine the effective selected index over ALL filtered nodes.
+  // Default to 0 (first span) so the cursor always starts at the top.
   const effectiveIndex = useMemo(() => {
+    if (filteredNodes.length === 0) return null;
     if (selectedIndex != null) {
-      return Math.max(
-        0,
-        Math.min(selectedIndex, visibleNodesForIndex.length - 1),
-      );
+      return Math.max(0, Math.min(selectedIndex, filteredNodes.length - 1));
     }
-    if (highlightHint) {
-      const idx = visibleNodesForIndex.findIndex(
-        n => n.SpanId === highlightHint.spanId && n.kind === highlightHint.kind,
-      );
-      return idx >= 0 ? idx : null;
-    }
-    return null;
-  }, [selectedIndex, highlightHint, visibleNodesForIndex]);
+    return 0;
+  }, [selectedIndex, filteredNodes]);
 
   // Clamp selectedIndex if it exceeds bounds
   useEffect(() => {
     if (
       selectedIndex != null &&
-      visibleNodesForIndex.length > 0 &&
-      selectedIndex >= visibleNodesForIndex.length
+      filteredNodes.length > 0 &&
+      selectedIndex >= filteredNodes.length
     ) {
-      onSelectedIndexChange?.(visibleNodesForIndex.length - 1);
+      onSelectedIndexChange?.(filteredNodes.length - 1);
     }
-  }, [selectedIndex, visibleNodesForIndex.length, onSelectedIndexChange]);
+  }, [selectedIndex, filteredNodes.length, onSelectedIndexChange]);
+
+  // Derive scroll offset so the selected row stays in the viewport.
+  // The viewport shows `maxRows` rows starting at `scrollOffset`.
+  const scrollOffset = useMemo(() => {
+    if (effectiveIndex == null) return 0;
+    // Keep the selected row visible — scroll just enough
+    if (effectiveIndex < maxRows) return 0;
+    // Centre-ish: put selected row near the middle of the viewport
+    return Math.min(
+      effectiveIndex - Math.floor(maxRows / 2),
+      Math.max(0, filteredNodes.length - maxRows),
+    );
+  }, [effectiveIndex, maxRows, filteredNodes.length]);
+
+  // The visible window of nodes for rendering
+  const visibleNodes = useMemo(
+    () => filteredNodes.slice(scrollOffset, scrollOffset + maxRows),
+    [filteredNodes, scrollOffset, maxRows],
+  );
 
   // Fetch SELECT * for the selected span/log
   const selectedNode =
-    effectiveIndex != null ? visibleNodesForIndex[effectiveIndex] : null;
+    effectiveIndex != null ? filteredNodes[effectiveIndex] : null;
 
   useEffect(() => {
     fetchSelectedRow(selectedNode);
@@ -184,10 +199,11 @@ export default function TraceWaterfall({
     }
     return n.StatusCode === '2' || n.StatusCode === 'Error';
   }).length;
-  const visibleNodes = filteredNodes.slice(0, maxRows);
   const truncated = filteredNodes.length > maxRows;
 
-  return (
+  // ---- Waterfall view ----------------------------------------------
+
+  const waterfallView = (
     <Box flexDirection="column">
       {/* Summary */}
       <Box>
@@ -255,7 +271,7 @@ export default function TraceWaterfall({
         const statusColor = getStatusColor(node);
         const barClr = getBarColor(node);
 
-        const isHighlighted = effectiveIndex === i;
+        const isHighlighted = effectiveIndex === scrollOffset + i;
 
         return (
           <Box key={`${node.SpanId}-${node.kind}-${i}`} overflowX="hidden">
@@ -299,43 +315,62 @@ export default function TraceWaterfall({
 
       {truncated && (
         <Text dimColor>
-          … and {filteredNodes.length - maxRows} more (showing first {maxRows})
+          {scrollOffset + maxRows < filteredNodes.length
+            ? `↓ ${filteredNodes.length - scrollOffset - maxRows} more below`
+            : ''}
+          {scrollOffset > 0
+            ? `${scrollOffset + maxRows < filteredNodes.length ? ' | ' : ''}↑ ${scrollOffset} above`
+            : ''}
+          {` (${filteredNodes.length} total)`}
         </Text>
       )}
 
-      {/* Event Details for selected span/log — fixed height viewport */}
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        height={(detailMaxRows ?? 10) + 3}
-        overflowY="hidden"
-      >
-        <Text bold>Event Details</Text>
-        <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
-        {selectedRowLoading ? (
-          <Text>
-            <Spinner type="dots" /> Loading event details…
-          </Text>
-        ) : selectedRowError ? (
-          <ErrorDisplay
-            error={selectedRowError}
-            severity="warning"
-            detail="Could not load event details for this span."
-          />
-        ) : selectedRowData ? (
-          <ColumnValues
-            data={selectedRowData}
-            searchQuery={searchQuery}
-            wrapLines={wrapLines}
-            maxRows={detailMaxRows}
-            scrollOffset={detailScrollOffset}
-          />
-        ) : effectiveIndex == null ? (
-          <Text dimColor>Use j/k to select a span or log event.</Text>
-        ) : (
-          <Text dimColor>No details available.</Text>
-        )}
-      </Box>
+      {/* Hint for entering detail view */}
+      {effectiveIndex != null && !detailExpanded && (
+        <Text dimColor>l=expand details</Text>
+      )}
     </Box>
   );
+
+  // ---- Detail view (full-page Event Details) -----------------------
+
+  const detailView = (
+    <Box flexDirection="column">
+      <Text dimColor>h=back to waterfall</Text>
+      <Box marginTop={1}>
+        <Text bold>Event Details</Text>
+        {selectedNode && (
+          <Text dimColor>
+            {' '}
+            — {selectedNode.ServiceName ? `${selectedNode.ServiceName} > ` : ''}
+            {selectedNode.SpanName || '(unknown)'}
+          </Text>
+        )}
+      </Box>
+      <Text dimColor>{'─'.repeat(termWidth - 2)}</Text>
+      {selectedRowLoading ? (
+        <Text>
+          <Spinner type="dots" /> Loading event details…
+        </Text>
+      ) : selectedRowError ? (
+        <ErrorDisplay
+          error={selectedRowError}
+          severity="warning"
+          detail="Could not load event details for this span."
+        />
+      ) : selectedRowData ? (
+        <ColumnValues
+          data={selectedRowData}
+          searchQuery={searchQuery}
+          wrapLines={wrapLines}
+          maxRows={detailMaxRows}
+          scrollOffset={detailScrollOffset}
+        />
+      ) : (
+        <Text dimColor>No details available.</Text>
+      )}
+    </Box>
+  );
+
+  return detailExpanded ? detailView : waterfallView;
 }

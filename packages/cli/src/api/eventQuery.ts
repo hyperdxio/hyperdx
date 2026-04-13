@@ -11,15 +11,19 @@ import { chSqlToAliasMap } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import SqlString from 'sqlstring';
+import type {
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 
 import type { SourceResponse } from './client';
-import {
-  getFirstTimestampValueExpression,
-  getDisplayedTimestampValueExpression,
-} from '@/shared/source';
+import { getFirstTimestampValueExpression } from '@/shared/source';
 import { buildRowDataSelectList } from '@/shared/rowDataPanel';
+import {
+  buildTraceSpansConfig,
+  buildTraceLogsConfig,
+  buildTraceRowDetailConfig,
+} from '@/shared/traceConfig';
 import { buildColumnMap, getRowWhere } from '@/shared/useRowWhere';
 
 export interface SearchQueryOptions {
@@ -104,94 +108,55 @@ export async function buildEventSearchQuery(
 
 // ---- Full row fetch (SELECT *) -------------------------------------
 
-// ---- Trace waterfall query (all spans for a traceId) ----------------
+// ---- Trace waterfall queries ----------------------------------------
 
 export interface TraceSpansQueryOptions {
   source: SourceResponse;
   traceId: string;
+  dateRange?: [Date, Date];
 }
 
 /**
- * Build a raw SQL query to fetch all spans for a given traceId.
- * Returns columns needed for the waterfall chart.
+ * Build a query to fetch all spans for a given traceId using
+ * renderChartConfig. Enables time partition pruning when dateRange
+ * is provided and materialized field optimisation.
  */
-export function buildTraceSpansSql(opts: TraceSpansQueryOptions): {
-  sql: string;
-  connectionId: string;
-} {
-  const { source, traceId } = opts;
-
-  const db = source.from.databaseName;
-  const table = source.from.tableName;
-  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
-  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
-  const parentSpanIdExpr = source.parentSpanIdExpression ?? 'ParentSpanId';
-  const spanNameExpr = source.spanNameExpression ?? 'SpanName';
-  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
-  const durationExpr = source.durationExpression ?? 'Duration';
-  const statusCodeExpr = source.statusCodeExpression ?? 'StatusCode';
-
-  const tsExpr = getDisplayedTimestampValueExpression(source);
-
-  const cols = [
-    `${tsExpr} AS Timestamp`,
-    `${traceIdExpr} AS TraceId`,
-    `${spanIdExpr} AS SpanId`,
-    `${parentSpanIdExpr} AS ParentSpanId`,
-    `${spanNameExpr} AS SpanName`,
-    `${serviceNameExpr} AS ServiceName`,
-    `${durationExpr} AS Duration`,
-    `${statusCodeExpr} AS StatusCode`,
-  ];
-
-  const escapedTraceId = SqlString.escape(traceId);
-  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
-
-  return {
-    sql,
-    connectionId: source.connection,
-  };
+export async function buildTraceSpansQuery(
+  opts: TraceSpansQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceSpansConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
 }
 
 /**
- * Build a raw SQL query to fetch correlated log events for a given traceId.
- * Returns columns matching the SpanRow shape used by the waterfall chart.
- * Logs are linked to spans via their SpanId.
+ * Build a query to fetch correlated log events for a given traceId
+ * using renderChartConfig.
  */
-export function buildTraceLogsSql(opts: TraceSpansQueryOptions): {
-  sql: string;
-  connectionId: string;
-} {
-  const { source, traceId } = opts;
+export async function buildTraceLogsQuery(
+  opts: TraceSpansQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceLogsConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
+}
 
-  const db = source.from.databaseName;
-  const table = source.from.tableName;
-  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
-  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
-  const bodyExpr = source.bodyExpression ?? 'Body';
-  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
-  const sevExpr = source.severityTextExpression ?? 'SeverityText';
-
-  const tsExpr = getDisplayedTimestampValueExpression(source);
-
-  const cols = [
-    `${tsExpr} AS Timestamp`,
-    `${traceIdExpr} AS TraceId`,
-    `${spanIdExpr} AS SpanId`,
-    `'' AS ParentSpanId`,
-    `${bodyExpr} AS SpanName`,
-    `${serviceNameExpr} AS ServiceName`,
-    `0 AS Duration`,
-    `${sevExpr} AS StatusCode`,
-  ];
-
-  const escapedTraceId = SqlString.escape(traceId);
-  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
-
-  return {
-    sql,
-    connectionId: source.connection,
-  };
+/**
+ * Build a query to fetch a single span/log row (SELECT *) from the
+ * trace waterfall detail panel. Omits dateRange so ClickHouse uses
+ * the WHERE clause directly.
+ */
+export async function buildTraceRowDetailQuery(
+  opts: {
+    source: SourceResponse;
+    traceId: string;
+    spanId?: string;
+    timestamp: string;
+  },
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceRowDetailConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
 }
 
 export interface FullRowQueryOptions {
@@ -242,17 +207,13 @@ export async function buildFullRowQuery(
 
   const selectList = buildRowDataSelectList(source);
 
-  // Use a very wide date range — the WHERE clause already uniquely
-  // identifies the row, so the time range is just a safety net
-  const now = new Date();
-  const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-
-  const config: BuilderChartConfigWithDateRange = {
+  // Omit dateRange and timestampValueExpression — the WHERE clause
+  // already uniquely identifies the row so ClickHouse can use the
+  // filter directly without scanning time partitions.
+  // This matches the web frontend's useRowData in DBRowDataPanel.tsx.
+  const config: BuilderChartConfigWithOptDateRange = {
     connection: source.connection,
     from: source.from,
-    timestampValueExpression:
-      source.timestampValueExpression ?? 'TimestampTime',
-    dateRange: [yearAgo, now],
     select: selectList,
     where: rowWhereResult.where,
     limit: { limit: 1 },
