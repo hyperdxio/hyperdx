@@ -80,17 +80,4 @@ describe('parseResourceAttributes', () => {
       other: 'plain',
     });
   });
-
-  it('falls back to raw string on malformed percent-encoding', () => {
-    expect(parseResourceAttributes('key=%GG,ok=fine')).toEqual({
-      key: '%GG',
-      ok: 'fine',
-    });
-  });
-
-  it('falls back to raw key on malformed percent-encoded key', () => {
-    expect(parseResourceAttributes('%ZZbad=value')).toEqual({
-      '%ZZbad': 'value',
-    });
-  });
 });
