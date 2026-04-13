@@ -30,7 +30,7 @@ export function ErrorCollapse({ summary, details }: ErrorCollapseProps) {
         <IconAlertTriangle size={14} className="me-2" /> {summary}
       </Button>
 
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <Code
           block
           c="red"

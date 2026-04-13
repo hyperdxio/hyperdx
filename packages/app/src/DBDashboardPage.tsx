@@ -19,7 +19,11 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  convertToDashboardTemplate,
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -297,9 +301,7 @@ const Tile = forwardRef(
 
     const [hovered, setHovered] = useState(false);
 
-    const alert = isBuilderSavedChartConfig(chart.config)
-      ? chart.config.alert
-      : undefined;
+    const alert = chart.config.alert;
     const alertIndicatorColor = useMemo(() => {
       if (!alert) {
         return 'transparent';
@@ -368,6 +370,10 @@ const Tile = forwardRef(
     }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
+      const isRawSql = isRawSqlSavedChartConfig(chart.config);
+      const displayTypeSupportsAlerts = isRawSql
+        ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
+        : displayTypeSupportsBuilderAlerts(chart.config.displayType);
       return (
         <Flex
           gap="0px"
@@ -376,30 +382,27 @@ const Tile = forwardRef(
           my={4} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
           style={{ visibility: hovered ? 'visible' : 'hidden' }}
         >
-          {(chart.config.displayType === DisplayType.Line ||
-            chart.config.displayType === DisplayType.StackedBar ||
-            chart.config.displayType === DisplayType.Number) &&
-            !isRawSqlSavedChartConfig(chart.config) && (
-              <Indicator
-                size={alert?.state === AlertState.OK ? 6 : 8}
-                zIndex={1}
-                color={alertIndicatorColor}
-                processing={alert?.state === AlertState.ALERT}
-                label={!alert && <span className="fs-8">+</span>}
-                mr={4}
-              >
-                <Tooltip label={alertTooltip} withArrow>
-                  <ActionIcon
-                    data-testid={`tile-alerts-button-${chart.id}`}
-                    variant="subtle"
-                    size="sm"
-                    onClick={onEditClick}
-                  >
-                    <IconBell size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Indicator>
-            )}
+          {displayTypeSupportsAlerts && (
+            <Indicator
+              size={alert?.state === AlertState.OK ? 6 : 8}
+              zIndex={1}
+              color={alertIndicatorColor}
+              processing={alert?.state === AlertState.ALERT}
+              label={!alert && <span className="fs-8">+</span>}
+              mr={4}
+            >
+              <Tooltip label={alertTooltip} withArrow>
+                <ActionIcon
+                  data-testid={`tile-alerts-button-${chart.id}`}
+                  variant="subtle"
+                  size="sm"
+                  onClick={onEditClick}
+                >
+                  <IconBell size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Indicator>
+          )}
 
           <ActionIcon
             data-testid={`tile-duplicate-button-${chart.id}`}

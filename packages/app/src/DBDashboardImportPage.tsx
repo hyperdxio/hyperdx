@@ -173,7 +173,7 @@ function FileSelection({
                     {errorDetails ? 'Hide Details' : 'Show Details'}
                   </Group>
                 </Button>
-                <Collapse in={errorDetails}>
+                <Collapse expanded={errorDetails}>
                   <Text c="red">{error.details}</Text>
                 </Collapse>
               </>

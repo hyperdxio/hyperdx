@@ -501,7 +501,39 @@ export const makeExternalTile = (opts?: {
   },
 });
 
-export const makeRawSqlTile = (opts?: { id?: string }): Tile => ({
+export const makeRawSqlTile = (opts?: {
+  id?: string;
+  displayType?: DisplayType;
+  sqlTemplate?: string;
+  connectionId?: string;
+}): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: opts?.displayType ?? DisplayType.Line,
+    sqlTemplate: opts?.sqlTemplate ?? 'SELECT 1',
+    connection: opts?.connectionId ?? 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
+});
+
+export const RAW_SQL_ALERT_TEMPLATE = [
+  'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
+  ' count() AS cnt',
+  ' FROM default.otel_logs',
+  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+  ' GROUP BY ts ORDER BY ts',
+].join('');
+
+export const makeRawSqlAlertTile = (opts?: {
+  id?: string;
+  connectionId?: string;
+  sqlTemplate?: string;
+}): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
   y: 1,
@@ -510,8 +542,8 @@ export const makeRawSqlTile = (opts?: { id?: string }): Tile => ({
   config: {
     configType: 'sql',
     displayType: DisplayType.Line,
-    sqlTemplate: 'SELECT 1',
-    connection: 'test-connection',
+    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
+    connection: opts?.connectionId ?? 'test-connection',
   } satisfies RawSqlSavedChartConfig,
 });
 
