@@ -33,6 +33,21 @@ import { formatDurationMs, formatNumber } from '@/utils';
 import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
 
+/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
+function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+}
+
 type Mode2DataArray = [number[], number[], number[]];
 
 // From: https://github.com/leeoniya/uPlot/blob/a4edb297a9b80baf781f4d05a40fb52fae737bff/demos/latency-heatmap.html#L436
@@ -247,7 +262,22 @@ const opt: uPlot.Options = {
     },
     {
       ...axis,
-      size: 70, // fixed width so labels like "1000ms" and ".67min" fit
+      // Dynamic size: measure the widest formatted tick label + padding.
+      // Falls back to 50 when no values are available yet.
+      size(self, values) {
+        if (!values || values.length === 0) return 50;
+        const font = self.axes[1]?.font ?? '12px IBM Plex Mono, monospace';
+        const ctx = self.ctx;
+        ctx.save();
+        ctx.font = font;
+        let maxW = 0;
+        for (const v of values) {
+          const w = ctx.measureText(v).width;
+          if (w > maxW) maxW = w;
+        }
+        ctx.restore();
+        return Math.ceil(maxW) + 16;
+      },
     },
   ],
   series: [
@@ -886,7 +916,7 @@ function Heatmap({
           numberFormat?.output === 'duration'
             ? actualValue * (numberFormat?.factor ?? 1) * 1000
             : actualValue;
-        return formatDurationMs(msValue);
+        return formatDurationMsCompact(msValue);
       }
 
       return numberFormat
