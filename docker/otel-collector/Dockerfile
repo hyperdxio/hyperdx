@@ -13,7 +13,7 @@ FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f
 # Note: The official OCB image may ship an older Go than the contrib modules require,
 # so we copy the ocb binary into a golang base with a newer toolchain.
 FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
-FROM golang:1.25-alpine AS ocb-builder
+FROM golang:1.26-alpine AS ocb-builder
 ARG OTEL_COLLECTOR_VERSION
 ARG OTEL_COLLECTOR_CORE_VERSION
 COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
@@ -23,7 +23,7 @@ RUN sed -i "s/__OTEL_COLLECTOR_VERSION__/${OTEL_COLLECTOR_VERSION}/g; s/__OTEL_C
     CGO_ENABLED=0 ocb --config=builder-config.yaml
 
 # Build the Go migration tool with full TLS support for ClickHouse
-FROM golang:1.25-alpine AS migrate-builder
+FROM golang:1.26-alpine AS migrate-builder
 WORKDIR /build
 COPY packages/otel-collector/go.mod packages/otel-collector/go.sum ./
 RUN go mod download
