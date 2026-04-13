@@ -186,6 +186,7 @@ export const HelpScreen = React.memo(function HelpScreen() {
     ['s', 'Edit select clause in $EDITOR'],
     ['D', 'Show generated SQL'],
     ['f', 'Toggle follow mode (live tail)'],
+    ['o', 'Open trace in browser'],
     ['w', 'Toggle line wrap'],
     ['A (Shift+A)', 'Open alerts page'],
     ['?', 'Toggle this help'],

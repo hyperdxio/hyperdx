@@ -10,6 +10,8 @@ import type { TimeRange } from '@/utils/editor';
 export interface EventViewerProps {
   clickhouseClient: ProxyClickhouseClient;
   metadata: Metadata;
+  /** HyperDX app URL (e.g. http://localhost:8080) for opening in browser */
+  appUrl: string;
   source: SourceResponse;
   sources: SourceResponse[];
   savedSearches: SavedSearchResponse[];

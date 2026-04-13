@@ -67,4 +67,6 @@ export interface TraceWaterfallProps {
   onChSqlChange?: (
     chSql: { sql: string; params: Record<string, unknown> } | null,
   ) => void;
+  /** Callback when the selected span/log node changes (for browser URL) */
+  onSelectedNodeChange?: (node: SpanNode | null) => void;
 }

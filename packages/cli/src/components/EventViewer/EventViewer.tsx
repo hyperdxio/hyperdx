@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Box, useStdout } from 'ink';
 
 import type { TimeRange } from '@/utils/editor';
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { EventViewerProps, SwitchItem } from './types';
 import { getColumns, getDynamicColumns, formatDynamicRow } from './utils';
@@ -21,6 +22,7 @@ import { useKeybindings } from './useKeybindings';
 export default function EventViewer({
   clickhouseClient,
   metadata,
+  appUrl,
   source,
   sources,
   savedSearches,
@@ -71,6 +73,9 @@ export default function EventViewer({
     null,
   );
   const [traceDetailExpanded, setTraceDetailExpanded] = useState(false);
+  const [traceSelectedNode, setTraceSelectedNode] = useState<SpanNode | null>(
+    null,
+  );
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
     const now = new Date();
     return { start: new Date(now.getTime() - 60 * 60 * 1000), end: now };
@@ -90,6 +95,7 @@ export default function EventViewer({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    expandedRowWhere,
     lastChSql,
     lastExpandedChSql,
     fetchNextPage,
@@ -178,7 +184,12 @@ export default function EventViewer({
     source,
     timeRange,
     customSelect,
+    submittedQuery,
     fullDetailMaxRows,
+    appUrl,
+    expandedTraceId,
+    expandedRowWhere,
+    traceSelectedNode,
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
@@ -300,6 +311,7 @@ export default function EventViewer({
             scrollOffset={scrollOffset}
             expandedRow={expandedRow}
             onTraceChSqlChange={setTraceChSql}
+            onTraceSelectedNodeChange={setTraceSelectedNode}
           />
         ) : (
           <TableView

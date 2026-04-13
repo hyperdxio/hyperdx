@@ -49,6 +49,7 @@ export default function TraceWaterfall({
   width: propWidth,
   maxRows: propMaxRows,
   onChSqlChange,
+  onSelectedNodeChange,
 }: TraceWaterfallProps) {
   const { stdout } = useStdout();
   const termWidth = propWidth ?? stdout?.columns ?? 80;
@@ -165,6 +166,11 @@ export default function TraceWaterfall({
 
   useEffect(() => {
     fetchSelectedRow(selectedNode);
+  }, [selectedNode?.SpanId, selectedNode?.Timestamp, selectedNode?.kind]);
+
+  // Notify parent when selected node changes (used for browser URL)
+  useEffect(() => {
+    onSelectedNodeChange?.(selectedNode ?? null);
   }, [selectedNode?.SpanId, selectedNode?.Timestamp, selectedNode?.kind]);
 
   // ---- Render ------------------------------------------------------
