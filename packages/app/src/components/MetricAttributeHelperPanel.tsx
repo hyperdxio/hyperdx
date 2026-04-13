@@ -460,7 +460,7 @@ export function MetricAttributeHelperPanel({
         </Group>
       </UnstyledButton>
 
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box pt="xs">
           {isLoading ? (
             <Flex justify="center" py="md">

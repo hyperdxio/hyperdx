@@ -404,7 +404,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             />
 
             {!isCollapsed && (
-              <Collapse in={isSavedSearchExpanded}>
+              <Collapse expanded={isSavedSearchExpanded}>
                 <div className={styles.subMenu}>
                   {favoritedSavedSearches.length > 0 ? (
                     favoritedSavedSearches.map(renderSavedSearchLink)
@@ -444,7 +444,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             />
 
             {!isCollapsed && (
-              <Collapse in={isDashboardsExpanded}>
+              <Collapse expanded={isDashboardsExpanded}>
                 <div className={styles.subMenu}>
                   {favoritedDashboards.length > 0 ? (
                     favoritedDashboards.map(renderDashboardLink)

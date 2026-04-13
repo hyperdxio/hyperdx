@@ -65,7 +65,7 @@ export class SearchPage {
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
     const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
       name: 'Query language',
     });
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });

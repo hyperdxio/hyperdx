@@ -324,7 +324,6 @@ describe('localSources', () => {
     const envDefaults = [{ id: 'env-src', name: 'Env Source' }];
     mockedConfig.HDX_LOCAL_DEFAULT_SOURCES = JSON.stringify(envDefaults);
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const stored = localSources.create({ name: 'My Source' } as Omit<
       TSource,
       'id'

@@ -1,11 +1,17 @@
-import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import {
+  Control,
+  Controller,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
 import {
   ActionIcon,
   Badge,
   Box,
   Collapse,
   Group,
+  NativeSelect,
+  NumberInput,
   Paper,
   Text,
   Tooltip,
@@ -115,39 +121,55 @@ export function TileAlertEditor({
           </ActionIcon>
         </Tooltip>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
               Trigger when the value
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
-              size="xs"
-              name={`alert.thresholdType`}
+            <Controller
               control={control}
+              name="alert.thresholdType"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
-            <NumberInput
-              size="xs"
-              w={80}
+            <Controller
               control={control}
-              name={`alert.threshold`}
+              name="alert.threshold"
+              render={({ field }) => (
+                <NumberInput size="xs" w={80} {...field} />
+              )}
             />
             over
-            <NativeSelect
-              data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-              size="xs"
-              name={`alert.interval`}
+            <Controller
               control={control}
+              name="alert.interval"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               window via
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-              size="xs"
-              name={`alert.channel.type`}
+            <Controller
               control={control}
+              name="alert.channel.type"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
           </Group>
           {alert?.createdBy && (
