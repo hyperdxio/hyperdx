@@ -84,7 +84,7 @@ export function HeatmapSeriesEditor({
             size="compact-sm"
             variant="secondary"
           >
-            Heatmap Settings
+            Display Settings
           </Button>
         </Flex>
       </Flex>

@@ -56,7 +56,7 @@ export default function HeatmapSettingsDrawer({
 
   return (
     <Drawer
-      title="Heatmap Settings"
+      title="Display Settings"
       opened={opened}
       onClose={handleClose}
       position="right"

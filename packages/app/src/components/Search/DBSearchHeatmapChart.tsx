@@ -116,7 +116,7 @@ export function DBSearchHeatmapChart({
           }}
         />
         {/* Gear icon overlaid on chart top-right */}
-        <Tooltip label="Heatmap settings">
+        <Tooltip label="Display settings">
           <ActionIcon
             variant="subtle"
             size="sm"
