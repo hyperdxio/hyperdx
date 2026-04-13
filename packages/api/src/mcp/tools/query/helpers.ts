@@ -2,8 +2,11 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import type {
+  ChartConfigWithDateRange,
+  MetricTable,
+} from '@hyperdx/common-utils/dist/types';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import ms from 'ms';
 
 import { getConnectionById } from '@/controllers/connection';
@@ -200,7 +203,27 @@ export async function runConfigTile(
     return formatQueryResult(result);
   }
 
-  // Raw SQL tile — look up connection by ID
+  // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
+  let sourceFields: {
+    from?: { databaseName: string; tableName: string };
+    implicitColumnExpression?: string;
+    metricTables?: MetricTable;
+  } = {};
+  if (savedConfig.source) {
+    const source = await getSource(teamId, savedConfig.source);
+    if (source) {
+      sourceFields = {
+        from: source.from,
+        implicitColumnExpression:
+          'implicitColumnExpression' in source
+            ? source.implicitColumnExpression
+            : undefined,
+        metricTables:
+          source.kind === SourceKind.Metric ? source.metricTables : undefined,
+      };
+    }
+  }
+
   const connection = await getConnectionById(
     teamId,
     savedConfig.connection,
@@ -226,6 +249,7 @@ export async function runConfigTile(
 
   const chartConfig = {
     ...savedConfig,
+    ...sourceFields,
     dateRange: [startDate, endDate] as [Date, Date],
   } satisfies ChartConfigWithDateRange;
 

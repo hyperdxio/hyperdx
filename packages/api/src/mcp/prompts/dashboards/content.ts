@@ -41,10 +41,14 @@ Use RAW SQL tiles (with connectionId) only for advanced queries:
 
 == COLUMN NAMING ==
 
-- Top-level columns use PascalCase: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName
-- Map attributes use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']
-- NEVER use dot notation (SpanAttributes.http.method) — always use brackets
-- Call hyperdx_list_sources to discover the exact column names and attribute keys
+- Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName
+  NOTE: These are defaults for the standard HyperDX schema. Custom sources may use different names.
+  Always call hyperdx_list_sources to get the real column names and keyColumns for each source.
+- Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']
+  NEVER use dot notation for Map columns (SpanAttributes.http.method) — always use brackets.
+- JSON-type columns use dot notation: JsonColumn.key.subkey
+  Check the jsType returned by hyperdx_list_sources to determine whether a column is Map or JSON.
+- Call hyperdx_list_sources to discover the exact column names, types, and attribute keys
 
 == LAYOUT GRID ==
 
@@ -158,7 +162,7 @@ returned for each source to discover the real values used in your data.
 
 - Using valueExpression with aggFn "count" — count does not take a valueExpression
 - Forgetting valueExpression for non-count aggFns — avg, sum, min, max, quantile all require it
-- Using dot notation for map attributes — always use SpanAttributes['key'] bracket syntax
+- Using dot notation for Map-type attributes — always use SpanAttributes['key'] bracket syntax for Map columns
 - Not calling hyperdx_list_sources first — you need real source IDs, not placeholders
 - Not validating with hyperdx_query_tile after saving — tiles can silently fail
 - Number and Pie tiles accept exactly 1 select item — not multiple
@@ -517,7 +521,7 @@ SQL TEMPLATE REFERENCE:
     const key = pattern.toLowerCase().replace(/[\s-]+/g, '_');
     const matched = Object.entries(examples).find(([k]) => k === key);
     if (matched) {
-      return `Dashboard example for pattern: ${pattern}\n\nReplace sourceId/connectionId values with real IDs from hyperdx_list_sources.\n${matched[1]}`;
+      return `Dashboard example for pattern: ${pattern}\n\nReplace sourceId/connectionId values with real IDs from hyperdx_list_sources.\nNOTE: Column names below (Duration, StatusCode, SpanName, etc.) are defaults for the standard schema. Call hyperdx_list_sources to get the actual column names for your sources.\n${matched[1]}`;
     }
     return (
       `No example found for pattern "${pattern}". Available patterns: ${Object.keys(examples).join(', ')}\n\n` +
@@ -528,7 +532,8 @@ SQL TEMPLATE REFERENCE:
 
   return (
     `Complete dashboard examples for common observability patterns.\n` +
-    `Replace sourceId/connectionId values with real IDs from hyperdx_list_sources.\n\n` +
+    `Replace sourceId/connectionId values with real IDs from hyperdx_list_sources.\n` +
+    `NOTE: Column names below (Duration, StatusCode, SpanName, etc.) are defaults for the standard schema. Call hyperdx_list_sources to get the actual column names for your sources.\n\n` +
     `Available patterns: ${Object.keys(examples).join(', ')}\n` +
     Object.values(examples).join('\n')
   );
@@ -558,20 +563,28 @@ Examples:
 
 == COLUMN NAMING ==
 
-Top-level columns (PascalCase — use directly in valueExpression and groupBy):
+Top-level columns (PascalCase defaults — use directly in valueExpression and groupBy):
   Duration, StatusCode, SpanName, ServiceName, Body, SeverityText,
   Timestamp, TraceId, SpanId, SpanKind, ParentSpanId
+  NOTE: These are the defaults for the standard HyperDX schema. Custom sources may
+  use different column names. Always verify with hyperdx_list_sources, which returns
+  the real column names and keyColumns expressions for each source.
 
-Map attribute columns (bracket syntax — access keys via ['key']):
+Map-type columns (bracket syntax — access keys via ['key']):
   SpanAttributes['http.method']
   SpanAttributes['http.route']
   SpanAttributes['http.status_code']
   ResourceAttributes['service.name']
   ResourceAttributes['deployment.environment']
 
-IMPORTANT: Always use bracket syntax for map columns. Never use dot notation.
+IMPORTANT: Always use bracket syntax for Map-type columns. Never use dot notation for Maps.
   Correct:   SpanAttributes['http.method']
   Incorrect: SpanAttributes.http.method
+
+JSON-type columns (dot notation — access nested keys via dot path):
+  JsonColumn.key.subkey
+  NOTE: Check the jsType field returned by hyperdx_list_sources to determine
+  whether a column is Map (use brackets) or JSON (use dots).
 
 == LUCENE FILTER SYNTAX ==
 
@@ -679,9 +692,10 @@ to plot the first as a ratio of the second. Useful for error rates:
    Wrong:   { aggFn: "avg" }
    Correct: { aggFn: "avg", valueExpression: "Duration" }
 
-3. Using dot notation for map attributes in valueExpression/groupBy
+3. Using dot notation for Map-type attributes in valueExpression/groupBy
    Wrong:   groupBy: "SpanAttributes.http.method"
    Correct: groupBy: "SpanAttributes['http.method']"
+   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
 
 4. Multiple select items on number/pie tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
