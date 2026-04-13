@@ -232,7 +232,7 @@ const opt: uPlot.Options = {
   height: 600,
   mode: 2,
   ms: 1,
-  padding: [8, 0, 0, 0],
+  padding: [8, 8, 0, 0],
   legend: {
     show: false,
   },
@@ -247,7 +247,7 @@ const opt: uPlot.Options = {
     },
     {
       ...axis,
-      size: 60, // fixed width so labels like "600ms" and "100µs" fit
+      size: 70, // fixed width so labels like "1000ms" and ".67min" fit
     },
   ],
   series: [
