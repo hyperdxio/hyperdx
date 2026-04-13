@@ -12,10 +12,15 @@ import _ from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import { DashboardDocument } from '@/models/dashboard';
-import { translateFilterToExternalFilter } from '@/utils/externalApi';
+import {
+  translateExternalChartToTileConfig,
+  translateExternalFilterToFilter,
+  translateFilterToExternalFilter,
+} from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
   ExternalDashboardFilter,
@@ -577,6 +582,97 @@ const dashboardBodyBaseShape = {
     .array(externalDashboardSavedFilterValueSchema)
     .optional(),
 };
+
+// --------------------------------------------------------------------------------
+// Shared tile/filter conversion helpers (used by both external API and MCP)
+// --------------------------------------------------------------------------------
+
+/**
+ * Convert external tile definitions to internal Mongoose-compatible format.
+ * Generates new ObjectIds for tiles that don't already have a matching ID in
+ * `existingTileIds` (update path) or for all tiles (create path).
+ */
+export function convertExternalTilesToInternal(
+  tiles: ExternalDashboardTileWithId[],
+  existingTileIds?: Set<string>,
+): DashboardDocument['tiles'] {
+  return tiles.map(tile => {
+    const tileId =
+      existingTileIds && tile.id && existingTileIds.has(tile.id)
+        ? tile.id
+        : new mongoose.Types.ObjectId().toString();
+    const tileWithId = { ...tile, id: tileId };
+    if (isConfigTile(tileWithId)) {
+      return convertToInternalTileConfig(tileWithId);
+    }
+    if (isSeriesTile(tileWithId)) {
+      return translateExternalChartToTileConfig(tileWithId);
+    }
+    // Fallback for tiles with neither config nor series — treat as empty series tile.
+    // This shouldn't happen with valid input, but matches the previous behavior.
+    return translateExternalChartToTileConfig(tileWithId as SeriesTile);
+  });
+}
+
+/**
+ * Convert external filter definitions to internal format, preserving IDs that
+ * match `existingFilterIds` (update path) or generating new ones (create path).
+ */
+export function convertExternalFiltersToInternal(
+  filters: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
+  existingFilterIds?: Set<string>,
+) {
+  return filters.map(filter => {
+    const filterId =
+      existingFilterIds && 'id' in filter && existingFilterIds.has(filter.id)
+        ? filter.id
+        : new mongoose.Types.ObjectId().toString();
+    return translateExternalFilterToFilter({ ...filter, id: filterId });
+  });
+}
+
+/**
+ * Delete alerts for tiles that were removed or converted to raw SQL
+ * (which doesn't support alerts).
+ */
+export async function cleanupDashboardAlerts({
+  dashboardId,
+  teamId,
+  internalTiles,
+  existingTileIds,
+}: {
+  dashboardId: string;
+  teamId: string | mongoose.Types.ObjectId;
+  internalTiles: DashboardDocument['tiles'];
+  existingTileIds: Set<string>;
+}) {
+  const newTileIdSet = new Set(internalTiles.map(t => t.id));
+  const tileIdsToDeleteAlerts = [
+    ...internalTiles
+      .filter(tile => isRawSqlSavedChartConfig(tile.config))
+      .map(tile => tile.id),
+    ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
+  ];
+  if (tileIdsToDeleteAlerts.length > 0) {
+    logger.info(
+      { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
+      'Deleting alerts for tiles with unsupported config or removed tiles',
+    );
+    const teamObjectId =
+      teamId instanceof mongoose.Types.ObjectId
+        ? teamId
+        : new mongoose.Types.ObjectId(teamId);
+    await deleteDashboardAlerts(
+      dashboardId,
+      teamObjectId,
+      tileIdsToDeleteAlerts,
+    );
+  }
+}
+
+// --------------------------------------------------------------------------------
+// Body validation schemas
+// --------------------------------------------------------------------------------
 
 function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
   z.ZodObject<

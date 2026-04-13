@@ -1,32 +1,22 @@
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import { deleteDashboardAlerts } from '@/controllers/alerts';
 import Dashboard from '@/models/dashboard';
 import {
+  cleanupDashboardAlerts,
+  convertExternalFiltersToInternal,
+  convertExternalTilesToInternal,
   convertToExternalDashboard,
-  convertToInternalTileConfig,
   createDashboardBodySchema,
   getMissingConnections,
   getMissingSources,
-  isConfigTile,
   resolveSavedQueryLanguage,
-  type SeriesTile,
   updateDashboardBodySchema,
 } from '@/routers/external-api/v2/utils/dashboards';
-import {
-  translateExternalChartToTileConfig,
-  translateExternalFilterToFilter,
-} from '@/utils/externalApi';
-import logger from '@/utils/logger';
-import type {
-  ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
-} from '@/utils/zod';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -149,23 +139,8 @@ async function createDashboard({
     };
   }
 
-  const internalTiles = tilesWithId.map(tile => {
-    const tileId = new mongoose.Types.ObjectId().toString();
-    if (isConfigTile(tile)) {
-      return convertToInternalTileConfig({ ...tile, id: tileId });
-    }
-    return translateExternalChartToTileConfig({
-      ...tile,
-      id: tileId,
-    } as SeriesTile);
-  });
-
-  const filtersWithIds = (filters ?? []).map(filter =>
-    translateExternalFilterToFilter({
-      ...filter,
-      id: new mongoose.Types.ObjectId().toString(),
-    }),
-  );
+  const internalTiles = convertExternalTilesToInternal(tilesWithId);
+  const filtersWithIds = convertExternalFiltersToInternal(filters ?? []);
 
   const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
     savedQuery: undefined,
@@ -292,19 +267,10 @@ async function updateDashboard({
     (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
   );
 
-  const internalTiles = tilesWithId.map(tile => {
-    const tileId =
-      tile.id && existingTileIds.has(tile.id)
-        ? tile.id
-        : new mongoose.Types.ObjectId().toString();
-    if (isConfigTile(tile)) {
-      return convertToInternalTileConfig({ ...tile, id: tileId });
-    }
-    return translateExternalChartToTileConfig({
-      ...tile,
-      id: tileId,
-    } as SeriesTile);
-  });
+  const internalTiles = convertExternalTilesToInternal(
+    tilesWithId,
+    existingTileIds,
+  );
 
   const setPayload: Record<string, unknown> = {
     name,
@@ -313,13 +279,9 @@ async function updateDashboard({
   };
 
   if (filters !== undefined) {
-    setPayload.filters = filters.map(
-      (filter: ExternalDashboardFilterWithId) => {
-        const filterId = existingFilterIds.has(filter.id)
-          ? filter.id
-          : new mongoose.Types.ObjectId().toString();
-        return translateExternalFilterToFilter({ ...filter, id: filterId });
-      },
+    setPayload.filters = convertExternalFiltersToInternal(
+      filters,
+      existingFilterIds,
     );
   }
 
@@ -348,25 +310,12 @@ async function updateDashboard({
     };
   }
 
-  // Delete alerts for raw SQL tiles (unsupported) or removed tiles
-  const newTileIdSet = new Set(internalTiles.map(t => t.id));
-  const tileIdsToDeleteAlerts = [
-    ...internalTiles
-      .filter(tile => isRawSqlSavedChartConfig(tile.config))
-      .map(tile => tile.id),
-    ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
-  ];
-  if (tileIdsToDeleteAlerts.length > 0) {
-    logger.info(
-      { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
-      'Deleting alerts for tiles with unsupported config or removed tiles',
-    );
-    await deleteDashboardAlerts(
-      dashboardId,
-      new mongoose.Types.ObjectId(teamId),
-      tileIdsToDeleteAlerts,
-    );
-  }
+  await cleanupDashboardAlerts({
+    dashboardId,
+    teamId,
+    internalTiles,
+    existingTileIds,
+  });
 
   return {
     content: [

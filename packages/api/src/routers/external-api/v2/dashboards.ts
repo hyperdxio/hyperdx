@@ -1,29 +1,20 @@
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import express from 'express';
 import { uniq } from 'lodash';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
-import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import {
-  translateExternalChartToTileConfig,
-  translateExternalFilterToFilter,
-} from '@/utils/externalApi';
 import logger from '@/utils/logger';
-import {
-  ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
-  objectIdSchema,
-} from '@/utils/zod';
+import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
+  cleanupDashboardAlerts,
+  convertExternalFiltersToInternal,
+  convertExternalTilesToInternal,
   convertToExternalDashboard,
-  convertToInternalTileConfig,
   createDashboardBodySchema,
   getMissingConnections,
   getMissingSources,
@@ -1627,27 +1618,8 @@ router.post(
         });
       }
 
-      const internalTiles = tiles.map(tile => {
-        const tileId = new ObjectId().toString();
-        if (isConfigTile(tile)) {
-          return convertToInternalTileConfig({
-            ...tile,
-            id: tileId,
-          });
-        }
-
-        return translateExternalChartToTileConfig({
-          ...tile,
-          id: tileId,
-        });
-      });
-
-      const filtersWithIds = (filters || []).map(filter =>
-        translateExternalFilterToFilter({
-          ...filter,
-          id: new ObjectId().toString(),
-        }),
-      );
+      const internalTiles = convertExternalTilesToInternal(tiles);
+      const filtersWithIds = convertExternalFiltersToInternal(filters || []);
 
       const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
         savedQuery,
@@ -1880,18 +1852,10 @@ router.put(
         (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
       );
 
-      // Convert external tiles to internal charts format.
-      // Generate a new id for any tile whose id doesn't match an existing tile.
-      const internalTiles = tiles.map(tile => {
-        const tileId = existingTileIds.has(tile.id)
-          ? tile.id
-          : new ObjectId().toString();
-        if (isConfigTile(tile)) {
-          return convertToInternalTileConfig({ ...tile, id: tileId });
-        }
-
-        return translateExternalChartToTileConfig({ ...tile, id: tileId });
-      });
+      const internalTiles = convertExternalTilesToInternal(
+        tiles,
+        existingTileIds,
+      );
 
       const setPayload: Record<string, unknown> = {
         name,
@@ -1899,13 +1863,9 @@ router.put(
         tags: tags && uniq(tags),
       };
       if (filters !== undefined) {
-        setPayload.filters = filters.map(
-          (filter: ExternalDashboardFilterWithId) => {
-            const filterId = existingFilterIds.has(filter.id)
-              ? filter.id
-              : new ObjectId().toString();
-            return translateExternalFilterToFilter({ ...filter, id: filterId });
-          },
+        setPayload.filters = convertExternalFiltersToInternal(
+          filters,
+          existingFilterIds,
         );
       }
       if (savedQuery !== undefined) {
@@ -1932,21 +1892,12 @@ router.put(
         return res.sendStatus(404);
       }
 
-      // Delete alerts for tiles that are now raw SQL (unsupported) or were removed
-      const newTileIdSet = new Set(internalTiles.map(t => t.id));
-      const tileIdsToDeleteAlerts = [
-        ...internalTiles
-          .filter(tile => isRawSqlSavedChartConfig(tile.config))
-          .map(tile => tile.id),
-        ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
-      ];
-      if (tileIdsToDeleteAlerts.length > 0) {
-        logger.info(
-          { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
-          `Deleting alerts for tiles with unsupported config or removed tiles`,
-        );
-        await deleteDashboardAlerts(dashboardId, teamId, tileIdsToDeleteAlerts);
-      }
+      await cleanupDashboardAlerts({
+        dashboardId,
+        teamId,
+        internalTiles,
+        existingTileIds,
+      });
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),
