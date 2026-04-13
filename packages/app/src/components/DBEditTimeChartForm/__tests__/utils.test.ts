@@ -133,7 +133,6 @@ describe('isQueryReady', () => {
 
   it('returns truthy for metric sources with metricTables but empty tableName', () => {
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       isQueryReady({
         ...builderConfig,
         from: { databaseName: 'default', tableName: '' },

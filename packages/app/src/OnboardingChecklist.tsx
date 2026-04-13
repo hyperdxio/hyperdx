@@ -178,7 +178,7 @@ const OnboardingChecklist = ({
         </ActionIcon>
       </Group>
 
-      <Collapse in={!isCollapsed}>
+      <Collapse expanded={!isCollapsed}>
         <Stack gap="xs">
           {steps.map((step, index) => {
             const StepContent = (

@@ -39,7 +39,7 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray">
+        <Text size="xs" c="gray">
           {label}
         </Text>
         <Text size="sm">{value}</Text>
@@ -170,7 +170,7 @@ function NamespaceLogs({
                 passHref
                 legacyBehavior
               >
-                <Anchor size="xs" color="dimmed">
+                <Anchor size="xs" c="dimmed">
                   Search <IconExternalLink size={12} style={{ display: 'inline' }} />
                 </Anchor>
               </Link> 
