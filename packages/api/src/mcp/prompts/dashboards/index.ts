@@ -26,10 +26,9 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
     {
       title: 'Create a Dashboard',
       description:
-        'Comprehensive guide for generating a HyperDX dashboard. ' +
-        'Includes the recommended workflow, tile type reference, layout guidelines, ' +
-        'column naming conventions, filter syntax, and a complete example. ' +
-        'Dynamically includes your available data sources.',
+        'Create a HyperDX dashboard with the MCP tools. ' +
+        'Follow the recommended workflow, pick tile types, write queries, ' +
+        'and validate results — using your real data sources.',
       argsSchema: {
         description: z
           .string()
@@ -51,7 +50,12 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
         ]);
 
         sourceSummary = buildSourceSummary(
-          sources.map(s => ({ _id: s._id, name: s.name, kind: s.kind })),
+          sources.map(s => ({
+            _id: s._id,
+            name: s.name,
+            kind: s.kind,
+            connection: s.connection,
+          })),
           connections.map(c => ({ _id: c._id, name: c.name })),
         );
         traceSourceId = getFirstSourceId(
@@ -99,9 +103,8 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
     {
       title: 'Dashboard Examples',
       description:
-        'Complete, copy-paste-ready dashboard examples for common observability patterns: ' +
-        'service_overview, error_tracking, latency, log_analysis, infrastructure_sql. ' +
-        'Uses your real source IDs when available.',
+        'Get copy-paste-ready dashboard examples for common observability patterns: ' +
+        'service_overview, error_tracking, latency, log_analysis, infrastructure_sql.',
       argsSchema: {
         pattern: z
           .string()
@@ -169,9 +172,9 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
     {
       title: 'Query Writing Guide',
       description:
-        'Reference guide for writing HyperDX queries: aggregation functions, ' +
-        'Lucene and SQL filter syntax, raw SQL template macros, column naming, ' +
-        'per-tile constraints, and common mistakes to avoid.',
+        'Look up HyperDX query syntax: aggregation functions, ' +
+        'Lucene/SQL filters, raw SQL macros, column naming, ' +
+        'per-tile constraints, and common mistakes.',
     },
     async () => {
       return {

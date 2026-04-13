@@ -90,6 +90,8 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // PUBLIC ROUTES
 app.use('/', routers.rootRouter);
+
+// SELF-AUTHENTICATED ROUTES (validated via access key, not session middleware)
 app.use('/mcp', mcpRouter);
 
 // PRIVATE ROUTES

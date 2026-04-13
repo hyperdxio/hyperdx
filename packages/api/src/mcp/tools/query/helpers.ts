@@ -2,10 +2,7 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import type {
-  BuilderSavedChartConfig,
-  ChartConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
+import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import ms from 'ms';
 
@@ -102,11 +99,12 @@ export async function runConfigTile(
   const savedConfig = internalTile.config;
 
   if (!isRawSqlSavedChartConfig(savedConfig)) {
-    const builderConfig = savedConfig as BuilderSavedChartConfig & {
-      source: string;
-    };
+    const builderConfig = savedConfig;
 
-    if (!builderConfig.source || builderConfig.source === 'markdown') {
+    if (
+      !builderConfig.source ||
+      builderConfig.displayType === DisplayType.Markdown
+    ) {
       return {
         content: [
           {
@@ -190,7 +188,7 @@ export async function runConfigTile(
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
-    } as ChartConfigWithDateRange;
+    } satisfies ChartConfigWithDateRange;
 
     const metadata = getMetadata(clickhouseClient);
     const result = await clickhouseClient.queryChartConfig({
@@ -229,7 +227,7 @@ export async function runConfigTile(
   const chartConfig = {
     ...savedConfig,
     dateRange: [startDate, endDate] as [Date, Date],
-  } as ChartConfigWithDateRange;
+  } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
   const result = await clickhouseClient.queryChartConfig({

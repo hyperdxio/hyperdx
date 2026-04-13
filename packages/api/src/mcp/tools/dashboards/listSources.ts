@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -52,6 +53,7 @@ export function registerListSources(
             id: s._id.toString(),
             name: s.name,
             kind: s.kind,
+            connectionId: s.connection.toString(),
             timestampColumn: s.timestampValueExpression,
           };
 
@@ -65,99 +67,88 @@ export function registerListSources(
             meta.resourceAttributesColumn = s.resourceAttributesExpression;
           }
 
-          if (s.kind === 'trace') {
+          if (s.kind === SourceKind.Trace) {
             meta.keyColumns = {
-              spanName:
-                'spanNameExpression' in s ? s.spanNameExpression : undefined,
-              duration:
-                'durationExpression' in s ? s.durationExpression : undefined,
-              durationPrecision:
-                'durationPrecision' in s ? s.durationPrecision : undefined,
-              statusCode:
-                'statusCodeExpression' in s
-                  ? s.statusCodeExpression
-                  : undefined,
-              serviceName:
-                'serviceNameExpression' in s
-                  ? s.serviceNameExpression
-                  : undefined,
-              traceId:
-                'traceIdExpression' in s ? s.traceIdExpression : undefined,
-              spanId: 'spanIdExpression' in s ? s.spanIdExpression : undefined,
+              spanName: s.spanNameExpression,
+              duration: s.durationExpression,
+              durationPrecision: s.durationPrecision,
+              statusCode: s.statusCodeExpression,
+              serviceName: s.serviceNameExpression,
+              traceId: s.traceIdExpression,
+              spanId: s.spanIdExpression,
             };
-          } else if (s.kind === 'log') {
+          } else if (s.kind === SourceKind.Log) {
             meta.keyColumns = {
-              body: 'bodyExpression' in s ? s.bodyExpression : undefined,
-              serviceName:
-                'serviceNameExpression' in s
-                  ? s.serviceNameExpression
-                  : undefined,
-              severityText:
-                'severityTextExpression' in s
-                  ? s.severityTextExpression
-                  : undefined,
-              traceId:
-                'traceIdExpression' in s ? s.traceIdExpression : undefined,
+              body: s.bodyExpression,
+              serviceName: s.serviceNameExpression,
+              severityText: s.severityTextExpression,
+              traceId: s.traceIdExpression,
             };
+          } else if (s.kind === SourceKind.Metric) {
+            meta.metricTables = s.metricTables;
           }
 
-          try {
-            const connection = await getConnectionById(
-              teamId.toString(),
-              s.connection.toString(),
-              true,
-            );
-            if (!connection) {
-              throw new Error(`Connection not found for source ${s._id}`);
+          // Skip column schema fetch for sources without a table (e.g. metrics
+          // sources store their tables in metricTables, not from.tableName).
+          if (s.from.tableName) {
+            try {
+              const connection = await getConnectionById(
+                teamId.toString(),
+                s.connection.toString(),
+                true,
+              );
+              if (!connection) {
+                throw new Error(`Connection not found for source ${s._id}`);
+              }
+
+              const clickhouseClient = new ClickhouseClient({
+                host: connection.host,
+                username: connection.username,
+                password: connection.password,
+              });
+              const metadata = getMetadata(clickhouseClient);
+
+              const columns = await metadata.getColumns({
+                databaseName: s.from.databaseName,
+                tableName: s.from.tableName,
+                connectionId: s.connection.toString(),
+              });
+
+              meta.columns = columns.map(c => ({
+                name: c.name,
+                type: c.type,
+                jsType: convertCHDataTypeToJSType(c.type),
+              }));
+
+              const mapColumns = filterColumnMetaByType(columns, [
+                JSDataType.Map,
+              ]);
+              const mapKeysResults: Record<string, string[]> = {};
+              await Promise.all(
+                (mapColumns ?? []).map(async col => {
+                  try {
+                    const keys = await metadata.getMapKeys({
+                      databaseName: s.from.databaseName,
+                      tableName: s.from.tableName,
+                      column: col.name,
+                      maxKeys: 50,
+                      connectionId: s.connection.toString(),
+                    });
+                    mapKeysResults[col.name] = keys;
+                  } catch {
+                    // Skip columns where key sampling fails
+                  }
+                }),
+              );
+              if (Object.keys(mapKeysResults).length > 0) {
+                meta.mapAttributeKeys = mapKeysResults;
+              }
+            } catch (e) {
+              logger.warn(
+                { teamId, sourceId: s._id, error: e },
+                'Failed to fetch schema for source',
+              );
             }
-
-            const clickhouseClient = new ClickhouseClient({
-              host: connection.host,
-              username: connection.username,
-              password: connection.password,
-            });
-            const metadata = getMetadata(clickhouseClient);
-
-            const columns = await metadata.getColumns({
-              databaseName: s.from.databaseName,
-              tableName: s.from.tableName,
-              connectionId: s.connection.toString(),
-            });
-
-            meta.columns = columns.map(c => ({
-              name: c.name,
-              type: c.type,
-              jsType: convertCHDataTypeToJSType(c.type),
-            }));
-
-            const mapColumns = filterColumnMetaByType(columns, [
-              JSDataType.Map,
-            ]);
-            const mapKeysResults: Record<string, string[]> = {};
-            await Promise.all(
-              (mapColumns ?? []).map(async col => {
-                try {
-                  const keys = await metadata.getMapKeys({
-                    databaseName: s.from.databaseName,
-                    tableName: s.from.tableName,
-                    column: col.name,
-                    maxKeys: 50,
-                    connectionId: s.connection.toString(),
-                  });
-                  mapKeysResults[col.name] = keys;
-                } catch {
-                  // Skip columns where key sampling fails
-                }
-              }),
-            );
-            if (Object.keys(mapKeysResults).length > 0) {
-              meta.mapAttributeKeys = mapKeysResults;
-            }
-          } catch (e) {
-            logger.warn(
-              { teamId, sourceId: s._id, error: e },
-              'Failed to fetch schema for source',
-            );
           }
 
           return meta;

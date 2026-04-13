@@ -1,7 +1,7 @@
 // ─── Source/connection summary helpers ───────────────────────────────────────
 
 export function buildSourceSummary(
-  sources: { _id: unknown; name: string; kind: string }[],
+  sources: { _id: unknown; name: string; kind: string; connection: unknown }[],
   connections: { _id: unknown; name: string }[],
 ): string {
   if (sources.length === 0 && connections.length === 0) {
@@ -13,7 +13,9 @@ export function buildSourceSummary(
   if (sources.length > 0) {
     lines.push('AVAILABLE SOURCES (use sourceId with builder tiles):');
     for (const s of sources) {
-      lines.push(`  - "${s.name}" (${s.kind}) — sourceId: "${s._id}"`);
+      lines.push(
+        `  - "${s.name}" (${s.kind}) — sourceId: "${s._id}", connectionId: "${s.connection}"`,
+      );
     }
   }
 

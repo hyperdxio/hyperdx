@@ -147,6 +147,13 @@ hyperdx_save_dashboard({
   ]
 })
 
+== STATUS CODE & SEVERITY VALUES ==
+
+IMPORTANT: The exact values for StatusCode and SeverityText vary by deployment.
+Do NOT assume values like "STATUS_CODE_ERROR", "Ok", "error", or "fatal".
+Always call hyperdx_list_sources first and inspect the keyValues / mapAttributeKeys
+returned for each source to discover the real values used in your data.
+
 == COMMON MISTAKES TO AVOID ==
 
 - Using valueExpression with aggFn "count" — count does not take a valueExpression
@@ -155,7 +162,8 @@ hyperdx_save_dashboard({
 - Not calling hyperdx_list_sources first — you need real source IDs, not placeholders
 - Not validating with hyperdx_query_tile after saving — tiles can silently fail
 - Number and Pie tiles accept exactly 1 select item — not multiple
-- Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99`;
+- Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99
+- Assuming StatusCode or SeverityText values — always inspect the source first`;
 }
 
 export function buildDashboardExamplesPrompt(
@@ -688,5 +696,10 @@ to plot the first as a ratio of the second. Useful for error rates:
 
 7. Using sourceId with SQL tiles or connectionId with builder tiles
    Builder tiles (line, table, etc.) use sourceId.
-   SQL tiles (configType: "sql") use connectionId.`;
+   SQL tiles (configType: "sql") use connectionId.
+
+8. Assuming StatusCode or SeverityText values
+   Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
+   Always call hyperdx_list_sources and inspect real keyValues from the source
+   before writing filters that depend on these columns.`;
 }

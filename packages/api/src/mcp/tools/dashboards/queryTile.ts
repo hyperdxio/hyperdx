@@ -4,7 +4,6 @@ import { z } from 'zod';
 
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import { parseTimeRange, runConfigTile } from '../query/helpers';
@@ -91,12 +90,7 @@ export function registerQueryTile(
           };
         }
 
-        return runConfigTile(
-          teamId.toString(),
-          tile as ExternalDashboardTileWithId,
-          startDate,
-          endDate,
-        );
+        return runConfigTile(teamId.toString(), tile, startDate, endDate);
       },
     ),
   );
