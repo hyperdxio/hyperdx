@@ -34,14 +34,16 @@ export function TileAlertEditor({
   setValue,
   alert,
   onRemove,
-  errorMessage,
+  error,
+  warning,
   tooltip,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   onRemove: () => void;
-  errorMessage?: string;
+  error?: string;
+  warning?: string;
   tooltip?: string;
 }) {
   const [opened, { toggle }] = useDisclosure(true);
@@ -62,7 +64,7 @@ export function TileAlertEditor({
     <Paper data-testid="alert-details">
       <Group justify="space-between" px="sm" pt="sm" pb={opened ? 0 : 'sm'}>
         <UnstyledButton onClick={toggle}>
-          <Group gap="xs">
+          <Group gap="xs" mb="xs">
             <IconChevronDown
               size={14}
               style={{
@@ -79,8 +81,8 @@ export function TileAlertEditor({
                   <IconHelpCircle size={16} opacity={0.5} />
                 </Tooltip>
               )}
-              {errorMessage && (
-                <Tooltip label={errorMessage} withArrow>
+              {error && (
+                <Tooltip label={error} withArrow>
                   <Badge
                     color="var(--color-text-danger)"
                     size="xs"
@@ -88,6 +90,13 @@ export function TileAlertEditor({
                     ml="xs"
                   >
                     Invalid Query
+                  </Badge>
+                </Tooltip>
+              )}
+              {warning && (
+                <Tooltip label={warning} withArrow>
+                  <Badge color="yellow" size="xs" variant="light" ml="xs">
+                    Warning
                   </Badge>
                 </Tooltip>
               )}

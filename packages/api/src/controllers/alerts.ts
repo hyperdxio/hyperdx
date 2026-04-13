@@ -1,6 +1,6 @@
 import {
   displayTypeSupportsRawSqlAlerts,
-  isSqlTemplateValidForAlert,
+  validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
@@ -92,9 +92,10 @@ export const validateAlertInput = async (
         );
       }
 
-      if (!isSqlTemplateValidForAlert(tile.config)) {
+      const { errors } = validateRawSqlForAlert(tile.config);
+      if (errors.length > 0) {
         throw new Api400Error(
-          'Raw SQL alert queries must include time filters and interval parameters to be valid for alerts.',
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
         );
       }
     }

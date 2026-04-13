@@ -632,7 +632,7 @@ describe('validateChartForm', () => {
       expect.objectContaining({
         path: 'sqlTemplate',
         message:
-          'Raw SQL alert queries must include time filters and interval parameters',
+          'SQL used for alerts must include an interval parameter or macro.',
       }),
     );
   });

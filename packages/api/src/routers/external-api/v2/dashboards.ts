@@ -1,8 +1,4 @@
-import {
-  displayTypeSupportsBuilderAlerts,
-  displayTypeSupportsRawSqlAlerts,
-  isSqlTemplateValidForAlert,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';

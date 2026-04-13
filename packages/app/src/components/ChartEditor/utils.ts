@@ -1,6 +1,6 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
-import { isSqlTemplateValidForAlert } from '@hyperdx/common-utils/dist/core/utils';
+import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -255,12 +255,13 @@ export const validateChartForm = (
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       from: source?.from,
+      displayType: form.displayType,
     } satisfies RawSqlChartConfig;
-    if (!isSqlTemplateValidForAlert(config)) {
+    const { errors: alertErrors } = validateRawSqlForAlert(config);
+    if (alertErrors.length > 0) {
       errors.push({
         path: `sqlTemplate`,
-        message:
-          'Raw SQL alert queries must include time filters and interval parameters',
+        message: alertErrors.join('. '),
       });
     }
   }

@@ -189,7 +189,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   );
 
   test(
-    'should show validation error when saving a raw SQL alert without required time filters',
+    'should show validation error when saving a raw SQL alert without required interval param',
     { tag: '@full-stack' },
     async ({ page }) => {
       const ts = Date.now();
@@ -197,8 +197,8 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       const webhookName = `E2E Webhook Invalid ${ts}`;
       const webhookUrl = `https://example.com/invalid-${ts}`;
 
-      // SQL query missing startDateMilliseconds / endDateMilliseconds
-      const invalidSqlQuery = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts, count() AS cnt
+      // SQL query missing intervalSeconds, startDateMilliseconds / endDateMilliseconds
+      const invalidSqlQuery = `SELECT now() as ts, count() AS cnt
         FROM $__sourceTable
         GROUP BY ts ORDER BY ts
       `;
@@ -238,7 +238,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
         await dashboardPage.chartEditor.saveBtn.click();
         await expect(
           page.getByText(
-            'Raw SQL alert queries must include time filters and interval parameters',
+            'SQL used for alerts must include an interval parameter or macro.',
           ),
         ).toBeVisible({ timeout: 5000 });
         // The chart editor should still be open since saving was blocked

@@ -6,7 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsRawSqlAlerts,
-  isSqlTemplateValidForAlert,
+  validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
@@ -71,17 +71,19 @@ export default function RawSqlChartEditor({
         sqlTemplate: sqlTemplate ?? '',
         connection: connection ?? '',
         from: sourceObject?.from,
+        displayType,
       }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject?.from],
+    [sqlTemplate, connection, sourceObject?.from, displayType],
   );
 
-  const alertErrorMessage = useMemo(
-    () =>
-      !isSqlTemplateValidForAlert(rawSqlConfig)
-        ? 'Raw SQL alert queries must include time filters and interval parameters to be valid for alerts.'
-        : undefined,
-    [rawSqlConfig],
-  );
+  const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
+    const { errors, warnings } = validateRawSqlForAlert(rawSqlConfig);
+    return {
+      alertErrorMessage: errors.length > 0 ? errors.join('. ') : undefined,
+      alertWarningMessage:
+        warnings.length > 0 ? warnings.join('. ') : undefined,
+    };
+  }, [rawSqlConfig]);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -243,7 +245,8 @@ export default function RawSqlChartEditor({
           setValue={setValue}
           alert={alert}
           onRemove={() => setValue('alert', undefined)}
-          errorMessage={alertErrorMessage}
+          error={alertErrorMessage}
+          warning={alertWarningMessage}
           tooltip="The threshold will be evaluated against the last numeric column in the query result"
         />
       )}
