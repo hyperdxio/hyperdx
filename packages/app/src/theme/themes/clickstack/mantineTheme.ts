@@ -30,6 +30,7 @@ const makeTheme = ({
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
+  defaultRadius: 'sm',
   fontFamily,
   primaryColor: 'yellow',
   primaryShade: 6,
@@ -299,6 +300,9 @@ const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      styles: {
+        tabLabel: { textAlign: 'left' },
+      },
     }),
     Checkbox: Checkbox.extend({
       vars: () => ({

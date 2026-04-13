@@ -166,7 +166,7 @@ function AIAssistant({
         </Button>
         <Pill size="xs">Experimental</Pill>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         {opened && (
           // eslint-disable-next-line react-hooks/refs
           <form onSubmit={handleSubmit(onSubmit)}>

@@ -55,7 +55,7 @@ export default function AISummaryPanel({
           </Button>
         )}
       </Flex>
-      <Collapse in={isOpen}>
+      <Collapse expanded={isOpen}>
         <Paper
           p="sm"
           mt={6}
