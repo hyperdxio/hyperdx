@@ -285,7 +285,7 @@ function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
   };
 }
 
-type HeatmapChartConfig = {
+export type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
   select: [
     {
@@ -304,6 +304,43 @@ type HeatmapChartConfig = {
   connection: string;
   with?: BuilderChartConfigWithDateRange['with'];
 };
+
+/**
+ * Extra fields stored on heatmap select items alongside the standard
+ * DerivedColumn schema. These aren't part of the Zod schema but are
+ * preserved through MongoDB and the form state.
+ */
+export type HeatmapSelectExtras = {
+  countExpression?: string;
+  heatmapScaleType?: HeatmapScaleType;
+};
+
+/** Build a HeatmapChartConfig from a builder chart config that has heatmap extras on select[0]. */
+export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
+  heatmapConfig: HeatmapChartConfig;
+  scaleType: HeatmapScaleType;
+} {
+  const firstSelect = Array.isArray(config.select)
+    ? config.select[0]
+    : undefined;
+  const extras = (firstSelect ?? {}) as HeatmapSelectExtras;
+  return {
+    heatmapConfig: {
+      ...config,
+      displayType: DisplayType.Heatmap,
+      select: [
+        {
+          aggFn: 'heatmap' as const,
+          valueExpression: firstSelect?.valueExpression ?? '',
+          countExpression: extras.countExpression,
+        },
+      ],
+      granularity: 'auto',
+      numberFormat: config.numberFormat,
+    },
+    scaleType: extras.heatmapScaleType === 'linear' ? 'linear' : 'log',
+  };
+}
 
 export function ColorLegend({ colors }: { colors: string[] }) {
   return (

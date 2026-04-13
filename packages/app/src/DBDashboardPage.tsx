@@ -97,7 +97,9 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
-import DBHeatmapChart from './components/DBHeatmapChart';
+import DBHeatmapChart, {
+  toHeatmapChartConfig,
+} from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -598,47 +600,20 @@ const Tile = forwardRef(
                   />
                 )}
                 {queriedConfig?.displayType === DisplayType.Heatmap &&
-                  isBuilderChartConfig(queriedConfig) && (
-                    <DBHeatmapChart
-                      key={`${keyPrefix}-${chart.id}`}
-                      title={title}
-                      toolbarPrefix={toolbar}
-                      config={{
-                        ...queriedConfig,
-                        displayType: DisplayType.Heatmap,
-                        select: [
-                          {
-                            aggFn: 'heatmap' as const,
-                            valueExpression:
-                              (Array.isArray(queriedConfig.select)
-                                ? queriedConfig.select[0]?.valueExpression
-                                : undefined) ?? '',
-                            countExpression: (Array.isArray(
-                              queriedConfig.select,
-                            )
-                              ? (
-                                  queriedConfig.select[0] as Record<
-                                    string,
-                                    unknown
-                                  >
-                                )?.countExpression
-                              : undefined) as string | undefined,
-                          },
-                        ],
-                        granularity: 'auto',
-                        numberFormat: queriedConfig.numberFormat,
-                      }}
-                      scaleType={
-                        (Array.isArray(queriedConfig.select)
-                          ? ((
-                              queriedConfig.select[0] as Record<string, unknown>
-                            )?.heatmapScaleType as string)
-                          : undefined) === 'linear'
-                          ? 'linear'
-                          : 'log'
-                      }
-                    />
-                  )}
+                  isBuilderChartConfig(queriedConfig) &&
+                  (() => {
+                    const { heatmapConfig, scaleType } =
+                      toHeatmapChartConfig(queriedConfig);
+                    return (
+                      <DBHeatmapChart
+                        key={`${keyPrefix}-${chart.id}`}
+                        title={title}
+                        toolbarPrefix={toolbar}
+                        config={heatmapConfig}
+                        scaleType={scaleType}
+                      />
+                    );
+                  })()}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (

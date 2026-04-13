@@ -15,7 +15,9 @@ import { buildTableRowSearchUrl } from '@/ChartUtils';
 import { getAlertReferenceLines } from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
-import DBHeatmapChart from '@/components/DBHeatmapChart';
+import DBHeatmapChart, {
+  toHeatmapChartConfig,
+} from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
@@ -164,42 +166,19 @@ export function ChartPreviewPanel({
       {queryReady &&
         queriedConfig != null &&
         isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'heatmap' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBHeatmapChart
-              config={{
-                ...queriedConfig,
-                displayType: DisplayType.Heatmap,
-                select: [
-                  {
-                    aggFn: 'heatmap' as const,
-                    valueExpression:
-                      (Array.isArray(queriedConfig.select)
-                        ? queriedConfig.select[0]?.valueExpression
-                        : undefined) ?? '',
-                    countExpression: (Array.isArray(queriedConfig.select)
-                      ? (queriedConfig.select[0] as Record<string, unknown>)
-                          ?.countExpression
-                      : undefined) as string | undefined,
-                  },
-                ],
-                granularity: 'auto',
-                numberFormat: queriedConfig.numberFormat,
-              }}
-              scaleType={
-                (Array.isArray(queriedConfig.select)
-                  ? ((queriedConfig.select[0] as Record<string, unknown>)
-                      ?.heatmapScaleType as string)
-                  : undefined) === 'linear'
-                  ? 'linear'
-                  : 'log'
-              }
-            />
-          </div>
-        )}
+        activeTab === 'heatmap' &&
+        (() => {
+          const { heatmapConfig, scaleType } =
+            toHeatmapChartConfig(queriedConfig);
+          return (
+            <div
+              className="flex-grow-1 d-flex flex-column"
+              style={{ height: 400 }}
+            >
+              <DBHeatmapChart config={heatmapConfig} scaleType={scaleType} />
+            </div>
+          );
+        })()}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
