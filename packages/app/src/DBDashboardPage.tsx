@@ -829,6 +829,7 @@ const EditTileModal = ({
             onClose={handleClose}
             onDirtyChange={setHasUnsavedChanges}
             isDashboardForm
+            autoRun
           />
         </ZIndexContext.Provider>
       )}
