@@ -9,19 +9,19 @@
 
 ARG NODE_VERSION=22.22
 ARG CLICKHOUSE_VERSION=26.1
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.147.0
+ARG OTEL_COLLECTOR_VERSION=0.147.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
-FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS otel_collector_opampsupervisor_base
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 # Build the custom HyperDX collector binary using OCB (OpenTelemetry Collector Builder).
 # This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
 # include custom receiver/processor components alongside the standard contrib ones.
-# Note: The official OCB 0.147.0 image ships Go 1.24 which is too old for the contrib
-# modules, so we copy the ocb binary into a golang:1.26-alpine base with a newer toolchain.
-FROM otel/opentelemetry-collector-builder:0.147.0 AS ocb-bin
+# Note: The official OCB image may ship an older Go than the contrib modules require,
+# so we copy the ocb binary into a golang base with a newer toolchain.
+FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
 FROM golang:1.26-alpine AS ocb-builder
 COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
 WORKDIR /build

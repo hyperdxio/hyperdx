@@ -1,5 +1,7 @@
 ## base #############################################################################################
-FROM otel/opentelemetry-collector-opampsupervisor:0.147.0 AS supervisor
+ARG OTEL_COLLECTOR_VERSION=0.147.0
+
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
@@ -7,9 +9,9 @@ FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f
 # This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
 # include custom receiver/processor components alongside the standard contrib ones.
 # Note: Build context must be repo root (use: docker build -f docker/otel-collector/Dockerfile .)
-# Note: The official OCB 0.147.0 image ships Go 1.24 which is too old for the contrib
-# modules, so we copy the ocb binary into a golang:1.25-alpine base with a newer toolchain.
-FROM otel/opentelemetry-collector-builder:0.147.0 AS ocb-bin
+# Note: The official OCB image may ship an older Go than the contrib modules require,
+# so we copy the ocb binary into a golang base with a newer toolchain.
+FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
 FROM golang:1.25-alpine AS ocb-builder
 COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
 WORKDIR /build
