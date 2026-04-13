@@ -232,6 +232,7 @@ const opt: uPlot.Options = {
   height: 600,
   mode: 2,
   ms: 1,
+  padding: [8, 0, 0, 0],
   legend: {
     show: false,
   },

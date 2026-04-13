@@ -61,6 +61,7 @@ export default function HeatmapSettingsDrawer({
       onClose={handleClose}
       position="right"
       size="sm"
+      lockScroll={false}
     >
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Stack gap="md">

@@ -424,7 +424,7 @@ export default function EditTimeChartForm({
         setValue('series.0.countExpression' as any, 'count()');
         if (traceSource) {
           setValue('numberFormat', {
-            output: 'duration',
+            output: 'duration' as any,
             factor: 0.001,
           });
         }
@@ -461,7 +461,7 @@ export default function EditTimeChartForm({
       setValue('select', heatmapSeries);
       setValue('series', heatmapSeries);
       setValue('series.0.countExpression' as any, 'count()');
-      setValue('numberFormat', { output: 'duration', factor: 0.001 });
+      setValue('numberFormat', { output: 'duration' as any, factor: 0.001 });
       onSubmit(true);
     }
   }, [sourceId, displayType, tableSource, setValue, onSubmit]);
