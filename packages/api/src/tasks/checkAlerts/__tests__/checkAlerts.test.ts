@@ -20,6 +20,7 @@ import {
   getServer,
   getTestFixtureClickHouseClient,
   makeTile,
+  RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
@@ -1142,7 +1143,7 @@ describe('checkAlerts', () => {
 
     const createAlertDetails = async (
       team: ITeam,
-      source: ISource,
+      source: ISource | undefined,
       alertConfig: Parameters<typeof createAlert>[1],
       additionalDetails:
         | {
@@ -1154,7 +1155,7 @@ describe('checkAlerts', () => {
             tile: Tile;
             dashboard: IDashboard;
           },
-    ) => {
+    ): Promise<AlertDetails> => {
       const mockUserId = new mongoose.Types.ObjectId();
       const alert = await createAlert(team._id, alertConfig, mockUserId);
 
@@ -1163,14 +1164,19 @@ describe('checkAlerts', () => {
         'savedSearch',
       ]);
 
-      const details = {
-        alert: enhancedAlert,
-        source,
-        previousMap: new Map(),
-        ...additionalDetails,
-      } satisfies AlertDetails;
-
-      return details;
+      return additionalDetails.taskType === AlertTaskType.SAVED_SEARCH
+        ? {
+            alert: enhancedAlert,
+            source: source!,
+            previousMap: new Map(),
+            ...additionalDetails,
+          }
+        : {
+            alert: enhancedAlert,
+            source,
+            previousMap: new Map(),
+            ...additionalDetails,
+          };
     };
 
     const processAlertAtTime = async (
@@ -1823,6 +1829,584 @@ describe('checkAlerts', () => {
           Authorization: 'Bearer test-token',
         },
       });
+    });
+
+    it('TILE alert (raw SQL line chart) - should trigger and resolve', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Raw SQL alert test event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Raw SQL alert test event 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Raw SQL alert test event 3',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql1');
+      if (!tile) throw new Error('tile not found for raw SQL test');
+
+      const details = await createAlertDetails(
+        team,
+        undefined, // No source for raw SQL tiles
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // should fetch 5m of logs and trigger alert
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Next window with no data should resolve
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // Check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].lastValues[0].count).toBeGreaterThanOrEqual(1);
+      expect(alertHistories[1].state).toBe('OK');
+    });
+
+    it('TILE alert (raw SQL) - multiple rows per time bucket from GROUP BY', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Insert logs from two different services in the same time bucket
+      await bulkInsertLogs([
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 1',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 2',
+        },
+        {
+          ServiceName: 'worker',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'worker error 1',
+        },
+      ]);
+
+      // SQL query that groups by ServiceName — produces multiple rows per time bucket.
+      // Raw SQL alerts don't have explicit groupBy, so the alert system treats
+      // each row independently against the threshold within a single history record.
+      const groupedSqlTemplate = `
+        SELECT
+          toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,
+          ServiceName,
+          count() AS cnt
+        FROM default.otel_logs
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+          AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+        GROUP BY ts, ServiceName
+        ORDER BY ts`;
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Grouped Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-grouped',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: groupedSqlTemplate,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-grouped');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-grouped',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Raw SQL alerts with GROUP BY produce separate history records per group.
+      // web=2 (meets threshold 2), worker=1 (below threshold 2).
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+
+      expect(alertHistories.length).toBe(2);
+
+      const webHistory = alertHistories.find(h =>
+        h.group?.includes('ServiceName:web'),
+      );
+      const workerHistory = alertHistories.find(h =>
+        h.group?.includes('ServiceName:worker'),
+      );
+
+      expect(webHistory).toBeDefined();
+      expect(webHistory!.state).toBe('ALERT');
+      expect(webHistory!.lastValues.map(v => v.count)).toEqual([2]);
+
+      expect(workerHistory).toBeDefined();
+      expect(workerHistory!.state).toBe('OK');
+      expect(workerHistory!.lastValues.map(v => v.count)).toEqual([1]);
+    });
+
+    it('TILE alert (raw SQL) - alert is evaluated using the last numeric column', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Insert 1 error and 2 warns so the two numeric columns differ:
+      //   error_count = 1, warn_count = 2
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'error log',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'warn',
+          Body: 'warn log 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'warn',
+          Body: 'warn log 2',
+        },
+      ]);
+
+      // SQL query that returns multiple numeric columns (error_count, warn_count).
+      // The last numeric column (warn_count = 2) determines the alert.
+      const multiSeriesSqlTemplate = `
+        SELECT
+          toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,
+          countIf(SeverityText = 'error') AS error_count,
+          countIf(SeverityText = 'warn') AS warn_count
+        FROM default.otel_logs
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+          AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+        GROUP BY ts
+        ORDER BY ts`;
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Multi-Series Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-multi',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: multiSeriesSqlTemplate,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-multi');
+      if (!tile) throw new Error('tile not found');
+
+      // Threshold of 2: error_count (1) does not meet it, warn_count (2) meets it.
+      // The alert should fire because the last numeric column (warn_count = 2)
+      // is the value used for threshold comparison.
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-multi',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
+      // The value is from the last numeric column (warn_count), not error_count
+      expect(alertHistories[0].lastValues[0].count).toBe(2);
+    });
+
+    it('TILE alert (raw SQL with macros) - $__sourceTable, $__timeFilter, and $__timeInterval', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'macro test event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'macro test event 2',
+        },
+      ]);
+
+      // SQL query using all three macros:
+      // $__sourceTable resolves to `default`.`otel_logs` from the source
+      // $__timeFilter(Timestamp) resolves to date range params
+      // $__timeInterval(Timestamp) resolves to interval bucket expression
+      const macroSqlTemplate = [
+        'SELECT',
+        '  $__timeInterval(Timestamp) AS ts,',
+        '  count() AS cnt',
+        ' FROM $__sourceTable',
+        ' WHERE $__timeFilter(Timestamp)',
+        ' GROUP BY ts',
+        ' ORDER BY ts',
+      ].join('\n');
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Macro Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-macros',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: macroSqlTemplate,
+              connection: connection.id,
+              source: source.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-macros');
+      if (!tile) throw new Error('tile not found');
+
+      // Pass source so $__sourceTable macro can resolve
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-macros',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].lastValues[0].count).toBe(2);
+    });
+
+    it('TILE alert (raw SQL) - catches up on multiple missed windows', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      // Scenario: 5m alert interval.
+      //   Run 1 at 22:02 — evaluates [21:55-22:00), finds 0 events → OK
+      //   Run 2 at 22:17 — catches up missed windows, evaluates
+      //     [22:00-22:05) — 0 events (OK)
+      //     [22:05-22:10) — 2 events (ALERT, exceeds threshold of 1)
+      //     [22:10-22:15) — 1 event  (ALERT, meets threshold of 1)
+
+      await bulkInsertLogs([
+        // Events in the 22:05-22:10 bucket
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'missed window event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'missed window event 2',
+        },
+        // Event in the 22:10-22:15 bucket
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:11:00.000Z'),
+          SeverityText: 'error',
+          Body: 'missed window event 3',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Catchup Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-catchup',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-catchup');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-catchup',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Run 1 at 22:02 — evaluates [21:55-22:00), no events → OK history
+      await processAlertAtTime(
+        new Date('2023-11-16T22:02:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+      const firstRunHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+      expect(firstRunHistories.length).toBe(1);
+      expect(firstRunHistories[0].state).toBe('OK');
+
+      // Run 2 at 22:17 — catches up from 22:00, evaluates
+      // [22:00-22:05), [22:05-22:10), [22:10-22:15)
+      await processAlertAtTime(
+        new Date('2023-11-16T22:17:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const catchupHistories = await AlertHistory.find({
+        alert: details.alert.id,
+        createdAt: { $gt: new Date('2023-11-16T22:00:00.000Z') },
+      });
+
+      expect(catchupHistories.length).toBe(1);
+      expect(catchupHistories[0].state).toBe('ALERT');
+
+      // lastValues should contain entries for each evaluated bucket
+      // Bucket 22:00-22:05 has 0 events, 22:05-22:10 has 2, 22:10-22:15 has 1
+      const { lastValues } = catchupHistories[0];
+      expect(lastValues.length).toBe(3);
+
+      expect(lastValues.map(v => v.count)).toEqual([0, 2, 1]);
     });
 
     it('Group-by alerts that resolve (missing data case)', async () => {

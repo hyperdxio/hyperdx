@@ -760,9 +760,18 @@ export type BuilderSavedChartConfig = z.infer<
   typeof BuilderSavedChartConfigSchema
 >;
 
-const RawSqlSavedChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
-  name: z.string().optional(),
-});
+const RawSqlSavedChartConfigWithoutAlertSchema =
+  RawSqlBaseChartConfigSchema.extend({
+    name: z.string().optional(),
+  });
+
+const RawSqlSavedChartConfigSchema =
+  RawSqlSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
 
 export const SavedChartConfigSchema = z.union([
   BuilderSavedChartConfigSchema,
@@ -788,7 +797,7 @@ export const TileSchema = z.object({
 export const TileTemplateSchema = TileSchema.extend({
   config: z.union([
     BuilderSavedChartConfigWithoutAlertSchema,
-    RawSqlSavedChartConfigSchema,
+    RawSqlSavedChartConfigWithoutAlertSchema,
   ]),
 });
 
