@@ -1,7 +1,6 @@
 import React from 'react';
 import router from 'next/router';
-import { useForm, useWatch } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -25,6 +24,8 @@ import {
   Group,
   LoadingOverlay,
   Modal,
+  NativeSelect,
+  NumberInput,
   Paper,
   Stack,
   Tabs,
@@ -166,35 +167,51 @@ const AlertForm = ({
             <Text size="sm" opacity={0.7}>
               Alert when
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
-              size="xs"
-              name={`thresholdType`}
+            <Controller
               control={control}
+              name="thresholdType"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
-            <NumberInput
-              size="xs"
-              w={80}
+            <Controller
               control={control}
-              name={`threshold`}
+              name="threshold"
+              render={({ field }) => (
+                <NumberInput size="xs" w={80} {...field} />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               lines appear within
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
-              size="xs"
-              name={`interval`}
+            <Controller
               control={control}
+              name="interval"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               via
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-              size="xs"
-              name={`channel.type`}
+            <Controller
               control={control}
+              name="channel.type"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
           </Group>
           <AlertScheduleFields

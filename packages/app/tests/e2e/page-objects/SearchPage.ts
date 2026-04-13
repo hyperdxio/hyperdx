@@ -23,6 +23,7 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -53,6 +54,9 @@ export class SearchPage {
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
+    this.savedSearchNameTitle = page.locator(
+      '[data-testid="saved-search-name"]',
+    );
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -61,7 +65,7 @@ export class SearchPage {
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
     const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
       name: 'Query language',
     });
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });

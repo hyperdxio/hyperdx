@@ -1,3 +1,4 @@
+import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
@@ -649,7 +650,11 @@ export async function cleanupDashboardAlerts({
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
     ...internalTiles
-      .filter(tile => isRawSqlSavedChartConfig(tile.config))
+      .filter(
+        tile =>
+          isRawSqlSavedChartConfig(tile.config) &&
+          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
+      )
       .map(tile => tile.id),
     ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
   ];

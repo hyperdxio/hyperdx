@@ -15,7 +15,7 @@ import {
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import { useSource } from '@/source';
+import { useResolvedNumberFormat, useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -56,6 +56,8 @@ export default function DBTableChart({
   const { data: source } = useSource({
     id: config.source,
   });
+
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const effectiveSort = useMemo(
     () => controlledSort || sort,
@@ -143,10 +145,10 @@ export default function DBTableChart({
         displayName: key,
         numberFormat: groupByKeys.includes(key)
           ? undefined
-          : config.numberFormat,
+          : resolvedNumberFormat,
         sortingFn: getClientSideSortingFn(data?.meta, key),
       }));
-  }, [config.numberFormat, aliasMap, queriedConfig, data, hiddenColumns]);
+  }, [resolvedNumberFormat, aliasMap, queriedConfig, data, hiddenColumns]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];

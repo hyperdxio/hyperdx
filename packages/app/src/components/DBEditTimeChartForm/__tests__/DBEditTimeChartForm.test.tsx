@@ -68,6 +68,7 @@ jest.mock('@/source', () => ({
     return { data: undefined };
   }),
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
+  getTraceDurationNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../../MetricNameSelect', () => ({
@@ -439,16 +440,17 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     renderAlertComponent({ onSave });
 
     // Find and click the add alert button
-    const alertButton = screen.getByTestId('alert-button');
-    await userEvent.click(alertButton);
+    const addAlertButton = screen.getByTestId('alert-button');
+    await userEvent.click(addAlertButton);
 
     // Verify that the alert is added
     const alert = screen.getByTestId('alert-details');
     expect(alert).toBeInTheDocument();
 
-    // The add and remove alert button are the same element
-    expect(alertButton).toHaveTextContent('Remove Alert');
-    await userEvent.click(alertButton);
+    expect(addAlertButton).not.toBeVisible();
+
+    const removeAlertButton = screen.getByTestId('remove-alert-button');
+    await userEvent.click(removeAlertButton);
 
     // Verify that the alert is deleted
     expect(alert).not.toBeInTheDocument();
@@ -462,13 +464,17 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
 
     await userEvent.click(screen.getByTestId('alert-button'));
 
-    expect(
-      screen.getByTestId('alert-advanced-settings-panel'),
-    ).not.toBeVisible();
+    // Mantine v9 Collapse sets aria-hidden on its wrapper element
+    const collapseWrapper = screen
+      .getByTestId('alert-advanced-settings-panel')
+      .closest('[aria-hidden]');
+    expect(collapseWrapper).toHaveAttribute('aria-hidden', 'true');
 
     await userEvent.click(screen.getByTestId('alert-advanced-settings-toggle'));
 
-    expect(screen.getByTestId('alert-advanced-settings-panel')).toBeVisible();
+    await waitFor(() => {
+      expect(collapseWrapper).toHaveAttribute('aria-hidden', 'false');
+    });
     expect(screen.getByText('Anchor start time')).toBeInTheDocument();
     expect(
       screen.getByTestId('alert-advanced-settings-toggle'),

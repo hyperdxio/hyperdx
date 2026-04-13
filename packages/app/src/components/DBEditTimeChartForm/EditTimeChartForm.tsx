@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
@@ -19,7 +23,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
@@ -51,7 +55,7 @@ import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import { useSource } from '@/source';
+import { getTraceDurationNumberFormat, useSource } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 import { ChartActionBar } from './ChartActionBar';
@@ -147,10 +151,7 @@ export default function EditTimeChartForm({
   const granularity = useWatch({ control, name: 'granularity' });
   const configType = useWatch({ control, name: 'configType' });
 
-  const chartConfigAlert = !isRawSqlSavedChartConfig(chartConfig)
-    ? chartConfig.alert
-    : undefined;
-
+  const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
 
@@ -160,14 +161,18 @@ export default function EditTimeChartForm({
 
   const activeTab = displayTypeToActiveTab(displayType);
 
+  // When switching display types, remove the alert if the new display type doesn't support alerts
+  const previousDisplayType = usePrevious(displayType);
   useEffect(() => {
-    if (
-      displayType !== DisplayType.Line &&
-      displayType !== DisplayType.Number
-    ) {
+    if (displayType === previousDisplayType) return;
+    const displayTypeSupportsAlerts =
+      configType === 'sql'
+        ? displayTypeSupportsRawSqlAlerts(displayType)
+        : displayTypeSupportsBuilderAlerts(displayType);
+    if (!displayTypeSupportsAlerts) {
       setValue('alert', undefined);
     }
-  }, [displayType, setValue]);
+  }, [configType, displayType, previousDisplayType, setValue]);
 
   const showGeneratedSql = TABS_WITH_GENERATED_SQL.has(activeTab);
 
@@ -188,6 +193,15 @@ export default function EditTimeChartForm({
       'numberFormat',
     ],
   });
+
+  const autoDetectedNumberFormat = useMemo(
+    () =>
+      getTraceDurationNumberFormat(
+        tableSource,
+        Array.isArray(select) ? select : undefined,
+      ),
+    [tableSource, select],
+  );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
     () => ({
@@ -570,6 +584,8 @@ export default function EditTimeChartForm({
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
             isDashboardForm={isDashboardForm}
+            alert={alert}
+            dashboardId={dashboardId}
           />
         ) : (
           <ChartEditorControls
@@ -642,6 +658,7 @@ export default function EditTimeChartForm({
       <ChartDisplaySettingsDrawer
         opened={displaySettingsOpened}
         settings={displaySettings}
+        defaultNumberFormat={autoDetectedNumberFormat}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
         onChange={handleUpdateDisplaySettings}

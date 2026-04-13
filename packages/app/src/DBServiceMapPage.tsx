@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
@@ -10,11 +11,13 @@ import EmptyState from '@/components/EmptyState';
 import { IS_LOCAL_MODE } from '@/config';
 import { withAppNav } from '@/layout';
 
+import OnboardingModal from './components/OnboardingModal';
 import ServiceMap from './components/ServiceMap/ServiceMap';
 import { TableSourceForm } from './components/Sources/SourceForm';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { useSources } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
@@ -49,6 +52,8 @@ const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
 ];
 
 function DBServiceMapPage() {
+  const brandName = useBrandDisplayName();
+
   const { data: sources } = useSources();
   const [sourceId, setSourceId] = useQueryState('source');
   const [isCreateSourceModalOpen, setIsCreateSourceModalOpen] = useState(false);
@@ -97,6 +102,18 @@ function DBServiceMapPage() {
   const hasTraceSources = sources != null && defaultSource != null;
   const isLoading = sources == null;
 
+  const head = useMemo(
+    () => (
+      <>
+        <Head>
+          <title>Service Map - {brandName}</title>
+        </Head>
+        <OnboardingModal />
+      </>
+    ),
+    [brandName],
+  );
+
   if (!isLoading && !hasTraceSources) {
     return (
       <Box
@@ -104,6 +121,7 @@ function DBServiceMapPage() {
         className="bg-body"
         style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
       >
+        {head}
         <Text size="xl" mb="md">
           Service Map
         </Text>
@@ -160,6 +178,7 @@ function DBServiceMapPage() {
       className="bg-body"
       style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
     >
+      {head}
       <Group mb="md" justify="space-between">
         <Group>
           <Text size="xl">Service Map</Text>

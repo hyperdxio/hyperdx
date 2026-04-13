@@ -32,15 +32,16 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 // the are required when the type is set accordingly.
 export type AlertDetails = {
   alert: IAlert;
-  source: ISource;
   previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;
+      source: ISource;
       savedSearch: Omit<ISavedSearch, 'source'>;
     }
   | {
       taskType: AlertTaskType.TILE;
+      source?: ISource;
       tile: Tile;
       dashboard: IDashboard;
     }

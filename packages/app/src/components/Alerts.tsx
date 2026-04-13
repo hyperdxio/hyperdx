@@ -1,12 +1,17 @@
 import { useMemo } from 'react';
-import { Control, useController } from 'react-hook-form';
-import { Select, SelectProps } from 'react-hook-form-mantine';
+import {
+  Control,
+  Controller,
+  FieldValues,
+  Path,
+  useController,
+} from 'react-hook-form';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, ComboboxData, Group, Modal } from '@mantine/core';
+import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
@@ -18,9 +23,13 @@ type Webhook = {
   name: string;
 };
 
-const WebhookChannelForm = <T extends object>(
-  props: Partial<SelectProps<T>>,
-) => {
+const WebhookChannelForm = <T extends FieldValues>({
+  control,
+  name,
+}: {
+  control?: Control<T>;
+  name?: string;
+}) => {
   const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
@@ -48,8 +57,8 @@ const WebhookChannelForm = <T extends object>(
   }, [webhooks]);
 
   const { field } = useController({
-    control: props.control,
-    name: props.name!,
+    control,
+    name: name! as Path<T>,
   });
 
   const handleWebhookCreated = async (webhookId?: string) => {
@@ -63,22 +72,26 @@ const WebhookChannelForm = <T extends object>(
 
   return (
     <div>
-      <Group gap="md" justify="space-between">
-        <Select
-          data-testid="select-webhook"
-          comboboxProps={{
-            withinPortal: false,
-          }}
-          required
-          size="xs"
-          flex={1}
-          placeholder={
-            hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
-          }
-          data={options}
-          name={props.name!}
-          control={props.control}
-          {...props}
+      <Group gap="md" justify="space-between" align="flex-start">
+        <Controller
+          control={control}
+          name={name! as Path<T>}
+          render={({ field }) => (
+            <Select
+              data-testid="select-webhook"
+              comboboxProps={{
+                withinPortal: false,
+              }}
+              required
+              size="xs"
+              flex={1}
+              placeholder={
+                hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
+              }
+              data={options}
+              {...field}
+            />
+          )}
         />
         <Button
           data-testid="add-new-webhook-button"
@@ -106,12 +119,12 @@ const WebhookChannelForm = <T extends object>(
   );
 };
 
-export const AlertChannelForm = ({
+export const AlertChannelForm = <T extends FieldValues>({
   control,
   type,
   namePrefix = '',
 }: {
-  control: Control<any>; // TODO: properly type this
+  control: Control<T>;
   type: AlertChannelType;
   namePrefix?: string;
 }) => {
