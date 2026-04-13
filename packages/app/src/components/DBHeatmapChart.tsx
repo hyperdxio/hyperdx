@@ -42,7 +42,9 @@ function formatDurationMsCompact(ms: number): string {
     const µs = ms * 1000;
     return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
   }
-  if (ms < 1000) return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
   if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
   if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
   return `${+(ms / 3_600_000).toPrecision(2)}h`;
