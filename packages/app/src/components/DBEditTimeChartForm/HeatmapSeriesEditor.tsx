@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { Button, Divider, Flex } from '@mantine/core';
+import { TSource } from '@hyperdx/common-utils/dist/types';
+import { Button, Divider, Flex, Portal } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
@@ -65,40 +65,44 @@ export function HeatmapSeriesEditor({
   );
 
   return (
-    <Flex direction="column" gap="sm" ref={setContainer}>
-      <SearchWhereInput
-        tableConnection={connection}
-        control={control}
-        name="where"
-        onSubmit={onSubmit}
-        onLanguageChange={(lang: 'sql' | 'lucene') =>
-          setValue('whereLanguage', lang)
-        }
-        showLabel={false}
-      />
-      <Divider />
-      <Flex justify="flex-end">
-        <Button
-          onClick={settingsHandlers.open}
-          size="compact-sm"
-          variant="secondary"
-        >
-          Heatmap Settings
-        </Button>
+    <>
+      <Flex direction="column" gap="sm" ref={setContainer}>
+        <SearchWhereInput
+          tableConnection={connection}
+          control={control}
+          name="where"
+          onSubmit={onSubmit}
+          onLanguageChange={(lang: 'sql' | 'lucene') =>
+            setValue('whereLanguage', lang)
+          }
+          showLabel={false}
+        />
+        <Divider />
+        <Flex justify="flex-end">
+          <Button
+            onClick={settingsHandlers.open}
+            size="compact-sm"
+            variant="secondary"
+          >
+            Heatmap Settings
+          </Button>
+        </Flex>
       </Flex>
-      <HeatmapSettingsDrawer
-        opened={settingsOpened}
-        onClose={settingsHandlers.close}
-        connection={connection}
-        parentRef={container}
-        defaultValues={{
-          value: valueExpression || '',
-          count: countExpression || 'count()',
-        }}
-        scaleType={scaleType}
-        onScaleTypeChange={handleScaleTypeChange}
-        onSubmit={handleSettingsSubmit}
-      />
-    </Flex>
+      <Portal>
+        <HeatmapSettingsDrawer
+          opened={settingsOpened}
+          onClose={settingsHandlers.close}
+          connection={connection}
+          parentRef={container}
+          defaultValues={{
+            value: valueExpression || '',
+            count: countExpression || 'count()',
+          }}
+          scaleType={scaleType}
+          onScaleTypeChange={handleScaleTypeChange}
+          onSubmit={handleSettingsSubmit}
+        />
+      </Portal>
+    </>
   );
 }
