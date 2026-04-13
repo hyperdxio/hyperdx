@@ -24,7 +24,7 @@ import { flatten } from './utils';
 
 // ---- Constants -----------------------------------------------------
 
-const SAMPLE_LIMIT = 100_000;
+const SAMPLES = 10_000;
 
 // ---- Time bucketing utilities --------------------------------------
 
@@ -154,7 +154,7 @@ export function usePatternData({
             searchQuery: submittedQuery,
             startTime,
             endTime,
-            sampleLimit: SAMPLE_LIMIT,
+            sampleLimit: SAMPLES,
           },
           metadata,
         ),
