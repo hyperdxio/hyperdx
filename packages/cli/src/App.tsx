@@ -18,7 +18,7 @@ import EventViewer from '@/components/EventViewer';
 type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
 
 interface AppProps {
-  apiUrl: string;
+  appUrl: string;
   /** Pre-set search query from CLI flags */
   query?: string;
   /** Pre-set source name from CLI flags */
@@ -27,9 +27,11 @@ interface AppProps {
   follow?: boolean;
 }
 
-export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
+export default function App({ appUrl, query, sourceName, follow }: AppProps) {
   const [screen, setScreen] = useState<Screen>('loading');
-  const [client] = useState(() => new ApiClient({ apiUrl }));
+  const [client, setClient] = useState(() => new ApiClient({ appUrl }));
+  const [currentAppUrl, setCurrentAppUrl] = useState(appUrl);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchResponse[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceResponse | null>(
@@ -43,18 +45,19 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     (async () => {
       const valid = await client.checkSession();
       if (valid) {
-        await loadData();
+        await loadData(client);
       } else {
+        setSessionExpired(true);
         setScreen('login');
       }
     })();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (apiClient: ApiClient) => {
     try {
       const [sources, searches] = await Promise.all([
-        client.getSources(),
-        client.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
+        apiClient.getSources(),
+        apiClient.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
       ]);
 
       const queryableSources = sources.filter(
@@ -92,14 +95,34 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
 
       setScreen('pick-source');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Treat auth errors as session issues — bounce back to login
+      if (msg.includes('401') || msg.includes('403')) {
+        setSessionExpired(true);
+        setScreen('login');
+        return;
+      }
+      setError(msg);
     }
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    const ok = await client.login(email, password);
+  const handleLogin = async (
+    loginAppUrl: string,
+    email: string,
+    password: string,
+  ) => {
+    // Recreate client if the user changed the URL
+    let activeClient = client;
+    if (loginAppUrl !== currentAppUrl) {
+      activeClient = new ApiClient({ appUrl: loginAppUrl });
+      setClient(activeClient);
+      setCurrentAppUrl(loginAppUrl);
+    }
+
+    const ok = await activeClient.login(email, password);
     if (ok) {
-      await loadData();
+      setSessionExpired(false);
+      await loadData(activeClient);
     }
     return ok;
   };
@@ -148,13 +171,23 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
       return (
         <Box paddingX={1}>
           <Text>
-            <Spinner type="dots" /> Connecting to {apiUrl}…
+            <Spinner type="dots" /> Connecting to {currentAppUrl}…
           </Text>
         </Box>
       );
 
     case 'login':
-      return <LoginForm apiUrl={apiUrl} onLogin={handleLogin} />;
+      return (
+        <LoginForm
+          defaultAppUrl={currentAppUrl}
+          onLogin={handleLogin}
+          message={
+            sessionExpired
+              ? 'Session expired — please log in again.'
+              : undefined
+          }
+        />
+      );
 
     case 'pick-source':
       return (
