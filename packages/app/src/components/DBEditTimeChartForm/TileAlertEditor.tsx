@@ -6,6 +6,7 @@ import {
 } from 'react-hook-form';
 import {
   ActionIcon,
+  Badge,
   Box,
   Collapse,
   Group,
@@ -17,7 +18,11 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChevronDown, IconTrash } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconHelpCircle,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { AlertChannelForm } from '@/components/Alerts';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
@@ -35,11 +40,17 @@ export function TileAlertEditor({
   setValue,
   alert,
   onRemove,
+  error,
+  warning,
+  tooltip,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   onRemove: () => void;
+  error?: string;
+  warning?: string;
+  tooltip?: string;
 }) {
   const [opened, { toggle }] = useDisclosure(true);
 
@@ -59,7 +70,7 @@ export function TileAlertEditor({
     <Paper data-testid="alert-details">
       <Group justify="space-between" px="sm" pt="sm" pb={opened ? 0 : 'sm'}>
         <UnstyledButton onClick={toggle}>
-          <Group gap="xs">
+          <Group gap="xs" mb="xs">
             <IconChevronDown
               size={14}
               style={{
@@ -67,9 +78,35 @@ export function TileAlertEditor({
                 transition: 'transform 200ms',
               }}
             />
-            <Text size="sm" fw={500}>
-              Alert
-            </Text>
+            <Group gap={4} align="center">
+              <Text size="sm" fw={500} mt={2}>
+                Alert
+              </Text>
+              {tooltip && (
+                <Tooltip label={tooltip} withArrow>
+                  <IconHelpCircle size={16} opacity={0.5} />
+                </Tooltip>
+              )}
+              {error && (
+                <Tooltip label={error} withArrow>
+                  <Badge
+                    color="var(--color-text-danger)"
+                    size="xs"
+                    variant="light"
+                    ml="xs"
+                  >
+                    Invalid Query
+                  </Badge>
+                </Tooltip>
+              )}
+              {warning && (
+                <Tooltip label={warning} withArrow>
+                  <Badge color="yellow" size="xs" variant="light" ml="xs">
+                    Warning
+                  </Badge>
+                </Tooltip>
+              )}
+            </Group>
           </Group>
         </UnstyledButton>
         <Tooltip label="Remove alert">
