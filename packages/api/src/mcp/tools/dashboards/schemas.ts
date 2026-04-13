@@ -1,44 +1,58 @@
+import {
+  AggregateFunctionSchema,
+  SearchConditionLanguageSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-// ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
+import { externalQuantileLevelSchema } from '@/utils/zod';
 
-const mcpTileSelectItemSchema = z.object({
-  aggFn: z
-    .enum([
-      'avg',
-      'count',
-      'count_distinct',
-      'last_value',
-      'max',
-      'min',
-      'quantile',
-      'sum',
-      'none',
-    ])
-    .describe(
+// ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
+const mcpTileSelectItemSchema = z
+  .object({
+    aggFn: AggregateFunctionSchema.describe(
       'Aggregation function. "count" requires no valueExpression; all others do.',
     ),
-  valueExpression: z
-    .string()
-    .optional()
-    .describe(
-      'Column or expression to aggregate. Required for all aggFn except "count". ' +
-        'Use PascalCase for top-level columns (e.g. "Duration", "StatusCode"). ' +
-        "For span attributes use: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
-        "For resource attributes use: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
-    ),
-  where: z
-    .string()
-    .optional()
-    .default('')
-    .describe('Filter in Lucene syntax. Example: "level:error"'),
-  whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
-  alias: z.string().optional().describe('Display label for this series'),
-  level: z
-    .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
-    .optional()
-    .describe('Percentile level for aggFn="quantile"'),
-});
+    valueExpression: z
+      .string()
+      .optional()
+      .describe(
+        'Column or expression to aggregate. Required for all aggFn except "count". ' +
+          'Use PascalCase for top-level columns (e.g. "Duration", "StatusCode"). ' +
+          "For span attributes use: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
+          "For resource attributes use: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
+      ),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    alias: z.string().optional().describe('Display label for this series'),
+    level: externalQuantileLevelSchema
+      .optional()
+      .describe('Percentile level for aggFn="quantile"'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.level && data.aggFn !== 'quantile') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Level can only be used with quantile aggregation function',
+      });
+    }
+    if (data.valueExpression && data.aggFn === 'count') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Value expression cannot be used with count aggregation function',
+      });
+    } else if (!data.valueExpression && data.aggFn !== 'count') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Value expression is required for non-count aggregation functions',
+      });
+    }
+  });
 
 const mcpTileLayoutSchema = z.object({
   name: z.string().describe('Tile title shown on the dashboard'),
@@ -225,7 +239,7 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
-    whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
     select: z
       .string()
       .optional()
