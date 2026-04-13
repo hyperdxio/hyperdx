@@ -7,8 +7,12 @@ import {
   openEditorForTimeRange,
   type TimeRange,
 } from '@/utils/editor';
+import { openUrl } from '@/utils/openUrl';
+
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { EventRow, SwitchItem } from './types';
+import { buildBrowserUrl, buildSpanEventRowWhere } from './utils';
 
 // ---- Types ---------------------------------------------------------
 
@@ -31,7 +35,15 @@ export interface KeybindingParams {
   source: SourceResponse;
   timeRange: TimeRange;
   customSelect: string | undefined;
+  /** The user's submitted search query (Lucene) */
+  submittedQuery: string;
   fullDetailMaxRows: number;
+
+  // Browser integration
+  appUrl: string;
+  expandedTraceId: string | null;
+  expandedRowWhere: string | null;
+  traceSelectedNode: SpanNode | null;
 
   // Tab switching
   switchItems: SwitchItem[];
@@ -94,7 +106,12 @@ export function useKeybindings(params: KeybindingParams): void {
     source,
     timeRange,
     customSelect,
+    submittedQuery,
     fullDetailMaxRows,
+    appUrl,
+    expandedTraceId,
+    expandedRowWhere,
+    traceSelectedNode,
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
@@ -376,6 +393,43 @@ export function useKeybindings(params: KeybindingParams): void {
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
+    // o = open current trace/span in the browser
+    if (input === 'o' && expandedRow !== null) {
+      // Build eventRowWhere for trace tab when a span is selected
+      let eventRowWhere: {
+        id: string;
+        type: string;
+        aliasWith: never[];
+      } | null = null;
+      if (detailTab === 'trace' && traceSelectedNode) {
+        const traceSource =
+          source.kind === 'trace'
+            ? source
+            : // For log sources viewing the trace tab, use the trace source
+              // expressions. The node's kind tells us which source it came from.
+              null;
+        // Only build eventRowWhere if we have a trace source to reference
+        if (traceSource) {
+          eventRowWhere = {
+            id: buildSpanEventRowWhere(traceSelectedNode, traceSource),
+            type: traceSelectedNode.kind === 'log' ? 'log' : 'trace',
+            aliasWith: [] as never[],
+          };
+        }
+      }
+      const url = buildBrowserUrl({
+        appUrl,
+        source,
+        traceId: expandedTraceId,
+        searchQuery: submittedQuery,
+        timeRange,
+        rowWhere: expandedRowWhere,
+        detailTab,
+        eventRowWhere,
+      });
+      openUrl(url);
+      return;
+    }
     // f = toggle follow mode (disabled in detail panel — follow is
     // automatically paused on expand and restored on close)
     if (input === 'f' && expandedRow === null) {

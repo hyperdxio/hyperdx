@@ -11,6 +11,7 @@ import ColumnValues from '@/components/ColumnValues';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { FormattedRow } from './types';
 import { SearchBar } from './SubComponents';
@@ -52,6 +53,8 @@ type DetailPanelProps = {
   onTraceChSqlChange?: (
     chSql: { sql: string; params: Record<string, unknown> } | null,
   ) => void;
+  /** Callback when the selected span/log node in the trace waterfall changes */
+  onTraceSelectedNodeChange?: (node: SpanNode | null) => void;
 };
 
 export function DetailPanel({
@@ -82,6 +85,7 @@ export function DetailPanel({
   scrollOffset,
   expandedRow,
   onTraceChSqlChange,
+  onTraceSelectedNodeChange,
 }: DetailPanelProps) {
   // Extract the event timestamp from the full row data (or the raw
   // table row) so we can scope the trace waterfall date range tightly
@@ -243,6 +247,7 @@ export function DetailPanel({
               detailScrollOffset={traceDetailScrollOffset}
               detailMaxRows={detailMaxRows}
               onChSqlChange={onTraceChSqlChange}
+              onSelectedNodeChange={onTraceSelectedNodeChange}
             />
           );
         })()}

@@ -36,6 +36,8 @@ export interface UseEventDataReturn {
   expandedRowError: Error | null;
   expandedTraceId: string | null;
   expandedSpanId: string | null;
+  /** SQL WHERE clause that uniquely identifies the expanded row (for browser URL) */
+  expandedRowWhere: string | null;
   /** The last rendered ChSql (parameterized SQL + params) for the table query */
   lastChSql: { sql: string; params: Record<string, unknown> } | null;
   /** The last rendered ChSql for the expanded row (SELECT *) query */
@@ -72,6 +74,7 @@ export function useEventData({
   const [expandedRowError, setExpandedRowError] = useState<Error | null>(null);
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
   const [expandedSpanId, setExpandedSpanId] = useState<string | null>(null);
+  const [expandedRowWhere, setExpandedRowWhere] = useState<string | null>(null);
 
   const lastTimestampRef = useRef<string | null>(null);
   const dateRangeRef = useRef<{ start: Date; end: Date } | null>(null);
@@ -239,6 +242,7 @@ export function useEventData({
       setExpandedRowError(null);
       setExpandedTraceId(null);
       setExpandedSpanId(null);
+      setExpandedRowWhere(null);
       setLastExpandedChSql(null);
       return;
     }
@@ -256,7 +260,7 @@ export function useEventData({
           params: {},
         };
         const tableMeta = lastTableMetaRef.current ?? [];
-        const chSql = await buildFullRowQuery({
+        const { chSql, rowWhere } = await buildFullRowQuery({
           source,
           row: row as Record<string, unknown>,
           tableChSql,
@@ -264,6 +268,9 @@ export function useEventData({
           metadata,
         });
         setLastExpandedChSql(chSql);
+        if (!cancelled) {
+          setExpandedRowWhere(rowWhere);
+        }
         const resultSet = await clickhouseClient.query({
           query: chSql.sql,
           query_params: chSql.params,
@@ -324,6 +331,7 @@ export function useEventData({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    expandedRowWhere,
     lastChSql,
     lastExpandedChSql,
     fetchNextPage,
