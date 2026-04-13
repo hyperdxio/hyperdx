@@ -8,11 +8,11 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { NumberInput } from 'react-hook-form-mantine';
 import {
   Box,
   Collapse,
   Group,
+  NumberInput,
   Text,
   Tooltip,
   UnstyledButton,
@@ -96,7 +96,7 @@ export function AlertScheduleFields<T extends FieldValues>({
           </Text>
         </Group>
       </UnstyledButton>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box data-testid="alert-advanced-settings-panel">
           <Text size="xs" c="dimmed" mt="xs">
             Optional schedule controls for aligning alert windows.
@@ -120,15 +120,20 @@ export function AlertScheduleFields<T extends FieldValues>({
                     </Box>
                   </Tooltip>
                 </Group>
-                <NumberInput
-                  min={0}
-                  max={maxScheduleOffsetMinutes}
-                  step={1}
-                  size="xs"
-                  w={100}
+                <Controller
                   control={control}
                   name={scheduleOffsetName}
-                  disabled={hasScheduleStartAtAnchor}
+                  render={({ field }) => (
+                    <NumberInput
+                      min={0}
+                      max={maxScheduleOffsetMinutes}
+                      step={1}
+                      size="xs"
+                      w={100}
+                      disabled={hasScheduleStartAtAnchor}
+                      {...field}
+                    />
+                  )}
                 />
                 <Text size="sm" opacity={0.7}>
                   {offsetWindowLabel}
@@ -174,7 +179,7 @@ export function AlertScheduleFields<T extends FieldValues>({
                     field.value as string | null | undefined,
                   )}
                   onChange={value =>
-                    field.onChange(value?.toISOString() ?? null)
+                    field.onChange(value ? new Date(value).toISOString() : null)
                   }
                   error={error?.message}
                 />

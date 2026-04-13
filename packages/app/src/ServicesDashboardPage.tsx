@@ -576,7 +576,7 @@ function HttpTab({
     }, [source, searchedTimeRange, appliedConfig, expressions, reqChartType]);
 
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
         <ChartBox
           style={{ height: 350 }}
@@ -1147,7 +1147,7 @@ function DatabaseTab({
   );
 
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           {source && totalTimePerQueryConfig && (
@@ -1364,7 +1364,7 @@ function ErrorsTab({
   const { expressions } = useServiceDashboardExpressions({ source });
 
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           {source && expressions && (

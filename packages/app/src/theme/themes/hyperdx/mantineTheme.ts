@@ -22,6 +22,7 @@ const makeTheme = ({
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
+  defaultRadius: 'sm',
   fontFamily,
   focusClassName: focusClasses.focusRing,
   primaryColor: 'green',
@@ -313,6 +314,9 @@ const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      styles: {
+        tabLabel: { textAlign: 'left' },
+      },
     }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {

@@ -31,20 +31,26 @@ import { loadSession, saveSession, clearSession } from '@/utils/config';
 // ------------------------------------------------------------------
 
 interface ApiClientOptions {
-  apiUrl: string;
+  appUrl: string;
 }
 
 export class ApiClient {
+  private appUrl: string;
   private apiUrl: string;
   private cookies: string[] = [];
 
   constructor(opts: ApiClientOptions) {
-    this.apiUrl = opts.apiUrl.replace(/\/+$/, '');
+    this.appUrl = opts.appUrl.replace(/\/+$/, '');
+    this.apiUrl = `${this.appUrl}/api`;
 
     const saved = loadSession();
-    if (saved && saved.apiUrl === this.apiUrl) {
+    if (saved && saved.appUrl === this.appUrl) {
       this.cookies = saved.cookies;
     }
+  }
+
+  getAppUrl(): string {
+    return this.appUrl;
   }
 
   getApiUrl(): string {
@@ -58,20 +64,31 @@ export class ApiClient {
   // ---- Auth --------------------------------------------------------
 
   async login(email: string, password: string): Promise<boolean> {
-    const res = await fetch(`${this.apiUrl}/login/password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      redirect: 'manual',
-    });
+    try {
+      const res = await fetch(`${this.apiUrl}/login/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        redirect: 'manual',
+      });
 
-    if (res.status === 302 || res.status === 200) {
-      this.extractCookies(res);
-      saveSession({ apiUrl: this.apiUrl, cookies: this.cookies });
-      return true;
+      if (res.status === 302 || res.status === 200) {
+        this.extractCookies(res);
+
+        // Verify the session is actually valid — some servers return
+        // 302/200 without setting a real session (e.g. SSO redirects).
+        if (!(await this.checkSession())) {
+          return false;
+        }
+
+        saveSession({ appUrl: this.appUrl, cookies: this.cookies });
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
     }
-
-    return false;
   }
 
   async checkSession(): Promise<boolean> {

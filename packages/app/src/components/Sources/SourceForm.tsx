@@ -679,7 +679,9 @@ function MaterializedViewFormSection({
                 {...field}
                 value={field.value ? new Date(field.value) : undefined}
                 onChange={dateStr =>
-                  field.onChange(dateStr ? dateStr.toISOString() : null)
+                  field.onChange(
+                    dateStr ? new Date(dateStr).toISOString() : null,
+                  )
                 }
                 clearable
                 highlightToday
