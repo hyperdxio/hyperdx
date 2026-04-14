@@ -51,7 +51,12 @@ export function getStatusColor(node: SpanNode): 'red' | 'yellow' | undefined {
 }
 
 export function getBarColor(node: SpanNode): string {
-  if (node.kind === 'log') return 'green';
+  if (node.kind === 'log') {
+    const sev = node.StatusCode?.toLowerCase();
+    if (sev === 'error' || sev === 'fatal' || sev === 'critical') return 'red';
+    if (sev === 'warn' || sev === 'warning') return 'yellow';
+    return 'green';
+  }
   if (node.StatusCode === '2' || node.StatusCode === 'Error') return 'red';
   if (node.StatusCode === '1') return 'yellow';
   return 'cyan';
