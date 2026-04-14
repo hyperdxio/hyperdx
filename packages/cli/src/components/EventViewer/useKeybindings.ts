@@ -298,6 +298,10 @@ export function useKeybindings(params: KeybindingParams): void {
         setSampleScrollOffset(o => Math.max(0, o - half));
         return;
       }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
       if (input === 'q') process.exit(0);
       return;
     }
@@ -374,6 +378,10 @@ export function useKeybindings(params: KeybindingParams): void {
         setPatternScrollOffset(o => Math.max(0, o - half));
         return;
       }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
       if (input === '/') {
         setFocusSearch(true);
         return;
@@ -382,7 +390,7 @@ export function useKeybindings(params: KeybindingParams): void {
       return;
     }
 
-        // ---- Trace tab keybindings ----------------------------------------
+    // ---- Trace tab keybindings ----------------------------------------
     if (expandedRow !== null && detailTab === 'trace') {
       // When detail view is expanded (full-page Event Details):
       // h/Esc = collapse back to waterfall, Ctrl+D/U = scroll

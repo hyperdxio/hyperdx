@@ -13,6 +13,7 @@ type PatternViewProps = {
   maxRows: number;
   loading: boolean;
   error: Error | null;
+  wrapLines: boolean;
 };
 
 // ---- Component -----------------------------------------------------
@@ -24,6 +25,7 @@ export function PatternView({
   maxRows,
   loading,
   error,
+  wrapLines,
 }: PatternViewProps) {
   const visible = patterns.slice(scrollOffset, scrollOffset + maxRows);
   const emptyRows = maxRows - visible.length;
@@ -65,22 +67,22 @@ export function PatternView({
                   {isSelected ? '▸' : ' '}
                 </Text>
               </Box>
-              <Box width="12%" overflowX="hidden">
+              <Box width="12%" overflowX={wrapLines ? undefined : 'hidden'}>
                 <Text
                   color={isSelected ? 'cyan' : 'yellow'}
                   bold={isSelected}
                   inverse={isSelected}
-                  wrap="truncate"
+                  wrap={wrapLines ? 'wrap' : 'truncate'}
                 >
                   ~{p.estimatedCount.toLocaleString()}
                 </Text>
               </Box>
-              <Box flexGrow={1} overflowX="hidden">
+              <Box flexGrow={1} overflowX={wrapLines ? undefined : 'hidden'}>
                 <Text
                   color={isSelected ? 'cyan' : undefined}
                   bold={isSelected}
                   inverse={isSelected}
-                  wrap="truncate"
+                  wrap={wrapLines ? 'wrap' : 'truncate'}
                 >
                   {p.pattern}
                 </Text>

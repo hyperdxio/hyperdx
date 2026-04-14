@@ -365,6 +365,7 @@ export default function EventViewer({
             selectedRow={sampleSelectedRow}
             scrollOffset={sampleScrollOffset}
             maxRows={maxRows}
+            wrapLines={wrapLines}
           />
         ) : showPatterns ? (
           <PatternView
@@ -374,6 +375,7 @@ export default function EventViewer({
             maxRows={maxRows}
             loading={patternsLoading}
             error={patternsError}
+            wrapLines={wrapLines}
           />
         ) : (
           <TableView

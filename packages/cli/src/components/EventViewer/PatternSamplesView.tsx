@@ -14,6 +14,7 @@ type PatternSamplesViewProps = {
   selectedRow: number;
   scrollOffset: number;
   maxRows: number;
+  wrapLines: boolean;
 };
 
 // ---- Component -----------------------------------------------------
@@ -24,6 +25,7 @@ export function PatternSamplesView({
   selectedRow,
   scrollOffset,
   maxRows,
+  wrapLines,
 }: PatternSamplesViewProps) {
   // Reserve 3 rows for the pattern header (pattern text + count + blank line)
   const tableMaxRows = Math.max(1, maxRows - 3);
@@ -65,10 +67,10 @@ export function PatternSamplesView({
               <Box
                 key={ci}
                 width={columns[ci]?.width ?? '10%'}
-                overflowX="hidden"
+                overflowX={wrapLines ? undefined : 'hidden'}
               >
                 <Text
-                  wrap="truncate"
+                  wrap={wrapLines ? 'wrap' : 'truncate'}
                   color={
                     isSelected
                       ? 'cyan'
