@@ -96,6 +96,7 @@ export function DBSearchHeatmapChart({
           width: '100%',
           position: 'relative',
           paddingLeft: 4,
+          paddingRight: 4,
         }}
       >
         <DBHeatmapChart
