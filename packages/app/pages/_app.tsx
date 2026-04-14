@@ -136,6 +136,16 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       .then(res => res.json())
       .then((_jsonData?: NextApiConfigResponseData) => {
         if (_jsonData?.apiKey) {
+          // Per-signal OTLP endpoints (traces/logs) take precedence over
+          // the base collector URL. The browser SDK appends /v1/traces and
+          // /v1/logs internally, so we strip the signal path suffix to
+          // derive the base URL from a per-signal endpoint.
+          const tracesBase = _jsonData.tracesUrl?.replace(
+            /\/v1\/traces\/?$/,
+            '',
+          );
+          const collectorUrl = tracesBase ?? _jsonData.collectorUrl;
+
           HyperDX.init({
             apiKey: _jsonData.apiKey,
             consoleCapture: true,
@@ -146,7 +156,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             },
             service: _jsonData.serviceName,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
-            url: _jsonData.collectorUrl,
+            url: collectorUrl,
           });
         } else {
           console.warn('No API key found to enable OTEL exporter');

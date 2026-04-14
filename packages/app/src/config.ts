@@ -18,6 +18,17 @@ export const HDX_COLLECTOR_URL =
   process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT ??
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
   'http://localhost:4318';
+
+// Per-signal OTLP endpoints (full URLs per OTel spec)
+// https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/
+export const HDX_TRACES_URL =
+  process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
+  undefined;
+export const HDX_LOGS_URL =
+  process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??
+  undefined;
 export const IS_DEV = NODE_ENV === 'development';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
