@@ -284,7 +284,13 @@ export default function TraceWaterfall({
             <Box width={labelWidth} overflowX="hidden">
               <Text
                 wrap="truncate"
-                color={isHighlighted ? 'white' : isLog ? 'green' : statusColor}
+                color={
+                  isHighlighted
+                    ? 'white'
+                    : isLog
+                      ? (statusColor ?? 'green')
+                      : statusColor
+                }
                 bold={!!statusColor}
                 inverse={isHighlighted}
               >
