@@ -1,0 +1,115 @@
+# OpenTelemetry Collector Builder (OCB) manifest for HyperDX.
+# This replaces the pre-built otel/opentelemetry-collector-contrib image with a
+# custom-built binary that includes only the components HyperDX needs, plus any
+# custom receivers/processors we add in the future.
+#
+# Version placeholders are replaced at Docker build time via sed:
+#   __OTEL_COLLECTOR_VERSION__      -> contrib/core component version (e.g. 0.149.0)
+#   __OTEL_COLLECTOR_CORE_VERSION__ -> core confmap provider version (e.g. 1.55.0)
+# Both values are defined in the root .env file.
+#
+# The upstream contrib manifest for reference:
+#   https://github.com/open-telemetry/opentelemetry-collector-releases/blob/main/distributions/otelcol-contrib/manifest.yaml
+
+dist:
+  name: otelcol-hyperdx
+  description: HyperDX OpenTelemetry Collector
+  version: __OTEL_COLLECTOR_VERSION__
+  output_path: /build/output
+  build_tags: 'grpcnotrace'
+
+receivers:
+  # Core
+  - gomod:
+      go.opentelemetry.io/collector/receiver/nopreceiver
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver
+      v__OTEL_COLLECTOR_VERSION__
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/fluentforwardreceiver
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver
+      v__OTEL_COLLECTOR_VERSION__
+
+processors:
+  # Core
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/processor/memorylimiterprocessor
+      v__OTEL_COLLECTOR_VERSION__
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor
+      v__OTEL_COLLECTOR_VERSION__
+
+exporters:
+  # Core
+  - gomod:
+      go.opentelemetry.io/collector/exporter/debugexporter
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/exporter/nopexporter
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/exporter/otlpexporter
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/exporter/otlphttpexporter
+      v__OTEL_COLLECTOR_VERSION__
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter
+      v__OTEL_COLLECTOR_VERSION__
+
+connectors:
+  # Core
+  - gomod:
+      go.opentelemetry.io/collector/connector/forwardconnector
+      v__OTEL_COLLECTOR_VERSION__
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector
+      v__OTEL_COLLECTOR_VERSION__
+
+extensions:
+  # Contrib
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension
+      v__OTEL_COLLECTOR_VERSION__
+
+providers:
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/envprovider
+      v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/fileprovider
+      v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpprovider
+      v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpsprovider
+      v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/yamlprovider
+      v__OTEL_COLLECTOR_CORE_VERSION__
