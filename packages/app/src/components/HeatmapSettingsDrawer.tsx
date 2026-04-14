@@ -51,7 +51,8 @@ export default function HeatmapSettingsDrawer({
 
   useEffect(() => {
     form.reset(defaultValues);
-  }, [defaultValues, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- form object is stable from useForm
+  }, [defaultValues]);
 
   const handleClose = useCallback(() => {
     form.reset(defaultValues);

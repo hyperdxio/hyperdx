@@ -102,7 +102,6 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'time',
   'number',
   'pie',
-  'heatmap',
 ]);
 
 export function computeDbTimeChartConfig(
