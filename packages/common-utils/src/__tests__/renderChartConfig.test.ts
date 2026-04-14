@@ -1989,6 +1989,25 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('skips empty sql filters when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [{ type: 'sql', condition: '' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
     it('skips filters without source metadata (no from)', async () => {
       const result = await renderChartConfig(
         {
