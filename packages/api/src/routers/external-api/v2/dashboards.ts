@@ -1,104 +1,29 @@
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
-import { deleteDashboardAlerts } from '@/controllers/alerts';
-import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import {
-  translateExternalChartToTileConfig,
-  translateExternalFilterToFilter,
-} from '@/utils/externalApi';
 import logger from '@/utils/logger';
-import {
-  ExternalDashboardFilter,
-  externalDashboardFilterSchema,
-  externalDashboardFilterSchemaWithId,
-  ExternalDashboardFilterWithId,
-  externalDashboardSavedFilterValueSchema,
-  externalDashboardTileListSchema,
-  ExternalDashboardTileWithId,
-  objectIdSchema,
-  tagsSchema,
-} from '@/utils/zod';
+import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
+  cleanupDashboardAlerts,
+  convertExternalFiltersToInternal,
+  convertExternalTilesToInternal,
   convertToExternalDashboard,
-  convertToInternalTileConfig,
+  createDashboardBodySchema,
+  getMissingConnections,
+  getMissingSources,
   isConfigTile,
   isRawSqlExternalTileConfig,
   isSeriesTile,
+  resolveSavedQueryLanguage,
+  updateDashboardBodySchema,
 } from './utils/dashboards';
-
-/** Returns an array of source IDs that are referenced in the tiles/filters but do not exist in the team's sources */
-async function getMissingSources(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
-  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
-): Promise<string[]> {
-  const sourceIds = new Set<string>();
-
-  for (const tile of tiles) {
-    if (isSeriesTile(tile)) {
-      for (const series of tile.series) {
-        if ('sourceId' in series) {
-          sourceIds.add(series.sourceId);
-        }
-      }
-    } else if (isConfigTile(tile)) {
-      if ('sourceId' in tile.config && tile.config.sourceId) {
-        sourceIds.add(tile.config.sourceId);
-      }
-    }
-  }
-
-  if (filters?.length) {
-    for (const filter of filters) {
-      if ('sourceId' in filter) {
-        sourceIds.add(filter.sourceId);
-      }
-    }
-  }
-
-  const existingSources = await getSources(team.toString());
-  const existingSourceIds = new Set(
-    existingSources.map(source => source._id.toString()),
-  );
-  return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
-}
-
-/** Returns an array of connection IDs that are referenced in the tiles but do not belong to the team */
-async function getMissingConnections(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
-): Promise<string[]> {
-  const connectionIds = new Set<string>();
-
-  for (const tile of tiles) {
-    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
-      connectionIds.add(tile.config.connectionId);
-    }
-  }
-
-  if (connectionIds.size === 0) return [];
-
-  const existingConnections = await getConnectionsByTeam(team.toString());
-  const existingConnectionIds = new Set(
-    existingConnections.map(connection => connection._id.toString()),
-  );
-
-  return [...connectionIds].filter(
-    connectionId => !existingConnectionIds.has(connectionId),
-  );
-}
 
 async function getSourceConnectionMismatches(
   team: string | mongoose.Types.ObjectId,
@@ -123,62 +48,6 @@ async function getSourceConnectionMismatches(
 
   return sourcesWithInvalidConnections;
 }
-
-type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
-
-function resolveSavedQueryLanguage(params: {
-  savedQuery: string | null | undefined;
-  savedQueryLanguage: SavedQueryLanguage | null | undefined;
-}): SavedQueryLanguage | null | undefined {
-  const { savedQuery, savedQueryLanguage } = params;
-  if (savedQueryLanguage !== undefined) return savedQueryLanguage;
-  if (savedQuery === null) return null;
-  if (savedQuery) return 'lucene';
-
-  return undefined;
-}
-
-const dashboardBodyBaseShape = {
-  name: z.string().max(1024),
-  tiles: externalDashboardTileListSchema,
-  tags: tagsSchema,
-  savedQuery: z.string().nullable().optional(),
-  savedQueryLanguage: whereLanguageSchema.nullable().optional(),
-  savedFilterValues: z
-    .array(externalDashboardSavedFilterValueSchema)
-    .optional(),
-};
-
-function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
-  z.ZodObject<
-    typeof dashboardBodyBaseShape & {
-      filters: z.ZodOptional<z.ZodArray<z.ZodTypeAny>>;
-    }
-  >
-> {
-  return z
-    .object({
-      ...dashboardBodyBaseShape,
-      filters: z.array(filterSchema).optional(),
-    })
-    .superRefine((data, ctx) => {
-      if (data.savedQuery != null && data.savedQueryLanguage === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'savedQueryLanguage cannot be null when savedQuery is provided',
-          path: ['savedQueryLanguage'],
-        });
-      }
-    });
-}
-
-const createDashboardBodySchema = buildDashboardBodySchema(
-  externalDashboardFilterSchema,
-);
-const updateDashboardBodySchema = buildDashboardBodySchema(
-  externalDashboardFilterSchemaWithId,
-);
 
 /**
  * @openapi
@@ -1749,27 +1618,8 @@ router.post(
         });
       }
 
-      const internalTiles = tiles.map(tile => {
-        const tileId = new ObjectId().toString();
-        if (isConfigTile(tile)) {
-          return convertToInternalTileConfig({
-            ...tile,
-            id: tileId,
-          });
-        }
-
-        return translateExternalChartToTileConfig({
-          ...tile,
-          id: tileId,
-        });
-      });
-
-      const filtersWithIds = (filters || []).map(filter =>
-        translateExternalFilterToFilter({
-          ...filter,
-          id: new ObjectId().toString(),
-        }),
-      );
+      const internalTiles = convertExternalTilesToInternal(tiles);
+      const filtersWithIds = convertExternalFiltersToInternal(filters || []);
 
       const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
         savedQuery,
@@ -2002,18 +1852,10 @@ router.put(
         (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
       );
 
-      // Convert external tiles to internal charts format.
-      // Generate a new id for any tile whose id doesn't match an existing tile.
-      const internalTiles = tiles.map(tile => {
-        const tileId = existingTileIds.has(tile.id)
-          ? tile.id
-          : new ObjectId().toString();
-        if (isConfigTile(tile)) {
-          return convertToInternalTileConfig({ ...tile, id: tileId });
-        }
-
-        return translateExternalChartToTileConfig({ ...tile, id: tileId });
-      });
+      const internalTiles = convertExternalTilesToInternal(
+        tiles,
+        existingTileIds,
+      );
 
       const setPayload: Record<string, unknown> = {
         name,
@@ -2021,13 +1863,9 @@ router.put(
         tags: tags && uniq(tags),
       };
       if (filters !== undefined) {
-        setPayload.filters = filters.map(
-          (filter: ExternalDashboardFilterWithId) => {
-            const filterId = existingFilterIds.has(filter.id)
-              ? filter.id
-              : new ObjectId().toString();
-            return translateExternalFilterToFilter({ ...filter, id: filterId });
-          },
+        setPayload.filters = convertExternalFiltersToInternal(
+          filters,
+          existingFilterIds,
         );
       }
       if (savedQuery !== undefined) {
@@ -2054,25 +1892,12 @@ router.put(
         return res.sendStatus(404);
       }
 
-      // Delete alerts for tiles that now do not support alerts
-      const newTileIdSet = new Set(internalTiles.map(t => t.id));
-      const tileIdsToDeleteAlerts = [
-        ...internalTiles
-          .filter(
-            tile =>
-              isRawSqlSavedChartConfig(tile.config) &&
-              !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
-          )
-          .map(tile => tile.id),
-        ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
-      ];
-      if (tileIdsToDeleteAlerts.length > 0) {
-        logger.info(
-          { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
-          `Deleting alerts for tiles with unsupported config or removed tiles`,
-        );
-        await deleteDashboardAlerts(dashboardId, teamId, tileIdsToDeleteAlerts);
-      }
+      await cleanupDashboardAlerts({
+        dashboardId,
+        teamId,
+        internalTiles,
+        existingTileIds,
+      });
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),
