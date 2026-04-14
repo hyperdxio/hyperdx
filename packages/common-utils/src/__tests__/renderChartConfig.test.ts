@@ -2398,4 +2398,207 @@ describe('renderChartConfig', () => {
       expect(actual).not.toContain('SampleRate');
     });
   });
+
+  describe('JSON schema (BETA_CH_OTEL_JSON_SCHEMA_ENABLED)', () => {
+    // When the ClickHouse exporter uses json: true, attribute columns are JSON
+    // type instead of Map(String, String). mapConcat() fails on JSON columns, so
+    // the query generator must fall back to toJSONString()-based hashing.
+
+    let jsonSchemaMockMetadata: jest.Mocked<Metadata>;
+
+    beforeEach(() => {
+      const jsonSchemaColumns = [
+        { name: 'TimeUnix', type: 'DateTime64(9)' },
+        { name: 'MetricName', type: 'LowCardinality(String)' },
+        { name: 'Attributes', type: 'JSON' },
+        { name: 'ScopeAttributes', type: 'JSON' },
+        { name: 'ResourceAttributes', type: 'JSON' },
+        { name: 'Value', type: 'Float64' },
+        { name: 'AggregationTemporality', type: 'Int32' },
+      ];
+      jsonSchemaMockMetadata = {
+        getColumns: jest.fn().mockResolvedValue(jsonSchemaColumns),
+        getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
+        getColumn: jest
+          .fn()
+          .mockImplementation(async ({ column }: { column: string }) =>
+            jsonSchemaColumns.find(col => col.name === column),
+          ),
+        getTableMetadata: jest
+          .fn()
+          .mockResolvedValue({ primary_key: 'TimeUnix' }),
+        getSkipIndices: jest.fn().mockResolvedValue([]),
+        getSetting: jest.fn().mockResolvedValue(undefined),
+      } as unknown as jest.Mocked<Metadata>;
+    });
+
+    const baseMetricConfig = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      where: '',
+      whereLanguage: 'sql' as const,
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')] as [
+        Date,
+        Date,
+      ],
+      granularity: '1 minute' as const,
+      limit: { limit: 10 },
+    };
+
+    it('should use toJSONString-based hash for gauge metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'system.cpu.utilization',
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('toJSONString(ScopeAttributes)');
+      expect(actual).toContain('toJSONString(ResourceAttributes)');
+      expect(actual).toContain('toJSONString(Attributes)');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use toJSONString-based hash for sum metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '5 minute',
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'db.client.connections.usage',
+            metricType: MetricsDataType.Sum,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('toJSONString(ScopeAttributes)');
+      expect(actual).toContain('toJSONString(ResourceAttributes)');
+      expect(actual).toContain('toJSONString(Attributes)');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use toJSONString-based hash for histogram (quantile) metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '2 minute',
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            valueExpression: 'Value',
+            metricName: 'http.server.duration',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('toJSONString(ScopeAttributes)');
+      expect(actual).toContain('toJSONString(ResourceAttributes)');
+      expect(actual).toContain('toJSONString(Attributes)');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use toJSONString-based hash for histogram (count) metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '2 minute',
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: 'Value',
+            metricName: 'http.server.request.count',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('toJSONString(ScopeAttributes)');
+      expect(actual).toContain('toJSONString(ResourceAttributes)');
+      expect(actual).toContain('toJSONString(Attributes)');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should still use mapConcat when Attributes column is Map type (non-JSON schema)', async () => {
+      // Verify existing Map-schema behaviour is unchanged
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'system.cpu.utilization',
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+      };
+
+      // mockMetadata returns Map-typed columns (default setup from beforeEach)
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('mapConcat');
+      expect(actual).not.toContain('toJSONString');
+    });
+  });
 });

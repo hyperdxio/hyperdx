@@ -2,8 +2,15 @@ import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
-import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { translateHistogram } from '@/core/histogram';
+import {
+  ChSql,
+  chSql,
+  concatChSql,
+  convertCHDataTypeToJSType,
+  JSDataType,
+  wrapChSqlIfNotEmpty,
+} from '@/clickhouse';
+import { attrHashExpr, translateHistogram } from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
@@ -1213,6 +1220,43 @@ async function translateMetricChartConfig(
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+
+  // Detect whether the metric tables use the JSON schema
+  // (BETA_CH_OTEL_JSON_SCHEMA_ENABLED). When enabled, attribute columns
+  // (Attributes, ScopeAttributes, ResourceAttributes) are JSON type instead of
+  // Map(String, String), which means mapConcat() cannot be used. We detect this
+  // by inspecting the actual column type in ClickHouse.
+  let isJsonSchema = false;
+  const detectionTableName =
+    (metricType != null ? metricTables[metricType] : undefined) ??
+    metricTables[MetricsDataType.Gauge] ??
+    metricTables[MetricsDataType.Sum] ??
+    metricTables[MetricsDataType.Histogram];
+  if (detectionTableName && from.databaseName && chartConfig.connection) {
+    try {
+      const columns = await metadata.getColumns({
+        databaseName: from.databaseName,
+        tableName: detectionTableName,
+        connectionId: chartConfig.connection,
+      });
+      // We only check `Attributes` as a representative column — the OTel
+      // exporter sets all three attribute columns (Attributes, ScopeAttributes,
+      // ResourceAttributes) to the same type, so checking one is sufficient.
+      isJsonSchema = columns.some(
+        c =>
+          c.name === 'Attributes' &&
+          convertCHDataTypeToJSType(c.type) === JSDataType.JSON,
+      );
+    } catch (e) {
+      // If column detection fails (e.g. table doesn't exist yet), fall back to
+      // the Map schema behaviour which was the original default.
+      console.warn(
+        'Failed to detect metric table column types, falling back to Map schema',
+        e,
+      );
+    }
+  }
+
   if (
     metricType === MetricsDataType.Gauge &&
     metricName &&
@@ -1259,7 +1303,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              ${attrHashExpr(isJsonSchema)} AS AttributesHash
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
             WHERE ${where}
           `,
@@ -1363,7 +1407,7 @@ async function translateMetricChartConfig(
           sql: chSql`
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  ${attrHashExpr(isJsonSchema)} AS AttributesHash,
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
                     IF(IsMonotonic = 0, 
@@ -1501,6 +1545,7 @@ async function translateMetricChartConfig(
         }),
         where,
         valueAlias,
+        isJsonSchema,
       }),
       select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
       from: {
