@@ -184,6 +184,7 @@ export const HelpScreen = React.memo(function HelpScreen() {
     ['Shift+Tab', 'Previous source / saved search'],
     ['t', 'Edit time range in $EDITOR'],
     ['s', 'Edit select clause in $EDITOR'],
+    ['P (Shift+P)', 'Show event patterns'],
     ['D', 'Show generated SQL'],
     ['f', 'Toggle follow mode (live tail)'],
     ['o', 'Open trace in browser'],
