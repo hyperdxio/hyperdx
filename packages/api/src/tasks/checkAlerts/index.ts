@@ -17,6 +17,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -89,13 +90,14 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
 
   // Without a reliable parser, it's difficult to tell if the raw sql contains a
-  // group by (besides the group by on the interval), so we'll assume it might.
-  // Group name will be blank if there is no group by values.
+  // group by (besides the group by on the interval), so we'll assume it might
+  // in the case of time series charts, and assume it will not in the case of number charts.
+  // Group name will just be blank if there are no group by values.
   if (
     details.taskType === AlertTaskType.TILE &&
     isRawSqlSavedChartConfig(details.tile.config)
   ) {
-    return true;
+    return details.tile.config.displayType !== DisplayType.Number;
   }
   return false;
 };
@@ -481,7 +483,7 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 
-    // Raw SQL line/bar tiles: build a RawSqlChartConfig
+    // Raw SQL tiles: build a RawSqlChartConfig
     if (isRawSqlSavedChartConfig(tile.config)) {
       if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
         return {
@@ -493,7 +495,10 @@ const getChartConfigFromAlert = (
           ]),
           connection,
           dateRange,
-          granularity: `${windowSizeInMins} minute`,
+          // Only time-series charts use interval bucketing
+          ...(isTimeSeriesDisplayType(tile.config.displayType) && {
+            granularity: `${windowSizeInMins} minute`,
+          }),
           // Include source metadata for macro expansion ($__sourceTable)
           ...(details.source && {
             from: details.source.from,
@@ -563,9 +568,21 @@ const getChartConfigFromAlert = (
   return undefined;
 };
 
+type ResponseMetadata =
+  | {
+      type: 'time_series';
+      timestampColumnName: string;
+      valueColumnNames: Set<string>;
+    }
+  | {
+      type: 'single_value';
+      valueColumnNames: Set<string>;
+    };
+
 const getResponseMetadata = (
+  chartConfig: ChartConfigWithOptDateRange,
   data: ResponseJSON<Record<string, string | number>>,
-) => {
+): ResponseMetadata | undefined => {
   if (!data?.meta) {
     return undefined;
   }
@@ -577,26 +594,36 @@ const getResponseMetadata = (
       jsType: clickhouse.convertCHDataTypeToJSType(m.type),
     })) ?? [];
 
-  const timestampColumnName = meta.find(
-    m => m.jsType === clickhouse.JSDataType.Date,
-  )?.name;
   const valueColumnNames = new Set(
     meta
       .filter(m => m.jsType === clickhouse.JSDataType.Number)
       .map(m => m.name),
   );
 
-  if (timestampColumnName == null) {
-    logger.error({ meta }, 'Failed to find timestamp column');
-    return undefined;
-  }
-
   if (valueColumnNames.size === 0) {
     logger.error({ meta }, 'Failed to find value column');
     return undefined;
   }
 
-  return { timestampColumnName, valueColumnNames };
+  // Raw SQL charts with Number display type don't use interval parameters, so they cannot be treated as timeseries.
+  // Number-type Builder Charts are rendered as time-series, to maintain legacy behavior for existing alerts.
+  if (
+    isRawSqlChartConfig(chartConfig) &&
+    chartConfig.displayType === DisplayType.Number
+  ) {
+    return { type: 'single_value', valueColumnNames };
+  } else {
+    const timestampColumnName = meta.find(
+      m => m.jsType === clickhouse.JSDataType.Date,
+    )?.name;
+
+    if (timestampColumnName == null) {
+      logger.error({ meta }, 'Failed to find timestamp column');
+      return undefined;
+    }
+
+    return { type: 'time_series', timestampColumnName, valueColumnNames };
+  }
 };
 
 /**
@@ -609,7 +636,7 @@ const getResponseMetadata = (
  */
 const parseAlertData = (
   data: Record<string, string | number>,
-  meta: { timestampColumnName: string; valueColumnNames: Set<string> },
+  meta: ResponseMetadata,
 ) => {
   let value: number | null = null;
   const extraFields: string[] = [];
@@ -617,7 +644,7 @@ const parseAlertData = (
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
       value = isString(v) ? parseInt(v) : v;
-    } else if (k !== meta.timestampColumnName) {
+    } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push(`${k}:${v}`);
     }
   }
@@ -877,17 +904,73 @@ export const processAlert = async (
       }
     };
 
+    const sendNotificationIfResolved = async (
+      previousHistory: AggregatedAlertHistory | undefined,
+      currentHistory: IAlertHistory,
+      groupKey: string,
+    ) => {
+      if (
+        previousHistory?.state === AlertState.ALERT &&
+        currentHistory.state === AlertState.OK
+      ) {
+        const lastValue =
+          currentHistory.lastValues[currentHistory.lastValues.length - 1];
+        await trySendNotification({
+          state: AlertState.OK,
+          group: groupKey,
+          totalCount: lastValue?.count || 0,
+          startTime: lastValue?.startTime || nowInMinsRoundDown,
+        });
+      }
+    };
+
+    const meta = getResponseMetadata(chartConfig, checksData);
+    if (!meta) {
+      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
+      return;
+    }
+
+    // single_value type (Raw SQL Number charts) returns a single value with no
+    // timestamp column, and are assumed to not have groups.
+    if (meta.type === 'single_value') {
+      // Use the date range end as the alert timestamp.
+      const alertTimestamp = dateRange[1];
+      const history = getOrCreateHistory('');
+
+      // The value is taken from the last numeric column of the first row.
+      // The value defaults to 0.
+      const value =
+        checksData.data.length > 0
+          ? (parseAlertData(checksData.data[0], meta).value ?? 0)
+          : 0;
+
+      history.lastValues.push({ count: value, startTime: alertTimestamp });
+      if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
+        history.state = AlertState.ALERT;
+        history.counts += 1;
+        await trySendNotification({
+          state: AlertState.ALERT,
+          group: '',
+          totalCount: value,
+          startTime: alertTimestamp,
+        });
+      }
+
+      // Auto-resolve
+      const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
+      await sendNotificationIfResolved(previous, history, '');
+
+      const historyRecords = Array.from(histories.values());
+      await alertProvider.updateAlertState(alert.id, historyRecords);
+      return;
+    }
+
+    // ── Time-series path (Line/StackedBar charts) ──
     const expectedBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
       `${windowSizeInMins} minute`,
     );
-
-    const meta = getResponseMetadata(checksData);
-    if (!meta) {
-      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
-      return;
-    }
 
     // Group data by time bucket (grouped alerts may have multiple entries per time bucket)
     const checkDataByBucket = new Map<
@@ -915,7 +998,6 @@ export const processAlert = async (
           'No data returned from ClickHouse for time bucket',
         );
 
-        // Empty periods are filled with a 0 values.
         const zeroValueIsAlert = doesExceedThreshold(
           alert.thresholdType,
           alert.threshold,
@@ -1013,19 +1095,7 @@ export const processAlert = async (
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
       const groupPrevious = previousMap.get(previousKey);
-
-      if (
-        groupPrevious?.state === AlertState.ALERT &&
-        history.state === AlertState.OK
-      ) {
-        const lastValue = history.lastValues[history.lastValues.length - 1];
-        await trySendNotification({
-          state: AlertState.OK,
-          group: groupKey,
-          totalCount: lastValue?.count || 0,
-          startTime: lastValue?.startTime || nowInMinsRoundDown,
-        });
-      }
+      await sendNotificationIfResolved(groupPrevious, history, groupKey);
     }
 
     // Save all history records and update alert state
