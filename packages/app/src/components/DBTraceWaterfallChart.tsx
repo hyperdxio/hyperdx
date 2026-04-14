@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -81,6 +82,10 @@ export type SpanRow = {
     Attributes: Record<string, any>;
   }>;
   __hdx_hidden?: boolean | 1 | 0;
+};
+
+type TimestampedRow = {
+  Timestamp: string;
 };
 
 function textColor(condition: { isError: boolean; isWarn: boolean }): string {
@@ -269,7 +274,7 @@ function getConfig(
     select,
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
-    where: `${alias.TraceId} = '${traceId}'`,
+    where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
     limit: { limit: 50000 },
     connection: source.connection,
   };
@@ -358,10 +363,12 @@ export function useEventsAroundFocus({
       const rowWhereResult = getRowWhere(
         omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
       );
+
       return {
         // Keep all fields available for display
         ...cd,
         // Added for typing
+        Timestamp: cd?.Timestamp,
         SpanId: cd?.SpanId,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
@@ -423,6 +430,7 @@ export function DBTraceWaterfallChartContainer({
   onClick,
   highlightedRowWhere,
   initialRowHighlightHint,
+  emptyState,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -440,6 +448,7 @@ export function DBTraceWaterfallChartContainer({
     spanId: string;
     body: string;
   };
+  emptyState?: ReactNode;
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
   const formatTime = useFormatTime();
@@ -501,21 +510,24 @@ export function DBTraceWaterfallChartContainer({
   const isFetching = traceIsFetching || logIsFetching;
   const error = traceError || logError;
 
-  const rows: any[] = useMemo(
-    () => [...traceRowsData, ...logRowsData],
-    [traceRowsData, logRowsData],
-  );
+  const rows: any[] = useMemo(() => {
+    const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
+      ...traceRowsData,
+      ...logRowsData,
+    ];
+    nextRows.sort((a, b) => {
+      const aDate = TimestampNano.fromString(a.Timestamp);
+      const bDate = TimestampNano.fromString(b.Timestamp);
+      const secDiff = aDate.getTimeT() - bDate.getTimeT();
+      if (secDiff === 0) {
+        return aDate.getNano() - bDate.getNano();
+      } else {
+        return secDiff;
+      }
+    });
 
-  rows.sort((a, b) => {
-    const aDate = TimestampNano.fromString(a.Timestamp);
-    const bDate = TimestampNano.fromString(b.Timestamp);
-    const secDiff = aDate.getTimeT() - bDate.getTimeT();
-    if (secDiff === 0) {
-      return aDate.getNano() - bDate.getNano();
-    } else {
-      return secDiff;
-    }
-  });
+    return nextRows;
+  }, [traceRowsData, logRowsData]);
 
   const highlightedAttributeValues = useMemo(() => {
     const visibleTraceRowsData = traceRowsData?.filter(
@@ -1060,7 +1072,9 @@ export function DBTraceWaterfallChartContainer({
             An unknown error occurred. <ContactSupportText />
           </div>
         ) : flattenedNodes.length === 0 ? (
-          <div className="my-3">No matching spans or logs found</div>
+          (emptyState ?? (
+            <div className="my-3">No matching spans or logs found</div>
+          ))
         ) : (
           <TimelineChart
             maxHeight={heightPx}
