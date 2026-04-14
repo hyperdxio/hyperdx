@@ -23,6 +23,9 @@ services:
       context: ../..
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
+      args:
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.149.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.55.0}
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
