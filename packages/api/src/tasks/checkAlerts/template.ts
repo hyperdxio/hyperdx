@@ -48,11 +48,13 @@ const describeThresholdViolation = (
 ): string => {
   switch (thresholdType) {
     case AlertThresholdType.ABOVE:
+      return 'meets or exceeds';
     case AlertThresholdType.ABOVE_EXCLUSIVE:
       return 'exceeds';
     case AlertThresholdType.BELOW:
-    case AlertThresholdType.BELOW_OR_EQUAL:
       return 'falls below';
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return 'falls to or below';
     case AlertThresholdType.EQUAL:
       return 'equals';
     case AlertThresholdType.NOT_EQUAL:
@@ -65,9 +67,11 @@ const describeThresholdResolution = (
 ): string => {
   switch (thresholdType) {
     case AlertThresholdType.ABOVE:
-    case AlertThresholdType.ABOVE_EXCLUSIVE:
       return 'falls below';
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return 'falls to or below';
     case AlertThresholdType.BELOW:
+      return 'meets or exceeds';
     case AlertThresholdType.BELOW_OR_EQUAL:
       return 'exceeds';
     case AlertThresholdType.EQUAL:
