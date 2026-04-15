@@ -21,6 +21,7 @@ import {
   getTestFixtureClickHouseClient,
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
+  RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
@@ -2407,6 +2408,417 @@ describe('checkAlerts', () => {
       expect(lastValues.length).toBe(3);
 
       expect(lastValues.map(v => v.count)).toEqual([0, 2, 1]);
+    });
+
+    it('TILE alert (raw SQL Number chart) - should trigger and resolve', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Number chart alert test event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Number chart alert test event 2',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Number Chart Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'number1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'number1');
+      if (!tile) throw new Error('tile not found for Number chart test');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'number1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Should trigger alert (2 events > threshold of 1)
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].lastValues[0].count).toBe(2);
+
+      // Next window with no new data in range should resolve
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const allHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(allHistories.length).toBe(2);
+      expect(allHistories[1].state).toBe('OK');
+    });
+
+    it('TILE alert (raw SQL Number chart) - no data returns zero value', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+
+      // No logs inserted — empty table for this time range
+
+      const dashboard = await new Dashboard({
+        name: 'Empty Number Chart Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'number-empty',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'number-empty');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'number-empty',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // count() returns 0 for no matching rows, which is below threshold of 1
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('OK');
+      expect(alertHistories[0].lastValues[0].count).toBe(0);
+    });
+
+    it('TILE alert (raw SQL Number chart) - threshold compares with last numeric column', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Insert 1 error and 2 warns so the two numeric columns differ:
+      //   error_count = 1, warn_count = 2
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'error log',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'warn',
+          Body: 'warn log 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'warn',
+          Body: 'warn log 2',
+        },
+      ]);
+
+      // SQL query that returns multiple numeric columns (error_count, warn_count).
+      // The last numeric column (warn_count = 2) should be used for threshold comparison.
+      const multiNumericSql = [
+        'SELECT',
+        " countIf(SeverityText = 'error') AS error_count,",
+        " countIf(SeverityText = 'warn') AS warn_count",
+        ' FROM default.otel_logs',
+        ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+        ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+      ].join('');
+
+      const dashboard = await new Dashboard({
+        name: 'Multi-Numeric Number Chart Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'number-multi-numeric',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              sqlTemplate: multiNumericSql,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(
+        (t: any) => t.id === 'number-multi-numeric',
+      );
+      if (!tile) throw new Error('tile not found');
+
+      // Threshold of 2: error_count (1) does not meet it, warn_count (2) meets it.
+      // The alert should fire because the last numeric column (warn_count = 2)
+      // is the value used for threshold comparison.
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'number-multi-numeric',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
+      // The value is from the last numeric column (warn_count = 2), not error_count (1)
+      expect(alertHistories[0].lastValues[0].count).toBe(2);
+    });
+
+    it('TILE alert (raw SQL Number chart) - only first row is compared to threshold when query returns multiple rows', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Insert 3 events for 'web' and 1 event for 'api'.
+      // With ORDER BY cnt DESC, the first row will be web (cnt=3),
+      // the second row will be api (cnt=1).
+      await bulkInsertLogs([
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web event 1',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web event 2',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web event 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'api event 1',
+        },
+      ]);
+
+      // SQL with GROUP BY that returns multiple rows.
+      // ORDER BY cnt DESC ensures the first row is web (cnt=3).
+      const groupBySql = [
+        'SELECT ServiceName, count() AS cnt',
+        ' FROM default.otel_logs',
+        ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+        ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+        ' GROUP BY ServiceName',
+        ' ORDER BY cnt DESC',
+      ].join('');
+
+      const dashboard = await new Dashboard({
+        name: 'Number Chart First Row Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'number-first-row',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              sqlTemplate: groupBySql,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(
+        (t: any) => t.id === 'number-first-row',
+      );
+      if (!tile) throw new Error('tile not found');
+
+      // Threshold of 2: first row web (cnt=3) exceeds it, second row api (cnt=1) does not.
+      // Only the first row should be compared, so the alert should fire.
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'number-first-row',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      });
+
+      // Number charts produce a single history (no per-group splitting)
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
+      // The value comes from the first row only (web cnt=3), not the second row (api cnt=1)
+      expect(alertHistories[0].lastValues[0].count).toBe(3);
     });
 
     it('Group-by alerts that resolve (missing data case)', async () => {

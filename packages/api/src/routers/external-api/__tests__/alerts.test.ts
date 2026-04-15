@@ -6,6 +6,7 @@ import {
   getLoggedInAgent,
   getServer,
   RAW_SQL_ALERT_TEMPLATE,
+  RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '../../../fixtures';
 import { AlertSource, AlertThresholdType } from '../../../models/alert';
 import Alert from '../../../models/alert';
@@ -752,9 +753,39 @@ describe('External API Alerts', () => {
         expect(res.body.data.tileId).toBe(tileId);
       });
 
-      it('should reject creating an alert on a raw SQL number tile', async () => {
+      it('should allow creating an alert on a raw SQL number tile', async () => {
         const webhook = await createTestWebhook();
-        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile();
+        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile({
+          displayType: 'number',
+          sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+        });
+
+        const alertInput = {
+          dashboardId: dashboard._id.toString(),
+          tileId,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        const res = await authRequest('post', ALERTS_BASE_URL)
+          .send(alertInput)
+          .expect(200);
+        expect(res.body.data.dashboardId).toBe(dashboard._id.toString());
+        expect(res.body.data.tileId).toBe(tileId);
+      });
+
+      it('should reject creating an alert on a raw SQL table tile', async () => {
+        const webhook = await createTestWebhook();
+        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile({
+          displayType: 'table',
+          sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        });
 
         const alertInput = {
           dashboardId: dashboard._id.toString(),
@@ -795,10 +826,13 @@ describe('External API Alerts', () => {
         await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
       });
 
-      it('should reject updating an alert to reference a raw SQL number tile', async () => {
+      it('should reject updating an alert to reference a raw SQL table tile', async () => {
         const { alert, webhook } = await createTestAlert();
         const { dashboard: rawSqlDashboard, tileId: rawSqlTileId } =
-          await createTestDashboardWithRawSqlTile();
+          await createTestDashboardWithRawSqlTile({
+            displayType: 'table',
+            sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+          });
 
         const updatePayload = {
           threshold: 200,

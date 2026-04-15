@@ -547,6 +547,31 @@ export const makeRawSqlAlertTile = (opts?: {
   } satisfies RawSqlSavedChartConfig,
 });
 
+export const RAW_SQL_NUMBER_ALERT_TEMPLATE = [
+  'SELECT count() AS cnt',
+  ' FROM default.otel_logs',
+  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+].join('');
+
+export const makeRawSqlNumberAlertTile = (opts?: {
+  id?: string;
+  connectionId?: string;
+  sqlTemplate?: string;
+}): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: DisplayType.Number,
+    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_NUMBER_ALERT_TEMPLATE,
+    connection: opts?.connectionId ?? 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
+});
+
 export const makeAlertInput = ({
   dashboardId,
   interval = '15m',

@@ -9,14 +9,28 @@
 
 ARG NODE_VERSION=22.22
 ARG CLICKHOUSE_VERSION=26.1
-ARG OTEL_COLLECTOR_VERSION=0.147.0
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.147.0
+ARG OTEL_COLLECTOR_VERSION=0.149.0
+ARG OTEL_COLLECTOR_CORE_VERSION=1.55.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
-FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
-FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS otel_collector_opampsupervisor_base
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
+
+# Build the custom HyperDX collector binary using OCB (OpenTelemetry Collector Builder).
+# This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
+# include custom receiver/processor components alongside the standard contrib ones.
+# Note: The official OCB image may ship an older Go than the contrib modules require,
+# so we copy the ocb binary into a golang base with a newer toolchain.
+FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
+FROM golang:1.26-alpine AS ocb-builder
+ARG OTEL_COLLECTOR_VERSION
+ARG OTEL_COLLECTOR_CORE_VERSION
+COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
+WORKDIR /build
+COPY packages/otel-collector/builder-config.yaml .
+RUN sed -i "s/__OTEL_COLLECTOR_VERSION__/${OTEL_COLLECTOR_VERSION}/g; s/__OTEL_COLLECTOR_CORE_VERSION__/${OTEL_COLLECTOR_CORE_VERSION}/g" builder-config.yaml && \
+    CGO_ENABLED=0 ocb --config=builder-config.yaml
 
 # Build the Go migration tool with full TLS support for ClickHouse
 FROM golang:1.26-alpine AS migrate-builder
@@ -132,7 +146,7 @@ ARG USER_GID=10001
 ENV CODE_VERSION=$CODE_VERSION
 ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 # Copy from otel collector bases
-COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
+COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
 
 # Copy Node.js runtime from node base

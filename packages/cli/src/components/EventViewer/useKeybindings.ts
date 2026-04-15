@@ -22,11 +22,19 @@ export interface KeybindingParams {
   focusDetailSearch: boolean;
   showHelp: boolean;
   showSql: boolean;
+  showPatterns: boolean;
   expandedRow: number | null;
   detailTab: 'overview' | 'columns' | 'trace';
   traceDetailExpanded: boolean;
   selectedRow: number;
   scrollOffset: number;
+  patternSelectedRow: number;
+  patternScrollOffset: number;
+  patternCount: number;
+  expandedPattern: number | null;
+  sampleSelectedRow: number;
+  sampleScrollOffset: number;
+  sampleCount: number;
   isFollowing: boolean;
   hasMore: boolean;
   events: EventRow[];
@@ -58,7 +66,13 @@ export interface KeybindingParams {
   setFocusDetailSearch: React.Dispatch<React.SetStateAction<boolean>>;
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSql: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowPatterns: React.Dispatch<React.SetStateAction<boolean>>;
   setSqlScrollOffset: React.Dispatch<React.SetStateAction<number>>;
+  setPatternSelectedRow: React.Dispatch<React.SetStateAction<number>>;
+  setPatternScrollOffset: React.Dispatch<React.SetStateAction<number>>;
+  setExpandedPattern: React.Dispatch<React.SetStateAction<number | null>>;
+  setSampleSelectedRow: React.Dispatch<React.SetStateAction<number>>;
+  setSampleScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setSelectedRow: React.Dispatch<React.SetStateAction<number>>;
   setScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setExpandedRow: React.Dispatch<React.SetStateAction<number | null>>;
@@ -93,11 +107,19 @@ export function useKeybindings(params: KeybindingParams): void {
     focusDetailSearch,
     showHelp,
     showSql,
+    showPatterns,
     expandedRow,
     detailTab,
     traceDetailExpanded,
     selectedRow,
     scrollOffset,
+    patternSelectedRow,
+    patternScrollOffset,
+    patternCount,
+    expandedPattern,
+    sampleSelectedRow,
+    sampleScrollOffset,
+    sampleCount,
     isFollowing,
     hasMore,
     events,
@@ -120,7 +142,13 @@ export function useKeybindings(params: KeybindingParams): void {
     setFocusDetailSearch,
     setShowHelp,
     setShowSql,
+    setShowPatterns,
     setSqlScrollOffset,
+    setPatternSelectedRow,
+    setPatternScrollOffset,
+    setExpandedPattern,
+    setSampleSelectedRow,
+    setSampleScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
@@ -213,6 +241,155 @@ export function useKeybindings(params: KeybindingParams): void {
       }
       return;
     }
+
+    // Pattern samples navigation (expanded pattern)
+    if (showPatterns && expandedPattern !== null && expandedRow === null) {
+      if (input === 'h' || key.escape) {
+        setExpandedPattern(null);
+        return;
+      }
+      if (input === 'j' || key.downArrow) {
+        setSampleSelectedRow(r => {
+          const next = r + 1;
+          const visibleCount = Math.min(
+            sampleCount - sampleScrollOffset,
+            maxRows,
+          );
+          if (next >= maxRows) {
+            setSampleScrollOffset(o =>
+              Math.min(o + 1, Math.max(0, sampleCount - maxRows)),
+            );
+            return r;
+          }
+          return Math.min(next, visibleCount - 1);
+        });
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        setSampleSelectedRow(r => {
+          const next = r - 1;
+          if (next < 0) {
+            setSampleScrollOffset(o => Math.max(0, o - 1));
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+      if (input === 'G') {
+        const maxOffset = Math.max(0, sampleCount - maxRows);
+        setSampleScrollOffset(maxOffset);
+        setSampleSelectedRow(Math.min(sampleCount - 1, maxRows - 1));
+        return;
+      }
+      if (input === 'g') {
+        setSampleScrollOffset(0);
+        setSampleSelectedRow(0);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        const half = Math.floor(maxRows / 2);
+        const maxOffset = Math.max(0, sampleCount - maxRows);
+        setSampleScrollOffset(o => Math.min(o + half, maxOffset));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        const half = Math.floor(maxRows / 2);
+        setSampleScrollOffset(o => Math.max(0, o - half));
+        return;
+      }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
+      if (input === 'q') process.exit(0);
+      return;
+    }
+
+    // Pattern view navigation
+    if (showPatterns && expandedRow === null) {
+      if (input === 'P') {
+        setShowPatterns(false);
+        if (wasFollowingRef.current) {
+          setIsFollowing(true);
+        }
+        return;
+      }
+      if (key.escape) {
+        setShowPatterns(false);
+        if (wasFollowingRef.current) {
+          setIsFollowing(true);
+        }
+        return;
+      }
+      if (key.return || input === 'l') {
+        setExpandedPattern(patternScrollOffset + patternSelectedRow);
+        setSampleSelectedRow(0);
+        setSampleScrollOffset(0);
+        return;
+      }
+      if (input === 'j' || key.downArrow) {
+        setPatternSelectedRow(r => {
+          const next = r + 1;
+          const visibleCount = Math.min(
+            patternCount - patternScrollOffset,
+            maxRows,
+          );
+          if (next >= maxRows) {
+            setPatternScrollOffset(o =>
+              Math.min(o + 1, Math.max(0, patternCount - maxRows)),
+            );
+            return r;
+          }
+          return Math.min(next, visibleCount - 1);
+        });
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        setPatternSelectedRow(r => {
+          const next = r - 1;
+          if (next < 0) {
+            setPatternScrollOffset(o => Math.max(0, o - 1));
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+      if (input === 'G') {
+        const maxOffset = Math.max(0, patternCount - maxRows);
+        setPatternScrollOffset(maxOffset);
+        setPatternSelectedRow(Math.min(patternCount - 1, maxRows - 1));
+        return;
+      }
+      if (input === 'g') {
+        setPatternScrollOffset(0);
+        setPatternSelectedRow(0);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        const half = Math.floor(maxRows / 2);
+        const maxOffset = Math.max(0, patternCount - maxRows);
+        setPatternScrollOffset(o => Math.min(o + half, maxOffset));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        const half = Math.floor(maxRows / 2);
+        setPatternScrollOffset(o => Math.max(0, o - half));
+        return;
+      }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
+      if (input === '/') {
+        setFocusSearch(true);
+        return;
+      }
+      if (input === 'q') process.exit(0);
+      return;
+    }
+
     // ---- Trace tab keybindings ----------------------------------------
     if (expandedRow !== null && detailTab === 'trace') {
       // When detail view is expanded (full-page Event Details):
@@ -386,6 +563,14 @@ export function useKeybindings(params: KeybindingParams): void {
         return;
       }
       handleTabSwitch(key.shift ? -1 : 1);
+      return;
+    }
+    if (input === 'P') {
+      wasFollowingRef.current = isFollowing;
+      setIsFollowing(false);
+      setShowPatterns(true);
+      setPatternSelectedRow(0);
+      setPatternScrollOffset(0);
       return;
     }
     if (input === 'A' && onOpenAlerts) {

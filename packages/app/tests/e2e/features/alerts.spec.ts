@@ -1,3 +1,5 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SearchPage } from '../page-objects/SearchPage';
@@ -243,6 +245,71 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
         ).toBeVisible({ timeout: 5000 });
         // The chart editor should still be open since saving was blocked
         await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should create an alert from a raw SQL Number dashboard tile and verify on the alerts page',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const tileName = `E2E Raw SQL Number Alert ${ts}`;
+      const webhookName = `E2E Webhook Number ${ts}`;
+      const webhookUrl = `https://example.com/number-${ts}`;
+
+      const sqlQuery = `SELECT count() AS cnt
+        FROM $__sourceTable
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+      `;
+
+      await test.step('Create a new dashboard', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a raw SQL Number tile to the dashboard', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(sqlQuery);
+        await dashboardPage.chartEditor.runQuery(false);
+      });
+
+      await test.step('Enable and configure an alert on the raw SQL Number tile', async () => {
+        await expect(dashboardPage.chartEditor.alertButton).toBeVisible();
+        await dashboardPage.chartEditor.clickAddAlert();
+        await expect(
+          dashboardPage.chartEditor.addNewWebhookButton,
+        ).toBeVisible();
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+      });
+
+      await test.step('Save the tile with the alert configured', async () => {
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Verify the alert is visible on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await expect(
+          alertsPage.pageContainer
+            .getByRole('link')
+            .filter({ hasText: tileName }),
+        ).toBeVisible({ timeout: 10000 });
       });
     },
   );

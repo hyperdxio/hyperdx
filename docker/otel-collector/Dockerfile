@@ -1,12 +1,29 @@
 ## base #############################################################################################
-FROM otel/opentelemetry-collector-contrib:0.147.0 AS col
-FROM otel/opentelemetry-collector-opampsupervisor:0.147.0 AS supervisor
+ARG OTEL_COLLECTOR_VERSION=0.149.0
+ARG OTEL_COLLECTOR_CORE_VERSION=1.55.0
+
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
-# Build the Go migration tool with full TLS support for ClickHouse
+# Build the custom HyperDX collector binary using OCB (OpenTelemetry Collector Builder).
+# This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
+# include custom receiver/processor components alongside the standard contrib ones.
 # Note: Build context must be repo root (use: docker build -f docker/otel-collector/Dockerfile .)
-FROM golang:1.25-alpine AS migrate-builder
+# Note: The official OCB image may ship an older Go than the contrib modules require,
+# so we copy the ocb binary into a golang base with a newer toolchain.
+FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
+FROM golang:1.26-alpine AS ocb-builder
+ARG OTEL_COLLECTOR_VERSION
+ARG OTEL_COLLECTOR_CORE_VERSION
+COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
+WORKDIR /build
+COPY packages/otel-collector/builder-config.yaml .
+RUN sed -i "s/__OTEL_COLLECTOR_VERSION__/${OTEL_COLLECTOR_VERSION}/g; s/__OTEL_COLLECTOR_CORE_VERSION__/${OTEL_COLLECTOR_CORE_VERSION}/g" builder-config.yaml && \
+    CGO_ENABLED=0 ocb --config=builder-config.yaml
+
+# Build the Go migration tool with full TLS support for ClickHouse
+FROM golang:1.26-alpine AS migrate-builder
 WORKDIR /build
 COPY packages/otel-collector/go.mod packages/otel-collector/go.sum ./
 RUN go mod download
@@ -38,7 +55,7 @@ COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 USER ${USER_UID}:${USER_GID}
 
 COPY --from=supervisor --chmod=755 /usr/local/bin/opampsupervisor /opampsupervisor
-COPY --from=col --chmod=755 /otelcol-contrib /otelcontribcol
+COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 
 # Copy entrypoint and log tail wrapper scripts
 COPY --chmod=755 docker/otel-collector/entrypoint.sh /entrypoint.sh
