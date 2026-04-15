@@ -128,6 +128,7 @@ import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
+import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
@@ -135,6 +136,10 @@ import {
 } from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import {
+  buildDirectTraceWhereClause,
+  getDefaultDirectTraceDateRange,
+} from './utils/directTrace';
 import {
   parseAsJsonEncoded,
   parseAsSortingStateString,
@@ -804,7 +809,7 @@ const queryStateMap = {
   orderBy: parseAsStringEncoded,
 };
 
-function DBSearchPage() {
+export function DBSearchPage() {
   const brandName = useBrandDisplayName();
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
@@ -812,6 +817,10 @@ function DBSearchPage() {
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [directTraceId, setDirectTraceId] = useQueryState(
+    'traceId',
+    parseAsStringEncoded,
+  );
 
   const { data: savedSearch } = useSavedSearch(
     { id: `${savedSearchId}` },
@@ -829,6 +838,14 @@ function DBSearchPage() {
     id: searchedConfig.source,
     kinds: [SourceKind.Log, SourceKind.Trace],
   });
+  const directTraceSource =
+    directTraceId != null && searchedSource?.kind === SourceKind.Trace
+      ? searchedSource
+      : undefined;
+  const chartSourceId =
+    directTraceId != null && !directTraceSource
+      ? ''
+      : (searchedConfig.source ?? '');
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -886,7 +903,9 @@ function DBSearchPage() {
       where: searchedConfig.where || '',
       whereLanguage:
         searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      source: searchedConfig.source || (savedSearchId ? '' : defaultSourceId),
+      source:
+        searchedConfig.source ||
+        (savedSearchId || directTraceId ? '' : defaultSourceId),
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -985,6 +1004,10 @@ function DBSearchPage() {
       return;
     }
 
+    if (savedSearchId == null && directTraceId != null && !source) {
+      return;
+    }
+
     // Landed on a new search - ensure we have a source selected
     if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
       setSearchedConfig({
@@ -1003,6 +1026,7 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
+    directTraceId,
     sources,
   ]);
 
@@ -1125,9 +1149,28 @@ function DBSearchPage() {
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
+  const chartSearchConfig = useMemo(
+    () => ({
+      select: searchedConfig.select ?? '',
+      source: chartSourceId,
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+      filters: searchedConfig.filters ?? [],
+      orderBy: searchedConfig.orderBy ?? '',
+    }),
+    [
+      chartSourceId,
+      searchedConfig.filters,
+      searchedConfig.orderBy,
+      searchedConfig.select,
+      searchedConfig.where,
+      searchedConfig.whereLanguage,
+    ],
+  );
 
   const { data: chartConfig, isLoading: isChartConfigLoading } =
-    useSearchedConfigToChartConfig(searchedConfig, defaultSearchConfig);
+    useSearchedConfigToChartConfig(chartSearchConfig, defaultSearchConfig);
 
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
@@ -1368,17 +1411,67 @@ function DBSearchPage() {
 
   const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
     useDisclosure();
+  const directTraceRangeAppliedRef = useRef<string | null>(null);
+  const directTraceFilterAppliedRef = useRef<string | null>(null);
 
-  // Add this effect to trigger initial search when component mounts
+  useEffect(() => {
+    if (!isReady || !directTraceId) {
+      directTraceRangeAppliedRef.current = null;
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has('from') && searchParams.has('to')) {
+      return;
+    }
+
+    if (directTraceRangeAppliedRef.current === directTraceId) {
+      return;
+    }
+
+    directTraceRangeAppliedRef.current = directTraceId;
+    setIsLive(false);
+    const [start, end] = getDefaultDirectTraceDateRange();
+    onTimeRangeSelect(start, end, null);
+  }, [directTraceId, isReady, onTimeRangeSelect, setIsLive]);
+
+  useEffect(() => {
+    if (!directTraceId || !directTraceSource) {
+      directTraceFilterAppliedRef.current = null;
+      return;
+    }
+
+    const nextKey = `${directTraceSource.id}:${directTraceId}`;
+    if (directTraceFilterAppliedRef.current === nextKey) {
+      return;
+    }
+
+    directTraceFilterAppliedRef.current = nextKey;
+    setIsLive(false);
+    setSearchedConfig({
+      source: directTraceSource.id,
+      where: buildDirectTraceWhereClause(
+        directTraceSource.traceIdExpression,
+        directTraceId,
+      ),
+      whereLanguage: 'sql',
+      filters: [],
+    });
+  }, [directTraceId, directTraceSource, setIsLive, setSearchedConfig]);
+
   useEffect(() => {
     if (isReady && queryReady && !isChartConfigLoading) {
       // Only trigger if we haven't searched yet (no time range in URL)
       const searchParams = new URLSearchParams(window.location.search);
-      if (!searchParams.has('from') && !searchParams.has('to')) {
+      if (
+        directTraceId == null &&
+        !searchParams.has('from') &&
+        !searchParams.has('to')
+      ) {
         onSearch('Live Tail');
       }
     }
-  }, [isReady, queryReady, isChartConfigLoading, onSearch]);
+  }, [directTraceId, isReady, queryReady, isChartConfigLoading, onSearch]);
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
@@ -1546,6 +1639,52 @@ function DBSearchPage() {
     },
     [setIsLive, setInterval, onTimeRangeSelect],
   );
+  const directTraceFocusDate = useMemo(
+    () =>
+      new Date(
+        (searchedTimeRange[0].getTime() + searchedTimeRange[1].getTime()) / 2,
+      ),
+    [searchedTimeRange],
+  );
+
+  const onDirectTraceSourceChange = useCallback(
+    (sourceId: string | null) => {
+      setIsLive(false);
+      if (sourceId == null) {
+        directTraceFilterAppliedRef.current = null;
+        setSearchedConfig({
+          source: null,
+          where: '',
+          whereLanguage: getStoredLanguage() ?? 'lucene',
+          filters: [],
+        });
+        return;
+      }
+
+      const nextSource = sources?.find(
+        (source): source is Extract<TSource, { kind: SourceKind.Trace }> =>
+          source.id === sourceId && isTraceSource(source),
+      );
+      if (!nextSource || !directTraceId) {
+        return;
+      }
+
+      setSearchedConfig({
+        source: nextSource.id,
+        where: buildDirectTraceWhereClause(
+          nextSource.traceIdExpression,
+          directTraceId,
+        ),
+        whereLanguage: 'sql',
+        filters: [],
+      });
+    },
+    [directTraceId, setIsLive, setSearchedConfig, sources],
+  );
+
+  const closeDirectTraceSidePanel = useCallback(() => {
+    setDirectTraceId(null);
+  }, [setDirectTraceId]);
 
   const clearSaveSearchModalState = useCallback(
     () => setSaveSearchModalState(undefined),
@@ -1841,6 +1980,15 @@ function DBSearchPage() {
           savedSearchId={savedSearchId}
         />
       )}
+      <DirectTraceSidePanel
+        opened={directTraceId != null}
+        traceId={directTraceId ?? ''}
+        traceSourceId={directTraceSource?.id ?? null}
+        dateRange={searchedTimeRange}
+        focusDate={directTraceFocusDate}
+        onClose={closeDirectTraceSidePanel}
+        onSourceChange={onDirectTraceSourceChange}
+      />
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
