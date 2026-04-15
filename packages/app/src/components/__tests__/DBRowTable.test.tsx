@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
-  appendSelectWithPrimaryAndPartitionKey,
+  appendSelectWithAdditionalKeys,
   RawLogTable,
 } from '@/components/DBRowTable';
 import { RowWhereResult } from '@/hooks/useRowWhere';
@@ -145,9 +145,9 @@ describe('RawLogTable', () => {
   });
 });
 
-describe('appendSelectWithPrimaryAndPartitionKey', () => {
+describe('appendSelectWithAdditionalKeys', () => {
   it('should extract columns from partition key with nested function call', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       'id, created_at',
       ' toStartOfInterval(timestamp, toIntervalDay(3))',
@@ -159,7 +159,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract no columns from empty primary key and partition key', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey('col1, col2', '', '');
+    const result = appendSelectWithAdditionalKeys('col1, col2', '', '', []);
     expect(result).toEqual({
       additionalKeysLength: 0,
       select: 'col1,col2',
@@ -167,7 +167,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract columns from complex primary key', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       'id, timestamp, toStartOfInterval(timestamp2, toIntervalDay(3))',
       "toStartOfInterval(timestamp, toIntervalDay(3)), date_diff('DAY', col3, col4), now(), toDate(col5 + INTERVAL 1 DAY)",
@@ -179,7 +179,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract map columns', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `map['key']`,
       `map2['key'], map1['key3 ']`,
@@ -191,7 +191,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract map columns', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       ``,
       `map2['key.2']`,
@@ -203,7 +203,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract array columns', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `array[1]`,
       `array[2], array[3]`,
@@ -215,7 +215,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract json columns', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `json.b`,
       `json.a, json.b.c, toStartOfDay(timestamp, json_2.d)`,
@@ -227,7 +227,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should extract json columns with type specifiers', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `json.b.:Int64`,
       `toStartOfDay(json.a.b.:DateTime)`,
@@ -239,7 +239,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should skip json columns with hard-to-parse type specifiers', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `json.b.:Array(String), col3`,
       ``,
@@ -251,7 +251,7 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
   });
 
   it('should skip nested map references', () => {
-    const result = appendSelectWithPrimaryAndPartitionKey(
+    const result = appendSelectWithAdditionalKeys(
       'col1, col2',
       `map['key']['key2'], col3`,
       ``,
@@ -259,6 +259,55 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
     expect(result).toEqual({
       additionalKeysLength: 1,
       select: `col1,col2,col3`,
+    });
+  });
+
+  it('should append extraKeys to string select', () => {
+    const result = appendSelectWithAdditionalKeys('col1, col2', 'id', '', [
+      '__hdx_id',
+    ]);
+    expect(result).toEqual({
+      additionalKeysLength: 2,
+      select: 'col1,col2,id,__hdx_id',
+    });
+  });
+
+  it('should not duplicate extraKeys already in select', () => {
+    const result = appendSelectWithAdditionalKeys('col1, __hdx_id', 'id', '', [
+      '__hdx_id',
+    ]);
+    expect(result).toEqual({
+      additionalKeysLength: 1,
+      select: 'col1,__hdx_id,id',
+    });
+  });
+
+  it('should deduplicate extraKeys that overlap with primary/partition keys', () => {
+    const result = appendSelectWithAdditionalKeys('col1, col2', 'id', '', [
+      'id',
+      '__hdx_id',
+    ]);
+    expect(result).toEqual({
+      additionalKeysLength: 2,
+      select: 'col1,col2,id,__hdx_id',
+    });
+  });
+
+  it('should append extraKeys to array-style select', () => {
+    const result = appendSelectWithAdditionalKeys(
+      [{ valueExpression: 'col1' }, { valueExpression: 'col2' }],
+      'id',
+      '',
+      ['__hdx_id'],
+    );
+    expect(result).toEqual({
+      additionalKeysLength: 2,
+      select: [
+        { valueExpression: 'col1' },
+        { valueExpression: 'col2' },
+        { valueExpression: 'id' },
+        { valueExpression: '__hdx_id' },
+      ],
     });
   });
 });

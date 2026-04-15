@@ -1374,14 +1374,15 @@ export const RawLogTable = memo(
   },
 );
 
-export function appendSelectWithPrimaryAndPartitionKey(
+export function appendSelectWithAdditionalKeys(
   select: SelectList,
   primaryKeys: string,
   partitionKey: string,
+  extraKeys: string[] = [],
 ): { select: SelectList; additionalKeysLength: number } {
   const partitionKeyArr = extractColumnReferencesFromKey(partitionKey);
   const primaryKeyArr = extractColumnReferencesFromKey(primaryKeys);
-  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr]);
+  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr, ...extraKeys]);
   if (typeof select === 'string') {
     const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
@@ -1407,14 +1408,18 @@ function getSelectLength(select: SelectList): number {
   }
 }
 
-export function useConfigWithPrimaryAndPartitionKey(
+export function useConfigWithAdditionalSelect(
   config: BuilderChartConfigWithDateRange,
+  sourceId?: string,
 ) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
     tableName: config.from.tableName,
     connectionId: config.connection,
   });
+
+  // We're only interested in `uniqueRowIdExpression` for logs.
+  const { data: source } = useSource({ id: sourceId, kinds: [SourceKind.Log] });
 
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;
@@ -1424,14 +1429,14 @@ export function useConfigWithPrimaryAndPartitionKey(
       return undefined;
     }
 
-    const { select, additionalKeysLength } =
-      appendSelectWithPrimaryAndPartitionKey(
-        config.select,
-        primaryKey,
-        partitionKey,
-      );
+    const { select, additionalKeysLength } = appendSelectWithAdditionalKeys(
+      config.select,
+      primaryKey,
+      partitionKey,
+      source?.uniqueRowIdExpression ? [source.uniqueRowIdExpression] : [],
+    );
     return { ...config, select, additionalKeysLength };
-  }, [primaryKey, partitionKey, config]);
+  }, [primaryKey, partitionKey, config, source]);
 
   return mergedConfig;
 }
@@ -1564,7 +1569,7 @@ function DBSqlRowTableComponent({
     return base;
   }, [me, config, orderByArray]);
 
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey(mergedConfigObj);
+  const mergedConfig = useConfigWithAdditionalSelect(mergedConfigObj, sourceId);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {

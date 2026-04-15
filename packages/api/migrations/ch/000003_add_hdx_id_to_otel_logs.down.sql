@@ -1,0 +1,1 @@
+ALTER TABLE ${DATABASE}.otel_logs DROP COLUMN IF EXISTS `__hdx_id`;
