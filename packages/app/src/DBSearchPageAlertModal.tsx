@@ -16,9 +16,9 @@ import {
   validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
-import { Alert as MantineAlert, TextInput } from '@mantine/core';
 import {
   Accordion,
+  Alert as MantineAlert,
   Box,
   Button,
   Group,
@@ -30,6 +30,7 @@ import {
   Stack,
   Tabs,
   Text,
+  TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -54,6 +55,8 @@ import {
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
+import { AckAlert } from './components/alerts/AckAlert';
+import { AlertHistoryCardList } from './components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
 import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
@@ -145,6 +148,9 @@ const AlertForm = ({
   );
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
 
+  const { data: alertData } = api.useAlert(defaultValues?.id);
+  const alert = alertData?.data;
+
   return (
     <form
       onSubmit={handleSubmit(data =>
@@ -158,8 +164,8 @@ const AlertForm = ({
         ),
       )}
     >
-      <Stack gap="xs">
-        <Paper px="md" py="sm" radius="xs">
+      <Paper px="sm" py="xs" radius="xs">
+        <Stack gap="xs">
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -234,27 +240,56 @@ const AlertForm = ({
             disableKeywordAutocomplete
             size="xs"
           />
-        </Paper>
-        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
+          {groupBy && thresholdType === AlertThresholdType.BELOW && (
+            <MantineAlert
+              icon={<IconInfoCircleFilled size={16} />}
+              bg="dark"
+              py="xs"
+            >
+              <Text size="sm" opacity={0.7}>
+                Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
+                &quot;grouped by&quot; value will not alert for periods with no
+                data for a group.
+              </Text>
+            </MantineAlert>
+          )}
+        </Stack>
+      </Paper>
+
+      {(defaultValues?.createdBy || alert) && (
+        <Paper px="md" py="sm" radius="xs" mt="sm">
+          <Group justify="space-between">
+            {defaultValues?.createdBy && (
+              <Box>
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Created by
+                </Text>
+                <Text size="sm" opacity={0.8}>
+                  {defaultValues.createdBy.name ||
+                    defaultValues.createdBy.email}
+                </Text>
+                {defaultValues.createdBy.name && (
+                  <Text size="xs" opacity={0.6}>
+                    {defaultValues.createdBy.email}
+                  </Text>
+                )}
+              </Box>
+            )}
+            {alert && (
+              <Group>
+                {alert.history.length > 0 && (
+                  <AlertHistoryCardList history={alert.history} />
+                )}
+                <AckAlert alert={alert} />
+              </Group>
+            )}
+          </Group>
         </Paper>
-        {groupBy && thresholdType === AlertThresholdType.BELOW && (
-          <MantineAlert
-            icon={<IconInfoCircleFilled size={16} />}
-            bg="dark"
-            py="xs"
-          >
-            <Text size="sm" opacity={0.7}>
-              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
-              &quot;grouped by&quot; value will not alert for periods with no
-              data for a group.
-            </Text>
-          </MantineAlert>
-        )}
-      </Stack>
+      )}
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
         <Accordion.Item value="chart">
@@ -278,22 +313,6 @@ const AlertForm = ({
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-
-      {defaultValues?.createdBy && (
-        <Paper px="md" py="sm" radius="xs" mt="sm">
-          <Text size="xxs" opacity={0.5} mb={4}>
-            Created by
-          </Text>
-          <Text size="sm" opacity={0.8}>
-            {defaultValues.createdBy.name || defaultValues.createdBy.email}
-          </Text>
-          {defaultValues.createdBy.name && (
-            <Text size="xs" opacity={0.6}>
-              {defaultValues.createdBy.email}
-            </Text>
-          )}
-        </Paper>
-      )}
 
       <Group mt="lg" justify="space-between" gap="xs">
         <div>
@@ -421,6 +440,7 @@ export const DBSearchPageAlertModal = ({
         });
       }
     } catch (error) {
+      console.error('Error creating/updating alert:', error);
       notifications.show({
         color: 'red',
         message: `Something went wrong. Please contact ${brandName} team.`,
@@ -440,6 +460,7 @@ export const DBSearchPageAlertModal = ({
         autoClose: 5000,
       });
     } catch (error) {
+      console.error('Failed to delete alert:', error);
       notifications.show({
         color: 'red',
         message: `Something went wrong. Please contact ${brandName} team.`,
@@ -457,7 +478,6 @@ export const DBSearchPageAlertModal = ({
       onClose={onClose}
       size="xl"
       withCloseButton={false}
-      zIndex={9999}
     >
       <Box pos="relative">
         <LoadingOverlay
