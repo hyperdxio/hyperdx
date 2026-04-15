@@ -651,7 +651,10 @@ const parseAlertData = (
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
-      value = isString(v) ? parseFloat(v) : v;
+      // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
+      // Parse them as integers to ensure correct threshold comparison.
+      // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
+      value = isString(v) ? parseInt(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push(`${k}:${v}`);
     }
