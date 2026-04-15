@@ -43,6 +43,31 @@ services:
       ch-server:
         condition: service_healthy
 
+  otel-collector-json:
+    build:
+      context: ../..
+      dockerfile: docker/otel-collector/Dockerfile
+      target: dev
+      args:
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.149.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.55.0}
+    environment:
+      - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
+      - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=otel_json
+      - HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE=true
+      - HYPERDX_LOG_LEVEL=info
+      # OPAMP_SERVER_URL is intentionally not set to run in standalone mode
+    ports:
+      - 14318:4318 # OTLP http receiver
+    networks:
+      - internal
+    depends_on:
+      ch-server:
+        condition: service_healthy
+
 networks:
   internal:
     name: 'smoke-test-internal-network'
