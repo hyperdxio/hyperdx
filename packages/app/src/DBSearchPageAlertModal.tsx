@@ -248,7 +248,7 @@ const AlertForm = ({
             thresholdType === AlertThresholdType.NOT_EQUAL) && (
             <MantineAlert
               icon={<IconInfoCircleFilled size={16} />}
-              bg="dark"
+              color="gray"
               py="xs"
             >
               <Text size="sm" opacity={0.7}>
@@ -258,6 +258,17 @@ const AlertForm = ({
               </Text>
             </MantineAlert>
           )}
+        {(thresholdType === AlertThresholdType.EQUAL ||
+          thresholdType === AlertThresholdType.NOT_EQUAL) && (
+          <MantineAlert
+            icon={<IconInfoCircleFilled size={16} />}
+            color="gray"
+            py="xs"
+          >
+            Note: Floating-point query results are not rounded during equality
+            comparison.
+          </MantineAlert>
+        )}
       </Stack>
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
