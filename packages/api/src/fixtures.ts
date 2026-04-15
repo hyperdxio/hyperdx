@@ -63,6 +63,13 @@ export const getTestFixtureClickHouseClient = async () => {
   return clickhouseClient;
 };
 
+export const closeTestFixtureClickHouseClient = async () => {
+  if (clickhouseClient) {
+    await clickhouseClient.close();
+    clickhouseClient = null;
+  }
+};
+
 const healthCheck = async () => {
   const client = await getTestFixtureClickHouseClient();
   const result = await client.ping();
@@ -132,6 +139,7 @@ export const closeDB = async () => {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
   await mongooseConnection.dropDatabase();
+  await mongoose.disconnect();
 };
 
 export const clearDBCollections = async () => {
@@ -175,8 +183,8 @@ class MockServer extends Server {
     }
   }
 
-  stop() {
-    return new Promise<void>((resolve, reject) => {
+  async stop() {
+    await new Promise<void>((resolve, reject) => {
       this.appServer.close(err => {
         if (err) {
           reject(err);
@@ -187,13 +195,12 @@ class MockServer extends Server {
             reject(err);
             return;
           }
-          super
-            .shutdown()
-            .then(() => resolve())
-            .catch(err => reject(err));
+          resolve();
         });
       });
     });
+    await closeTestFixtureClickHouseClient();
+    await super.shutdown();
   }
 
   clearDBs() {

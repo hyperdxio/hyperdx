@@ -33,6 +33,16 @@ import {
 } from '../core/utils';
 
 describe('utils', () => {
+  // Suppress expected console.error noise from invalid text index types,
+  // unknown tokenizers, and distributed table parsing edge cases
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('formatDate', () => {
     it('12h utc', () => {
       const date = new Date('2021-01-01T12:00:00Z');

@@ -10,6 +10,14 @@ import '@testing-library/jest-dom';
 global.TextEncoder = TextEncoder as any;
 global.TextDecoder = TextDecoder as any;
 
+// Suppress noisy console output during test runs. These are expected from:
+// - ClickHouse query debug logging (console.debug)
+// - React rendering warnings (console.warn)
+// - Mocked fetch/connection failures (console.error)
+jest.spyOn(console, 'debug').mockImplementation(() => {});
+jest.spyOn(console, 'warn').mockImplementation(() => {});
+jest.spyOn(console, 'error').mockImplementation(() => {});
+
 /* Mocks for mantine */
 class ResizeObserver {
   observe() {}

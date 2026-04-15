@@ -16,6 +16,15 @@ import {
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
+  // Suppress expected console.warn noise from missing columns / optimization fallbacks
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     const columns = [
       { name: 'timestamp', type: 'DateTime' },

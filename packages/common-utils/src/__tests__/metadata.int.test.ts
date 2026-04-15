@@ -41,6 +41,11 @@ describe('Metadata Integration Tests', () => {
     });
   });
 
+  afterAll(async () => {
+    await hdxClient.close();
+    await client.close();
+  });
+
   describe('getKeyValues', () => {
     let metadata: Metadata;
     const chartConfig: ChartConfigWithDateRange = {
@@ -89,8 +94,6 @@ describe('Metadata Integration Tests', () => {
       await client.command({
         query: 'DROP TABLE IF EXISTS default.test_table',
       });
-
-      await client.close();
     });
 
     describe.each([true, false])('with disableRowLimit=%s', disableRowLimit => {

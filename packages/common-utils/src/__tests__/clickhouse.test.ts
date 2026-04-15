@@ -394,6 +394,13 @@ describe('processClickhouseSettings - optimization settings', () => {
   };
 
   beforeEach(() => {
+    // Suppress expected console noise from permission check fallbacks
+    // and ClickHouse query debug logging. These must be re-applied each
+    // test because afterEach calls restoreAllMocks.
+    jest.spyOn(console, 'debug').mockImplementation(() => {});
+    jest.spyOn(console, 'info').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
     const setup = createClient();
     client = setup.client;
     mockQueryMethod = setup.mockQueryMethod;
