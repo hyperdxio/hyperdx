@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Button,
   Flex,
+  Group,
+  Modal,
   Tabs,
   Text,
   TextInput,
@@ -34,14 +37,9 @@ type GroupTabBarProps = {
   showControls: boolean;
   onTabChange?: (tabId: string) => void;
   onRenameTab?: (tabId: string, newTitle: string) => void;
-  onDeleteTab?: (tabId: string) => void;
+  onDeleteTab?: (tabId: string, action: 'delete' | 'move') => void;
   containerId: string;
   alertingTabIds?: Set<string>;
-  confirm?: (
-    message: React.ReactNode,
-    confirmLabel?: string,
-    options?: { variant?: 'primary' | 'danger' },
-  ) => Promise<boolean>;
   hoverControlStyle: React.CSSProperties;
 };
 
@@ -54,12 +52,12 @@ export default function GroupTabBar({
   onDeleteTab,
   containerId,
   alertingTabIds,
-  confirm,
   hoverControlStyle,
 }: GroupTabBarProps) {
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [tabRenameValue, setTabRenameValue] = useState('');
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
+  const [deletingTabId, setDeletingTabId] = useState<string | null>(null);
 
   const handleCommitTabRename = (tabId: string) => {
     const trimmed = tabRenameValue.trim();
@@ -70,24 +68,12 @@ export default function GroupTabBar({
     setRenamingTabId(null);
   };
 
-  const handleDeleteTab = async (tabId: string) => {
-    if (confirm) {
-      const tab = tabs.find(t => t.id === tabId);
-      const confirmed = await confirm(
-        <>
-          Delete tab{' '}
-          <Text component="span" fw={700}>
-            {tab?.title ?? 'this tab'}
-          </Text>
-          ? Tiles will be moved to the first remaining tab.
-        </>,
-        'Delete',
-        { variant: 'danger' },
-      );
-      if (!confirmed) return;
-    }
-    onDeleteTab?.(tabId);
-  };
+  const deletingTab = deletingTabId
+    ? tabs.find(t => t.id === deletingTabId)
+    : null;
+  const firstRemainingTab = deletingTabId
+    ? tabs.find(t => t.id !== deletingTabId)
+    : null;
 
   return (
     <>
@@ -110,7 +96,7 @@ export default function GroupTabBar({
                   }}
                   onClick={e => {
                     e.stopPropagation();
-                    handleDeleteTab(tab.id);
+                    setDeletingTabId(tab.id);
                   }}
                   title="Delete tab"
                   data-testid={`tab-delete-${tab.id}`}
@@ -197,6 +183,60 @@ export default function GroupTabBar({
           </ActionIcon>
         </Tooltip>
       )}
+      {/* Tab delete confirmation modal */}
+      <Modal
+        data-testid="tab-delete-modal"
+        opened={!!deletingTabId}
+        onClose={() => setDeletingTabId(null)}
+        centered
+        withCloseButton={false}
+      >
+        <Text size="sm" opacity={0.7}>
+          Delete tab{' '}
+          <Text component="span" fw={700}>
+            {deletingTab?.title ?? 'this tab'}
+          </Text>
+          ?
+        </Text>
+        <Group justify="flex-end" mt="md" gap="xs">
+          <Button
+            data-testid="tab-delete-cancel"
+            size="xs"
+            variant="secondary"
+            onClick={() => setDeletingTabId(null)}
+          >
+            Cancel
+          </Button>
+          {firstRemainingTab && (
+            <Button
+              data-testid="tab-delete-move"
+              size="xs"
+              variant="primary"
+              onClick={() => {
+                if (deletingTabId) {
+                  onDeleteTab?.(deletingTabId, 'move');
+                }
+                setDeletingTabId(null);
+              }}
+            >
+              Move Tiles to {firstRemainingTab.title}
+            </Button>
+          )}
+          <Button
+            data-testid="tab-delete-confirm"
+            size="xs"
+            variant="danger"
+            onClick={() => {
+              if (deletingTabId) {
+                onDeleteTab?.(deletingTabId, 'delete');
+              }
+              setDeletingTabId(null);
+            }}
+          >
+            Delete Tab & Tiles
+          </Button>
+        </Group>
+      </Modal>
     </>
   );
 }

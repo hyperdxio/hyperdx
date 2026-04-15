@@ -192,66 +192,68 @@ describe('GroupContainer', () => {
   });
 
   describe('tab delete', () => {
-    it('calls onDeleteTab with confirmation when confirm is provided', async () => {
-      const onDeleteTab = jest.fn();
-      const confirm = jest.fn().mockResolvedValue(true);
-      renderGroupContainer({
-        onDeleteTab,
-        confirm,
-        container: {
-          id: 'g1',
-          title: 'Group',
-          collapsed: false,
-          tabs: [
-            { id: 'tab-1', title: 'First' },
-            { id: 'tab-2', title: 'Second' },
-          ],
-          activeTabId: 'tab-1',
-        },
+    const twoTabProps = {
+      container: {
+        id: 'g1',
+        title: 'Group',
+        collapsed: false,
+        tabs: [
+          { id: 'tab-1', title: 'First' },
+          { id: 'tab-2', title: 'Second' },
+        ],
         activeTabId: 'tab-1',
-        onTabChange: jest.fn(),
-      });
+      },
+      activeTabId: 'tab-1' as const,
+      onTabChange: jest.fn(),
+    };
 
-      // Hover over first tab to reveal delete button
+    it('opens delete modal when tab delete button is clicked', async () => {
+      const onDeleteTab = jest.fn();
+      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
-      const deleteBtn = screen.getByTestId('tab-delete-tab-1');
-      fireEvent.click(deleteBtn);
+      fireEvent.click(screen.getByTestId('tab-delete-tab-1'));
 
-      // Wait for async confirm
-      await screen.findByText('First');
-      expect(confirm).toHaveBeenCalledTimes(1);
-      expect(onDeleteTab).toHaveBeenCalledWith('tab-1');
+      expect(
+        await screen.findByTestId('tab-delete-confirm'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('tab-delete-move')).toBeInTheDocument();
     });
 
-    it('does not call onDeleteTab when confirm is rejected', async () => {
+    it('calls onDeleteTab with "delete" when Delete Tab & Tiles is clicked', async () => {
       const onDeleteTab = jest.fn();
-      const confirm = jest.fn().mockResolvedValue(false);
-      renderGroupContainer({
-        onDeleteTab,
-        confirm,
-        container: {
-          id: 'g1',
-          title: 'Group',
-          collapsed: false,
-          tabs: [
-            { id: 'tab-1', title: 'First' },
-            { id: 'tab-2', title: 'Second' },
-          ],
-          activeTabId: 'tab-1',
-        },
-        activeTabId: 'tab-1',
-        onTabChange: jest.fn(),
-      });
+      renderGroupContainer({ onDeleteTab, ...twoTabProps });
 
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
-      const deleteBtn = screen.getByTestId('tab-delete-tab-1');
-      fireEvent.click(deleteBtn);
+      fireEvent.click(screen.getByTestId('tab-delete-tab-1'));
+      fireEvent.click(await screen.findByTestId('tab-delete-confirm'));
 
-      // Wait a tick for the async confirm to settle
-      await new Promise(r => setTimeout(r, 0));
-      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onDeleteTab).toHaveBeenCalledWith('tab-1', 'delete');
+    });
+
+    it('calls onDeleteTab with "move" when Move Tiles is clicked', async () => {
+      const onDeleteTab = jest.fn();
+      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+
+      const firstTab = screen.getByRole('tab', { name: 'First' });
+      fireEvent.mouseEnter(firstTab);
+      fireEvent.click(screen.getByTestId('tab-delete-tab-1'));
+      fireEvent.click(await screen.findByTestId('tab-delete-move'));
+
+      expect(onDeleteTab).toHaveBeenCalledWith('tab-1', 'move');
+    });
+
+    it('does not call onDeleteTab when cancel is clicked', async () => {
+      const onDeleteTab = jest.fn();
+      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+
+      const firstTab = screen.getByRole('tab', { name: 'First' });
+      fireEvent.mouseEnter(firstTab);
+      fireEvent.click(screen.getByTestId('tab-delete-tab-1'));
+      fireEvent.click(await screen.findByTestId('tab-delete-cancel'));
+
       expect(onDeleteTab).not.toHaveBeenCalled();
     });
   });

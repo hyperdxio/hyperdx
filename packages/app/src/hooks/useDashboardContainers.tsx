@@ -228,7 +228,7 @@ export default function useDashboardContainers({
   );
 
   const handleDeleteTab = useCallback(
-    (containerId: string, tabId: string) => {
+    (containerId: string, tabId: string, action: 'delete' | 'move') => {
       if (!dashboard) return;
       const container = dashboard.containers?.find(c => c.id === containerId);
       if (!container?.tabs) return;
@@ -239,34 +239,26 @@ export default function useDashboardContainers({
           const c = draft.containers?.find(c => c.id === containerId);
           if (!c?.tabs) return;
 
-          if (remaining.length <= 1) {
-            // Keep the 1 remaining tab (don't clear tabs array)
-            const keepTab = remaining[0];
-            c.tabs = remaining;
-            c.activeTabId = keepTab?.id;
-            // Sync container title to surviving tab
-            if (keepTab) c.title = keepTab.title;
-            // Move tiles from deleted tab to the remaining tab
-            for (const tile of draft.tiles) {
-              if (tile.containerId === containerId && tile.tabId === tabId) {
-                tile.tabId = keepTab?.id;
-              }
-            }
+          if (action === 'delete') {
+            draft.tiles = draft.tiles.filter(
+              t => !(t.containerId === containerId && t.tabId === tabId),
+            );
           } else {
-            const targetTabId = remaining[0].id;
-            // Move tiles from deleted tab to first remaining tab
+            // Move tiles to first remaining tab
+            const targetTabId = remaining[0]?.id;
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId && tile.tabId === tabId) {
                 tile.tabId = targetTabId;
               }
             }
-            c.tabs = c.tabs.filter(t => t.id !== tabId);
-            if (c.activeTabId === tabId) {
-              c.activeTabId = targetTabId;
-            }
-            // Sync container title to new first tab
-            if (c.tabs[0]) c.title = c.tabs[0].title;
           }
+
+          c.tabs = c.tabs.filter(t => t.id !== tabId);
+          const firstTab = c.tabs[0];
+          if (c.activeTabId === tabId) {
+            c.activeTabId = firstTab?.id;
+          }
+          if (firstTab) c.title = firstTab.title;
         }),
       );
     },

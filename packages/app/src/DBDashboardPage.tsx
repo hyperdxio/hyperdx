@@ -869,8 +869,6 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
   downloadAnchorNode.remove();
 }
 
-// Extracted component for rendering a single dashboard group/container.
-// Eliminates the double-nested inline function rendering pattern.
 function DashboardGroupItem({
   container,
   containerTiles,
@@ -888,7 +886,6 @@ function DashboardGroupItem({
   onRenameContainer,
   onTabChange,
   dragHandleProps,
-  confirm,
   layoutChangeHandler,
   tileToLayoutItem,
   renderTileComponent,
@@ -905,15 +902,10 @@ function DashboardGroupItem({
   onAddTile: (containerId: string, tabId?: string) => void;
   onAddTab: () => void;
   onRenameTab: (tabId: string, newTitle: string) => void;
-  onDeleteTab: (tabId: string) => void;
+  onDeleteTab: (tabId: string, action: 'delete' | 'move') => void;
   onRenameContainer: (newTitle: string) => void;
   onTabChange: (tabId: string) => void;
   dragHandleProps: DragHandleProps;
-  confirm: (
-    message: React.ReactNode,
-    confirmLabel?: string,
-    options?: { variant?: 'primary' | 'danger' },
-  ) => Promise<boolean>;
   layoutChangeHandler?: (newLayout: RGL.Layout[]) => void;
   tileToLayoutItem: (tile: Tile) => RGL.Layout;
   renderTileComponent: (tile: Tile) => React.ReactNode;
@@ -942,7 +934,6 @@ function DashboardGroupItem({
       onDeleteTab={onDeleteTab}
       onRename={onRenameContainer}
       dragHandleProps={dragHandleProps}
-      confirm={confirm}
       alertingTabIds={alertingTabIds}
     >
       {(currentTabId: string | undefined) => {
@@ -2146,8 +2137,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       onRenameTab={(tabId, title) =>
                         handleRenameTab(container.id, tabId, title)
                       }
-                      onDeleteTab={tabId =>
-                        handleDeleteTab(container.id, tabId)
+                      onDeleteTab={(tabId, action) =>
+                        handleDeleteTab(container.id, tabId, action)
                       }
                       onRenameContainer={title =>
                         handleRenameContainer(container.id, title)
@@ -2156,7 +2147,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         handleTabChange(container.id, tabId)
                       }
                       dragHandleProps={dragHandleProps}
-                      confirm={confirm}
                       layoutChangeHandler={containerLayoutChangeHandlers.get(
                         container.id,
                       )}

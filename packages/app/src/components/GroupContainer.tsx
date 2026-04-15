@@ -35,15 +35,10 @@ type GroupContainerProps = {
   onTabChange?: (tabId: string) => void;
   onAddTab?: () => void;
   onRenameTab?: (tabId: string, newTitle: string) => void;
-  onDeleteTab?: (tabId: string) => void;
+  onDeleteTab?: (tabId: string, action: 'delete' | 'move') => void;
   onRename?: (newTitle: string) => void;
   children: (activeTabId: string | undefined) => React.ReactNode;
   dragHandleProps?: DragHandleProps;
-  confirm?: (
-    message: React.ReactNode,
-    confirmLabel?: string,
-    options?: { variant?: 'primary' | 'danger' },
-  ) => Promise<boolean>;
   /** Tab IDs that contain tiles with active alerts */
   alertingTabIds?: Set<string>;
 };
@@ -66,7 +61,6 @@ export default function GroupContainer({
   onRename,
   children,
   dragHandleProps,
-  confirm,
   alertingTabIds,
 }: GroupContainerProps) {
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
@@ -282,7 +276,6 @@ export default function GroupContainer({
               onDeleteTab={onDeleteTab}
               containerId={container.id}
               alertingTabIds={alertingTabIds}
-              confirm={confirm}
               hoverControlStyle={hoverControlStyle}
             />
             {addTileButton}
