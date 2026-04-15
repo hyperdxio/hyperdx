@@ -6,7 +6,11 @@ import ms from 'ms';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import { bulkInsertLogs, getServer } from '@/fixtures';
+import {
+  bulkInsertLogs,
+  getServer,
+  RAW_SQL_NUMBER_ALERT_TEMPLATE,
+} from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
@@ -857,5 +861,138 @@ describe('Single Invocation Alert Test', () => {
     expect(dashboard.tiles[0].config.name).toBe('First Tile Name');
     expect(dashboard.tiles[1].config.name).toBe('Second Tile Name');
     expect(enhancedAlert.tileId).toBe('second-tile-id');
+  });
+
+  it('should trigger alert for raw SQL Number chart tile', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/test-number',
+      name: 'Test Webhook',
+    }).save();
+
+    const dashboard = await new Dashboard({
+      name: 'Number Chart Alert Dashboard',
+      team: team._id,
+      tiles: [
+        {
+          id: 'number-tile-1',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 4,
+          config: {
+            configType: 'sql',
+            displayType: 'number',
+            sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+            connection: connection.id,
+          },
+        },
+      ],
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.TILE,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId: dashboard.id,
+        tileId: 'number-tile-1',
+        name: 'Number Chart Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const eventTime = new Date(now.getTime() - ms('3m'));
+
+    // Insert logs that should be counted by the Number chart query
+    await bulkInsertLogs([
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Number chart error 1',
+      },
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Number chart error 2',
+      },
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Number chart error 3',
+      },
+    ]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+
+    const tile = dashboard.tiles?.find((t: any) => t.id === 'number-tile-1');
+
+    const details: AlertDetails = {
+      alert: enhancedAlert,
+      source: undefined,
+      taskType: AlertTaskType.TILE,
+      tile: tile!,
+      dashboard,
+      previousMap: new Map(),
+    };
+
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    // Verify alert state changed to ALERT
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+    // Verify alert history was created
+    const alertHistories = await AlertHistory.find({
+      alert: alert.id,
+    }).sort({ createdAt: 1 });
+
+    expect(alertHistories.length).toBe(1);
+    expect(alertHistories[0].state).toBe('ALERT');
+    expect(alertHistories[0].counts).toBe(1);
+    expect(alertHistories[0].lastValues.length).toBe(1);
+    expect(alertHistories[0].lastValues[0].count).toBe(3);
+
+    // Verify webhook was called
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
   });
 });

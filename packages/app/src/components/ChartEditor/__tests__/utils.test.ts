@@ -683,6 +683,60 @@ describe('validateChartForm', () => {
     ).toHaveLength(0);
   });
 
+  it('does not error when raw SQL Number chart has alert with date range params but no interval', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Number,
+        sqlTemplate:
+          'SELECT count() FROM logs WHERE ts >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND ts <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+        connection: 'conn-1',
+        alert: {
+          interval: '1h',
+          threshold: 100,
+          thresholdType: 'above',
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      undefined,
+      setError,
+    );
+    expect(
+      errors.filter(
+        e => e.path === 'sqlTemplate' && e.message.includes('alert'),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('still requires interval params for raw SQL Line chart alerts', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        sqlTemplate:
+          'SELECT count() FROM logs WHERE ts >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND ts <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+        connection: 'conn-1',
+        alert: {
+          interval: '1h',
+          threshold: 100,
+          thresholdType: 'above',
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      undefined,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'sqlTemplate',
+        message:
+          'SQL used for alerts must include an interval parameter or macro.',
+      }),
+    );
+  });
+
   // ── Source validation ────────────────────────────────────────────────
 
   it('errors when builder chart has no source', () => {

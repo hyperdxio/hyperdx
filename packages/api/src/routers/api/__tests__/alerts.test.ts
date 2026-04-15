@@ -5,6 +5,7 @@ import {
   getServer,
   makeAlertInput,
   makeRawSqlAlertTile,
+  makeRawSqlNumberAlertTile,
   makeRawSqlTile,
   makeTile,
   randomMongoId,
@@ -579,9 +580,34 @@ describe('alerts router', () => {
     expect(alert.body.data.tileId).toBe(rawSqlTile.id);
   });
 
-  it('rejects creating an alert on a raw SQL number tile', async () => {
+  it('allows creating an alert on a raw SQL number tile', async () => {
+    const rawSqlTile = makeRawSqlNumberAlertTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+    expect(alert.body.data.dashboard).toBe(dashboard.body.id);
+    expect(alert.body.data.tileId).toBe(rawSqlTile.id);
+  });
+
+  it('rejects creating an alert on a raw SQL table tile', async () => {
     const rawSqlTile = makeRawSqlTile({
-      displayType: DisplayType.Number,
+      displayType: DisplayType.Table,
       sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
     });
     const dashboard = await agent
@@ -630,10 +656,45 @@ describe('alerts router', () => {
       .expect(400);
   });
 
-  it('rejects updating an alert to reference a raw SQL number tile', async () => {
+  it('allows updating an alert to reference a raw SQL number tile', async () => {
+    const regularTile = makeTile();
+    const rawSqlTile = makeRawSqlNumberAlertTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [regularTile, rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: regularTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      })
+      .expect(200);
+  });
+
+  it('rejects updating an alert to reference a raw SQL table tile', async () => {
     const regularTile = makeTile();
     const rawSqlTile = makeRawSqlTile({
-      displayType: DisplayType.Number,
+      displayType: DisplayType.Table,
       sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
     });
     const dashboard = await agent
