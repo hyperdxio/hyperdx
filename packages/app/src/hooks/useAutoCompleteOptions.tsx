@@ -1,18 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Field,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import { NOW } from '@/config';
 import {
   deduplicate2dArray,
-  useJsonColumns,
+  useCompleteKeyValues,
   useMultipleAllFields,
-  useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
-import { mergePath, toArray } from '@/utils';
+import { toArray } from '@/utils';
+
+const ROLLUP_GRANULARITY = '15 minute' as const;
+
+export type TokenInfo = {
+  /** The full token at the cursor position */
+  token: string;
+  /** Index of the token in the tokens array */
+  index: number;
+  /** All tokens from splitting the input on whitespace */
+  tokens: string[];
+};
+
+/** Splits input into tokens and finds which token the cursor is in */
+function tokenizeAtCursor(value: string, cursorPos: number): TokenInfo {
+  const tokens = value.split(' ');
+  let idx = 0;
+  let pos = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    pos += tokens[i].length;
+    if (pos >= cursorPos || i === tokens.length - 1) {
+      idx = i;
+      break;
+    }
+    pos++; // account for the space
+    idx = i + 1;
+  }
+  return { token: tokens[idx] ?? '', index: idx, tokens };
+}
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -26,19 +52,45 @@ export function useAutoCompleteOptions(
   {
     tableConnection,
     additionalSuggestions,
+    dateRange,
+    inputRef,
   }: {
     tableConnection?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
+    dateRange?: [Date, Date];
+    inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   },
 ) {
-  // Fetch and gather all field options
-  const { data: fields } = useMultipleAllFields(
-    tableConnection
-      ? Array.isArray(tableConnection)
-        ? tableConnection
-        : [tableConnection]
-      : [],
+  const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
+
+  // Add fieldsRollupView to table connections — will eventually come from Source config
+  const tcsWithRollup = useMemo(
+    () =>
+      tcs.map(tc => {
+        if (tc.tableName === 'otel_logs' || tc.tableName === 'otel_traces') {
+          return {
+            ...tc,
+            fieldsRollupView: {
+              name: `${tc.tableName}_key_rollup_15m`,
+              granularity: ROLLUP_GRANULARITY,
+            },
+          };
+        }
+        return tc;
+      }),
+    [tcs],
   );
+
+  const effectiveDateRange: [Date, Date] = useMemo(
+    () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
+    [dateRange],
+  );
+
+  // Fetch fields, using rollup for map key discovery when available
+  const { data: fields } = useMultipleAllFields(tcsWithRollup, {
+    dateRange: effectiveDateRange,
+  });
+
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 
@@ -63,121 +115,53 @@ export function useAutoCompleteOptions(
     return { fieldCompleteOptions, fieldCompleteMap };
   }, [formatter, fields, additionalSuggestions]);
 
-  // searchField is used for the purpose of checking if a key is valid and key values should be fetched
-  // TODO: Come back and refactor how this works - it's not great and wouldn't catch a person copy-pasting some text
-  const [searchField, setSearchField] = useState<Field | null>(null);
-  // check if any search field matches
-  useEffect(() => {
-    const v = fieldCompleteMap.get(value);
-    if (v) {
-      setSearchField(v);
-    }
-  }, [fieldCompleteMap, value]);
-  // clear search field if no key matches anymore
-  useEffect(() => {
-    if (!searchField) return;
-    if (!value.startsWith(formatter.formatFieldValue(searchField))) {
-      setSearchField(null);
-    }
-  }, [searchField, setSearchField, value, formatter]);
-  const tcForJson = Array.isArray(tableConnection)
-    ? tableConnection.length > 0
-      ? tableConnection[0]
-      : undefined
-    : tableConnection;
-  const { data: jsonColumns } = useJsonColumns(
-    tcForJson ?? {
-      tableName: '',
-      databaseName: '',
-      connectionId: '',
-    },
-  );
-  const searchKeys = useMemo(
-    () =>
-      searchField && jsonColumns
-        ? [mergePath(searchField.path, jsonColumns)]
-        : [],
-    [searchField, jsonColumns],
+  // Tokenize input at cursor position
+  const tokenInfo = useMemo(() => {
+    const cursorPos = inputRef?.current?.selectionStart ?? value.length;
+    return tokenizeAtCursor(value, cursorPos);
+  }, [value, inputRef]);
+
+  // Extract the field name portion of the token (strip colon and value)
+  const fieldNameAtCursor = useMemo(() => {
+    const colonIdx = tokenInfo.token.indexOf(':');
+    return colonIdx >= 0 ? tokenInfo.token.slice(0, colonIdx) : tokenInfo.token;
+  }, [tokenInfo.token]);
+
+  // Derive the active search field from the token at cursor
+  const searchField = useMemo(
+    () => fieldCompleteMap.get(fieldNameAtCursor) ?? null,
+    [fieldCompleteMap, fieldNameAtCursor],
   );
 
-  // hooks to get key values
-  const chartConfigs: BuilderChartConfigWithDateRange[] = toArray(
-    tableConnection,
-  ).map(({ databaseName, tableName, connectionId }) => ({
-    connection: connectionId,
-    from: {
-      databaseName,
-      tableName,
+  // Debounced fetch of values for the selected key from rollup tables
+  const firstTc = tcs.length > 0 ? tcs[0] : undefined;
+  const { data: keyValues, isFetching: isLoadingValues } = useCompleteKeyValues(
+    {
+      tableConnection: firstTc,
+      searchField,
+      dateRange: effectiveDateRange,
     },
-    timestampValueExpression: '',
-    select: '',
-    where: '',
-    // TODO: Pull in date for query as arg
-    // just assuming 1/2 day is okay to query over right now
-    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
-  }));
+  );
 
-  const { data: keyVals } = useMultipleGetKeyValues({
-    chartConfigs,
-    keys: searchKeys,
-  });
-
+  // Build key-value pair suggestions
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {
-    if (!keyVals || !searchField) return fieldCompleteOptions;
-    const output = // TODO: Fix this hacky type assertion caused by bug in HDX-1548
-      (
-        keyVals as unknown as {
-          key: string;
-          value: (string | { [key: string]: string })[];
-        }[]
-      ).flatMap(kv => {
-        return kv.value.flatMap(v => {
-          if (typeof v === 'string') {
-            const value = formatter.formatKeyValPair(
-              formatter.formatFieldValue(searchField),
-              v,
-            );
-            return [
-              {
-                value,
-                label: value,
-              },
-            ];
-          } else if (typeof v === 'object') {
-            // TODO: Fix type issues mentioned in HDX-1548
-            const output: {
-              value: string;
-              label: string;
-            }[] = [];
-            for (const [key, val] of Object.entries(v)) {
-              if (typeof key !== 'string' || typeof val !== 'string') {
-                console.error('unknown type for autocomplete object ', v);
-                return [];
-              }
-              const field = structuredClone(searchField);
-              field.path.push(key);
-              const value = formatter.formatKeyValPair(
-                formatter.formatFieldValue(field),
-                val,
-              );
-              output.push({
-                value,
-                label: value,
-              });
-            }
-            return output;
-          } else {
-            return [];
-          }
-        });
-      });
-    return output;
-  }, [fieldCompleteOptions, keyVals, searchField, formatter]);
+    if (!keyValues || !searchField || keyValues.length === 0) return [];
 
-  // combine all autocomplete options
-  return useMemo(() => {
+    return keyValues.map(v => {
+      const formatted = formatter.formatKeyValPair(
+        formatter.formatFieldValue(searchField),
+        v,
+      );
+      return { value: formatted, label: formatted };
+    });
+  }, [keyValues, searchField, formatter]);
+
+  // Combine all autocomplete options
+  const options = useMemo(() => {
     return deduplicate2dArray([fieldCompleteOptions, keyValCompleteOptions]);
   }, [fieldCompleteOptions, keyValCompleteOptions]);
+
+  return { options, isLoadingValues, tokenInfo };
 }

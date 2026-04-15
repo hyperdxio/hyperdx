@@ -730,7 +730,7 @@ describe('Metadata', () => {
 
       const fields = await md.getAllFields({
         databaseName: 'otel',
-        tableName: 'otel_logs',
+        tableName: 'test_logs',
         connectionId: 'conn-1',
       });
 
@@ -809,7 +809,7 @@ describe('Metadata', () => {
 
       const fields = await md.getAllFields({
         databaseName: 'otel',
-        tableName: 'otel_logs',
+        tableName: 'test_logs',
         connectionId: 'conn-1',
       });
 

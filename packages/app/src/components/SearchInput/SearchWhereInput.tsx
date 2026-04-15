@@ -104,6 +104,10 @@ export type SearchWhereInputProps = {
    */
   additionalSuggestions?: string[];
   /**
+   * Date range for autocomplete rollup queries
+   */
+  dateRange?: [Date, Date];
+  /**
    * Form field name for the language value ('sql' | 'lucene').
    * If not provided, defaults to `${name}Language` (e.g. name="where" → "whereLanguage").
    */
@@ -152,6 +156,7 @@ export default function SearchWhereInput({
   minWidth,
   'data-testid': dataTestId,
   additionalSuggestions,
+  dateRange,
   languageName = `${name}Language`,
 }: SearchWhereInputProps) {
   const { field: languageField } = useController({
@@ -218,6 +223,7 @@ export default function SearchWhereInput({
             size={size}
             data-testid={dataTestId}
             additionalSuggestions={additionalSuggestions}
+            dateRange={dateRange}
           />
         )}
         {enableHotkey && (
