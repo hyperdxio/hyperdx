@@ -1,8 +1,26 @@
 #!/bin/sh
 set -e
 
-# Fall back to legacy schema when the ClickHouse JSON feature gate is enabled
+# DEPRECATED: The clickhouse.json feature gate has been removed upstream.
+# When OTEL_AGENT_FEATURE_GATE_ARG contains clickhouse.json, strip it and
+# map it to HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE instead. Other feature gates
+# are preserved and passed through to the collector.
 if echo "$OTEL_AGENT_FEATURE_GATE_ARG" | grep -q "clickhouse.json"; then
+  echo "WARNING: '--feature-gates=clickhouse.json' is deprecated and no longer supported by the collector."
+  echo "WARNING: Use HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE=true instead. This flag will be removed in a future release."
+  export HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE=true
+
+  # Strip clickhouse.json from the feature gates, keeping any other gates
+  REMAINING_GATES=$(echo "$OTEL_AGENT_FEATURE_GATE_ARG" | sed 's/--feature-gates=//' | tr ',' '\n' | grep -v 'clickhouse.json' | tr '\n' ',' | sed 's/,$//')
+  if [ -n "$REMAINING_GATES" ]; then
+    export OTEL_AGENT_FEATURE_GATE_ARG="--feature-gates=$REMAINING_GATES"
+  else
+    unset OTEL_AGENT_FEATURE_GATE_ARG
+  fi
+fi
+
+# Fall back to legacy schema when ClickHouse JSON exporter mode is enabled
+if [ "$HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE" = "true" ]; then
   export HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true
 fi
 
@@ -39,7 +57,7 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config $CUSTOM_OTELCOL_CONFIG_FILE"
   fi
 
-  # Pass feature gates to the collector in standalone mode
+  # Pass remaining feature gates to the collector in standalone mode
   if [ -n "$OTEL_AGENT_FEATURE_GATE_ARG" ]; then
     COLLECTOR_ARGS="$COLLECTOR_ARGS $OTEL_AGENT_FEATURE_GATE_ARG"
   fi
