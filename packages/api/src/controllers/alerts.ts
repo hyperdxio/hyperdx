@@ -88,7 +88,7 @@ export const validateAlertInput = async (
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
       if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
         throw new Api400Error(
-          'Alerts on Raw SQL tiles are only supported for Line or Stacked Bar display types',
+          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
         );
       }
 

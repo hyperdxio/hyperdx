@@ -166,6 +166,11 @@ export default function RawSqlChartEditor({
       });
   }, [sources, connection]);
 
+  const alertTooltip =
+    displayType === DisplayType.Number
+      ? 'The threshold will be evaluated against the last numeric column in the first query result'
+      : 'The threshold will be evaluated against the last numeric column in each query result';
+
   return (
     <Stack gap="xs">
       <Group align="center" gap={0} justify="space-between">
@@ -247,7 +252,7 @@ export default function RawSqlChartEditor({
           onRemove={() => setValue('alert', undefined)}
           error={alertErrorMessage}
           warning={alertWarningMessage}
-          tooltip="The threshold will be evaluated against the last numeric column in the query result"
+          tooltip={alertTooltip}
         />
       )}
     </Stack>
