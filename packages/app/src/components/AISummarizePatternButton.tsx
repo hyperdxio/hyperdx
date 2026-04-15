@@ -10,10 +10,14 @@ import {
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
+  AISummarizeTone,
   dismissEasterEgg,
   generatePatternSummary,
+  getSavedTone,
   isEasterEggVisible,
+  isSmartMode,
   RowData,
+  saveTone,
   Theme,
 } from './aiSummarize';
 
@@ -34,6 +38,14 @@ function buildRowDataFromSample(
   };
 }
 
+// Keys that are already shown elsewhere or not useful for AI context
+const SKIP_KEYS = new Set([
+  PATTERN_COLUMN_ALIAS,
+  SEVERITY_TEXT_COLUMN_ALIAS,
+  '__hdx_pk',
+  'SortKey',
+]);
+
 export function formatPatternContent(
   pattern: Pattern,
   serviceNameExpression: string,
@@ -51,6 +63,24 @@ export function formatPatternContent(
       const svc = sample[serviceNameExpression] ?? '';
       const sev = sample[SEVERITY_TEXT_COLUMN_ALIAS] ?? '';
       parts.push(`  - [${sev}] ${svc}: ${body}`);
+
+      // Include interesting attributes from the first sample only (to save tokens)
+      if (sample === samplesSlice[0]) {
+        const attrs = Object.entries(sample)
+          .filter(
+            ([k, v]) =>
+              v != null &&
+              v !== '' &&
+              !SKIP_KEYS.has(k) &&
+              k !== serviceNameExpression,
+          )
+          .slice(0, 15);
+        if (attrs.length > 0) {
+          parts.push(
+            `    Attributes: ${attrs.map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ')}`,
+          );
+        }
+      }
     }
   }
 
@@ -67,6 +97,7 @@ export default function AISummarizePatternButton({
   const { data: me } = api.useMe();
   const aiEnabled = me?.aiAssistantEnabled ?? false;
   const showEasterEgg = isEasterEggVisible();
+  const smartMode = isSmartMode();
 
   const [result, setResult] = useState<{
     text: string;
@@ -76,6 +107,7 @@ export default function AISummarizePatternButton({
   const [isOpen, setIsOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tone, setTone] = useState<AISummarizeTone>(getSavedTone);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const summarize = useAISummarize();
@@ -97,25 +129,28 @@ export default function AISummarizePatternButton({
     }
   }, [pattern]);
 
-  const handleRealAI = useCallback(() => {
-    setIsGenerating(true);
-    setIsOpen(true);
-    setError(null);
-    const content = formatPatternContent(pattern, serviceNameExpression);
-    summarize.mutate(
-      { type: 'pattern', content },
-      {
-        onSuccess: data => {
-          setResult({ text: data.summary });
-          setIsGenerating(false);
+  const handleRealAI = useCallback(
+    (toneOverride?: AISummarizeTone) => {
+      setIsGenerating(true);
+      setIsOpen(true);
+      setError(null);
+      const content = formatPatternContent(pattern, serviceNameExpression);
+      summarize.mutate(
+        { type: 'pattern', content, tone: toneOverride ?? tone },
+        {
+          onSuccess: data => {
+            setResult({ text: data.summary });
+            setIsGenerating(false);
+          },
+          onError: err => {
+            setError(err.message || 'Failed to generate summary');
+            setIsGenerating(false);
+          },
         },
-        onError: err => {
-          setError(err.message || 'Failed to generate summary');
-          setIsGenerating(false);
-        },
-      },
-    );
-  }, [pattern, serviceNameExpression, summarize]);
+      );
+    },
+    [pattern, serviceNameExpression, summarize, tone],
+  );
 
   const handleFakeAI = useCallback(() => {
     setIsGenerating(true);
@@ -184,6 +219,16 @@ export default function AISummarizePatternButton({
     setTimeout(() => setDismissed(true), 300);
   }, [aiEnabled]);
 
+  const handleToneChange = useCallback(
+    (t: AISummarizeTone) => {
+      setTone(t);
+      saveTone(t);
+      setResult(null);
+      handleRealAI(t);
+    },
+    [handleRealAI],
+  );
+
   if (dismissed) return null;
   if (!aiEnabled && !showEasterEgg) return null;
 
@@ -198,6 +243,8 @@ export default function AISummarizePatternButton({
       analyzingLabel="Analyzing pattern data..."
       isRealAI={aiEnabled}
       error={error}
+      tone={tone}
+      onToneChange={aiEnabled && smartMode ? handleToneChange : undefined}
     />
   );
 }

@@ -21,6 +21,7 @@ export function useChartAssistant() {
 type SummarizeInput = {
   type: 'event' | 'pattern';
   content: string;
+  tone?: 'default' | 'noir' | 'attenborough' | 'shakespeare';
 };
 
 type SummarizeResponse = {
@@ -29,10 +30,10 @@ type SummarizeResponse = {
 
 export function useAISummarize() {
   return useMutation<SummarizeResponse, Error, SummarizeInput>({
-    mutationFn: async ({ type, content }: SummarizeInput) =>
+    mutationFn: async ({ type, content, tone }: SummarizeInput) =>
       hdxServer('ai/summarize', {
         method: 'POST',
-        json: { type, content },
+        json: { type, content, ...(tone && tone !== 'default' && { tone }) },
       }).json<SummarizeResponse>(),
   });
 }

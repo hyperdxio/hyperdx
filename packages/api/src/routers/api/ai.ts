@@ -127,10 +127,22 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 // pattern using the configured LLM.
 // ---------------------------------------------------------------------------
 
+const TONE_VALUES = ['default', 'noir', 'attenborough', 'shakespeare'] as const;
+type Tone = (typeof TONE_VALUES)[number];
+
 const summarizeBodySchema = z.object({
   type: z.enum(['event', 'pattern']),
   content: z.string().min(1).max(50000),
+  tone: z.enum(TONE_VALUES).optional(),
 });
+
+// Hardcoded tone modifiers — never accept freeform style text from the client.
+const TONE_SUFFIXES: Record<Exclude<Tone, 'default'>, string> = {
+  noir: 'Write in the style of a hard-boiled detective noir narrator.',
+  attenborough:
+    'Write in the style of Sir David Attenborough narrating a nature documentary.',
+  shakespeare: 'Write in the style of a Shakespearean dramatic monologue.',
+};
 
 router.post(
   '/summarize',
@@ -138,22 +150,35 @@ router.post(
   async (req, res, next) => {
     try {
       const model = getAIModel();
-      const { type, content } = req.body;
+      const { type, content, tone } = req.body;
+
+      const toneInstruction =
+        tone && tone !== 'default' ? `\n\n${TONE_SUFFIXES[tone]}` : '';
+
+      const formatInstruction = `
+
+Format:
+- Use **bold** for key details: service names, error types, status codes, durations.
+- Use \`code\` for specific values: config keys, connection strings, env vars.
+- Separate distinct points with line breaks.
+- Keep total length under 4 sentences.`;
 
       const systemPrompt =
         type === 'pattern'
-          ? `You are an expert observability engineer. The user will provide a log/trace pattern (a templatized message with occurrence count and sample events). Write a concise, actionable summary (2-4 sentences) that explains:
-1. What the pattern represents (the operation or behaviour).
-2. Whether it looks healthy, degraded, or erroneous.
-3. A concrete next step the operator could take.
+          ? `You are an expert observability engineer. The user will provide a log/trace pattern (a templatized message with occurrence count and sample events). Summarize it for an operator scanning a dashboard.
 
-Be direct and technical. Do not use bullet points. Do not repeat the raw pattern verbatim — paraphrase.`
-          : `You are an expert observability engineer. The user will provide a single log or trace event (including body, attributes, severity, timing, etc.). Write a concise, actionable summary (2-4 sentences) that explains:
-1. What happened in this event.
-2. Whether it looks healthy or problematic (and why).
-3. A concrete next step the operator could take if there is an issue.
+Rules:
+- Lead with what matters: errors, failures, or elevated latency come first.
+- If the pattern is healthy and routine, say so in ONE sentence and stop — do not invent concerns.
+- If there is a real problem, explain what is wrong and one concrete next step (2-3 sentences max).
+- Be terse and technical. Do not repeat the raw pattern — paraphrase.${formatInstruction}${toneInstruction}`
+          : `You are an expert observability engineer. The user will provide a single log or trace event (body, attributes, severity, timing, etc.). Summarize it for an operator scanning a dashboard.
 
-Be direct and technical. Do not use bullet points. Do not repeat the raw event verbatim — paraphrase.`;
+Rules:
+- Lead with what matters: errors, failures, or elevated latency come first.
+- If the event is healthy and routine, say so in ONE sentence and stop — do not invent concerns.
+- If there is a real problem, explain what is wrong and one concrete next step (2-3 sentences max).
+- Be terse and technical. Do not repeat the raw event — paraphrase.${formatInstruction}${toneInstruction}`;
 
       try {
         const result = await generateText({

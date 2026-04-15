@@ -5,16 +5,23 @@ import { useAISummarize } from '@/hooks/ai';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
+  AISummarizeTone,
+  buildTraceContext,
   dismissEasterEgg,
   generateSummary,
+  getSavedTone,
   isEasterEggVisible,
+  isSmartMode,
   RowData,
+  saveTone,
   Theme,
+  TraceSpan,
 } from './aiSummarize';
 
 export function formatEventContent(
   rowData: RowData,
   severityText?: string,
+  traceContext?: string,
 ): string {
   const parts: string[] = [];
 
@@ -63,19 +70,27 @@ export function formatEventContent(
       parts.push(`Exception message: ${exc['exception.message']}`);
   }
 
+  if (traceContext) {
+    parts.push('');
+    parts.push(traceContext);
+  }
+
   return parts.join('\n');
 }
 
 export default function AISummarizeButton({
   rowData,
   severityText,
+  traceSpans,
 }: {
   rowData?: RowData;
   severityText?: string;
+  traceSpans?: TraceSpan[];
 }) {
   const { data: me } = api.useMe();
   const aiEnabled = me?.aiAssistantEnabled ?? false;
   const showEasterEgg = isEasterEggVisible();
+  const smartMode = isSmartMode();
 
   const [result, setResult] = useState<{
     text: string;
@@ -85,6 +100,7 @@ export default function AISummarizeButton({
   const [isOpen, setIsOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tone, setTone] = useState<AISummarizeTone>(getSavedTone);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const summarize = useAISummarize();
@@ -95,25 +111,29 @@ export default function AISummarizeButton({
     };
   }, []);
 
-  const handleRealAI = useCallback(() => {
-    setIsGenerating(true);
-    setIsOpen(true);
-    setError(null);
-    const content = formatEventContent(rowData ?? {}, severityText);
-    summarize.mutate(
-      { type: 'event', content },
-      {
-        onSuccess: data => {
-          setResult({ text: data.summary });
-          setIsGenerating(false);
+  const handleRealAI = useCallback(
+    (toneOverride?: AISummarizeTone) => {
+      setIsGenerating(true);
+      setIsOpen(true);
+      setError(null);
+      const traceCtx = traceSpans ? buildTraceContext(traceSpans) : undefined;
+      const content = formatEventContent(rowData ?? {}, severityText, traceCtx);
+      summarize.mutate(
+        { type: 'event', content, tone: toneOverride ?? tone },
+        {
+          onSuccess: data => {
+            setResult({ text: data.summary });
+            setIsGenerating(false);
+          },
+          onError: err => {
+            setError(err.message || 'Failed to generate summary');
+            setIsGenerating(false);
+          },
         },
-        onError: err => {
-          setError(err.message || 'Failed to generate summary');
-          setIsGenerating(false);
-        },
-      },
-    );
-  }, [rowData, severityText, summarize]);
+      );
+    },
+    [rowData, severityText, summarize, tone, traceSpans],
+  );
 
   const handleFakeAI = useCallback(() => {
     setIsGenerating(true);
@@ -160,6 +180,16 @@ export default function AISummarizeButton({
     setTimeout(() => setDismissed(true), 300);
   }, [aiEnabled]);
 
+  const handleToneChange = useCallback(
+    (t: AISummarizeTone) => {
+      setTone(t);
+      saveTone(t);
+      setResult(null);
+      handleRealAI(t);
+    },
+    [handleRealAI],
+  );
+
   // Real AI: always visible unless user dismissed this instance.
   // Easter egg: visible only within the time-gated window + not dismissed.
   if (dismissed) return null;
@@ -176,6 +206,8 @@ export default function AISummarizeButton({
       analyzingLabel="Analyzing event data..."
       isRealAI={aiEnabled}
       error={error}
+      tone={tone}
+      onToneChange={aiEnabled && smartMode ? handleToneChange : undefined}
     />
   );
 }

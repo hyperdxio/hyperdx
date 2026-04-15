@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Markdown from 'react-markdown';
 import {
   Anchor,
   Button,
@@ -10,6 +11,8 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle, IconSparkles } from '@tabler/icons-react';
 
+import type { AISummarizeTone } from './helpers';
+import { TONE_OPTIONS } from './helpers';
 import { Theme, THEME_LABELS } from './logic';
 
 export default function AISummaryPanel({
@@ -22,6 +25,8 @@ export default function AISummaryPanel({
   analyzingLabel = 'Analyzing event data...',
   isRealAI = false,
   error,
+  tone,
+  onToneChange,
 }: {
   isOpen: boolean;
   isGenerating: boolean;
@@ -32,6 +37,8 @@ export default function AISummaryPanel({
   analyzingLabel?: string;
   isRealAI?: boolean;
   error?: string | null;
+  tone?: AISummarizeTone;
+  onToneChange?: (tone: AISummarizeTone) => void;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -57,6 +64,37 @@ export default function AISummaryPanel({
             Regenerate
           </Button>
         )}
+        {onToneChange && isOpen && (
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="gray"
+            component="label"
+            styles={{
+              label: { fontWeight: 400 },
+            }}
+          >
+            {TONE_OPTIONS.find(o => o.value === tone)?.label ?? 'Default'}
+            <select
+              value={tone ?? 'default'}
+              onChange={e =>
+                onToneChange(e.currentTarget.value as AISummarizeTone)
+              }
+              style={{
+                position: 'absolute',
+                inset: 0,
+                opacity: 0,
+                cursor: 'pointer',
+              }}
+            >
+              {TONE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Button>
+        )}
         {onDismiss && !isOpen && (
           <Anchor
             size="xs"
@@ -75,7 +113,6 @@ export default function AISummaryPanel({
           radius="sm"
           style={{
             borderLeft: `3px solid var(--mantine-color-violet-5)`,
-            whiteSpace: 'pre-line',
             lineHeight: 1.55,
           }}
         >
@@ -149,9 +186,50 @@ export default function AISummaryPanel({
                   </Popover>
                 )}
               </Flex>
-              <Text size="sm" fs={isRealAI ? undefined : 'italic'}>
-                {result?.text}
-              </Text>
+              {isRealAI ? (
+                <div
+                  className="ai-summary-content"
+                  style={{ fontSize: 'var(--mantine-font-size-sm)' }}
+                >
+                  <Markdown
+                    components={{
+                      // Keep output compact — no extra wrapper margins
+                      p: ({ children }) => (
+                        <p style={{ margin: '0.3em 0' }}>{children}</p>
+                      ),
+                      strong: ({ children }) => (
+                        <strong
+                          style={{
+                            color: 'var(--mantine-color-violet-4)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {children}
+                        </strong>
+                      ),
+                      code: ({ children }) => (
+                        <code
+                          style={{
+                            background: 'var(--mantine-color-default-hover)',
+                            padding: '1px 4px',
+                            borderRadius: 3,
+                            fontSize: '0.9em',
+                          }}
+                        >
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {result?.text ?? ''}
+                  </Markdown>
+                </div>
+              ) : (
+                <Text size="sm" fs="italic" style={{ whiteSpace: 'pre-line' }}>
+                  {result?.text}
+                </Text>
+              )}
+              {/* tone selector is in the top bar */}
             </>
           )}
         </Paper>

@@ -25,6 +25,7 @@ import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import type { TraceSpan } from './aiSummarize';
 import AISummarizeButton from './AISummarizeButton';
 import {
   DBHighlightedAttributesList,
@@ -135,6 +136,7 @@ export default function DBRowSidePanelHeader({
   rowData,
   breadcrumbPath,
   onBreadcrumbClick,
+  traceSpans,
 }: {
   date: Date;
   mainContent?: string;
@@ -144,6 +146,7 @@ export default function DBRowSidePanelHeader({
   rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  traceSpans?: TraceSpan[];
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { onPropertyAddClick, generateSearchUrl } =
@@ -283,7 +286,11 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
-      <AISummarizeButton rowData={rowData} severityText={severityText} />
+      <AISummarizeButton
+        rowData={rowData}
+        severityText={severityText}
+        traceSpans={traceSpans}
+      />
       <Box mt="xs">
         <DBHighlightedAttributesList attributes={attributesWithDefault} />
       </Box>

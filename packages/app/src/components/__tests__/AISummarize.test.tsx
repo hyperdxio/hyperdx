@@ -259,10 +259,10 @@ describe('AISummarizeButton', () => {
     fireEvent.click(screen.getByText('Summarize'));
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         type: 'event',
         content: expect.stringContaining('Severity: error'),
-      },
+      }),
       expect.objectContaining({
         onSuccess: expect.any(Function),
         onError: expect.any(Function),
@@ -399,10 +399,10 @@ describe('AISummarizePatternButton', () => {
 
     fireEvent.click(screen.getByText('Summarize'));
     expect(mockMutate).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         type: 'pattern',
         content: expect.stringContaining('Pattern: GET /api/<*>'),
-      },
+      }),
       expect.any(Object),
     );
   });
