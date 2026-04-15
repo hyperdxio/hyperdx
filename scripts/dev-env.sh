@@ -32,6 +32,8 @@
 #   OTel HTTP         : 30900 + slot   (HDX_DEV_OTEL_HTTP_PORT)
 #   OTel metrics      : 31000 + slot   (HDX_DEV_OTEL_METRICS_PORT)
 #   OTel JSON HTTP    : 31100 + slot   (HDX_DEV_OTEL_JSON_HTTP_PORT)
+#   RustFS S3 API     : 31300 + slot   (HDX_DEV_RUSTFS_API_PORT)
+#   RustFS Console    : 31400 + slot   (HDX_DEV_RUSTFS_CONSOLE_PORT)
 # ---------------------------------------------------------------------------
 
 # Compute slot from directory name (same algorithm as CI slot in Makefile)
@@ -55,6 +57,8 @@ HDX_DEV_OTEL_GRPC_PORT=$((30800 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_HTTP_PORT=$((30900 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_METRICS_PORT=$((31000 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_JSON_HTTP_PORT=$((31100 + HDX_DEV_SLOT))
+HDX_DEV_RUSTFS_API_PORT=$((31300 + HDX_DEV_SLOT))
+HDX_DEV_RUSTFS_CONSOLE_PORT=$((31400 + HDX_DEV_SLOT))
 
 # --- Docker Compose project name (unique per slot) ---
 HDX_DEV_PROJECT="hdx-dev-${HDX_DEV_SLOT}"
@@ -80,6 +84,8 @@ export HDX_DEV_OTEL_GRPC_PORT
 export HDX_DEV_OTEL_HTTP_PORT
 export HDX_DEV_OTEL_METRICS_PORT
 export HDX_DEV_OTEL_JSON_HTTP_PORT
+export HDX_DEV_RUSTFS_API_PORT
+export HDX_DEV_RUSTFS_CONSOLE_PORT
 export HDX_DEV_PROJECT
 export NX_CACHE_DIRECTORY
 
@@ -111,6 +117,8 @@ cat > "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" <<EOF
   "otelHttpPort": ${HDX_DEV_OTEL_HTTP_PORT},
   "otelGrpcPort": ${HDX_DEV_OTEL_GRPC_PORT},
   "otelJsonHttpPort": ${HDX_DEV_OTEL_JSON_HTTP_PORT},
+  "rustfsApiPort": ${HDX_DEV_RUSTFS_API_PORT},
+  "rustfsConsolePort": ${HDX_DEV_RUSTFS_CONSOLE_PORT},
   "logsDir": "${HDX_DEV_LOGS_DIR}",
   "pid": $$,
   "startedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -155,6 +163,8 @@ echo "║  MongoDB           localhost:${HDX_DEV_MONGO_PORT}$(printf '%*s' $((29
 echo "║  OTel HTTP         http://localhost:${HDX_DEV_OTEL_HTTP_PORT}$(printf '%*s' $((22 - ${#HDX_DEV_OTEL_HTTP_PORT})) '')║"
 echo "║  OTel gRPC         localhost:${HDX_DEV_OTEL_GRPC_PORT}$(printf '%*s' $((29 - ${#HDX_DEV_OTEL_GRPC_PORT})) '')║"
 echo "║  OpAMP             localhost:${HYPERDX_OPAMP_PORT}$(printf '%*s' $((29 - ${#HYPERDX_OPAMP_PORT})) '')║"
+echo "║  RustFS S3         http://localhost:${HDX_DEV_RUSTFS_API_PORT}$(printf '%*s' $((22 - ${#HDX_DEV_RUSTFS_API_PORT})) '')║"
+echo "║  RustFS Console    http://localhost:${HDX_DEV_RUSTFS_CONSOLE_PORT}$(printf '%*s' $((22 - ${#HDX_DEV_RUSTFS_CONSOLE_PORT})) '')║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 echo "║  Portal:  http://localhost:${HDX_PORTAL_PORT}$(printf '%*s' $((28 - ${#HDX_PORTAL_PORT})) '')║"
 echo "╚══════════════════════════════════════════════════════════════╝"

@@ -38,5 +38,44 @@ services:
       - '${HDX_CI_MONGO_PORT:-39999}:29999'
     networks:
       - internal
+  rustfs-perms:
+    image: busybox:latest
+    command: ['sh', '-c', 'chown -R 10001:10001 /data']
+    volumes:
+      - rustfs_ci_data:/data
+    networks:
+      - internal
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ROOT_USER: minioadmin
+      RUSTFS_ROOT_PASSWORD: minioadmin
+    volumes:
+      - rustfs_ci_data:/data
+    ports:
+      - '${HDX_CI_RUSTFS_PORT:-9000}:9000'
+    restart: on-failure
+    networks:
+      - internal
+    depends_on:
+      rustfs-perms:
+        condition: service_completed_successfully
+    healthcheck:
+      test: curl -sf http://127.0.0.1:9000/health || exit 1
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  create-buckets:
+    image: minio/mc:latest
+    entrypoint: >
+      /bin/sh -c " mc alias set rustfs http://rustfs:9000 minioadmin minioadmin;
+      mc mb --ignore-existing rustfs/uploads; exit 0; "
+    networks:
+      - internal
+    depends_on:
+      rustfs:
+        condition: service_healthy
+volumes:
+  rustfs_ci_data:
 networks:
   internal:

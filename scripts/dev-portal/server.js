@@ -185,6 +185,7 @@ function parseProject(projectName) {
 const COMPOSE_SERVICE_ALIASES = {
   'ch-server': 'clickhouse',
   db: 'mongodb',
+  rustfs: 'rustfs',
 };
 
 function canonicalServiceName(labels) {
@@ -446,6 +447,7 @@ async function buildDashboardData() {
     'mongodb',
     'otel-collector',
     'otel-collector-json',
+    'rustfs',
   ];
 
   return Object.values(stackMap)
@@ -506,6 +508,7 @@ const DOCKER_SERVICE_NAMES = {
   mongodb: 'db',
   'otel-collector': 'otel-collector',
   'otel-collector-json': 'otel-collector-json',
+  rustfs: 'rustfs',
 };
 
 // Map envType -> { project prefix, compose file relative to repo root }

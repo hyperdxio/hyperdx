@@ -121,6 +121,59 @@ services:
       timeout: 1s
       retries: 60
 
+  # ---------------------------------------------------------------------------
+  # RustFS — S3-compatible object storage (replaces MinIO)
+  # ---------------------------------------------------------------------------
+  rustfs-perms:
+    # RustFS runs as non-root user rustfs (UID 10001). This init container
+    # fixes the volume permissions so RustFS can write to the data directory.
+    image: busybox:latest
+    command: ['sh', '-c', 'chown -R 10001:10001 /data']
+    volumes:
+      - .volumes/rustfs_dev_${HDX_DEV_SLOT:-0}:/data
+    networks:
+      - internal
+  rustfs:
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: rustfs
+      hdx.dev.port: '${HDX_DEV_RUSTFS_CONSOLE_PORT:-9001}'
+      hdx.dev.url: 'http://localhost:${HDX_DEV_RUSTFS_CONSOLE_PORT:-9001}'
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ROOT_USER: minioadmin
+      RUSTFS_ROOT_PASSWORD: minioadmin
+      RUSTFS_CONSOLE_ENABLE: 'on'
+      RUSTFS_CONSOLE_ADDRESS: ':9001'
+    volumes:
+      - .volumes/rustfs_dev_${HDX_DEV_SLOT:-0}:/data
+    ports:
+      - '${HDX_DEV_RUSTFS_API_PORT:-9000}:9000' # S3-compatible API
+      - '${HDX_DEV_RUSTFS_CONSOLE_PORT:-9001}:9001' # Console UI
+    restart: on-failure
+    networks:
+      - internal
+    depends_on:
+      rustfs-perms:
+        condition: service_completed_successfully
+    healthcheck:
+      test: curl -sf http://127.0.0.1:9000/health || exit 1
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  create-buckets:
+    # Uses the MinIO Client (mc) to create default buckets in RustFS.
+    # RustFS is fully S3-compatible and supports mc as documented.
+    image: minio/mc:latest
+    entrypoint: >
+      /bin/sh -c " mc alias set rustfs http://rustfs:9000 minioadmin minioadmin;
+      mc mb --ignore-existing rustfs/uploads; exit 0; "
+    networks:
+      - internal
+    depends_on:
+      rustfs:
+        condition: service_healthy
+
   # nginx:
   #   image: nginx:alpine
   #   ports:

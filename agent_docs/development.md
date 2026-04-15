@@ -57,6 +57,8 @@ integration tests (14320-40098) and E2E tests (20320-21399).
 | OTel HTTP         | 30900     | 30900 - 30999 | `HDX_DEV_OTEL_HTTP_PORT`      |
 | OTel metrics      | 31000     | 31000 - 31099 | `HDX_DEV_OTEL_METRICS_PORT`   |
 | OTel JSON HTTP    | 31100     | 31100 - 31199 | `HDX_DEV_OTEL_JSON_HTTP_PORT` |
+| RustFS S3 API     | 31300     | 31300 - 31399 | `HDX_DEV_RUSTFS_API_PORT`     |
+| RustFS Console    | 31400     | 31400 - 31499 | `HDX_DEV_RUSTFS_CONSOLE_PORT` |
 
 ### Dev Portal
 
