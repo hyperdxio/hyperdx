@@ -1,14 +1,17 @@
 # OpenTelemetry Collector Builder (OCB) manifest for HyperDX.
-# This replaces the pre-built otel/opentelemetry-collector-contrib image with a
-# custom-built binary that includes only the components HyperDX needs, plus any
-# custom receivers/processors we add in the future.
+#
+# This manifest includes ALL components from the upstream otelcol-contrib
+# distribution so that users can freely use any supported component in their
+# custom OTel config files.
 #
 # Version placeholders are replaced at Docker build time via sed:
 #   __OTEL_COLLECTOR_VERSION__      -> contrib/core component version (e.g. 0.149.0)
 #   __OTEL_COLLECTOR_CORE_VERSION__ -> core confmap provider version (e.g. 1.55.0)
 # Both values are defined in the root .env file.
 #
-# The upstream contrib manifest for reference:
+# Upstream contrib manifest for reference:
+#   https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/cmd/otelcontribcol/builder-config.yaml
+# Official release distribution manifest:
 #   https://github.com/open-telemetry/opentelemetry-collector-releases/blob/main/distributions/otelcol-contrib/manifest.yaml
 
 dist:
@@ -20,96 +23,279 @@ dist:
 
 receivers:
   # Core
-  - gomod:
-      go.opentelemetry.io/collector/receiver/nopreceiver
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/receiver/otlpreceiver
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/receiver/nopreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v__OTEL_COLLECTOR_VERSION__
   # Contrib
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/fluentforwardreceiver
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/activedirectorydsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/aerospikereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachesparkreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscontainerinsightreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsecscontainermetricsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsfirehosereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awslambdareceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureblobreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azuremonitorreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/chronyreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/cloudflarereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/cloudfoundryreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/couchdbreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/elasticsearchreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/envoyalsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/expvarreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/faroreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filestatsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/flinkmetricsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/fluentforwardreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/githubreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/gitlabreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudspannerreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/haproxyreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/huaweicloudcesreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/iisreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/influxdbreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jmxreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkametricsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/libhoneyreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/lokireceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/macosunifiedloggingreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/memcachedreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbatlasreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mysqlreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/namedpipereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nsxtreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ntpreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/oracledbreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/osqueryreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/otelarrowreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/otlpjsonfilereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/podmanreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/pprofreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusremotewritereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/pulsarreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/purefareceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/purefbreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/rabbitmqreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redfishreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/riakreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/saphanareceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signalfxreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/simpleprometheusreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/skywalkingreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/snmpreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/snowflakereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/solacereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/splunkenterprisereceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/splunkhecreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlqueryreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlserverreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sshcheckreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/stefreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/systemdreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcplogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tlscheckreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/udplogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/vcenterreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/wavefrontreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/webhookeventreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowseventlogreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zipkinreceiver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zookeeperreceiver v__OTEL_COLLECTOR_VERSION__
 
 processors:
   # Core
-  - gomod:
-      go.opentelemetry.io/collector/processor/batchprocessor
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/processor/memorylimiterprocessor
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v__OTEL_COLLECTOR_VERSION__
   # Contrib
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/coralogixprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatorateprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/geoipprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbyattrsprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbytraceprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/intervalprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/isolationforestprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/logdedupprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricsgenerationprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstarttimeprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/probabilisticsamplerprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/redactionprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/remotetapprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/schemaprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/spanprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/sumologicprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/unrollprocessor v__OTEL_COLLECTOR_VERSION__
 
 exporters:
   # Core
-  - gomod:
-      go.opentelemetry.io/collector/exporter/debugexporter
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/exporter/nopexporter
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/exporter/otlpexporter
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/exporter/otlphttpexporter
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v__OTEL_COLLECTOR_VERSION__
   # Contrib
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alertmanagerexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alibabacloudlogserviceexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awskinesisexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/azureblobexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/azuredataexplorerexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/azuremonitorexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/bmchelixexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/cassandraexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/coralogixexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datasetexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/dorisexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/faroexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudstorageexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlemanagedprometheusexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/honeycombmarkerexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/influxdbexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/loadbalancingexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/logicmonitorexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/logzioexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/mezmoexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/otelarrowexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/pulsarexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/rabbitmqexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/sentryexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/signalfxexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/splunkhecexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/stefexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/sumologicexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/syslogexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/tencentcloudlogserviceexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/tinybirdexporter v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v__OTEL_COLLECTOR_VERSION__
 
 connectors:
   # Core
-  - gomod:
-      go.opentelemetry.io/collector/connector/forwardconnector
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v__OTEL_COLLECTOR_VERSION__
   # Contrib
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/datadogconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/grafanacloudconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/otlpjsonconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/signaltometricsconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector v__OTEL_COLLECTOR_VERSION__
 
 extensions:
+  # Core
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v__OTEL_COLLECTOR_VERSION__
   # Contrib
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension
-      v__OTEL_COLLECTOR_VERSION__
-  - gomod:
-      github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension
-      v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/ackextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/asapauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/awsproxy v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/azureauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/cgroupruntimeextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/datadogextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/avrologencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awscloudwatchmetricstreamsencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awslogsencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/azureencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/jaegerencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/jsonlogencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/otlpencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/skywalkingencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/textencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/zipkinencodingextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/googleclientauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/headerssetterextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckv2extension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/httpforwarderextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/jaegerremotesampling v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/k8sleaderelector v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/oauth2clientauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/cfgardenobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/dockerobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/ecsobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/hostobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/k8sobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/kafkatopicsobserver v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/remotetapextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/sigv4authextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/solarwindsapmsettingsextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/dbstorage v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/redisstorageextension v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/sumologicextension v__OTEL_COLLECTOR_VERSION__
 
 providers:
-  - gomod:
-      go.opentelemetry.io/collector/confmap/provider/envprovider
-      v__OTEL_COLLECTOR_CORE_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/confmap/provider/fileprovider
-      v__OTEL_COLLECTOR_CORE_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/confmap/provider/httpprovider
-      v__OTEL_COLLECTOR_CORE_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/confmap/provider/httpsprovider
-      v__OTEL_COLLECTOR_CORE_VERSION__
-  - gomod:
-      go.opentelemetry.io/collector/confmap/provider/yamlprovider
-      v__OTEL_COLLECTOR_CORE_VERSION__
+  # Core
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v__OTEL_COLLECTOR_CORE_VERSION__
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v__OTEL_COLLECTOR_CORE_VERSION__
+  # Contrib
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/confmap/provider/aesprovider v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/confmap/provider/googlesecretmanagerprovider v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/confmap/provider/s3provider v__OTEL_COLLECTOR_VERSION__
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/confmap/provider/secretsmanagerprovider v__OTEL_COLLECTOR_VERSION__
