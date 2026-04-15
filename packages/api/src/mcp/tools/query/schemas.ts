@@ -61,7 +61,47 @@ const mcpSelectItemSchema = z.object({
     ),
 });
 
-const mcpTimeRangeSchema = z.object({
+// ─── Display type groups (used for validation) ──────────────────────────────
+
+const BUILDER_DISPLAY_TYPES = [
+  'line',
+  'stacked_bar',
+  'table',
+  'number',
+  'pie',
+] as const;
+
+type BuilderDisplayType = (typeof BUILDER_DISPLAY_TYPES)[number];
+
+function isBuilderDisplayType(dt: string): dt is BuilderDisplayType {
+  return (BUILDER_DISPLAY_TYPES as readonly string[]).includes(dt);
+}
+
+// ─── Flat object schema for hyperdx_query ───────────────────────────────────
+// Uses a single z.object() instead of z.discriminatedUnion() so the MCP SDK
+// can serialize it to JSON Schema correctly. The SDK's normalizeObjectSchema()
+// only recognizes z.object() schemas — discriminated unions and ZodEffects
+// (from .superRefine/.refine/.transform) are silently replaced with an empty
+// schema in the tools/list response.
+//
+// To work around this, the schema is split into two parts:
+//   1. hyperdxQuerySchema — plain z.object() used as inputSchema for the SDK
+//   2. validateQueryInput — cross-field validation applied at runtime
+
+export const hyperdxQuerySchema = z.object({
+  // ── Shared fields (all display types) ──
+  displayType: z
+    .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'search', 'sql'])
+    .describe(
+      'How to query and visualize the data:\n' +
+        '  line – time-series line chart (builder)\n' +
+        '  stacked_bar – time-series stacked bar chart (builder)\n' +
+        '  table – grouped aggregation as rows (builder)\n' +
+        '  number – single aggregate scalar (builder)\n' +
+        '  pie – pie chart, one metric grouped (builder)\n' +
+        '  search – browse individual log/event rows\n' +
+        '  sql – ADVANCED: raw ClickHouse SQL query',
+    ),
   startTime: z
     .string()
     .optional()
@@ -73,32 +113,23 @@ const mcpTimeRangeSchema = z.object({
     .string()
     .optional()
     .describe('End of the query window as ISO 8601. Default: now.'),
-});
 
-// ─── Discriminated union schema for hyperdx_query ───────────────────────────
-
-const builderQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z
-    .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
-    .describe(
-      'How to visualize the query results:\n' +
-        '  line – time-series line chart\n' +
-        '  stacked_bar – time-series stacked bar chart\n' +
-        '  table – grouped aggregation as rows\n' +
-        '  number – single aggregate scalar\n' +
-        '  pie – pie chart (one metric, grouped)',
-    ),
+  // ── Builder + search fields ──
   sourceId: z
     .string()
+    .optional()
     .describe(
-      'Source ID. Call hyperdx_list_sources to find available sources.',
+      'Source ID — required for builder display types (line, stacked_bar, table, number, pie) ' +
+        'and for "search". Call hyperdx_list_sources to find available sources.',
     ),
   select: z
     .array(mcpSelectItemSchema)
     .min(1)
     .max(10)
+    .optional()
     .describe(
-      'Metrics to compute. Each item defines an aggregation. ' +
+      'Metrics to compute — required for builder display types (line, stacked_bar, table, number, pie). ' +
+        'Each item defines an aggregation. ' +
         'For "number" display, provide exactly 1 item. ' +
         'Example: [{ aggFn: "count" }, { aggFn: "avg", valueExpression: "Duration" }]',
     ),
@@ -106,7 +137,7 @@ const builderQuerySchema = mcpTimeRangeSchema.extend({
     .string()
     .optional()
     .describe(
-      'Column to group/split by. ' +
+      'Column to group/split by (builder display types only). ' +
         'Top-level columns use PascalCase (e.g. "SpanName", "StatusCode"). ' +
         "Span attributes: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
         "Resource attributes: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
@@ -114,7 +145,9 @@ const builderQuerySchema = mcpTimeRangeSchema.extend({
   orderBy: z
     .string()
     .optional()
-    .describe('Column to sort results by (table display only).'),
+    .describe(
+      'Column to sort results by (builder display types only, mainly "table").',
+    ),
   granularity: z
     .string()
     .optional()
@@ -124,36 +157,30 @@ const builderQuerySchema = mcpTimeRangeSchema.extend({
         'Examples: "1 minute", "5 minute", "1 hour", "1 day". ' +
         'Omit to let HyperDX pick automatically based on the time range.',
     ),
-});
 
-const searchQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z
-    .literal('search')
-    .describe('Search and filter individual log/event rows'),
-  sourceId: z
-    .string()
-    .describe(
-      'Source ID. Call hyperdx_list_sources to find available sources.',
-    ),
+  // ── Search-only fields ──
   where: z
     .string()
     .optional()
     .default('')
     .describe(
-      'Row filter. Examples: "level:error", "service.name:api AND duration:>500"',
+      'Row filter for "search" display type. ' +
+        'Examples: "level:error", "service.name:api AND duration:>500"',
     ),
   whereLanguage: z
     .enum(['lucene', 'sql'])
     .optional()
     .default('lucene')
-    .describe('Query language for the where filter. Default: lucene'),
+    .describe(
+      'Query language for the "where" filter ("search" display type only). Default: lucene',
+    ),
   columns: z
     .string()
     .optional()
     .default('')
     .describe(
-      'Comma-separated columns to include. Leave empty for defaults. ' +
-        'Example: "body,service.name,duration"',
+      'Comma-separated columns to include in search results ("search" display type only). ' +
+        'Leave empty for defaults. Example: "body,service.name,duration"',
     ),
   maxResults: z
     .number()
@@ -162,30 +189,23 @@ const searchQuerySchema = mcpTimeRangeSchema.extend({
     .optional()
     .default(50)
     .describe(
-      'Maximum number of rows to return (1–200). Default: 50. ' +
+      'Maximum number of rows to return for "search" display type (1–200). Default: 50. ' +
         'Use smaller values to reduce response size.',
     ),
-});
 
-const sqlQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z
-    .literal('sql')
-    .describe(
-      'ADVANCED: Execute raw SQL directly against ClickHouse. ' +
-        'Only use this when the builder query types (line, stacked_bar, table, number, pie, search) ' +
-        'cannot express the query you need — e.g. complex JOINs, sub-queries, CTEs, or ' +
-        'querying tables not registered as sources. ' +
-        'Prefer the builder display types for standard queries as they are safer and easier to use.',
-    ),
+  // ── SQL-only fields ──
   connectionId: z
     .string()
+    .optional()
     .describe(
-      'Connection ID (not sourceId). Call hyperdx_list_sources to find available connections.',
+      'Connection ID — required for "sql" display type (not sourceId). ' +
+        'Call hyperdx_list_sources to find available connections.',
     ),
   sql: z
     .string()
+    .optional()
     .describe(
-      'Raw ClickHouse SQL query to execute. ' +
+      'Raw ClickHouse SQL query — required for "sql" display type. ' +
         'Always include a LIMIT clause to avoid returning excessive data.\n\n' +
         'QUERY PARAMETERS (ClickHouse native parameterized syntax):\n' +
         '  {startDateMilliseconds:Int64} — start of date range in ms since epoch\n' +
@@ -213,8 +233,37 @@ const sqlQuerySchema = mcpTimeRangeSchema.extend({
     ),
 });
 
-export const hyperdxQuerySchema = z.discriminatedUnion('displayType', [
-  builderQuerySchema,
-  searchQuerySchema,
-  sqlQuerySchema,
-]);
+/**
+ * Cross-field validation for the query schema. Applied at runtime in the
+ * handler rather than via .superRefine() so the base z.object() stays intact
+ * for the MCP SDK's schema serialization.
+ *
+ * Returns a user-facing error string if validation fails, or null if valid.
+ */
+export function validateQueryInput(
+  data: z.infer<typeof hyperdxQuerySchema>,
+): string | null {
+  const { displayType } = data;
+
+  if (isBuilderDisplayType(displayType)) {
+    if (!data.sourceId) {
+      return `sourceId is required when displayType is "${displayType}"`;
+    }
+    if (!data.select || data.select.length === 0) {
+      return `select is required when displayType is "${displayType}"`;
+    }
+  } else if (displayType === 'search') {
+    if (!data.sourceId) {
+      return 'sourceId is required when displayType is "search"';
+    }
+  } else if (displayType === 'sql') {
+    if (!data.connectionId) {
+      return 'connectionId is required when displayType is "sql"';
+    }
+    if (!data.sql) {
+      return 'sql is required when displayType is "sql"';
+    }
+  }
+
+  return null;
+}

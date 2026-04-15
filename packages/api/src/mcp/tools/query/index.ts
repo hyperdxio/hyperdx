@@ -6,7 +6,7 @@ import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 import { withToolTracing } from '../../utils/tracing';
 import type { ToolDefinition } from '../types';
 import { parseTimeRange, runConfigTile } from './helpers';
-import { hyperdxQuerySchema } from './schemas';
+import { hyperdxQuerySchema, validateQueryInput } from './schemas';
 
 // ─── Tool definition ─────────────────────────────────────────────────────────
 
@@ -33,6 +33,17 @@ const queryTools: ToolDefinition = (server, context) => {
       inputSchema: hyperdxQuerySchema,
     },
     withToolTracing('hyperdx_query', context, async input => {
+      // Cross-field validation (kept out of the Zod schema to avoid
+      // .superRefine() wrapping in ZodEffects, which the MCP SDK's
+      // normalizeObjectSchema() cannot serialize to JSON Schema).
+      const validationError = validateQueryInput(input);
+      if (validationError) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: validationError }],
+        };
+      }
+
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -86,7 +97,7 @@ const queryTools: ToolDefinition = (server, context) => {
           config: {
             displayType: input.displayType,
             sourceId: input.sourceId,
-            select: input.select.map(s => ({
+            select: input.select!.map(s => ({
               aggFn: s.aggFn,
               where: s.where ?? '',
               whereLanguage: s.whereLanguage ?? 'lucene',

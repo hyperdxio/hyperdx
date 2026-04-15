@@ -67,6 +67,33 @@ describe('MCP Query Tool', () => {
     await server.stop();
   });
 
+  describe('schema serialization', () => {
+    it('should expose inputSchema with all expected properties via tools/list', async () => {
+      const { tools } = await client.listTools();
+      const queryTool = tools.find(t => t.name === 'hyperdx_query');
+      expect(queryTool).toBeDefined();
+
+      const schema = queryTool!.inputSchema;
+      expect(schema.type).toBe('object');
+      expect(schema.properties).toBeDefined();
+
+      // Verify key properties are present (not silently stripped by the SDK)
+      const props = Object.keys(schema.properties ?? {});
+      expect(props).toContain('displayType');
+      expect(props).toContain('sourceId');
+      expect(props).toContain('select');
+      expect(props).toContain('where');
+      expect(props).toContain('sql');
+      expect(props).toContain('connectionId');
+      expect(props).toContain('startTime');
+      expect(props).toContain('endTime');
+      expect(props).toContain('groupBy');
+
+      // displayType should be required
+      expect(schema.required).toContain('displayType');
+    });
+  });
+
   describe('builder queries', () => {
     it('should execute a number query', async () => {
       const result = await callTool(client, 'hyperdx_query', {
