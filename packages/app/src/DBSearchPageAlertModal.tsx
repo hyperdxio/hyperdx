@@ -241,19 +241,23 @@ const AlertForm = ({
           </Text>
           <AlertChannelForm control={control} type={channelType} />
         </Paper>
-        {groupBy && thresholdType === AlertThresholdType.BELOW && (
-          <MantineAlert
-            icon={<IconInfoCircleFilled size={16} />}
-            bg="dark"
-            py="xs"
-          >
-            <Text size="sm" opacity={0.7}>
-              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
-              &quot;grouped by&quot; value will not alert for periods with no
-              data for a group.
-            </Text>
-          </MantineAlert>
-        )}
+        {groupBy &&
+          (thresholdType === AlertThresholdType.BELOW ||
+            thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||
+            thresholdType === AlertThresholdType.EQUAL ||
+            thresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <MantineAlert
+              icon={<IconInfoCircleFilled size={16} />}
+              bg="dark"
+              py="xs"
+            >
+              <Text size="sm" opacity={0.7}>
+                Warning: Alerts with this threshold type and a &quot;grouped
+                by&quot; value will not alert for periods with no data for a
+                group.
+              </Text>
+            </MantineAlert>
+          )}
       </Stack>
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>

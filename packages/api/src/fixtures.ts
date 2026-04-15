@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
   RawSqlSavedChartConfig,
@@ -15,7 +16,7 @@ import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
-import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertInterval, AlertSource } from '@/models/alert';
 import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';

@@ -1,4 +1,7 @@
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   getLoggedInAgent,
@@ -11,7 +14,7 @@ import {
   randomMongoId,
   RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, { AlertSource } from '@/models/alert';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];

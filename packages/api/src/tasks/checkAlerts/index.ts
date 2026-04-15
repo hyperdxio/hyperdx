@@ -27,6 +27,7 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -42,7 +43,7 @@ import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
-import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import { AlertState, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -141,13 +142,20 @@ export const doesExceedThreshold = (
   threshold: number,
   value: number,
 ) => {
-  const isThresholdTypeAbove = thresholdType === AlertThresholdType.ABOVE;
-  if (isThresholdTypeAbove && value >= threshold) {
-    return true;
-  } else if (!isThresholdTypeAbove && value < threshold) {
-    return true;
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return value >= threshold;
+    case AlertThresholdType.BELOW:
+      return value < threshold;
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return value > threshold;
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return value <= threshold;
+    case AlertThresholdType.EQUAL:
+      return value === threshold;
+    case AlertThresholdType.NOT_EQUAL:
+      return value !== threshold;
   }
-  return false;
 };
 
 const normalizeScheduleOffsetMinutes = ({
@@ -643,7 +651,7 @@ const parseAlertData = (
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
-      value = isString(v) ? parseInt(v) : v;
+      value = isString(v) ? parseFloat(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push(`${k}:${v}`);
     }

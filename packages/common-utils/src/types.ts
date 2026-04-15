@@ -278,6 +278,10 @@ export type WebhookApiData = Omit<IWebhook, 'team'>;
 export enum AlertThresholdType {
   ABOVE = 'above',
   BELOW = 'below',
+  ABOVE_EXCLUSIVE = 'above_exclusive',
+  BELOW_OR_EQUAL = 'below_or_equal',
+  EQUAL = 'equal',
+  NOT_EQUAL = 'not_equal',
 }
 
 export enum AlertState {

@@ -9,6 +9,7 @@ import {
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
+  AlertThresholdType,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
@@ -145,10 +146,16 @@ export const getAlertReferenceLines = ({
   threshold,
   // TODO: zScore
 }: {
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   threshold: number;
 }) => {
-  if (threshold != null && thresholdType === 'below') {
+  if (threshold == null) {
+    return null;
+  }
+  if (
+    thresholdType === AlertThresholdType.BELOW ||
+    thresholdType === AlertThresholdType.BELOW_OR_EQUAL
+  ) {
     return (
       <ReferenceArea
         y1={0}
@@ -160,7 +167,10 @@ export const getAlertReferenceLines = ({
       />
     );
   }
-  if (threshold != null && thresholdType === 'above') {
+  if (
+    thresholdType === AlertThresholdType.ABOVE ||
+    thresholdType === AlertThresholdType.ABOVE_EXCLUSIVE
+  ) {
     return (
       <ReferenceArea
         y1={threshold}
@@ -171,22 +181,20 @@ export const getAlertReferenceLines = ({
       />
     );
   }
-  if (threshold != null) {
-    return (
-      <ReferenceLine
-        y={threshold}
-        label={
-          <Label
-            value="Alert Threshold"
-            fill={'white'}
-            fontSize={11}
-            opacity={0.7}
-          />
-        }
-        stroke="red"
-        strokeDasharray="3 3"
-      />
-    );
-  }
-  return null;
+  // For 'equal' and 'not_equal', show a reference line at the threshold
+  return (
+    <ReferenceLine
+      y={threshold}
+      label={
+        <Label
+          value="Alert Threshold"
+          fill={'white'}
+          fontSize={11}
+          opacity={0.7}
+        />
+      }
+      stroke="red"
+      strokeDasharray="3 3"
+    />
+  );
 };
