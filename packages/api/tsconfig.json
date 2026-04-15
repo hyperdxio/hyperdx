@@ -3,14 +3,9 @@
   "compilerOptions": {
     "baseUrl": "./src",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     },
-    "types": [
-      "jest",
-      "node"
-    ],
+    "types": ["jest", "node"],
     "outDir": "build",
     "isolatedModules": true,
     "skipLibCheck": true,
@@ -18,12 +13,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": [
-    "src",
-    "migrations",
-    "scripts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src", "migrations", "scripts"],
+  "exclude": ["node_modules"]
 }

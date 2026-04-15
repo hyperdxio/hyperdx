@@ -2,9 +2,7 @@
   "version": "0.1.0",
   "name": "Go Runtime Metrics",
   "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications with the OTel Runtime (v0.62+) and Host Metrics instrumentations",
-  "tags": [
-    "OTel Runtime Metrics"
-  ],
+  "tags": ["OTel Runtime Metrics"],
   "tiles": [
     {
       "id": "109853",
