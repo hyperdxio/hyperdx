@@ -123,14 +123,19 @@ export function useJsonColumns(
 
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+  },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
+  const { dateRange, ...queryOptions } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -139,7 +144,7 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields(tc)),
+        tableConnections.map(tc => metadata.getAllFields({ ...tc, dateRange })),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -164,13 +169,123 @@ export function useMultipleAllFields(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...options,
+    ...queryOptions,
+  });
+}
+
+/** Tables that have rollup tables */
+const TABLES_WITH_ROLLUPS = new Set(['otel_logs', 'otel_traces']);
+
+/**
+ * Resolves a field to the (ColumnIdentifier, Key) pair for querying the rollup table.
+ * Map fields: ColumnIdentifier = column name (e.g. 'ResourceAttributes'), Key = map key
+ * Native fields: ColumnIdentifier = 'NativeColumn', Key = column name (e.g. 'ServiceName')
+ */
+function fieldToRollupParams(
+  field: Field | null,
+  tableName: string | undefined,
+): { columnIdentifier: string; key: string } | null {
+  if (!field || !tableName) return null;
+
+  if (field.path.length >= 2) {
+    const [column, mapKey] = field.path;
+    if (getMapColumnsForTable(tableName).includes(column)) {
+      return { columnIdentifier: column, key: mapKey };
+    }
+  } else if (field.path.length === 1) {
+    if (TABLES_WITH_ROLLUPS.has(tableName)) {
+      return { columnIdentifier: 'NativeColumn', key: field.path[0] };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Debounced hook that fetches values for a specific field from rollup tables.
+ * Works for both map keys (e.g. "ResourceAttributes.http.method") and
+ * native columns (e.g. "ServiceName").
+ */
+export function useCompleteKeyValues({
+  tableConnection,
+  searchField,
+  dateRange,
+}: {
+  tableConnection: TableConnection | undefined;
+  searchField: Field | null;
+  dateRange: [Date, Date];
+}) {
+  const metadata = useMetadataWithSettings();
+
+  // Debounce: only query after the field stabilizes for 300ms
+  const [debouncedField, setDebouncedField] = useState<Field | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedField(searchField), 300);
+    return () => clearTimeout(timer);
+  }, [searchField]);
+
+  const rollupParams = fieldToRollupParams(
+    debouncedField,
+    tableConnection?.tableName,
+  );
+
+  return useQuery<string[]>({
+    queryKey: [
+      'useCompleteKeyValues',
+      tableConnection?.databaseName,
+      tableConnection?.tableName,
+      tableConnection?.connectionId,
+      rollupParams?.columnIdentifier,
+      rollupParams?.key,
+      dateRange[0].getTime(),
+      dateRange[1].getTime(),
+    ],
+    queryFn: async ({ signal }) => {
+      if (!tableConnection || !rollupParams || !debouncedField) return [];
+
+      // Try rollup first
+      const rollupValues = await metadata.getCompleteKeyValues({
+        databaseName: tableConnection.databaseName,
+        tableName: tableConnection.tableName,
+        column: rollupParams.columnIdentifier,
+        key: rollupParams.key,
+        connectionId: tableConnection.connectionId,
+        dateRange,
+        signal,
+      });
+
+      if (rollupValues.length > 0) return rollupValues;
+
+      // Fall back to main table scan
+      if (rollupParams.columnIdentifier !== 'NativeColumn') {
+        // Map column: use getMapValues
+        return metadata.getMapValues({
+          databaseName: tableConnection.databaseName,
+          tableName: tableConnection.tableName,
+          column: rollupParams.columnIdentifier,
+          key: rollupParams.key,
+          connectionId: tableConnection.connectionId,
+        });
+      } else {
+        // Native column: use getMapValues without a key (queries column directly)
+        return metadata.getMapValues({
+          databaseName: tableConnection.databaseName,
+          tableName: tableConnection.tableName,
+          column: debouncedField.path[0],
+          connectionId: tableConnection.connectionId,
+        });
+      }
+    },
+    staleTime: 1000 * 60 * 5,
+    enabled: !!rollupParams,
   });
 }
 
 export function useAllFields(
   tableConnection: TableConnection | undefined,
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+  },
 ) {
   return useMultipleAllFields(
     tableConnection ? [tableConnection] : [],

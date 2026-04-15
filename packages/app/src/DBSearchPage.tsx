@@ -1612,10 +1612,19 @@ export function DBSearchPage() {
     ],
   );
 
-  const inputSourceTableConnection = useMemo(
-    () => tcFromSource(inputSourceObj),
-    [inputSourceObj],
-  );
+  const inputSourceTableConnection = useMemo(() => {
+    const tc = tcFromSource(inputSourceObj);
+    if (tc.tableName === 'otel_logs' || tc.tableName === 'otel_traces') {
+      return {
+        ...tc,
+        fieldsRollupView: {
+          name: `${tc.tableName}_key_rollup_15m`,
+          granularity: '15 minute',
+        },
+      };
+    }
+    return tc;
+  }, [inputSourceObj]);
 
   const sourceSchemaPreview = useMemo(
     () => <SourceSchemaPreview source={inputSourceObj} variant="text" />,
@@ -1855,6 +1864,7 @@ export function DBSearchPage() {
               label="SELECT"
               size="xs"
               allowMultiline
+              dateRange={searchedTimeRange}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1866,6 +1876,7 @@ export function DBSearchPage() {
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
+              dateRange={searchedTimeRange}
             />
           </Box>
           <>
@@ -1926,6 +1937,7 @@ export function DBSearchPage() {
             enableHotkey
             data-testid="search-input"
             minWidth="min(600px, 100%)"
+            dateRange={searchedTimeRange}
           />
           <Flex
             gap="sm"
