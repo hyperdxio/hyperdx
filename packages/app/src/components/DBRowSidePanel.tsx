@@ -32,7 +32,7 @@ import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
-import { getEventBody, useSource } from '@/source';
+import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
@@ -45,7 +45,6 @@ import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
-import { useEventsAroundFocus } from './DBTraceWaterfallChart';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -276,24 +275,6 @@ const DBRowSidePanel = ({
 
   const enableServiceMap = traceId && traceSourceId;
 
-  // Fetch the trace source for AI summarize trace context
-  const { data: traceSourceData } = useSource({
-    id: traceSourceId,
-  });
-  const traceSourceForSpans =
-    traceSourceData?.kind === SourceKind.Trace ? traceSourceData : null;
-
-  // Fetch all trace spans for AI summarize context.
-  // Uses TanStack Query caching — if the trace tab already loaded this data,
-  // this hook returns the cached result without a new ClickHouse query.
-  const { rows: traceSpans } = useEventsAroundFocus({
-    tableSource: traceSourceForSpans!,
-    focusDate,
-    dateRange: oneHourRange,
-    traceId: traceId ?? '',
-    enabled: !!traceSourceForSpans && !!traceId,
-  });
-
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
@@ -348,7 +329,10 @@ const DBRowSidePanel = ({
           rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
-          traceSpans={traceSpans}
+          traceId={traceId}
+          traceSourceId={traceSourceId}
+          dateRange={oneHourRange}
+          focusDate={focusDate}
         />
       </Box>
       {/* <SidePanelHeader

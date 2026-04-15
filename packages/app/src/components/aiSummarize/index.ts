@@ -10,5 +10,4 @@ export {
 } from './helpers';
 export type { Theme } from './logic';
 export { generatePatternSummary, generateSummary } from './logic';
-export type { TraceSpan } from './traceContext';
 export { buildTraceContext } from './traceContext';

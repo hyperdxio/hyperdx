@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import api from '@/api';
 import { useAISummarize } from '@/hooks/ai';
+import { useSource } from '@/source';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
@@ -15,8 +16,8 @@ import {
   RowData,
   saveTone,
   Theme,
-  TraceSpan,
 } from './aiSummarize';
+import { useEventsAroundFocus } from './DBTraceWaterfallChart';
 
 export function formatEventContent(
   rowData: RowData,
@@ -81,11 +82,17 @@ export function formatEventContent(
 export default function AISummarizeButton({
   rowData,
   severityText,
-  traceSpans,
+  traceId,
+  traceSourceId,
+  dateRange,
+  focusDate,
 }: {
   rowData?: RowData;
   severityText?: string;
-  traceSpans?: TraceSpan[];
+  traceId?: string;
+  traceSourceId?: string | null;
+  dateRange?: [Date, Date];
+  focusDate?: Date;
 }) {
   const { data: me } = api.useMe();
   const aiEnabled = me?.aiAssistantEnabled ?? false;
@@ -101,9 +108,33 @@ export default function AISummarizeButton({
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tone, setTone] = useState<AISummarizeTone>(getSavedTone);
+  // Only fetch trace spans once the user clicks Summarize (lazy loading)
+  const [traceContextNeeded, setTraceContextNeeded] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const summarize = useAISummarize();
+
+  // Lazy trace span fetching — only fires when traceContextNeeded is true
+  const { data: traceSourceData } = useSource({
+    id: traceSourceId ?? undefined,
+  });
+  const traceSource = useMemo(
+    () => (traceSourceData?.kind === 'trace' ? traceSourceData : undefined),
+    [traceSourceData],
+  );
+  // Stable fallback date to avoid re-renders from new Date() in render path
+  const fallbackDate = useMemo(() => new Date(0), []);
+  const fallbackRange = useMemo(
+    () => [fallbackDate, fallbackDate] as [Date, Date],
+    [fallbackDate],
+  );
+  const { rows: traceSpans } = useEventsAroundFocus({
+    tableSource: traceSource!,
+    focusDate: focusDate ?? fallbackDate,
+    dateRange: dateRange ?? fallbackRange,
+    traceId: traceId ?? '',
+    enabled: traceContextNeeded && !!traceSource && !!traceId,
+  });
 
   useEffect(() => {
     return () => {
@@ -111,13 +142,68 @@ export default function AISummarizeButton({
     };
   }, []);
 
+  // When trace spans arrive, fire the AI request
+  const pendingToneRef = useRef<AISummarizeTone | undefined>(undefined);
+  useEffect(() => {
+    if (traceContextNeeded && traceSpans.length > 0 && isGenerating) {
+      const traceCtx = buildTraceContext(traceSpans);
+      const content = formatEventContent(rowData ?? {}, severityText, traceCtx);
+      summarize.mutate(
+        { type: 'event', content, tone: pendingToneRef.current ?? tone },
+        {
+          onSuccess: data => {
+            setResult({ text: data.summary });
+            setIsGenerating(false);
+          },
+          onError: err => {
+            setError(err.message || 'Failed to generate summary');
+            setIsGenerating(false);
+          },
+        },
+      );
+      setTraceContextNeeded(false);
+    }
+  }, [traceContextNeeded, traceSpans]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleRealAI = useCallback(
     (toneOverride?: AISummarizeTone) => {
       setIsGenerating(true);
       setIsOpen(true);
       setError(null);
-      const traceCtx = traceSpans ? buildTraceContext(traceSpans) : undefined;
-      const content = formatEventContent(rowData ?? {}, severityText, traceCtx);
+      pendingToneRef.current = toneOverride;
+
+      // If we have trace context available, use it immediately
+      if (traceId && traceSource) {
+        if (traceSpans.length > 0) {
+          // Spans already cached — fire immediately
+          const traceCtx = buildTraceContext(traceSpans);
+          const content = formatEventContent(
+            rowData ?? {},
+            severityText,
+            traceCtx,
+          );
+          summarize.mutate(
+            { type: 'event', content, tone: toneOverride ?? tone },
+            {
+              onSuccess: data => {
+                setResult({ text: data.summary });
+                setIsGenerating(false);
+              },
+              onError: err => {
+                setError(err.message || 'Failed to generate summary');
+                setIsGenerating(false);
+              },
+            },
+          );
+        } else {
+          // Trigger lazy fetch — the useEffect above fires the request when data arrives
+          setTraceContextNeeded(true);
+        }
+        return;
+      }
+
+      // No trace context available — summarize single event
+      const content = formatEventContent(rowData ?? {}, severityText);
       summarize.mutate(
         { type: 'event', content, tone: toneOverride ?? tone },
         {
@@ -132,7 +218,7 @@ export default function AISummarizeButton({
         },
       );
     },
-    [rowData, severityText, summarize, tone, traceSpans],
+    [rowData, severityText, summarize, tone, traceId, traceSource, traceSpans],
   );
 
   const handleFakeAI = useCallback(() => {

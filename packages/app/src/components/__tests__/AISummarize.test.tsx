@@ -34,6 +34,14 @@ jest.mock('@/api', () => ({
   },
 }));
 
+jest.mock('@/source', () => ({
+  useSource: () => ({ data: undefined, isLoading: false }),
+}));
+
+jest.mock('../DBTraceWaterfallChart', () => ({
+  useEventsAroundFocus: () => ({ rows: [], meta: [], isFetching: false }),
+}));
+
 let mockEasterEggVisible = true;
 jest.mock('../aiSummarize', () => {
   const actual = jest.requireActual('../aiSummarize');

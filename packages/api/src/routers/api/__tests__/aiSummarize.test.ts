@@ -159,8 +159,8 @@ describe('POST /ai/summarize', () => {
     const patternSystem = mockGenerateText.mock.calls[1][0].system;
 
     expect(eventSystem).not.toBe(patternSystem);
-    expect(eventSystem).toContain('What happened in this event');
-    expect(patternSystem).toContain('What the pattern represents');
+    expect(eventSystem).toContain('single log or trace event');
+    expect(patternSystem).toContain('log/trace pattern');
   });
 
   it('returns 500 on AI provider error', async () => {

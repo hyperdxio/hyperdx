@@ -229,7 +229,6 @@ export default function AISummaryPanel({
                   {result?.text}
                 </Text>
               )}
-              {/* tone selector is in the top bar */}
             </>
           )}
         </Paper>

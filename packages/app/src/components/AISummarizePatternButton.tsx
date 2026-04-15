@@ -72,6 +72,7 @@ export function formatPatternContent(
               v != null &&
               v !== '' &&
               !SKIP_KEYS.has(k) &&
+              !k.startsWith('__hdx_') &&
               k !== serviceNameExpression,
           )
           .slice(0, 15);

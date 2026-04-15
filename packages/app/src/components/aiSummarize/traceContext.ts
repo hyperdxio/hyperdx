@@ -22,7 +22,7 @@ interface SpanGroup {
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
+  return sorted[Math.min(Math.max(0, idx), sorted.length - 1)];
 }
 
 function fmtMs(ms: number): string {
@@ -30,6 +30,9 @@ function fmtMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
+
+// Cap the trace context to ~4KB to stay well within the 50KB content limit
+const MAX_TRACE_CONTEXT_CHARS = 4000;
 
 export function buildTraceContext(spans: TraceSpan[]): string {
   if (!spans || spans.length === 0) return '';
@@ -114,5 +117,9 @@ export function buildTraceContext(spans: TraceSpan[]): string {
     }
   }
 
-  return parts.join('\n');
+  const result = parts.join('\n');
+  if (result.length > MAX_TRACE_CONTEXT_CHARS) {
+    return result.slice(0, MAX_TRACE_CONTEXT_CHARS - 20) + '\n... (truncated)';
+  }
+  return result;
 }
