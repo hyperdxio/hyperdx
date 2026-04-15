@@ -99,6 +99,11 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
+            allowedSourceKinds={
+              displayType === DisplayType.Heatmap
+                ? [SourceKind.Trace]
+                : undefined
+            }
             sourceSchemaPreview={
               <SourceSchemaPreview source={tableSource} variant="text" />
             }

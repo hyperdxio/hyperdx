@@ -417,14 +417,11 @@ export default function EditTimeChartForm({
       }
 
       if (displayType === DisplayType.Heatmap && Array.isArray(select)) {
-        const traceSource =
+        const defaultValue =
           tableSource?.kind === SourceKind.Trace &&
           tableSource.durationExpression
-            ? tableSource
-            : undefined;
-        const defaultValue = traceSource
-          ? getDurationMsExpression(traceSource)
-          : (select[0]?.valueExpression ?? '');
+            ? getDurationMsExpression(tableSource)
+            : (select[0]?.valueExpression ?? '');
         const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
@@ -436,12 +433,10 @@ export default function EditTimeChartForm({
         setValue('select', heatmapSeries);
         setValue('series', heatmapSeries);
         setValue('series.0.countExpression' as any, 'count()');
-        if (traceSource) {
-          setValue('numberFormat', {
-            output: 'duration' as any,
-            factor: 0.001,
-          });
-        }
+        setValue('numberFormat', {
+          output: 'duration' as any,
+          factor: 0.001,
+        });
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
