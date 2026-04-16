@@ -286,6 +286,14 @@ describe('determineTier', () => {
       ]), 2);
     });
 
+    it('does NOT flag test files under critical paths as Tier 4', () => {
+      // e.g. packages/api/src/tasks/tests/util.test.ts should not be critical
+      assert.equal(classify('alice', 'feat/alert-tests', [
+        makeFile('packages/api/src/tasks/tests/util.test.ts', 40, 0),
+        makeFile('packages/api/src/tasks/checkAlerts/tests/checkAlerts.test.ts', 80, 0),
+      ]), 2);
+    });
+
     it('touches core user/team models', () => {
       assert.equal(classify('alice', 'feat/user-fields', [
         makeFile('packages/api/src/models/user.ts', 10, 2),

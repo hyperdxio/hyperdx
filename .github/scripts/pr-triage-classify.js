@@ -100,7 +100,7 @@ function computeSignals(pr, filesRes) {
 
   const testFiles     = filesRes.filter(f => isTestFile(f.filename));
   const prodFiles     = filesRes.filter(f => !isTestFile(f.filename) && !isTrivialFile(f.filename));
-  const criticalFiles = filesRes.filter(f => isCriticalFile(f.filename));
+  const criticalFiles = filesRes.filter(f => isCriticalFile(f.filename) && !isTestFile(f.filename));
 
   const prodLines = prodFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
   const testLines = testFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
