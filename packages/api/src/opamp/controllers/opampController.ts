@@ -82,6 +82,7 @@ type CollectorConfig = {
       logs_table_name: string;
       timeout: string;
       create_schema: string;
+      json: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -97,6 +98,7 @@ type CollectorConfig = {
       ttl: string;
       timeout: string;
       create_schema: string;
+      json: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -205,6 +207,7 @@ export const buildOtelCollectorConfig = (
         timeout: '5s',
         create_schema:
           '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
+        json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',
@@ -221,6 +224,7 @@ export const buildOtelCollectorConfig = (
         timeout: '5s',
         create_schema:
           '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
+        json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',
