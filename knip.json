@@ -27,6 +27,7 @@
       "project": ["src/**/*.ts"]
     }
   },
+  "entry": [".github/scripts/*.js"],
   "ignore": ["scripts/dev-portal/**"],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
