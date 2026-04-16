@@ -1,23 +1,89 @@
-import type { AlertsApiResponse } from '@hyperdx/common-utils/dist/types';
+import type {
+  AlertApiResponse,
+  AlertsApiResponse,
+  AlertsPageItem,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { pick } from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
 
-import { getRecentAlertHistoriesBatch } from '@/controllers/alertHistory';
+import {
+  getRecentAlertHistories,
+  getRecentAlertHistoriesBatch,
+} from '@/controllers/alertHistory';
 import {
   createAlert,
   deleteAlert,
   getAlertById,
+  getAlertEnhanced,
   getAlertsEnhanced,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import { sendJson } from '@/utils/serialization';
+import { IAlertHistory } from '@/models/alertHistory';
+import { PreSerialized, sendJson } from '@/utils/serialization';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
+
+const formatAlertResponse = (
+  alert: EnhancedAlert,
+  history: Omit<IAlertHistory, 'alert'>[],
+): PreSerialized<AlertsPageItem> => {
+  return {
+    history,
+    silenced: alert.silenced
+      ? {
+          by: alert.silenced.by?.email,
+          at: alert.silenced.at,
+          until: alert.silenced.until,
+        }
+      : undefined,
+    createdBy: alert.createdBy
+      ? pick(alert.createdBy, ['email', 'name'])
+      : undefined,
+    channel: pick(alert.channel, ['type']),
+    ...(alert.dashboard && {
+      dashboardId: alert.dashboard._id,
+      dashboard: {
+        tiles: alert.dashboard.tiles
+          .filter(tile => tile.id === alert.tileId)
+          .map(tile => ({
+            id: tile.id,
+            config: { name: tile.config.name },
+          })),
+        ...pick(alert.dashboard, ['_id', 'updatedAt', 'name', 'tags']),
+      },
+    }),
+    ...(alert.savedSearch && {
+      savedSearchId: alert.savedSearch._id,
+      savedSearch: pick(alert.savedSearch, [
+        '_id',
+        'createdAt',
+        'name',
+        'updatedAt',
+        'tags',
+      ]),
+    }),
+    ...pick(alert, [
+      '_id',
+      'interval',
+      'scheduleOffsetMinutes',
+      'scheduleStartAt',
+      'threshold',
+      'thresholdType',
+      'state',
+      'source',
+      'tileId',
+      'createdAt',
+      'updatedAt',
+    ]),
+  };
+};
 
 type AlertsExpRes = express.Response<AlertsApiResponse>;
 router.get('/', async (req, res: AlertsExpRes, next) => {
@@ -39,62 +105,49 @@ router.get('/', async (req, res: AlertsExpRes, next) => {
 
     const data = alerts.map(alert => {
       const history = historyMap.get(alert._id.toString()) ?? [];
-
-      return {
-        history,
-        silenced: alert.silenced
-          ? {
-              by: alert.silenced.by?.email,
-              at: alert.silenced.at,
-              until: alert.silenced.until,
-            }
-          : undefined,
-        createdBy: alert.createdBy
-          ? pick(alert.createdBy, ['email', 'name'])
-          : undefined,
-        channel: pick(alert.channel, ['type']),
-        ...(alert.dashboard && {
-          dashboardId: alert.dashboard._id,
-          dashboard: {
-            tiles: alert.dashboard.tiles
-              .filter(tile => tile.id === alert.tileId)
-              .map(tile => ({
-                id: tile.id,
-                config: { name: tile.config.name },
-              })),
-            ...pick(alert.dashboard, ['_id', 'updatedAt', 'name', 'tags']),
-          },
-        }),
-        ...(alert.savedSearch && {
-          savedSearchId: alert.savedSearch._id,
-          savedSearch: pick(alert.savedSearch, [
-            '_id',
-            'createdAt',
-            'name',
-            'updatedAt',
-            'tags',
-          ]),
-        }),
-        ...pick(alert, [
-          '_id',
-          'interval',
-          'scheduleOffsetMinutes',
-          'scheduleStartAt',
-          'threshold',
-          'thresholdType',
-          'state',
-          'source',
-          'tileId',
-          'createdAt',
-          'updatedAt',
-        ]),
-      };
+      return formatAlertResponse(alert, history);
     });
+
     sendJson(res, { data });
   } catch (e) {
     next(e);
   }
 });
+
+type AlertExpRes = express.Response<AlertApiResponse>;
+router.get(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res: AlertExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertEnhanced(req.params.id, teamId);
+      if (!alert) {
+        return res.sendStatus(404);
+      }
+
+      const history = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        limit: 20,
+      });
+
+      const data = formatAlertResponse(alert, history);
+
+      sendJson(res, { data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   '/',

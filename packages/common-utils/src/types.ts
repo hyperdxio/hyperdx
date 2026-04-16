@@ -278,6 +278,10 @@ export type WebhookApiData = Omit<IWebhook, 'team'>;
 export enum AlertThresholdType {
   ABOVE = 'above',
   BELOW = 'below',
+  ABOVE_EXCLUSIVE = 'above_exclusive',
+  BELOW_OR_EQUAL = 'below_or_equal',
+  EQUAL = 'equal',
+  NOT_EQUAL = 'not_equal',
 }
 
 export enum AlertState {
@@ -1318,6 +1322,12 @@ export const AlertsApiResponseSchema = z.object({
 });
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
+
+export const AlertApiResponseSchema = z.object({
+  data: AlertsPageItemSchema,
+});
+
+export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
 
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({

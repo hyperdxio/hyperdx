@@ -1,4 +1,5 @@
 import {
+  AlertThresholdType,
   BuilderSavedChartConfig,
   DashboardFilter,
   DisplayType,
@@ -12,7 +13,6 @@ import {
   AlertDocument,
   AlertInterval,
   AlertState,
-  AlertThresholdType,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';

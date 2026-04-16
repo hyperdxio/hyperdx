@@ -34,7 +34,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Evaluation interval.
  *     AlertThresholdType:
  *       type: string
- *       enum: [above, below]
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal]
  *       description: Threshold comparison direction.
  *     AlertSource:
  *       type: string

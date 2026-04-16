@@ -3,6 +3,7 @@ import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
 import type {
   Alert,
+  AlertApiResponse,
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
@@ -234,10 +235,20 @@ const api = {
         }).json<PresetDashboardFilter>(),
     });
   },
+  getAlertsQueryKey: () => ['alerts'] as const,
+  getAlertQueryKey: (alertId: string | undefined) =>
+    ['alert', alertId] as const,
   useAlerts() {
     return useQuery({
-      queryKey: [`alerts`],
+      queryKey: api.getAlertsQueryKey(),
       queryFn: () => hdxServer(`alerts`).json<AlertsApiResponse>(),
+    });
+  },
+  useAlert(alertId: string | undefined) {
+    return useQuery({
+      queryKey: api.getAlertQueryKey(alertId),
+      queryFn: () => hdxServer(`alerts/${alertId}`).json<AlertApiResponse>(),
+      enabled: alertId != null,
     });
   },
   useServices() {

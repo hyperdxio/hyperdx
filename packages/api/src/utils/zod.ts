@@ -1,5 +1,6 @@
 import {
   AggregateFunctionSchema,
+  AlertThresholdType,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -11,7 +12,7 @@ import {
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
-import { AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertSource } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
