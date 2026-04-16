@@ -24,7 +24,8 @@ const TIER1_PATTERNS = [
   /^\.github\/images\//,
   /^\.env\.example$/,
   /^\.changeset\//,  // version-bump config files; no functional code
-  /^\.github\/scripts\//,  // GitHub Actions scripts; not application code
+  /^\.github\/scripts\//,   // GitHub Actions scripts; not application code
+  /^\.github\/workflows\//,  // workflow files (main.yml/release.yml still caught by TIER4_PATTERNS)
 ];
 
 const TEST_FILE_PATTERNS = [

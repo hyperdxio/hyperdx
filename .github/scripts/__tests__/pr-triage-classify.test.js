@@ -82,10 +82,19 @@ describe('isTrivialFile', () => {
     assert.ok(isTrivialFile('.github/scripts/pr-triage-classify.js'));
   });
 
+  it('matches .github/workflows/ files', () => {
+    assert.ok(isTrivialFile('.github/workflows/pr-triage.yml'));
+    assert.ok(isTrivialFile('.github/workflows/knip.yml'));
+    // main.yml and release.yml are also trivial per isTrivialFile, but they are
+    // caught first by isCriticalFile in computeSignals, so they still → Tier 4
+    assert.ok(isTrivialFile('.github/workflows/main.yml'));
+  });
+
   it('does not match production source files', () => {
     assert.ok(!isTrivialFile('packages/app/src/App.tsx'));
     assert.ok(!isTrivialFile('packages/api/src/routers/logs.ts'));
-    assert.ok(!isTrivialFile('.github/workflows/ci.yml'));
+    assert.ok(!isTrivialFile('Makefile'));
+    assert.ok(!isTrivialFile('knip.json'));
   });
 });
 
@@ -305,10 +314,10 @@ describe('determineTier', () => {
       ]), 4);
     });
 
-    it('does NOT flag other workflow files as Tier 4', () => {
+    it('non-critical workflow-only changes are Tier 1 (workflow files are trivial)', () => {
       assert.equal(classify('alice', 'ci/add-triage-step', [
         makeFile('.github/workflows/pr-triage.yml', 10, 2),
-      ]), 2);
+      ]), 1);
     });
 
     it('does NOT flag test files under critical paths as Tier 4', () => {
