@@ -23,7 +23,6 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-
 // Config holds all configuration for the migration tool
 type Config struct {
 	// ClickHouse connection settings
@@ -318,7 +317,6 @@ func processSchemaDir(schemaDir, database, tablesTTLExpr string) (string, error)
 	return tempDir, nil
 }
 
-
 // runMigrationWithRetry runs goose seed with exponential backoff retry
 func runMigrationWithRetry(ctx context.Context, db *sql.DB, migrationsDir string, maxRetries int) error {
 	var lastErr error
@@ -348,6 +346,68 @@ func runMigrationWithRetry(ctx context.Context, db *sql.DB, migrationsDir string
 	}
 
 	return fmt.Errorf("seed failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// getClickHouseVersion queries the ClickHouse server version and returns the
+// major and minor version numbers (e.g. 26, 2 for version "26.2.1.0").
+func getClickHouseVersion(ctx context.Context, db *sql.DB) (major, minor int, err error) {
+	var version string
+	if err := db.QueryRowContext(ctx, "SELECT version()").Scan(&version); err != nil {
+		return 0, 0, fmt.Errorf("failed to query ClickHouse version: %w", err)
+	}
+
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, fmt.Errorf("unexpected version format: %s", version)
+	}
+
+	major, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse major version %q: %w", parts[0], err)
+	}
+	minor, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse minor version %q: %w", parts[1], err)
+	}
+
+	return major, minor, nil
+}
+
+// supportsFullTextSearch returns true if the ClickHouse version supports
+// full text search indexes (TYPE text). This requires ClickHouse >= 26.2.
+func supportsFullTextSearch(major, minor int) bool {
+	return major >= 26 && minor >= 2
+}
+
+// swapLogsSchemaForCompat replaces the full-text-search logs schema with the
+// compatibility variant (bloom_filter indexes) in the processed temp directory.
+// It removes 00002_otel_logs.sql and renames 00002_otel_logs_compat.sql to
+// take its place, so goose runs the compat schema instead.
+func swapLogsSchemaForCompat(tempDir string) error {
+	fullTextPath := filepath.Join(tempDir, "00002_otel_logs.sql")
+	compatPath := filepath.Join(tempDir, "00002_otel_logs_compat.sql")
+
+	// Remove the full-text-search schema
+	if err := os.Remove(fullTextPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove full text logs schema: %w", err)
+	}
+
+	// Rename compat schema to the original name so goose picks it up in order
+	if err := os.Rename(compatPath, fullTextPath); err != nil {
+		return fmt.Errorf("failed to rename compat logs schema: %w", err)
+	}
+
+	return nil
+}
+
+// removeCompatLogsSchema removes the compat schema file from the temp directory
+// when full text search is supported, so goose doesn't run both schemas.
+func removeCompatLogsSchema(tempDir string) error {
+	compatPath := filepath.Join(tempDir, "00002_otel_logs_compat.sql")
+	if err := os.Remove(compatPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove compat logs schema: %w", err)
+	}
+	return nil
 }
 
 // listSQLFiles lists all SQL files in a directory for logging purposes
@@ -397,6 +457,12 @@ func main() {
 	}
 	log.Println("Successfully connected to ClickHouse")
 
+	// Check ClickHouse version for feature support
+	chMajor, chMinor, err := getClickHouseVersion(ctx, db)
+	if err != nil {
+		log.Fatalf("Failed to determine ClickHouse version: %v", err)
+	}
+
 	// Parse tables TTL
 	tablesTTLExpr, err := ttlToClickHouseInterval(cfg.TablesTTL)
 	if err != nil {
@@ -411,6 +477,18 @@ func main() {
 		log.Fatalf("Failed to process schema directory: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
+
+	// Select the appropriate logs schema based on ClickHouse version
+	if supportsFullTextSearch(chMajor, chMinor) {
+		if err := removeCompatLogsSchema(tempDir); err != nil {
+			log.Fatalf("Failed to remove compat schema: %v", err)
+		}
+	} else {
+		log.Printf("ClickHouse %d.%d < 26.2, falling back to compatibility logs schema", chMajor, chMinor)
+		if err := swapLogsSchemaForCompat(tempDir); err != nil {
+			log.Fatalf("Failed to swap logs schema: %v", err)
+		}
+	}
 
 	// List SQL files
 	sqlFiles, err := listSQLFiles(tempDir)
