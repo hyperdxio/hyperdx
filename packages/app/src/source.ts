@@ -348,6 +348,36 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
+  // Check if metadata rollup tables exist
+  const hasMetadataMVs =
+    isOtelLogSchema || isOtelSpanSchema
+      ? await (async () => {
+          const [keyMeta, kvMeta] = await Promise.all([
+            metadata.getTableMetadata({
+              databaseName,
+              tableName: `${tableName}_key_rollup_15m`,
+              connectionId,
+            }),
+            metadata.getTableMetadata({
+              databaseName,
+              tableName: `${tableName}_kv_rollup_15m`,
+              connectionId,
+            }),
+          ]);
+          return keyMeta != null && kvMeta != null;
+        })()
+      : false;
+
+  const metadataMVsConfig = hasMetadataMVs
+    ? {
+        metadataMaterializedViews: {
+          keyRollupTable: `${tableName}_key_rollup_15m`,
+          kvRollupTable: `${tableName}_kv_rollup_15m`,
+          granularity: '15 minute',
+        },
+      }
+    : {};
+
   return {
     ...baseConfig,
     ...(isOtelLogSchema
@@ -365,6 +395,7 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...metadataMVsConfig,
         }
       : {}),
     ...(isOtelSpanSchema
@@ -387,6 +418,7 @@ export async function inferTableSourceConfig({
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
           ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
+          ...metadataMVsConfig,
         }
       : {}),
   };

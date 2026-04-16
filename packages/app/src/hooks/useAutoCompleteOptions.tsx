@@ -12,8 +12,6 @@ import {
 } from '@/hooks/useMetadata';
 import { toArray } from '@/utils';
 
-const ROLLUP_GRANULARITY = '15 minute' as const;
-
 export type TokenInfo = {
   /** The full token at the cursor position */
   token: string;
@@ -63,31 +61,13 @@ export function useAutoCompleteOptions(
 ) {
   const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
 
-  // Add fieldsRollupView to table connections — will eventually come from Source config
-  const tcsWithRollup = useMemo(
-    () =>
-      tcs.map(tc => {
-        if (tc.tableName === 'otel_logs' || tc.tableName === 'otel_traces') {
-          return {
-            ...tc,
-            fieldsRollupView: {
-              name: `${tc.tableName}_key_rollup_15m`,
-              granularity: ROLLUP_GRANULARITY,
-            },
-          };
-        }
-        return tc;
-      }),
-    [tcs],
-  );
-
   const effectiveDateRange: [Date, Date] = useMemo(
     () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
     [dateRange],
   );
 
   // Fetch fields, using rollup for map key discovery when available
-  const { data: fields } = useMultipleAllFields(tcsWithRollup, {
+  const { data: fields } = useMultipleAllFields(tcs, {
     dateRange: effectiveDateRange,
   });
 
@@ -117,7 +97,9 @@ export function useAutoCompleteOptions(
 
   // Tokenize input at cursor position
   const tokenInfo = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs
     const cursorPos = inputRef?.current?.selectionStart ?? value.length;
+    // eslint-disable-next-line react-hooks/refs
     return tokenizeAtCursor(value, cursorPos);
   }, [value, inputRef]);
 

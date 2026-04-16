@@ -2501,6 +2501,28 @@
               "$ref": "#/components/schemas/MaterializedView"
             },
             "nullable": true
+          },
+          "metadataMaterializedViews": {
+            "type": "object",
+            "description": "Configure materialized views for fast field discovery and value autocomplete.",
+            "nullable": true,
+            "properties": {
+              "keyRollupTable": {
+                "type": "string",
+                "description": "ClickHouse table name for the key rollup (field discovery).",
+                "example": "otel_logs_key_rollup_15m"
+              },
+              "kvRollupTable": {
+                "type": "string",
+                "description": "ClickHouse table name for the key-value rollup (value autocomplete).",
+                "example": "otel_logs_kv_rollup_15m"
+              },
+              "granularity": {
+                "type": "string",
+                "description": "The time granularity of the rollup tables.",
+                "example": "15m"
+              }
+            }
           }
         }
       },
@@ -2688,6 +2710,28 @@
               "$ref": "#/components/schemas/MaterializedView"
             },
             "nullable": true
+          },
+          "metadataMaterializedViews": {
+            "type": "object",
+            "description": "Configure materialized views for fast field discovery and value autocomplete.",
+            "nullable": true,
+            "properties": {
+              "keyRollupTable": {
+                "type": "string",
+                "description": "ClickHouse table name for the key rollup (field discovery).",
+                "example": "otel_traces_key_rollup_15m"
+              },
+              "kvRollupTable": {
+                "type": "string",
+                "description": "ClickHouse table name for the key-value rollup (value autocomplete).",
+                "example": "otel_traces_kv_rollup_15m"
+              },
+              "granularity": {
+                "type": "string",
+                "description": "The time granularity of the rollup tables.",
+                "example": "15m"
+              }
+            }
           }
         }
       },

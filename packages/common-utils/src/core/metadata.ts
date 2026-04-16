@@ -16,9 +16,10 @@ import { renderChartConfig } from '@/core/renderChartConfig';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
+  MetadataMaterializedViews,
   TSource,
 } from '@/types';
-import { SourceKind } from '@/types';
+import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import {
@@ -31,21 +32,6 @@ import {
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 const DEFAULT_MAX_KEYS = 1000;
-
-/** Tables that have rollup materialized views */
-const TABLES_WITH_ROLLUPS = new Set(['otel_logs', 'otel_traces']);
-
-/** Returns the key-only rollup table name for a base table, or undefined if not supported */
-function getKeyRollupTableName(tableName: string): string | undefined {
-  if (!TABLES_WITH_ROLLUPS.has(tableName)) return undefined;
-  return `${tableName}_key_rollup_15m`;
-}
-
-/** Returns the KV rollup table name for a base table, or undefined if not supported */
-function getKvRollupTableName(tableName: string): string | undefined {
-  if (!TABLES_WITH_ROLLUPS.has(tableName)) return undefined;
-  return `${tableName}_kv_rollup_15m`;
-}
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -358,7 +344,7 @@ export class Metadata {
     maxKeys = DEFAULT_MAX_KEYS,
     connectionId,
     metricName,
-    fieldsRollupView,
+    metadataMVs,
     dateRange,
   }: {
     databaseName: string;
@@ -367,18 +353,18 @@ export class Metadata {
     maxKeys?: number;
     connectionId: string;
     metricName?: string;
-    fieldsRollupView?: FieldsRollupView;
+    metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
   }) {
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
-      fieldsRollupView && dateRange
-        ? getAlignedDateRange(dateRange, fieldsRollupView.granularity)
+      metadataMVs && dateRange
+        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
         : undefined;
 
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : fieldsRollupView && alignedDateRange
+      : metadataMVs && alignedDateRange
         ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
@@ -388,12 +374,12 @@ export class Metadata {
     }
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
-    if (fieldsRollupView && alignedDateRange) {
+    if (metadataMVs && alignedDateRange) {
       return this.cache.getOrFetch<string[]>(cacheKey, async () => {
         const timeFilter = chSql`AND Timestamp >= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})) AND Timestamp <= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }}))`;
         const sql = chSql`
           SELECT Key
-          FROM ${tableExpr({ database: databaseName, table: fieldsRollupView.name })}
+          FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
           WHERE ColumnIdentifier = ${{ String: column }}
             ${timeFilter}
           GROUP BY Key
@@ -651,7 +637,7 @@ export class Metadata {
     tableName,
     connectionId,
     metricName,
-    fieldsRollupView,
+    metadataMVs,
     dateRange,
   }: TableConnection & { dateRange?: [Date, Date] }) {
     const fields: Field[] = [];
@@ -701,7 +687,7 @@ export class Metadata {
           column: column.name,
           connectionId,
           metricName,
-          fieldsRollupView,
+          metadataMVs,
           dateRange,
         });
 
@@ -1212,6 +1198,7 @@ export class Metadata {
     key,
     maxValues = 1000,
     connectionId,
+    metadataMVs,
     dateRange,
     signal,
   }: {
@@ -1221,11 +1208,11 @@ export class Metadata {
     key: string;
     maxValues?: number;
     connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
     dateRange: [Date, Date];
     signal?: AbortSignal;
   }): Promise<string[]> {
-    const kvRollupTable = getKvRollupTableName(tableName);
-    if (!kvRollupTable) return [];
+    if (!metadataMVs) return [];
 
     const timeFilter = chSql`AND Timestamp >= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})) AND Timestamp <= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }}))`;
     const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.${dateRange[0].getTime()}.${dateRange[1].getTime()}.completeKeyValues`;
@@ -1234,7 +1221,7 @@ export class Metadata {
       try {
         const sql = chSql`
           SELECT Value
-          FROM ${tableExpr({ database: databaseName, table: kvRollupTable })}
+          FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
           WHERE ColumnIdentifier = ${{ String: column }}
             AND Key = ${{ String: key }}
             AND Value != ''
@@ -1456,18 +1443,13 @@ export type Field = {
   jsType: JSDataType | null;
 };
 
-export type FieldsRollupView = {
-  name: string;
-  granularity: string;
-};
-
 // Describes a table and potentially related views
 export type TableConnection = {
   databaseName: string;
   tableName: string;
   connectionId: string;
   metricName?: string;
-  fieldsRollupView?: FieldsRollupView;
+  metadataMVs?: MetadataMaterializedViews;
 };
 
 export type TableConnectionChoice =
@@ -1495,6 +1477,10 @@ export function tcFromSource(source?: TSource): TableConnection {
     databaseName: source?.from?.databaseName ?? '',
     tableName: source?.from?.tableName ?? '',
     connectionId: source?.connection ?? '',
+    metadataMVs:
+      source && (isLogSource(source) || isTraceSource(source))
+        ? source.metadataMaterializedViews
+        : undefined,
   };
 }
 
