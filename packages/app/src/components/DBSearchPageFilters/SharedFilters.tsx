@@ -9,12 +9,15 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import { IconChevronDown, IconFilterOff, IconUsers } from '@tabler/icons-react';
 
 interface SharedFiltersSectionProps {
   /** Whether there are any shared facets to display */
   hasSharedFacets: boolean;
+  /** Whether the section is expanded */
+  opened: boolean;
+  /** Toggle the section open/closed */
+  onToggle: VoidFunction;
   /** Whether any shared facets have active filter selections */
   showClearButton: boolean;
   /** Callback to clear all shared filter selections */
@@ -31,12 +34,12 @@ interface SharedFiltersSectionProps {
  */
 function SharedFiltersSectionComponent({
   hasSharedFacets,
+  opened,
+  onToggle,
   showClearButton,
   onClearSelections,
   children,
 }: SharedFiltersSectionProps) {
-  const [opened, { toggle }] = useDisclosure(true);
-
   if (!hasSharedFacets) {
     return null;
   }
@@ -45,7 +48,7 @@ function SharedFiltersSectionComponent({
     <Stack gap="xs" data-testid="shared-filters-section">
       <Flex align="center" justify="space-between">
         <UnstyledButton
-          onClick={toggle}
+          onClick={onToggle}
           data-testid="shared-filters-toggle"
           style={{ flex: 1 }}
         >
@@ -79,7 +82,7 @@ function SharedFiltersSectionComponent({
               </ActionIcon>
             </Tooltip>
           )}
-          <UnstyledButton onClick={toggle}>
+          <UnstyledButton onClick={onToggle}>
             <IconChevronDown
               size={14}
               color="var(--mantine-color-gray-6)"

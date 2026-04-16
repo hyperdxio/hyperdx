@@ -15,6 +15,8 @@ import {
   Button,
   Center,
   Checkbox,
+  Collapse,
+  Divider,
   Flex,
   Group,
   Loader,
@@ -1110,6 +1112,14 @@ const DBSearchPageFiltersComponent = ({
     'hdx-show-filter-counts',
     true,
   );
+  const [isFiltersExpanded, setFiltersExpanded] = useLocalStorage(
+    'hdx-filters-expanded',
+    true,
+  );
+  const [isSharedFiltersExpanded, setSharedFiltersExpanded] = useLocalStorage(
+    'hdx-shared-filters-expanded',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
@@ -1691,18 +1701,30 @@ const DBSearchPageFiltersComponent = ({
             <Text size="xxs" c="dimmed" fw="bold">
               Analysis Mode
             </Text>
-            {onCollapse && (
-              <Tooltip label="Hide filters" position="bottom">
-                <ActionIcon
-                  variant="subtle"
-                  size="xs"
-                  onClick={onCollapse}
-                  aria-label="Hide filters"
-                >
-                  <IconArrowBarToLeft size={14} />
-                </ActionIcon>
-              </Tooltip>
-            )}
+            <Group gap={0}>
+              <FilterSettingsPanel
+                isSharedFiltersVisible={isSharedFiltersVisible}
+                onSharedFiltersVisibilityChange={setSharedFiltersVisible}
+                showFilterCounts={showFilterCounts}
+                onShowFilterCountsChange={setShowFilterCounts}
+                hasPersonalPins={hasPersonalPins}
+                onResetPersonalPins={resetPersonalPins}
+                hasSharedPins={hasSharedPins}
+                onResetSharedFilters={resetSharedFilters}
+              />
+              {onCollapse && (
+                <Tooltip label="Hide filters" position="bottom">
+                  <ActionIcon
+                    variant="subtle"
+                    size="xs"
+                    onClick={onCollapse}
+                    aria-label="Hide filters"
+                  >
+                    <IconArrowBarToLeft size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           </Flex>
           <Tabs
             value={analysisMode}
@@ -1733,6 +1755,10 @@ const DBSearchPageFiltersComponent = ({
           {isSharedFiltersVisible && (
             <SharedFiltersSection
               hasSharedFacets={sharedFacets.length > 0}
+              opened={isSharedFiltersExpanded}
+              onToggle={() =>
+                setSharedFiltersExpanded(!isSharedFiltersExpanded)
+              }
               showClearButton={showSharedClearButton}
               onClearSelections={clearSharedSelections}
             >
@@ -1743,151 +1769,180 @@ const DBSearchPageFiltersComponent = ({
             </SharedFiltersSection>
           )}
 
-          <Flex align="center" justify="space-between">
-            <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>
-              <Text size="xxs" c="dimmed" fw="bold">
-                Filters {isFacetsFetching && '···'}
-              </Text>
-              {showRefreshButton && (
-                <TextButton
-                  label={
-                    <IconRefresh
-                      size={14}
-                      className="ms-1"
-                      onClick={() => setDateRange(chartConfig.dateRange)}
-                    />
-                  }
-                />
-              )}
-            </Flex>
-            <Group gap={0}>
-              {showFiltersClearButton && (
-                <Tooltip
-                  label="Clear Filters"
-                  position="top"
-                  withArrow
-                  fz="xxs"
-                  color="gray"
-                >
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="xs"
-                    onClick={clearRegularSelections}
-                    aria-label="Clear Filters"
-                  >
-                    <IconFilterOff size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              )}
-              <FilterSettingsPanel
-                isSharedFiltersVisible={isSharedFiltersVisible}
-                onSharedFiltersVisibilityChange={setSharedFiltersVisible}
-                showFilterCounts={showFilterCounts}
-                onShowFilterCountsChange={setShowFilterCounts}
-                hasPersonalPins={hasPersonalPins}
-                onResetPersonalPins={resetPersonalPins}
-                hasSharedPins={hasSharedPins}
-                onResetSharedFilters={resetSharedFilters}
-              />
-            </Group>
-          </Flex>
+          {/* Divider between shared and regular filters */}
+          {isSharedFiltersVisible && sharedFacets.length > 0 && (
+            <Divider color="dark.4" />
+          )}
 
-          {analysisMode === 'results' && (
-            <Checkbox
-              size={13 as any}
-              checked={denoiseResults}
-              ms="6px"
-              label={
-                <Tooltip
-                  openDelay={200}
-                  color="gray"
-                  position="right"
-                  withArrow
-                  label="Denoise results will visually remove events matching common event patterns from the results table."
+          {/* Collapsible "Filters" section */}
+          <Stack gap="xs">
+            <Flex align="center" justify="space-between">
+              <UnstyledButton
+                onClick={() => setFiltersExpanded(!isFiltersExpanded)}
+                style={{ flex: 1 }}
+              >
+                <Text
+                  size="xxs"
+                  c="dimmed"
+                  fw="bold"
+                  className={isFacetsFetching ? 'effect-pulse' : ''}
                 >
-                  <Text size="xs" mt="-2px" component="div">
-                    <Group gap={2}>
-                      <IconShadow
+                  Filters {isFacetsFetching && '···'}
+                </Text>
+              </UnstyledButton>
+              <Group gap={0} wrap="nowrap">
+                {showRefreshButton && (
+                  <TextButton
+                    label={
+                      <IconRefresh
                         size={14}
-                        style={{ display: 'inline', verticalAlign: 'middle' }}
+                        className="ms-1"
+                        onClick={() => setDateRange(chartConfig.dateRange)}
                       />
-                      Denoise Results
-                    </Group>
-                  </Text>
-                </Tooltip>
-              }
-              onChange={() => setDenoiseResults(!denoiseResults)}
-            />
-          )}
-
-          {source?.kind === SourceKind.Trace &&
-            source.parentSpanIdExpression && (
-              <Checkbox
-                size={13 as any}
-                checked={isRootSpansOnly}
-                ms="6px"
-                label={
+                    }
+                  />
+                )}
+                {showFiltersClearButton && (
                   <Tooltip
-                    openDelay={200}
-                    color="gray"
-                    position="right"
+                    label="Clear Filters"
+                    position="top"
                     withArrow
-                    label="Only show root spans (spans with no parent span)."
+                    fz="xxs"
+                    color="gray"
                   >
-                    <Text size="xs" mt="-2px" component="div">
-                      <Group gap={2}>
-                        <IconSitemap
-                          size={14}
-                          style={{ display: 'inline', verticalAlign: 'middle' }}
-                        />
-                        Root Spans Only
-                      </Group>
-                    </Text>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size="xs"
+                      onClick={clearRegularSelections}
+                      aria-label="Clear Filters"
+                    >
+                      <IconFilterOff size={14} />
+                    </ActionIcon>
                   </Tooltip>
-                }
-                onChange={event => setRootSpansOnly(event.target.checked)}
-              />
-            )}
-
-          {isLoading || isFacetsLoading ? (
-            <Flex align="center" justify="center">
-              <Loader size="xs" color="gray" />
+                )}
+                <UnstyledButton
+                  onClick={() => setFiltersExpanded(!isFiltersExpanded)}
+                >
+                  <IconChevronDown
+                    size={14}
+                    color="var(--mantine-color-gray-6)"
+                    style={{
+                      transition: 'transform 0.2s ease-in-out',
+                      transform: isFiltersExpanded
+                        ? 'rotate(0deg)'
+                        : 'rotate(-90deg)',
+                    }}
+                  />
+                </UnstyledButton>
+              </Group>
             </Flex>
-          ) : (
-            shownFacets.length === 0 && (
-              <Text size="xxs">No filters available</Text>
-            )
-          )}
-          {/* Show facets even when loading to ensure pinned filters are visible while loading */}
-          {renderFacetList(shownFacets)}
+            <Collapse in={isFiltersExpanded}>
+              <Stack gap="sm">
+                {analysisMode === 'results' && (
+                  <Checkbox
+                    size={13 as any}
+                    checked={denoiseResults}
+                    ms="6px"
+                    label={
+                      <Tooltip
+                        openDelay={200}
+                        color="gray"
+                        position="right"
+                        withArrow
+                        label="Denoise results will visually remove events matching common event patterns from the results table."
+                      >
+                        <Text size="xs" mt="-2px" component="div">
+                          <Group gap={2}>
+                            <IconShadow
+                              size={14}
+                              style={{
+                                display: 'inline',
+                                verticalAlign: 'middle',
+                              }}
+                            />
+                            Denoise Results
+                          </Group>
+                        </Text>
+                      </Tooltip>
+                    }
+                    onChange={() => setDenoiseResults(!denoiseResults)}
+                  />
+                )}
 
-          <Button
-            variant="secondary"
-            size="compact-xs"
-            loading={isFacetsFetching}
-            rightSection={
-              showMoreFields ? (
-                <IconChevronUp size={14} />
-              ) : (
-                <IconChevronDown size={14} />
-              )
-            }
-            onClick={() => setShowMoreFields(!showMoreFields)}
-          >
-            {showMoreFields ? 'Less filters' : 'More filters'}
-          </Button>
+                {source?.kind === SourceKind.Trace &&
+                  source.parentSpanIdExpression && (
+                    <Checkbox
+                      size={13 as any}
+                      checked={isRootSpansOnly}
+                      ms="6px"
+                      label={
+                        <Tooltip
+                          openDelay={200}
+                          color="gray"
+                          position="right"
+                          withArrow
+                          label="Only show root spans (spans with no parent span)."
+                        >
+                          <Text size="xs" mt="-2px" component="div">
+                            <Group gap={2}>
+                              <IconSitemap
+                                size={14}
+                                style={{
+                                  display: 'inline',
+                                  verticalAlign: 'middle',
+                                }}
+                              />
+                              Root Spans Only
+                            </Group>
+                          </Text>
+                        </Tooltip>
+                      }
+                      onChange={event => setRootSpansOnly(event.target.checked)}
+                    />
+                  )}
 
-          {showMoreFields && (
-            <div>
-              <Text size="xs" fw="bold">
-                Not seeing a filter?
-              </Text>
-              <Text size="xxs">
-                {`Try searching instead (e.g. column:foo)`}
-              </Text>
-            </div>
-          )}
+                {isLoading || isFacetsLoading ? (
+                  <Flex align="center" justify="center">
+                    <Loader size="xs" color="gray" />
+                  </Flex>
+                ) : (
+                  shownFacets.length === 0 && (
+                    <Text size="xxs">No filters available</Text>
+                  )
+                )}
+                {/* Show facets even when loading to ensure pinned filters are visible while loading */}
+                {renderFacetList(shownFacets)}
+
+                <Button
+                  variant="secondary"
+                  size="compact-xs"
+                  loading={isFacetsFetching}
+                  rightSection={
+                    showMoreFields ? (
+                      <IconChevronUp size={14} />
+                    ) : (
+                      <IconChevronDown size={14} />
+                    )
+                  }
+                  onClick={() => setShowMoreFields(!showMoreFields)}
+                >
+                  {showMoreFields ? 'Less filters' : 'More filters'}
+                </Button>
+
+                {showMoreFields && (
+                  <div>
+                    <Text size="xs" fw="bold">
+                      Not seeing a filter?
+                    </Text>
+                    <Text size="xxs">
+                      {`Try searching instead (e.g. column:foo)`}
+                    </Text>
+                  </div>
+                )}
+              </Stack>
+            </Collapse>
+          </Stack>
         </Stack>
       </ScrollArea>
     </Box>
