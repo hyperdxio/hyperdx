@@ -9,15 +9,16 @@ import {
   type SourceResponse,
   type SavedSearchResponse,
 } from '@/api/client';
+import AlertsPage from '@/components/AlertsPage';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginForm from '@/components/LoginForm';
 import SourcePicker from '@/components/SourcePicker';
 import EventViewer from '@/components/EventViewer';
 
-type Screen = 'loading' | 'login' | 'pick-source' | 'events';
+type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
 
 interface AppProps {
-  apiUrl: string;
+  appUrl: string;
   /** Pre-set search query from CLI flags */
   query?: string;
   /** Pre-set source name from CLI flags */
@@ -26,9 +27,11 @@ interface AppProps {
   follow?: boolean;
 }
 
-export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
+export default function App({ appUrl, query, sourceName, follow }: AppProps) {
   const [screen, setScreen] = useState<Screen>('loading');
-  const [client] = useState(() => new ApiClient({ apiUrl }));
+  const [client, setClient] = useState(() => new ApiClient({ appUrl }));
+  const [currentAppUrl, setCurrentAppUrl] = useState(appUrl);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchResponse[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceResponse | null>(
@@ -42,18 +45,19 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     (async () => {
       const valid = await client.checkSession();
       if (valid) {
-        await loadData();
+        await loadData(client);
       } else {
+        setSessionExpired(true);
         setScreen('login');
       }
     })();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (apiClient: ApiClient) => {
     try {
       const [sources, searches] = await Promise.all([
-        client.getSources(),
-        client.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
+        apiClient.getSources(),
+        apiClient.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
       ]);
 
       const queryableSources = sources.filter(
@@ -91,14 +95,34 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
 
       setScreen('pick-source');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Treat auth errors as session issues — bounce back to login
+      if (msg.includes('401') || msg.includes('403')) {
+        setSessionExpired(true);
+        setScreen('login');
+        return;
+      }
+      setError(msg);
     }
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    const ok = await client.login(email, password);
+  const handleLogin = async (
+    loginAppUrl: string,
+    email: string,
+    password: string,
+  ) => {
+    // Recreate client if the user changed the URL
+    let activeClient = client;
+    if (loginAppUrl !== currentAppUrl) {
+      activeClient = new ApiClient({ appUrl: loginAppUrl });
+      setClient(activeClient);
+      setCurrentAppUrl(loginAppUrl);
+    }
+
+    const ok = await activeClient.login(email, password);
     if (ok) {
-      await loadData();
+      setSessionExpired(false);
+      await loadData(activeClient);
     }
     return ok;
   };
@@ -122,6 +146,18 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
     [eventSources],
   );
 
+  // Track the screen before alerts so we can return to it
+  const [preAlertsScreen, setPreAlertsScreen] = useState<Screen>('events');
+
+  const handleOpenAlerts = useCallback(() => {
+    setPreAlertsScreen(screen);
+    setScreen('alerts');
+  }, [screen]);
+
+  const handleCloseAlerts = useCallback(() => {
+    setScreen(preAlertsScreen);
+  }, [preAlertsScreen]);
+
   if (error) {
     return (
       <Box paddingX={1}>
@@ -135,13 +171,23 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
       return (
         <Box paddingX={1}>
           <Text>
-            <Spinner type="dots" /> Connecting to {apiUrl}…
+            <Spinner type="dots" /> Connecting to {currentAppUrl}…
           </Text>
         </Box>
       );
 
     case 'login':
-      return <LoginForm apiUrl={apiUrl} onLogin={handleLogin} />;
+      return (
+        <LoginForm
+          defaultAppUrl={currentAppUrl}
+          onLogin={handleLogin}
+          message={
+            sessionExpired
+              ? 'Session expired — please log in again.'
+              : undefined
+          }
+        />
+      );
 
     case 'pick-source':
       return (
@@ -152,9 +198,16 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
             </Text>
             <Text dimColor>Search and tail events from the terminal</Text>
           </Box>
-          <SourcePicker sources={eventSources} onSelect={handleSourceSelect} />
+          <SourcePicker
+            sources={eventSources}
+            onSelect={handleSourceSelect}
+            onOpenAlerts={handleOpenAlerts}
+          />
         </Box>
       );
+
+    case 'alerts':
+      return <AlertsPage client={client} onClose={handleCloseAlerts} />;
 
     case 'events':
       if (!selectedSource) return null;
@@ -162,10 +215,12 @@ export default function App({ apiUrl, query, sourceName, follow }: AppProps) {
         <EventViewer
           clickhouseClient={client.createClickHouseClient()}
           metadata={client.createMetadata()}
+          appUrl={currentAppUrl}
           source={selectedSource}
           sources={eventSources}
           savedSearches={savedSearches}
           onSavedSearchSelect={handleSavedSearchSelect}
+          onOpenAlerts={handleOpenAlerts}
           initialQuery={activeQuery}
           follow={follow}
         />

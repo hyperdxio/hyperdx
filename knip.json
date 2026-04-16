@@ -27,7 +27,7 @@
       "project": ["src/**/*.ts"]
     }
   },
-  "ignore": ["scripts/dev-portal/**"],
+  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",

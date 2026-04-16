@@ -1,19 +1,11 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   MetricsDataType,
   TLogSource,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Modal,
-  Paper,
-  Stack,
-  Tabs,
-  Text,
-  TextProps,
-  Tooltip,
-} from '@mantine/core';
+import { Modal, Paper, Stack, Tabs, Text, Tooltip } from '@mantine/core';
 import { IconCode, IconRefresh } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
@@ -24,7 +16,7 @@ interface SourceSchemaInfoIconProps {
   onClick: () => void;
   isEnabled: boolean;
   tableCount: number;
-  iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  iconStyles?: React.CSSProperties;
   variant?: 'icon' | 'text';
 }
 
@@ -134,7 +126,7 @@ interface SourceSchemaPreviewSource {
 
 interface SourceSchemaPreviewProps {
   source?: SourceSchemaPreviewSource;
-  iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  iconStyles?: React.CSSProperties;
   variant?: 'icon' | 'text';
 }
 

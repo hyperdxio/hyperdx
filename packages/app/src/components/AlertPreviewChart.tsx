@@ -2,6 +2,7 @@ import React from 'react';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
+  AlertThresholdType,
   Filter,
   getSampleWeightExpression,
   isLogSource,
@@ -25,7 +26,7 @@ type AlertPreviewChartProps = {
   filters?: Filter[] | null;
   interval: AlertInterval;
   groupBy?: string;
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   threshold: number;
   select?: string | null;
 };

@@ -6,6 +6,8 @@ import { z } from 'zod';
 export { default as objectHash } from 'object-hash';
 
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
+import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
 import {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
@@ -16,7 +18,9 @@ import {
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  DisplayType,
   QuerySettings,
+  RawSqlChartConfig,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -1012,3 +1016,81 @@ export function getDistributedTableArgs(
     table: stripQuotes(splitArgs[2]),
   };
 }
+
+export function displayTypeSupportsRawSqlAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
+}
+
+export function displayTypeSupportsBuilderAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
+}
+
+export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  try {
+    if (!isRawSqlSavedChartConfig(chartConfig)) {
+      return { errors, warnings };
+    }
+
+    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+      errors.push(
+        `Display type ${chartConfig.displayType} does not support raw SQL alerts.`,
+      );
+    }
+
+    const sql = replaceMacros(chartConfig);
+
+    // Interval params are only required for time-series display types (Line, StackedBar).
+    // Number charts don't use interval bucketing.
+    if (isTimeSeriesDisplayType(chartConfig.displayType)) {
+      const hasInterval =
+        sql.includes(
+          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
+        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
+      if (!hasInterval) {
+        errors.push(
+          `SQL used for alerts must include an interval parameter or macro.`,
+        );
+      }
+    }
+
+    const hasTimeFilter =
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
+    if (!hasTimeFilter) {
+      warnings.push(
+        `SQL used for alerts should include start and end date parameters or macros.`,
+      );
+    }
+
+    return { errors, warnings };
+  } catch {
+    // replaceMacros will often fail as users type in the SQL template
+    return { errors, warnings };
+  }
+}
+
+export const isTimeSeriesDisplayType = (
+  displayType: DisplayType | undefined,
+): boolean => {
+  return (
+    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+  );
+};

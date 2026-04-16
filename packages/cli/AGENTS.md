@@ -43,6 +43,7 @@ src/
 │                        #   buildTraceLogsSql (waterfall correlated logs)
 │                        #   buildFullRowSql (SELECT * for row detail)
 ├── components/
+│   ├── AlertsPage.tsx   # Alerts overview page — list + detail with recent history (Shift+A)
 │   ├── EventViewer.tsx  # Main TUI view — table, search, detail panel with tabs
 │   ├── TraceWaterfall.tsx # Trace waterfall chart with j/k navigation + event details
 │   ├── RowOverview.tsx  # Structured overview (top-level attrs, event attrs, resource attrs)
@@ -155,7 +156,9 @@ Key expression mappings from the web frontend's `getConfig()`:
 | `s`           | Edit SELECT clause in $EDITOR              |
 | `t`           | Edit time range in $EDITOR                 |
 | `f`           | Toggle follow mode (live tail)             |
+| `o`           | Open trace in browser (detail panel)       |
 | `w`           | Toggle line wrap                           |
+| `A` (Shift+A) | Open alerts page                           |
 | `?`           | Toggle help screen                         |
 | `q`           | Quit                                       |
 

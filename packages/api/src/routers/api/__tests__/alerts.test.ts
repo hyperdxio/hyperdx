@@ -1,12 +1,21 @@
 import {
+  AlertThresholdType,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
+
+import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
+  makeRawSqlAlertTile,
+  makeRawSqlNumberAlertTile,
   makeRawSqlTile,
   makeTile,
   randomMongoId,
+  RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -550,8 +559,61 @@ describe('alerts router', () => {
     await agent.delete(`/alerts/${fakeId}/silenced`).expect(404); // Should fail
   });
 
-  it('rejects creating an alert on a raw SQL tile', async () => {
-    const rawSqlTile = makeRawSqlTile();
+  it('allows creating an alert on a raw SQL line tile', async () => {
+    const rawSqlTile = makeRawSqlAlertTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+    expect(alert.body.data.dashboard).toBe(dashboard.body.id);
+    expect(alert.body.data.tileId).toBe(rawSqlTile.id);
+  });
+
+  it('allows creating an alert on a raw SQL number tile', async () => {
+    const rawSqlTile = makeRawSqlNumberAlertTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+    expect(alert.body.data.dashboard).toBe(dashboard.body.id);
+    expect(alert.body.data.tileId).toBe(rawSqlTile.id);
+  });
+
+  it('rejects creating an alert on a raw SQL table tile', async () => {
+    const rawSqlTile = makeRawSqlTile({
+      displayType: DisplayType.Table,
+      sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+    });
     const dashboard = await agent
       .post('/dashboards')
       .send({
@@ -573,9 +635,72 @@ describe('alerts router', () => {
       .expect(400);
   });
 
-  it('rejects updating an alert to reference a raw SQL tile', async () => {
+  it('rejects creating an alert on a raw SQL tile without interval params', async () => {
+    const rawSqlTile = makeRawSqlTile({
+      sqlTemplate: 'SELECT count() FROM otel_logs',
+    });
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(400);
+  });
+
+  it('allows updating an alert to reference a raw SQL number tile', async () => {
     const regularTile = makeTile();
-    const rawSqlTile = makeRawSqlTile();
+    const rawSqlTile = makeRawSqlNumberAlertTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [regularTile, rawSqlTile],
+        tags: [],
+      })
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: regularTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: rawSqlTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      })
+      .expect(200);
+  });
+
+  it('rejects updating an alert to reference a raw SQL table tile', async () => {
+    const regularTile = makeTile();
+    const rawSqlTile = makeRawSqlTile({
+      displayType: DisplayType.Table,
+      sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+    });
     const dashboard = await agent
       .post('/dashboards')
       .send({
@@ -606,5 +731,85 @@ describe('alerts router', () => {
         }),
       })
       .expect(400);
+  });
+
+  describe('GET /alerts/:id', () => {
+    it('returns 404 for non-existent alert', async () => {
+      const fakeId = randomMongoId();
+      await agent.get(`/alerts/${fakeId}`).expect(404);
+    });
+
+    it('returns alert with empty history when no history exists', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const res = await agent.get(`/alerts/${alert.body.data._id}`).expect(200);
+
+      expect(res.body.data._id).toBe(alert.body.data._id);
+      expect(res.body.data.history).toEqual([]);
+      expect(res.body.data.threshold).toBe(alert.body.data.threshold);
+      expect(res.body.data.interval).toBe(alert.body.data.interval);
+      expect(res.body.data.dashboard).toBeDefined();
+      expect(res.body.data.tileId).toBe(dashboard.body.tiles[0].id);
+    });
+
+    it('returns alert with history entries', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const now = new Date(Date.now() - 60000);
+      const earlier = new Date(Date.now() - 120000);
+
+      await AlertHistory.create({
+        alert: alert.body.data._id,
+        createdAt: now,
+        state: AlertState.ALERT,
+        counts: 5,
+        lastValues: [{ startTime: now, count: 5 }],
+      });
+
+      await AlertHistory.create({
+        alert: alert.body.data._id,
+        createdAt: earlier,
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: earlier, count: 0 }],
+      });
+
+      const res = await agent.get(`/alerts/${alert.body.data._id}`).expect(200);
+
+      expect(res.body.data._id).toBe(alert.body.data._id);
+      expect(res.body.data.history).toHaveLength(2);
+      expect(res.body.data.history[0].state).toBe('ALERT');
+      expect(res.body.data.history[0].counts).toBe(5);
+      expect(res.body.data.history[1].state).toBe('OK');
+      expect(res.body.data.history[1].counts).toBe(0);
+    });
   });
 });

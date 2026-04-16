@@ -1,19 +1,36 @@
-import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import {
+  Control,
+  Controller,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
+  Badge,
   Box,
   Collapse,
   Group,
+  NativeSelect,
+  NumberInput,
   Paper,
   Text,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChevronDown, IconTrash } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconHelpCircle,
+  IconInfoCircleFilled,
+  IconTrash,
+} from '@tabler/icons-react';
 
+import api from '@/api';
 import { AlertChannelForm } from '@/components/Alerts';
+import { AckAlert } from '@/components/alerts/AckAlert';
+import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { optionsToSelectData } from '@/utils';
@@ -29,15 +46,22 @@ export function TileAlertEditor({
   setValue,
   alert,
   onRemove,
+  error,
+  warning,
+  tooltip,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   onRemove: () => void;
+  error?: string;
+  warning?: string;
+  tooltip?: string;
 }) {
   const [opened, { toggle }] = useDisclosure(true);
 
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertScheduleOffsetMinutes = useWatch({
     control,
     name: 'alert.scheduleOffsetMinutes',
@@ -49,9 +73,12 @@ export function TileAlertEditor({
     ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
     : undefined;
 
+  const { data: alertData } = api.useAlert(alert.id);
+  const alertItem = alertData?.data;
+
   return (
     <Paper data-testid="alert-details">
-      <Group justify="space-between" px="sm" pt="sm" pb={opened ? 0 : 'sm'}>
+      <Group justify="space-between" px="sm" pt="sm" pb="sm">
         <UnstyledButton onClick={toggle}>
           <Group gap="xs">
             <IconChevronDown
@@ -61,56 +88,104 @@ export function TileAlertEditor({
                 transition: 'transform 200ms',
               }}
             />
-            <Text size="sm" fw={500}>
-              Alert
-            </Text>
+            <Group gap={4} align="center">
+              <Text size="sm" fw={500} mt={2}>
+                Alert
+              </Text>
+              {tooltip && (
+                <Tooltip label={tooltip} withArrow>
+                  <IconHelpCircle size={16} opacity={0.5} />
+                </Tooltip>
+              )}
+              {error && (
+                <Tooltip label={error} withArrow>
+                  <Badge
+                    color="var(--color-text-danger)"
+                    size="xs"
+                    variant="light"
+                    ml="xs"
+                  >
+                    Invalid Query
+                  </Badge>
+                </Tooltip>
+              )}
+              {warning && (
+                <Tooltip label={warning} withArrow>
+                  <Badge color="yellow" size="xs" variant="light" ml="xs">
+                    Warning
+                  </Badge>
+                </Tooltip>
+              )}
+            </Group>
           </Group>
         </UnstyledButton>
-        <Tooltip label="Remove alert">
-          <ActionIcon
-            variant="danger"
-            color="red"
-            size="sm"
-            onClick={onRemove}
-            data-testid="remove-alert-button"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
-        </Tooltip>
+        <Group gap="xs">
+          {alertItem && alertItem.history.length > 0 && (
+            <AlertHistoryCardList history={alertItem.history} />
+          )}
+          {alertItem && <AckAlert alert={alertItem} />}
+          <Tooltip label="Remove alert">
+            <ActionIcon
+              variant="danger"
+              color="red"
+              size="sm"
+              onClick={onRemove}
+              data-testid="remove-alert-button"
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
               Trigger when the value
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
-              size="xs"
-              name={`alert.thresholdType`}
+            <Controller
               control={control}
+              name="alert.thresholdType"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
-            <NumberInput
-              size="xs"
-              w={80}
+            <Controller
               control={control}
-              name={`alert.threshold`}
+              name="alert.threshold"
+              render={({ field }) => (
+                <NumberInput size="xs" w={80} {...field} />
+              )}
             />
             over
-            <NativeSelect
-              data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-              size="xs"
-              name={`alert.interval`}
+            <Controller
               control={control}
+              name="alert.interval"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               window via
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-              size="xs"
-              name={`alert.channel.type`}
+            <Controller
               control={control}
+              name="alert.channel.type"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
           </Group>
           {alert?.createdBy && (
@@ -139,6 +214,18 @@ export function TileAlertEditor({
             type={alertChannelType}
             namePrefix="alert."
           />
+          {(alertThresholdType === AlertThresholdType.EQUAL ||
+            alertThresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <Alert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+              mt="md"
+            >
+              Note: Floating-point query results are not rounded during equality
+              comparison.
+            </Alert>
+          )}
         </Box>
       </Collapse>
     </Paper>

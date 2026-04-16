@@ -34,7 +34,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Evaluation interval.
  *     AlertThresholdType:
  *       type: string
- *       enum: [above, below]
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal]
  *       description: Threshold comparison direction.
  *     AlertSource:
  *       type: string
@@ -95,7 +95,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
- *           description: Tile ID for tile-based alerts. May not be a Raw-SQL-based tile.
+ *           description: Tile ID for tile-based alerts. Must be a line, stacked bar, or number type tile.
  *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
  *         savedSearchId:

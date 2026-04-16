@@ -48,6 +48,10 @@ export const JSON_SESSION_TABLE_EXPRESSIONS = {
   timestampValueExpression: 'Timestamp',
 } as const;
 
+export function getSourceValidationNotificationId(sourceId: string) {
+  return `source-validation-${sourceId}`;
+}
+
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
@@ -112,6 +116,7 @@ export function useSources() {
             .map(issue => issue.path.join('.'))
             .join(', ');
           notifications.show({
+            id: getSourceValidationNotificationId(source.id),
             color: 'yellow',
             title: `Source "${source.name}" has validation issues`,
             message: React.createElement(

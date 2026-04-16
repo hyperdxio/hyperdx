@@ -25,26 +25,33 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
 // ------------------------------------------------------------------
 
 interface ApiClientOptions {
-  apiUrl: string;
+  appUrl: string;
 }
 
 export class ApiClient {
+  private appUrl: string;
   private apiUrl: string;
   private cookies: string[] = [];
 
   constructor(opts: ApiClientOptions) {
-    this.apiUrl = opts.apiUrl.replace(/\/+$/, '');
+    this.appUrl = opts.appUrl.replace(/\/+$/, '');
+    this.apiUrl = `${this.appUrl}/api`;
 
     const saved = loadSession();
-    if (saved && saved.apiUrl === this.apiUrl) {
+    if (saved && saved.appUrl === this.appUrl) {
       this.cookies = saved.cookies;
     }
+  }
+
+  getAppUrl(): string {
+    return this.appUrl;
   }
 
   getApiUrl(): string {
@@ -58,20 +65,31 @@ export class ApiClient {
   // ---- Auth --------------------------------------------------------
 
   async login(email: string, password: string): Promise<boolean> {
-    const res = await fetch(`${this.apiUrl}/login/password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      redirect: 'manual',
-    });
+    try {
+      const res = await fetch(`${this.apiUrl}/login/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        redirect: 'manual',
+      });
 
-    if (res.status === 302 || res.status === 200) {
-      this.extractCookies(res);
-      saveSession({ apiUrl: this.apiUrl, cookies: this.cookies });
-      return true;
+      if (res.status === 302 || res.status === 200) {
+        this.extractCookies(res);
+
+        // Verify the session is actually valid — some servers return
+        // 302/200 without setting a real session (e.g. SSO redirects).
+        if (!(await this.checkSession())) {
+          return false;
+        }
+
+        saveSession({ appUrl: this.appUrl, cookies: this.cookies });
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
     }
-
-    return false;
   }
 
   async checkSession(): Promise<boolean> {
@@ -136,6 +154,12 @@ export class ApiClient {
     const res = await this.get('/dashboards');
     if (!res.ok) throw new Error(`GET /dashboards failed: ${res.status}`);
     return res.json() as Promise<DashboardResponse[]>;
+  }
+
+  async getAlerts(): Promise<AlertsResponse> {
+    const res = await this.get('/alerts');
+    if (!res.ok) throw new Error(`GET /alerts failed: ${res.status}`);
+    return res.json() as Promise<AlertsResponse>;
   }
 
   // ---- ClickHouse client via proxy ---------------------------------
@@ -378,4 +402,60 @@ interface DashboardResponse {
   savedQueryLanguage?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// ---- Alerts --------------------------------------------------------
+
+export interface AlertHistoryItem {
+  counts: number;
+  createdAt: string;
+  lastValues: Array<{ startTime: string; count: number }>;
+  state: 'ALERT' | 'OK' | 'INSUFFICIENT_DATA' | 'DISABLED';
+}
+
+export interface AlertItem {
+  _id: string;
+  interval: string;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
+  threshold: number;
+  thresholdType: AlertThresholdType;
+  channel: { type?: string | null };
+  state?: 'ALERT' | 'OK' | 'INSUFFICIENT_DATA' | 'DISABLED';
+  source?: 'saved_search' | 'tile';
+  dashboardId?: string;
+  savedSearchId?: string;
+  tileId?: string;
+  name?: string | null;
+  message?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: AlertHistoryItem[];
+  dashboard?: {
+    _id: string;
+    name: string;
+    updatedAt: string;
+    tags: string[];
+    tiles: Array<{ id: string; config: { name?: string } }>;
+  };
+  savedSearch?: {
+    _id: string;
+    createdAt: string;
+    name: string;
+    updatedAt: string;
+    tags: string[];
+  };
+  createdBy?: {
+    email: string;
+    name?: string;
+  };
+  silenced?: {
+    by: string;
+    at: string;
+    until: string;
+  };
+}
+
+interface AlertsResponse {
+  data: AlertItem[];
 }

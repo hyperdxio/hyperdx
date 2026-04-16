@@ -1,4 +1,9 @@
+import {
+  displayTypeSupportsRawSqlAlerts,
+  validateRawSqlForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';
@@ -9,7 +14,6 @@ import Alert, {
   AlertChannel,
   AlertInterval,
   AlertSource,
-  AlertThresholdType,
   IAlert,
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -82,7 +86,18 @@ export const validateAlertInput = async (
     }
 
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
-      throw new Api400Error('Cannot create an alert on a raw SQL tile');
+      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      const { errors } = validateRawSqlForAlert(tile.config);
+      if (errors.length > 0) {
+        throw new Api400Error(
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
+        );
+      }
     }
   }
 
@@ -278,6 +293,20 @@ export const deleteSavedSearchAlerts = async (
 
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
+    savedSearch: ISavedSearch;
+    dashboard: IDashboard;
+    createdBy?: IUser;
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+};
+
+export const getAlertEnhanced = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId,
+) => {
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
     createdBy?: IUser;

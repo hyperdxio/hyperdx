@@ -3387,7 +3387,7 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
-    it('should delete alert when tile is updated from builder to raw SQL config', async () => {
+    it('should delete alert when tile is updated from builder to raw SQL config and the display type does not support alerts', async () => {
       const tileId = new ObjectId().toString();
       const dashboard = await createTestDashboard({
         tiles: [
@@ -3399,7 +3399,7 @@ describe('External API v2 Dashboards - new format', () => {
             w: 6,
             h: 3,
             config: {
-              displayType: 'line',
+              displayType: 'number',
               source: traceSource._id.toString(),
               select: [
                 {
@@ -3455,7 +3455,7 @@ describe('External API v2 Dashboards - new format', () => {
               h: 3,
               config: {
                 configType: 'sql',
-                displayType: 'line',
+                displayType: 'table',
                 connectionId: connection._id.toString(),
                 sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
               },

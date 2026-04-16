@@ -6,18 +6,49 @@ import Spinner from 'ink-spinner';
 import ErrorDisplay from '@/components/ErrorDisplay';
 
 interface LoginFormProps {
-  apiUrl: string;
-  onLogin: (email: string, password: string) => Promise<boolean>;
+  /** Default app URL (autofilled, editable by the user). */
+  defaultAppUrl: string;
+  /** Called with the (possibly changed) appUrl, email, and password. */
+  onLogin: (
+    appUrl: string,
+    email: string,
+    password: string,
+  ) => Promise<boolean>;
+  /** Optional message shown above the form (e.g. "Session expired"). */
+  message?: string;
 }
 
-type Field = 'email' | 'password';
+type Field = 'appUrl' | 'email' | 'password';
 
-export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
-  const [field, setField] = useState<Field>('email');
+export default function LoginForm({
+  defaultAppUrl,
+  onLogin,
+  message,
+}: LoginFormProps) {
+  const [field, setField] = useState<Field>('appUrl');
+  const [appUrl, setAppUrl] = useState(defaultAppUrl);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleSubmitAppUrl = () => {
+    const trimmed = appUrl.trim();
+    if (!trimmed) return;
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+        return;
+      }
+    } catch {
+      setError('Invalid URL. Please enter a valid http:// or https:// URL.');
+      return;
+    }
+    setError(null);
+    setAppUrl(trimmed);
+    setField('email');
+  };
 
   const handleSubmitEmail = () => {
     if (!email.trim()) return;
@@ -28,10 +59,10 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
     if (!password) return;
     setLoading(true);
     setError(null);
-    const ok = await onLogin(email, password);
+    const ok = await onLogin(appUrl.trim(), email, password);
     setLoading(false);
     if (!ok) {
-      setError('Login failed. Check your email and password.');
+      setError('Login failed. Check your credentials and server URL.');
       setField('email');
       setEmail('');
       setPassword('');
@@ -43,7 +74,8 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
       <Text bold color="cyan">
         HyperDX TUI — Login
       </Text>
-      <Text dimColor>Server: {apiUrl}</Text>
+      {message && <Text color="yellow">{message}</Text>}
+      {field !== 'appUrl' && <Text dimColor>Server: {appUrl}</Text>}
       <Text> </Text>
 
       {error && <ErrorDisplay error={error} severity="error" compact />}
@@ -52,6 +84,16 @@ export default function LoginForm({ apiUrl, onLogin }: LoginFormProps) {
         <Text>
           <Spinner type="dots" /> Logging in…
         </Text>
+      ) : field === 'appUrl' ? (
+        <Box>
+          <Text>HyperDX URL: </Text>
+          <TextInput
+            value={appUrl}
+            onChange={setAppUrl}
+            onSubmit={handleSubmitAppUrl}
+            placeholder="http://localhost:8080"
+          />
+        </Box>
       ) : field === 'email' ? (
         <Box>
           <Text>Email: </Text>

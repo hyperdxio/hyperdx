@@ -193,13 +193,14 @@ describe('DefaultAlertProvider', () => {
 
         // Validate source is proper ISource object
         const alertSource = result[0].alerts[0].source;
-        expect(alertSource.connection).toBe(connection.id); // Should be ObjectId, not populated IConnection
-        expect(alertSource.name).toBe('Test Source');
-        expect(alertSource.kind).toBe('log');
-        expect(alertSource.team).toBeDefined();
-        expect(alertSource.from?.databaseName).toBe('default');
-        expect(alertSource.from?.tableName).toBe('logs');
-        expect(alertSource.timestampValueExpression).toBe('timestamp');
+        expect(alertSource).toBeDefined();
+        expect(alertSource!.connection).toBe(connection.id); // Should be ObjectId, not populated IConnection
+        expect(alertSource!.name).toBe('Test Source');
+        expect(alertSource!.kind).toBe('log');
+        expect(alertSource!.team).toBeDefined();
+        expect(alertSource!.from?.databaseName).toBe('default');
+        expect(alertSource!.from?.tableName).toBe('logs');
+        expect(alertSource!.timestampValueExpression).toBe('timestamp');
 
         // Ensure it's a plain object, not a mongoose document
         expect((alertSource as any).toObject).toBeUndefined(); // mongoose documents have toObject method
