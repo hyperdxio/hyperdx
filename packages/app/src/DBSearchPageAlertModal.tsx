@@ -244,16 +244,33 @@ const AlertForm = ({
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
-          {groupBy && thresholdType === AlertThresholdType.BELOW && (
+          {groupBy &&
+            (thresholdType === AlertThresholdType.BELOW ||
+              thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||
+              thresholdType === AlertThresholdType.EQUAL ||
+              thresholdType === AlertThresholdType.NOT_EQUAL) && (
+              <MantineAlert
+                icon={<IconInfoCircleFilled size={16} />}
+                color="gray"
+                py="xs"
+              >
+                <Text size="sm" opacity={0.7}>
+                  Warning: Alerts with this threshold type and a &quot;grouped
+                  by&quot; value will not alert for periods with no data for a
+                  group.
+                </Text>
+              </MantineAlert>
+            )}
+          {(thresholdType === AlertThresholdType.EQUAL ||
+            thresholdType === AlertThresholdType.NOT_EQUAL) && (
             <MantineAlert
               icon={<IconInfoCircleFilled size={16} />}
-              bg="dark"
+              color="gray"
               py="xs"
             >
               <Text size="sm" opacity={0.7}>
-                Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
-                &quot;grouped by&quot; value will not alert for periods with no
-                data for a group.
+                Note: Floating-point query results are not rounded during
+                equality comparison.
               </Text>
             </MantineAlert>
           )}

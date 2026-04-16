@@ -4,8 +4,10 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Collapse,
@@ -21,6 +23,7 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconHelpCircle,
+  IconInfoCircleFilled,
   IconTrash,
 } from '@tabler/icons-react';
 
@@ -58,6 +61,7 @@ export function TileAlertEditor({
   const [opened, { toggle }] = useDisclosure(true);
 
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertScheduleOffsetMinutes = useWatch({
     control,
     name: 'alert.scheduleOffsetMinutes',
@@ -210,6 +214,18 @@ export function TileAlertEditor({
             type={alertChannelType}
             namePrefix="alert."
           />
+          {(alertThresholdType === AlertThresholdType.EQUAL ||
+            alertThresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <Alert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+              mt="md"
+            >
+              Note: Floating-point query results are not rounded during equality
+              comparison.
+            </Alert>
+          )}
         </Box>
       </Collapse>
     </Paper>

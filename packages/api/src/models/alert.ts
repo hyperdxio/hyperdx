@@ -1,13 +1,12 @@
-import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
-
-export enum AlertThresholdType {
-  ABOVE = 'above',
-  BELOW = 'below',
-}
 
 export enum AlertState {
   ALERT = 'ALERT',

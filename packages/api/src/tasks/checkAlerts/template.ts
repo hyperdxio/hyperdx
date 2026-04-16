@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
+  AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
   pickSampleWeightExpressionProps,
@@ -24,7 +25,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState, AlertThresholdType } from '@/models/alert';
+import { AlertSource, AlertState } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -41,6 +42,44 @@ import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
+
+const describeThresholdViolation = (
+  thresholdType: AlertThresholdType,
+): string => {
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return 'meets or exceeds';
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return 'exceeds';
+    case AlertThresholdType.BELOW:
+      return 'falls below';
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return 'falls to or below';
+    case AlertThresholdType.EQUAL:
+      return 'equals';
+    case AlertThresholdType.NOT_EQUAL:
+      return 'does not equal';
+  }
+};
+
+const describeThresholdResolution = (
+  thresholdType: AlertThresholdType,
+): string => {
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return 'falls below';
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return 'falls to or below';
+    case AlertThresholdType.BELOW:
+      return 'meets or exceeds';
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return 'exceeds';
+    case AlertThresholdType.EQUAL:
+      return 'does not equal';
+    case AlertThresholdType.NOT_EQUAL:
+      return 'equals';
+  }
+};
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
@@ -377,12 +416,8 @@ export const buildAlertMessageTemplateTitle = ({
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
           doesExceedThreshold(alert.thresholdType, alert.threshold, value)
-            ? alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'exceeds'
-              : 'falls below'
-            : alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'falls below'
-              : 'exceeds'
+            ? describeThresholdViolation(alert.thresholdType)
+            : describeThresholdResolution(alert.thresholdType)
         } ${alert.threshold}`;
     return `${emoji}${baseTitle}`;
   }
@@ -649,11 +684,7 @@ ${targetTemplate}`;
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} lines found, expected ${
-      alert.thresholdType === AlertThresholdType.ABOVE
-        ? 'less than'
-        : 'greater than'
-    } ${alert.threshold} lines\n${timeRangeMessage}
+${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${alert.threshold} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
@@ -666,12 +697,8 @@ ${truncatedResults}
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${formattedValue} ${
       doesExceedThreshold(alert.thresholdType, alert.threshold, value)
-        ? alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'exceeds'
-          : 'falls below'
-        : alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'falls below'
-          : 'exceeds'
+        ? describeThresholdViolation(alert.thresholdType)
+        : describeThresholdResolution(alert.thresholdType)
     } ${alert.threshold}\n${timeRangeMessage}
 ${targetTemplate}`;
   }

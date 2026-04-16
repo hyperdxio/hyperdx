@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   AlertState,
+  AlertThresholdType,
   SourceKind,
   Tile,
   WebhookService,
@@ -23,7 +24,7 @@ import {
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, { AlertSource } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -124,6 +125,205 @@ describe('checkAlerts', () => {
       expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
         false,
       );
+    });
+
+    // ABOVE_EXCLUSIVE (>) tests
+    it('should return true when value is strictly above ABOVE_EXCLUSIVE threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 11),
+      ).toBe(true);
+    });
+
+    it('should return false when value equals ABOVE_EXCLUSIVE threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 10),
+      ).toBe(false);
+    });
+
+    it('should return false when value is below ABOVE_EXCLUSIVE threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 9),
+      ).toBe(false);
+    });
+
+    it('should handle zero values correctly for ABOVE_EXCLUSIVE', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, 1),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, 0),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, -1),
+      ).toBe(false);
+    });
+
+    it('should handle negative values correctly for ABOVE_EXCLUSIVE', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -3),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -5),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -7),
+      ).toBe(false);
+    });
+
+    it('should handle decimal values correctly for ABOVE_EXCLUSIVE', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 11.0),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 10.5),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 10.0),
+      ).toBe(false);
+    });
+
+    // BELOW_OR_EQUAL (<=) tests
+    it('should return true when value is below BELOW_OR_EQUAL threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 9),
+      ).toBe(true);
+    });
+
+    it('should return true when value equals BELOW_OR_EQUAL threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 10),
+      ).toBe(true);
+    });
+
+    it('should return false when value is above BELOW_OR_EQUAL threshold', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 11),
+      ).toBe(false);
+    });
+
+    it('should handle zero values correctly for BELOW_OR_EQUAL', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, -1),
+      ).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, 0)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, 1)).toBe(
+        false,
+      );
+    });
+
+    it('should handle negative values correctly for BELOW_OR_EQUAL', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -7),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -5),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -3),
+      ).toBe(false);
+    });
+
+    it('should handle decimal values correctly for BELOW_OR_EQUAL', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 10.0),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 10.5),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 11.0),
+      ).toBe(false);
+    });
+
+    // EQUAL (=) tests
+    it('should return true when value equals EQUAL threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 10)).toBe(true);
+    });
+
+    it('should return false when value is above EQUAL threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 11)).toBe(false);
+    });
+
+    it('should return false when value is below EQUAL threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 9)).toBe(false);
+    });
+
+    it('should handle zero values correctly for EQUAL', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, 0)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, 1)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, -1)).toBe(false);
+    });
+
+    it('should handle negative values correctly for EQUAL', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -5)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -3)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -7)).toBe(false);
+    });
+
+    it('should handle decimal values correctly for EQUAL', () => {
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 10.5)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 10.0)).toBe(
+        false,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 11.0)).toBe(
+        false,
+      );
+    });
+
+    // NOT_EQUAL (≠) tests
+    it('should return true when value does not equal NOT_EQUAL threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 11)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 9)).toBe(
+        true,
+      );
+    });
+
+    it('should return false when value equals NOT_EQUAL threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 10)).toBe(
+        false,
+      );
+    });
+
+    it('should handle zero values correctly for NOT_EQUAL', () => {
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, 1)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, -1)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, 0)).toBe(
+        false,
+      );
+    });
+
+    it('should handle negative values correctly for NOT_EQUAL', () => {
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -3)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -7)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -5)).toBe(
+        false,
+      );
+    });
+
+    it('should handle decimal values correctly for NOT_EQUAL', () => {
+      expect(
+        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 11.0),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 10.0),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 10.5),
+      ).toBe(false);
     });
   });
 
@@ -494,7 +694,7 @@ describe('checkAlerts', () => {
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 exceeds 1"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -512,7 +712,7 @@ describe('checkAlerts', () => {
           state: AlertState.ALERT,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 exceeds 1"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
 
       // Test OK state (should have ✅ emoji)
@@ -528,7 +728,7 @@ describe('checkAlerts', () => {
           state: AlertState.OK,
         }),
       ).toMatchInlineSnapshot(
-        `"✅ Alert for "Test Chart" in "My Dashboard" - 5 exceeds 1"`,
+        `"✅ Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -548,7 +748,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1111.1 exceeds 1.5"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -566,7 +766,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1.1235 exceeds 0.1234"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -584,7 +784,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.00 exceeds 0.12"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -752,7 +952,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
@@ -812,7 +1012,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
@@ -919,7 +1119,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
@@ -948,7 +1148,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
@@ -1624,14 +1824,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1',
+          text: '🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
                   '',
-                  '3 exceeds 1',
+                  '3 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
@@ -1816,7 +2016,7 @@ describe('checkAlerts', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
         body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1`,
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -3611,14 +3811,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1',
+          text: '🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
                   '',
-                  '6 exceeds 1',
+                  '6 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
@@ -3794,7 +3994,7 @@ describe('checkAlerts', () => {
       for (const msg of messages) {
         expect(msg.text).toContain('CPU by Service');
         expect(msg.text).toContain('My Dashboard');
-        expect(msg.text).toContain('exceeds 1');
+        expect(msg.text).toContain('meets or exceeds 1');
       }
 
       // Body should contain Group: "ServiceName:service-a" or "ServiceName:service-b"
@@ -5605,6 +5805,896 @@ describe('checkAlerts', () => {
       // Only 1 log matches svc:"api", which meets threshold > 1
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    // ---------------------------------------------------------------
+    // Integration tests for threshold types
+    // Each test follows ALERT → Resolve flow with boundary-condition
+    // values in the resolve period.
+    // ---------------------------------------------------------------
+
+    it('SAVED_SEARCH alert with ABOVE_EXCLUSIVE threshold - should alert then resolve at boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // threshold = 2, ABOVE_EXCLUSIVE means value > 2
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: 3 error logs (should ALERT since 3 > 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        // Period 2: exactly 2 error logs (should resolve since 2 is NOT > 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      // Period 1: 3 logs, threshold is > 2, should ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 2 logs, threshold is > 2, 2 is NOT > 2 so should resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert with ABOVE_EXCLUSIVE threshold - should alert then resolve at boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      // Period 1: 3 logs (ALERT: 3 > 2)
+      // Period 2: exactly 2 logs (OK: 2 is NOT > 2, boundary value)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Test Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'tile-above-excl',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error Count',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'ServiceName:api',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              granularity: 'auto',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(
+        (t: any) => t.id === 'tile-above-excl',
+      );
+      if (!tile) throw new Error('tile not found');
+
+      // threshold = 2, ABOVE_EXCLUSIVE means > 2
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'tile-above-excl',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Period 1: 3 logs, 3 > 2 → ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 2 logs, 2 is NOT > 2 (boundary) → resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('SAVED_SEARCH alert with BELOW_OR_EQUAL threshold - should alert then resolve', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // threshold = 2, BELOW_OR_EQUAL means value <= 2
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: exactly 2 error logs (should ALERT since 2 <= 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        // Period 2: 3 error logs (should resolve since 3 is NOT <= 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      // Period 1: 2 logs, threshold is <= 2, should ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 3 logs, threshold is <= 2, should resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert with BELOW_OR_EQUAL threshold - should alert then resolve at boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      // Period 1: 1 log (ALERT: 1 <= 1, boundary)
+      // Period 2: 2 logs (OK: 2 is NOT <= 1, nearest non-matching value)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Test Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'tile-below-eq',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error Count',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'ServiceName:api',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              granularity: 'auto',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-below-eq');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: 'tile-below-eq',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Period 1: 1 log, 1 <= 1 → ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 2 logs, 2 is NOT <= 1 (near-boundary) → resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('SAVED_SEARCH alert with EQUAL threshold - should alert then resolve', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // threshold = 2, EQUAL means value == 2
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.EQUAL,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: exactly 2 error logs (should ALERT since 2 == 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        // Period 2: 3 error logs (should resolve since 3 != 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      // Period 1: 2 logs, threshold is == 2, should ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 3 logs, threshold is == 2, 3 != 2 so should resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert with EQUAL threshold - should alert then resolve at near-boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      // Period 1: 3 logs (ALERT: 3 == 3)
+      // Period 2: 2 logs (OK: 2 != 3, nearest non-matching value)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Test Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'tile-equal',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error Count',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'ServiceName:api',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              granularity: 'auto',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-equal');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.EQUAL,
+          threshold: 3,
+          dashboardId: dashboard.id,
+          tileId: 'tile-equal',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Period 1: 3 logs, 3 == 3 → ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 2 logs, 2 != 3 (near-boundary) → resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('SAVED_SEARCH alert with NOT_EQUAL threshold - should alert then resolve at boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // threshold = 2, NOT_EQUAL means value != 2
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.NOT_EQUAL,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: 3 error logs (should ALERT since 3 != 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        // Period 2: exactly 2 error logs (should resolve since 2 == 2)
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      // Period 1: 3 logs, threshold is != 2, 3 != 2 so should ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 2 logs, threshold is != 2, 2 == 2 so should resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert with NOT_EQUAL threshold - should alert then resolve at boundary', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      // Period 1: 2 logs (ALERT: 2 != 3)
+      // Period 2: exactly 3 logs (OK: 3 == 3, boundary value)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'error 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 3',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 4',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'error 5',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Test Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'tile-not-equal',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error Count',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'ServiceName:api',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              granularity: 'auto',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-not-equal');
+      if (!tile) throw new Error('tile not found');
+
+      // threshold = 3, NOT_EQUAL means != 3
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.NOT_EQUAL,
+          threshold: 3,
+          dashboardId: dashboard.id,
+          tileId: 'tile-not-equal',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Period 1: 2 logs, 2 != 3 → ALERT
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Period 2: 3 logs, 3 == 3 (boundary) → resolve to OK
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
     });
   });
 

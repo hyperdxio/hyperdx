@@ -70,7 +70,11 @@
         "type": "string",
         "enum": [
           "above",
-          "below"
+          "below",
+          "above_exclusive",
+          "below_or_equal",
+          "equal",
+          "not_equal"
         ],
         "description": "Threshold comparison direction."
       },

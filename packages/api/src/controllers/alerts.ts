@@ -3,6 +3,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';
@@ -13,7 +14,6 @@ import Alert, {
   AlertChannel,
   AlertInterval,
   AlertSource,
-  AlertThresholdType,
   IAlert,
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';

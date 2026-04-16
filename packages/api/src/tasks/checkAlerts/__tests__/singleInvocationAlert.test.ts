@@ -248,7 +248,7 @@ describe('Single Invocation Alert Test', () => {
     // Verify the message body contains the search link
     const messageBody = webhookPayload.blocks[0].text.text;
     expect(messageBody).toContain('lines found');
-    expect(messageBody).toContain('expected less than 1 lines');
+    expect(messageBody).toContain('meets or exceeds the threshold of 1 lines');
     expect(messageBody).toContain('http://app:8080/search/');
     expect(messageBody).toContain('from=');
     expect(messageBody).toContain('to=');
