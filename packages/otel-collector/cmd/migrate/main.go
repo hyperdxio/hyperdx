@@ -376,7 +376,7 @@ func getClickHouseVersion(ctx context.Context, db *sql.DB) (major, minor int, er
 // supportsFullTextSearch returns true if the ClickHouse version supports
 // full text search indexes (TYPE text). This requires ClickHouse >= 26.2.
 func supportsFullTextSearch(major, minor int) bool {
-	return major >= 26 && minor >= 2
+	return major > 26 || (major == 26 && minor >= 2)
 }
 
 // swapLogsSchemaForCompat replaces the full-text-search logs schema with the
