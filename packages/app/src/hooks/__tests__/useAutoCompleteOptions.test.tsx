@@ -4,18 +4,13 @@ import { renderHook } from '@testing-library/react';
 
 import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';
-import {
-  useJsonColumns,
-  useMultipleAllFields,
-  useMultipleGetKeyValues,
-} from '../useMetadata';
+import { useCompleteKeyValues, useMultipleAllFields } from '../useMetadata';
 
 // Mock dependencies
 jest.mock('../useMetadata', () => ({
   ...jest.requireActual('../useMetadata.tsx'),
   useMultipleAllFields: jest.fn(),
-  useMultipleGetKeyValues: jest.fn(),
-  useJsonColumns: jest.fn(),
+  useCompleteKeyValues: jest.fn(),
 }));
 
 const luceneFormatter = new LuceneLanguageFormatter();
@@ -54,12 +49,9 @@ describe('useAutoCompleteOptions', () => {
       data: mockFields,
     });
 
-    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
+    (useCompleteKeyValues as jest.Mock).mockReturnValue({
       data: null,
-    });
-
-    (useJsonColumns as jest.Mock).mockReturnValue({
-      data: null,
+      isFetching: false,
     });
   });
 
@@ -70,7 +62,7 @@ describe('useAutoCompleteOptions', () => {
       }),
     );
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         value: 'ResourceAttributes',
         label: 'ResourceAttributes (map)',
@@ -87,15 +79,9 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should return key value options with correct lucene formatting', () => {
-    const mockKeyValues = [
-      {
-        key: 'ResourceAttributes.service.name',
-        value: ['frontend', 'backend'],
-      },
-    ];
-
-    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
-      data: mockKeyValues,
+    (useCompleteKeyValues as jest.Mock).mockReturnValue({
+      data: ['frontend', 'backend'],
+      isFetching: false,
     });
 
     const { result } = renderHook(() =>
@@ -108,7 +94,7 @@ describe('useAutoCompleteOptions', () => {
       ),
     );
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         value: 'ResourceAttributes',
         label: 'ResourceAttributes (map)',
@@ -132,55 +118,6 @@ describe('useAutoCompleteOptions', () => {
     ]);
   });
 
-  // TODO: Does this test case need to be removed after HDX-1548?
-  it('should handle nested key value options', () => {
-    const mockKeyValues = [
-      {
-        key: 'ResourceAttributes',
-        value: [
-          {
-            'service.name': 'frontend',
-            'deployment.environment': 'production',
-          },
-        ],
-      },
-    ];
-
-    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
-      data: mockKeyValues,
-    });
-
-    const { result } = renderHook(() =>
-      useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnection: mockTableConnection,
-      }),
-    );
-
-    //console.log(result.current);
-    expect(result.current).toEqual([
-      {
-        value: 'ResourceAttributes',
-        label: 'ResourceAttributes (map)',
-      },
-      {
-        value: 'ResourceAttributes.service.name',
-        label: 'ResourceAttributes.service.name (string)',
-      },
-      {
-        value: 'TraceAttributes.trace.id',
-        label: 'TraceAttributes.trace.id (string)',
-      },
-      {
-        value: 'ResourceAttributes.service.name:"frontend"',
-        label: 'ResourceAttributes.service.name:"frontend"',
-      },
-      {
-        value: 'ResourceAttributes.deployment.environment:"production"',
-        label: 'ResourceAttributes.deployment.environment:"production"',
-      },
-    ]);
-  });
-
   it('should handle additional suggestions', () => {
     const { result } = renderHook(() =>
       useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
@@ -189,7 +126,7 @@ describe('useAutoCompleteOptions', () => {
       }),
     );
 
-    expect(result.current).toEqual([
+    expect(result.current.options).toEqual([
       {
         value: 'ResourceAttributes',
         label: 'ResourceAttributes (map)',
