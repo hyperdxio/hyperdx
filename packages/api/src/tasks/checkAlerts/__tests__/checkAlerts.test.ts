@@ -952,7 +952,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
@@ -1012,7 +1012,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
@@ -1119,7 +1119,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
@@ -1148,7 +1148,7 @@ describe('checkAlerts', () => {
                 text: [
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
-                  '10 lines found, expected less than 1 lines',
+                  '10 lines found, which meets or exceeds the threshold of 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',

@@ -81,25 +81,6 @@ const describeThresholdResolution = (
   }
 };
 
-const describeThresholdExpectation = (
-  thresholdType: AlertThresholdType,
-): string => {
-  switch (thresholdType) {
-    case AlertThresholdType.ABOVE:
-      return 'less than';
-    case AlertThresholdType.BELOW:
-      return 'at least';
-    case AlertThresholdType.ABOVE_EXCLUSIVE:
-      return 'at most';
-    case AlertThresholdType.BELOW_OR_EQUAL:
-      return 'greater than';
-    case AlertThresholdType.EQUAL:
-      return 'not equal to';
-    case AlertThresholdType.NOT_EQUAL:
-      return 'equal to';
-  }
-};
-
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
@@ -703,7 +684,7 @@ ${targetTemplate}`;
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} lines found, expected ${describeThresholdExpectation(alert.thresholdType)} ${alert.threshold} lines\n${timeRangeMessage}
+${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${alert.threshold} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
