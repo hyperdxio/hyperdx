@@ -94,7 +94,7 @@ function SharedFiltersSectionComponent({
           </UnstyledButton>
         </Group>
       </Flex>
-      <Collapse {...{ in: opened }}>
+      <Collapse {...({ in: opened, expanded: opened } as any)}>
         <Stack gap={8}>{children}</Stack>
       </Collapse>
     </Stack>

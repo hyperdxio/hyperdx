@@ -1837,7 +1837,12 @@ const DBSearchPageFiltersComponent = ({
                 </UnstyledButton>
               </Group>
             </Flex>
-            <Collapse {...{ in: isFiltersExpanded }}>
+            <Collapse
+              {...({
+                in: isFiltersExpanded,
+                expanded: isFiltersExpanded,
+              } as any)}
+            >
               <Stack gap="sm">
                 {analysisMode === 'results' && (
                   <Checkbox
