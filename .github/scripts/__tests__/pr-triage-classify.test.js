@@ -77,6 +77,11 @@ describe('isTrivialFile', () => {
     assert.ok(isTrivialFile('.github/images/screenshot.png'));
   });
 
+  it('matches .github/scripts/ files', () => {
+    assert.ok(isTrivialFile('.github/scripts/pr-triage.js'));
+    assert.ok(isTrivialFile('.github/scripts/pr-triage-classify.js'));
+  });
+
   it('does not match production source files', () => {
     assert.ok(!isTrivialFile('packages/app/src/App.tsx'));
     assert.ok(!isTrivialFile('packages/api/src/routers/logs.ts'));
