@@ -302,6 +302,20 @@ export const getAlertsEnhanced = async (teamId: ObjectId) => {
   }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
 };
 
+export const getAlertEnhanced = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId,
+) => {
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
+    savedSearch: ISavedSearch;
+    dashboard: IDashboard;
+    createdBy?: IUser;
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+};
+
 export const deleteAlert = async (id: string, teamId: ObjectId) => {
   return Alert.deleteOne({
     _id: id,
