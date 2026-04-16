@@ -49,7 +49,7 @@ AS WITH elements AS (
         'ResourceAttributes' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        entry.2 AS Value
+        CAST(entry.2 AS String) AS Value
     FROM ${DATABASE}.otel_logs
     ARRAY JOIN ResourceAttributes AS entry
     UNION ALL
@@ -57,7 +57,7 @@ AS WITH elements AS (
         'LogAttributes' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        entry.2 AS Value
+        CAST(entry.2 AS String) AS Value
     FROM ${DATABASE}.otel_logs
     ARRAY JOIN LogAttributes AS entry
     UNION ALL
@@ -65,7 +65,7 @@ AS WITH elements AS (
         'ScopeAttributes' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        entry.2 AS Value
+        CAST(entry.2 AS String) AS Value
     FROM ${DATABASE}.otel_logs
     ARRAY JOIN ScopeAttributes AS entry
     UNION ALL
@@ -73,98 +73,98 @@ AS WITH elements AS (
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'SeverityText' as Key,
-        SeverityText as Value
+        CAST(SeverityText AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ServiceName' as Key,
-        ServiceName as Value
+        CAST(ServiceName AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ScopeName' as Key,
-        ScopeName as Value
+        CAST(ScopeName AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ScopeVersion' as Key,
-        ScopeVersion as Value
+        CAST(ScopeVersion AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ResourceSchemaUrl' as Key,
-        ResourceSchemaUrl as Value
+        CAST(ResourceSchemaUrl AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ScopeSchemaUrl' as Key,
-        ScopeSchemaUrl as Value
+        CAST(ScopeSchemaUrl AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.cluster.name' as Key,
-        `__hdx_materialized_k8s.cluster.name` as Value
+        CAST(`__hdx_materialized_k8s.cluster.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.container.name' as Key,
-        `__hdx_materialized_k8s.container.name` as Value
+        CAST(`__hdx_materialized_k8s.container.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.deployment.name' as Key,
-        `__hdx_materialized_k8s.deployment.name` as Value
+        CAST(`__hdx_materialized_k8s.deployment.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.namespace.name' as Key,
-        `__hdx_materialized_k8s.namespace.name` as Value
+        CAST(`__hdx_materialized_k8s.namespace.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.node.name' as Key,
-        `__hdx_materialized_k8s.node.name` as Value
+        CAST(`__hdx_materialized_k8s.node.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.pod.name' as Key,
-        `__hdx_materialized_k8s.pod.name` as Value
+        CAST(`__hdx_materialized_k8s.pod.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_k8s.pod.uid' as Key,
-        `__hdx_materialized_k8s.pod.uid` as Value
+        CAST(`__hdx_materialized_k8s.pod.uid` AS String) as Value
     FROM ${DATABASE}.otel_logs
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         '__hdx_materialized_deployment.environment.name' as Key,
-        `__hdx_materialized_deployment.environment.name` as Value
+        CAST(`__hdx_materialized_deployment.environment.name` AS String) as Value
     FROM ${DATABASE}.otel_logs
 )
 SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements

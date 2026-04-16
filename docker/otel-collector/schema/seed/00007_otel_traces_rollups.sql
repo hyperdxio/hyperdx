@@ -50,7 +50,7 @@ AS WITH elements AS (
         'ResourceAttributes' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        entry.2 AS Value
+        CAST(entry.2 AS String) AS Value
     FROM ${DATABASE}.otel_traces
     ARRAY JOIN ResourceAttributes AS entry
     UNION ALL
@@ -58,7 +58,7 @@ AS WITH elements AS (
         'SpanAttributes' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        entry.2 AS Value
+        CAST(entry.2 AS String) AS Value
     FROM ${DATABASE}.otel_traces
     ARRAY JOIN SpanAttributes AS entry
     UNION ALL
@@ -66,42 +66,42 @@ AS WITH elements AS (
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ServiceName' AS Key,
-        ServiceName AS Value
+        CAST(ServiceName AS String) AS Value
     FROM ${DATABASE}.otel_traces
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'SpanName' AS Key,
-        SpanName AS Value
+        CAST(SpanName AS String) AS Value
     FROM ${DATABASE}.otel_traces
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'SpanKind' AS Key,
-        SpanKind AS Value
+        CAST(SpanKind AS String) AS Value
     FROM ${DATABASE}.otel_traces
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'StatusCode' AS Key,
-        StatusCode AS Value
+        CAST(StatusCode AS String) AS Value
     FROM ${DATABASE}.otel_traces
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ScopeName' AS Key,
-        ScopeName AS Value
+        CAST(ScopeName AS String) AS Value
     FROM ${DATABASE}.otel_traces
     UNION ALL
     SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'ScopeVersion' AS Key,
-        ScopeVersion AS Value
+        CAST(ScopeVersion AS String) AS Value
     FROM ${DATABASE}.otel_traces
 )
 SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements
