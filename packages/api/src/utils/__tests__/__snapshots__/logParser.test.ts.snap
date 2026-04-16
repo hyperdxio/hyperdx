@@ -1,41 +1,41 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`logParser mapObjectToKeyValuePairs 1`] = `
-Object {
-  "bool.names": Array [
+{
+  "bool.names": [
     "foo2",
     "good.burrito.is",
   ],
-  "bool.values": Array [
+  "bool.values": [
     0,
     1,
   ],
-  "number.names": Array [
+  "number.names": [
     "foo1",
   ],
-  "number.values": Array [
+  "number.values": [
     123,
   ],
-  "string.names": Array [
+  "string.names": [
     "foo",
     "nested.foo",
     "array1",
     "array2",
   ],
-  "string.values": Array [
+  "string.values": [
     "123",
     "bar",
     "[456]",
-    "[\\"foo1\\",{\\"foo2\\":\\"bar2\\"},[{\\"foo3\\":\\"bar3\\"}]]",
+    "["foo1",{"foo2":"bar2"},[{"foo3":"bar3"}]]",
   ],
 }
 `;
 
 exports[`logParser mapObjectToKeyValuePairs 2`] = `
-Object {
-  "bool.names": Array [],
-  "bool.values": Array [],
-  "number.names": Array [
+{
+  "bool.names": [],
+  "bool.values": [],
+  "number.names": [
     "foo0",
     "foo1",
     "foo2",
@@ -1061,7 +1061,7 @@ Object {
     "foo1022",
     "foo1023",
   ],
-  "number.values": Array [
+  "number.values": [
     0,
     1,
     2,
@@ -2087,7 +2087,7 @@ Object {
     1022,
     1023,
   ],
-  "string.names": Array [],
-  "string.values": Array [],
+  "string.names": [],
+  "string.values": [],
 }
 `;

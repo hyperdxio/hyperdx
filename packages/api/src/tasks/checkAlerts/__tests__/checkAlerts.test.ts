@@ -688,15 +688,13 @@ describe('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"My Search\\" - 10 lines found"`,
-      );
+      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 meets or exceeds 1"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -707,16 +705,14 @@ describe('checkAlerts', () => {
           view: defaultSearchView,
           state: AlertState.ALERT,
         }),
-      ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"My Search\\" - 10 lines found"`,
-      );
+      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
           state: AlertState.ALERT,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 meets or exceeds 1"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
 
       // Test OK state (should have ✅ emoji)
@@ -725,16 +721,14 @@ describe('checkAlerts', () => {
           view: defaultSearchView,
           state: AlertState.OK,
         }),
-      ).toMatchInlineSnapshot(
-        `"✅ Alert for \\"My Search\\" - 10 lines found"`,
-      );
+      ).toMatchInlineSnapshot(`"✅ Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
           state: AlertState.OK,
         }),
       ).toMatchInlineSnapshot(
-        `"✅ Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 meets or exceeds 1"`,
+        `"✅ Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -754,7 +748,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1111.1 meets or exceeds 1.5"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -772,7 +766,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1.1235 meets or exceeds 0.1234"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -790,7 +784,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 10.00 meets or exceeds 0.12"`,
+        `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -831,7 +825,7 @@ describe('checkAlerts', () => {
       expect(
         translateExternalActionsToInternal('@webhook-123'),
       ).toMatchInlineSnapshot(
-        `"{{__hdx_notify_channel__ channel=\\"webhook\\" id=\\"123\\"}}"`,
+        `"{{__hdx_notify_channel__ channel="webhook" id="123"}}"`,
       );
 
       // with multiple breaks
@@ -841,44 +835,44 @@ describe('checkAlerts', () => {
 @webhook-123
 `),
       ).toMatchInlineSnapshot(`
-"
-{{__hdx_notify_channel__ channel=\\"webhook\\" id=\\"123\\"}}
-"
-`);
+        "
+        {{__hdx_notify_channel__ channel="webhook" id="123"}}
+        "
+      `);
 
       // with body string
       expect(
         translateExternalActionsToInternal('blabla @action-id'),
       ).toMatchInlineSnapshot(
-        `"blabla {{__hdx_notify_channel__ channel=\\"action\\" id=\\"id\\"}}"`,
+        `"blabla {{__hdx_notify_channel__ channel="action" id="id"}}"`,
       );
 
       // multiple actions
       expect(
         translateExternalActionsToInternal('blabla @action-id @action2-id2'),
       ).toMatchInlineSnapshot(
-        `"blabla {{__hdx_notify_channel__ channel=\\"action\\" id=\\"id\\"}} {{__hdx_notify_channel__ channel=\\"action2\\" id=\\"id2\\"}}"`,
+        `"blabla {{__hdx_notify_channel__ channel="action" id="id"}} {{__hdx_notify_channel__ channel="action2" id="id2"}}"`,
       );
 
       // id with special characters
       expect(
         translateExternalActionsToInternal('send @email-mike@hyperdx.io'),
       ).toMatchInlineSnapshot(
-        `"send {{__hdx_notify_channel__ channel=\\"email\\" id=\\"mike@hyperdx.io\\"}}"`,
+        `"send {{__hdx_notify_channel__ channel="email" id="mike@hyperdx.io"}}"`,
       );
 
       // id with multiple dashes
       expect(
         translateExternalActionsToInternal('@action-id-with-multiple-dashes'),
       ).toMatchInlineSnapshot(
-        `"{{__hdx_notify_channel__ channel=\\"action\\" id=\\"id-with-multiple-dashes\\"}}"`,
+        `"{{__hdx_notify_channel__ channel="action" id="id-with-multiple-dashes"}}"`,
       );
 
       // custom template id
       expect(
         translateExternalActionsToInternal('@action-{{action_id}}'),
       ).toMatchInlineSnapshot(
-        `"{{__hdx_notify_channel__ channel=\\"action\\" id=\\"{{action_id}}\\"}}"`,
+        `"{{__hdx_notify_channel__ channel="action" id="{{action_id}}"}}"`,
       );
     });
 
