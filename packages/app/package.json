@@ -18,7 +18,7 @@
     "lint:styles": "stylelint **/*/*.{css,scss}",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
     "ci:unit": "jest --ci --coverage",
-    "dev:unit": "jest --watchAll --detectOpenHandles",
+    "dev:unit": "jest --watchAll",
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",

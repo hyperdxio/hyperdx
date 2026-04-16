@@ -1,12 +1,11 @@
-// @eslint-disable @typescript-eslint/no-var-requires
 jest.retryTimes(1, { logErrorsBeforeRetry: true });
 
-global.console = {
-  ...console,
-  // Turn off noisy console logs in tests
-  debug: jest.fn(),
-  info: jest.fn(),
-};
+// Suppress noisy console output during test runs.
+// - debug/info: ClickHouse query logging, server startup messages
+// - warn: expected column-not-found warnings from renderChartConfig on CTE tables
+jest.spyOn(console, 'debug').mockImplementation(() => {});
+jest.spyOn(console, 'info').mockImplementation(() => {});
+jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 // Mock alert notification functions to prevent HTTP calls during tests
 jest.mock('@/utils/slack', () => ({
