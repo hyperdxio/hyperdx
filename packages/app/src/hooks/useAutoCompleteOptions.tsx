@@ -10,7 +10,7 @@ import {
   useCompleteKeyValues,
   useMultipleAllFields,
 } from '@/hooks/useMetadata';
-import { toArray } from '@/utils';
+import { toArray, useDebounce } from '@/utils';
 
 export type TokenInfo = {
   /** The full token at the cursor position */
@@ -46,7 +46,7 @@ export interface ILanguageFormatter {
 
 export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
-  value: string,
+  _value: string,
   {
     tableConnection,
     additionalSuggestions,
@@ -59,6 +59,7 @@ export function useAutoCompleteOptions(
     inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   },
 ) {
+  const value = useDebounce(_value, 300);
   const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
 
   const effectiveDateRange: [Date, Date] = useMemo(
