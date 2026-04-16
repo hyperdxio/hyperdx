@@ -1,7 +1,11 @@
 import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertSource,
+  AlertState,
+  isRangeThresholdType,
+} from '@hyperdx/common-utils/dist/types';
 import { Alert, Anchor, Badge, Container, Group, Stack } from '@mantine/core';
 import {
   IconAlertTriangle,
@@ -20,6 +24,7 @@ import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
+import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
@@ -74,10 +79,19 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   })();
 
   const alertType = React.useMemo(() => {
+    const thresholdLabel =
+      TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
+      alert.thresholdType;
     return (
       <>
-        If value is {alert.thresholdType === 'above' ? 'over' : 'under'}{' '}
+        If value {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
+        {isRangeThresholdType(alert.thresholdType) && (
+          <>
+            {' '}
+            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
+          </>
+        )}
         <span>&middot;</span>
       </>
     );

@@ -965,6 +965,197 @@ describe('External API Alerts', () => {
     });
   });
 
+  describe('BETWEEN and NOT_BETWEEN threshold types', () => {
+    it('should create an alert with BETWEEN threshold type', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 50,
+          thresholdMax: 200,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const alert = response.body.data;
+      expect(alert.threshold).toBe(50);
+      expect(alert.thresholdMax).toBe(200);
+      expect(alert.thresholdType).toBe(AlertThresholdType.BETWEEN);
+    });
+
+    it('should create an alert with NOT_BETWEEN threshold type', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 10,
+          thresholdMax: 90,
+          interval: '5m',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.NOT_BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const alert = response.body.data;
+      expect(alert.threshold).toBe(10);
+      expect(alert.thresholdMax).toBe(90);
+      expect(alert.thresholdType).toBe(AlertThresholdType.NOT_BETWEEN);
+    });
+
+    it('should reject BETWEEN without thresholdMax', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should reject BETWEEN when thresholdMax < threshold', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          thresholdMax: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should allow thresholdMax equal to threshold for BETWEEN', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          thresholdMax: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      expect(response.body.data.threshold).toBe(100);
+      expect(response.body.data.thresholdMax).toBe(100);
+    });
+
+    it('should update an alert to use BETWEEN threshold type', async () => {
+      const { alert, dashboard, webhook } = await createTestAlert();
+
+      const updateResponse = await authRequest(
+        'put',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      )
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 20,
+          thresholdMax: 80,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const updatedAlert = updateResponse.body.data;
+      expect(updatedAlert.threshold).toBe(20);
+      expect(updatedAlert.thresholdMax).toBe(80);
+      expect(updatedAlert.thresholdType).toBe(AlertThresholdType.BETWEEN);
+    });
+
+    it('should retrieve a BETWEEN alert with thresholdMax', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const createResponse = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 10,
+          thresholdMax: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${createResponse.body.data.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.threshold).toBe(10);
+      expect(getResponse.body.data.thresholdMax).toBe(50);
+      expect(getResponse.body.data.thresholdType).toBe(
+        AlertThresholdType.BETWEEN,
+      );
+    });
+  });
+
   describe('Authentication', () => {
     it('should require authentication', async () => {
       // Create an unauthenticated agent

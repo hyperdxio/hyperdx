@@ -77,7 +77,7 @@ const WebhookChannelForm = <T extends FieldValues>({
         <Controller
           control={control}
           name={name! as Path<T>}
-          render={({ field }) => (
+          render={({ field, fieldState }) => (
             <Select
               data-testid="select-webhook"
               comboboxProps={{
@@ -91,6 +91,7 @@ const WebhookChannelForm = <T extends FieldValues>({
               }
               data={options}
               {...field}
+              error={fieldState.error?.message}
             />
           )}
         />
@@ -144,13 +145,50 @@ export const AlertChannelForm = <T extends FieldValues>({
 export const getAlertReferenceLines = ({
   thresholdType,
   threshold,
+  thresholdMax,
   // TODO: zScore
 }: {
   thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number;
 }) => {
   if (threshold == null) {
     return null;
+  }
+  if (thresholdType === AlertThresholdType.BETWEEN && thresholdMax != null) {
+    return (
+      <ReferenceArea
+        y1={threshold}
+        y2={thresholdMax}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />
+    );
+  }
+  if (
+    thresholdType === AlertThresholdType.NOT_BETWEEN &&
+    thresholdMax != null
+  ) {
+    return [
+      <ReferenceArea
+        key="not-between-lower"
+        y2={threshold}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />,
+      <ReferenceArea
+        key="not-between-upper"
+        y1={thresholdMax}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />,
+    ];
   }
   if (
     thresholdType === AlertThresholdType.BELOW ||

@@ -34,7 +34,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Evaluation interval.
  *     AlertThresholdType:
  *       type: string
- *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal]
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal, between, not_between]
  *       description: Threshold comparison direction.
  *     AlertSource:
  *       type: string
@@ -110,8 +110,13 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "ServiceName"
  *         threshold:
  *           type: number
- *           description: Threshold value for triggering the alert.
+ *           description: Threshold value for triggering the alert. For between and not_between threshold types, this is the lower bound.
  *           example: 100
+ *         thresholdMax:
+ *           type: number
+ *           nullable: true
+ *           description: Upper bound for between and not_between threshold types. Required when thresholdType is between or not_between, must be >= threshold.
+ *           example: 500
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
  *           description: Evaluation interval for the alert.

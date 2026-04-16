@@ -75,6 +75,7 @@ const formatAlertResponse = (
       'scheduleOffsetMinutes',
       'scheduleStartAt',
       'threshold',
+      'thresholdMax',
       'thresholdType',
       'state',
       'source',

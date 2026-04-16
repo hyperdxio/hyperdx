@@ -28,6 +28,7 @@ type AlertPreviewChartProps = {
   groupBy?: string;
   thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number;
   select?: string | null;
 };
 
@@ -39,6 +40,7 @@ export const AlertPreviewChart = ({
   interval,
   groupBy,
   threshold,
+  thresholdMax,
   thresholdType,
   select,
 }: AlertPreviewChartProps) => {
@@ -65,7 +67,11 @@ export const AlertPreviewChart = ({
         showDisplaySwitcher={false}
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
-        referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
+        referenceLines={getAlertReferenceLines({
+          threshold,
+          thresholdMax,
+          thresholdType,
+        })}
         config={{
           where: where || '',
           whereLanguage: whereLanguage || undefined,

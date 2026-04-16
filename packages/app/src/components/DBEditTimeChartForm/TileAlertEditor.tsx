@@ -4,7 +4,10 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  isRangeThresholdType,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
@@ -62,6 +65,8 @@ export function TileAlertEditor({
 
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
   const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
+  const alertThreshold = useWatch({ control, name: 'alert.threshold' });
+  const alertThresholdMax = useWatch({ control, name: 'alert.thresholdMax' });
   const alertScheduleOffsetMinutes = useWatch({
     control,
     name: 'alert.scheduleOffsetMinutes',
@@ -151,6 +156,15 @@ export function TileAlertEditor({
                   data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
                   size="xs"
                   {...field}
+                  onChange={e => {
+                    field.onChange(e);
+                    if (
+                      isRangeThresholdType(e.currentTarget.value) &&
+                      alertThresholdMax == null
+                    ) {
+                      setValue('alert.thresholdMax', (alertThreshold ?? 0) + 1);
+                    }
+                  }}
                 />
               )}
             />
@@ -161,6 +175,25 @@ export function TileAlertEditor({
                 <NumberInput size="xs" w={80} {...field} />
               )}
             />
+            {isRangeThresholdType(alertThresholdType as AlertThresholdType) && (
+              <>
+                <Text size="sm" opacity={0.7}>
+                  and
+                </Text>
+                <Controller
+                  control={control}
+                  name="alert.thresholdMax"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      size="xs"
+                      w={80}
+                      {...field}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </>
+            )}
             over
             <Controller
               control={control}

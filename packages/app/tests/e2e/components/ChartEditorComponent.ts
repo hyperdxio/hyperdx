@@ -147,17 +147,13 @@ export class ChartEditorComponent {
   }
 
   async selectWebhook(webhookName: string) {
-    // Click to open dropdown
-    await this.webhookSelector.click();
-
-    // Type to filter
-    await this.webhookSelector.fill(webhookName);
-
-    // Use getByRole for more reliable selection
-    const sourceOption = this.page.getByRole('option', { name: webhookName });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
+    if ((await this.webhookSelector.inputValue()) === webhookName) {
+      return;
     }
+    await this.webhookSelector.click();
+    await this.page
+      .getByRole('option', { name: webhookName })
+      .click({ timeout: 5000 });
   }
 
   /**
@@ -265,6 +261,48 @@ export class ChartEditorComponent {
     await this.selectSource(sourceName);
     if (groupBy) await this.setGroupBy(groupBy);
     await this.save();
+  }
+
+  /**
+   * Select a threshold type in the tile alert editor.
+   * Pass the option value (e.g. 'between', 'above', 'below').
+   * Scoped to [data-testid="alert-details"].
+   */
+  async selectTileAlertThresholdType(value: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .locator('select')
+      .first()
+      .selectOption(value);
+  }
+
+  /**
+   * Set the lower threshold value in the tile alert editor.
+   * Mantine v9 NumberInput renders as <input inputmode="decimal"> (not type="number"),
+   * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
+   */
+  async setTileAlertThreshold(value: number) {
+    const input = this.page
+      .getByTestId('alert-details')
+      .locator('input[inputmode="decimal"]')
+      .first();
+    await input.fill(String(value));
+    await input.blur();
+  }
+
+  /**
+   * Set the upper threshold (thresholdMax) in the tile alert editor.
+   * Only visible after selecting a range threshold type (e.g. 'between').
+   * Mantine v9 NumberInput renders as <input inputmode="decimal"> (not type="number"),
+   * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
+   */
+  async setTileAlertThresholdMax(value: number) {
+    const input = this.page
+      .getByTestId('alert-details')
+      .locator('input[inputmode="decimal"]')
+      .nth(1);
+    await input.fill(String(value));
+    await input.blur();
   }
 
   // Getters for assertions
