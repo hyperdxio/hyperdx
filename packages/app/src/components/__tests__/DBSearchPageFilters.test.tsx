@@ -389,8 +389,10 @@ describe('FilterGroup', () => {
     onClearClick: jest.fn(),
     onOnlyClick: jest.fn(),
     onExcludeClick: jest.fn(),
-    onPinClick: jest.fn(),
-    isPinned: jest.fn(),
+    valuePins: {
+      onPinClick: jest.fn(),
+      isPinned: jest.fn().mockReturnValue(false),
+    },
     onLoadMore: jest.fn(),
     loadMoreLoading: false,
     hasLoadedMore: false,

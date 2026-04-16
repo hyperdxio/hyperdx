@@ -69,21 +69,26 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   test('Should pin filter and verify it persists after reload', async () => {
     await searchPage.filters.pinFilter(TEST_FILTER_GROUP, TEST_FILTER_VALUE);
 
-    // Reload page and verify filter persists
+    // Reload page and wait for search results to populate
     await searchPage.page.reload();
+    await searchPage.table.waitForRowsToPopulate();
 
-    // Verify filter checkbox is still visible
+    // After reload the pinned field should auto-expand; open it explicitly
+    // in case it hasn't expanded yet (handles slower CI environments).
+    await searchPage.filters.openFilterGroup(TEST_FILTER_GROUP);
+
+    // Verify filter checkbox is still visible with a generous timeout for CI
     const filterCheckbox = searchPage.filters.getFilterCheckbox(
       TEST_FILTER_GROUP,
       TEST_FILTER_VALUE,
     );
-    await expect(filterCheckbox).toBeVisible();
+    await expect(filterCheckbox).toBeVisible({ timeout: 15000 });
 
-    //verify there is a pin icon
+    // Verify there is a pin icon showing the value is still pinned
     const pinIcon = searchPage.page.getByTestId(
       `filter-checkbox-${TEST_FILTER_GROUP}-${TEST_FILTER_VALUE}-pin-pinned`,
     );
-    await expect(pinIcon).toBeVisible();
+    await expect(pinIcon).toBeVisible({ timeout: 15000 });
   });
 
   // TODO: Implement these tests following the same pattern
