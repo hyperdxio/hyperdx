@@ -102,12 +102,19 @@ describe('isCriticalFile', () => {
     assert.ok(isCriticalFile('packages/api/src/models/teamInvite.ts'));
   });
 
-  it('matches config, tasks, otel, clickhouse, and CI', () => {
+  it('matches config, tasks, otel, clickhouse, and core CI workflows', () => {
     assert.ok(isCriticalFile('packages/api/src/config.ts'));
     assert.ok(isCriticalFile('packages/api/src/tasks/alertChecker.ts'));
     assert.ok(isCriticalFile('packages/otel-collector/config.yaml'));
     assert.ok(isCriticalFile('docker/clickhouse/config.xml'));
-    assert.ok(isCriticalFile('.github/workflows/ci.yml'));
+    assert.ok(isCriticalFile('.github/workflows/main.yml'));
+    assert.ok(isCriticalFile('.github/workflows/release.yml'));
+  });
+
+  it('does NOT flag non-core workflow files as critical', () => {
+    assert.ok(!isCriticalFile('.github/workflows/pr-triage.yml'));
+    assert.ok(!isCriticalFile('.github/workflows/knip.yml'));
+    assert.ok(!isCriticalFile('.github/workflows/claude.yml'));
   });
 
   it('does NOT match non-critical API models', () => {
@@ -264,10 +271,19 @@ describe('determineTier', () => {
       ]), 4);
     });
 
-    it('touches CI workflow', () => {
+    it('touches main.yml or release.yml', () => {
       assert.equal(classify('alice', 'ci/add-step', [
-        makeFile('.github/workflows/ci.yml', 15, 3),
+        makeFile('.github/workflows/main.yml', 15, 3),
       ]), 4);
+      assert.equal(classify('alice', 'ci/release-fix', [
+        makeFile('.github/workflows/release.yml', 8, 2),
+      ]), 4);
+    });
+
+    it('does NOT flag other workflow files as Tier 4', () => {
+      assert.equal(classify('alice', 'ci/add-triage-step', [
+        makeFile('.github/workflows/pr-triage.yml', 10, 2),
+      ]), 2);
     });
 
     it('touches core user/team models', () => {

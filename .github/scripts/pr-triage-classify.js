@@ -12,7 +12,7 @@ const TIER4_PATTERNS = [
   /^packages\/otel-collector\//,
   /^docker\/otel-collector\//,
   /^docker\/clickhouse\//,
-  /^\.github\/workflows\//,
+  /^\.github\/workflows\/(main|release)\.yml$/,
 ];
 
 const TIER1_PATTERNS = [
