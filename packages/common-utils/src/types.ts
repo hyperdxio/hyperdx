@@ -1323,6 +1323,12 @@ export const AlertsApiResponseSchema = z.object({
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
 
+export const AlertApiResponseSchema = z.object({
+  data: AlertsPageItemSchema,
+});
+
+export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
+
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({
   data: z.array(WebhookSchema),

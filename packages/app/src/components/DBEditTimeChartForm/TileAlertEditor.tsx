@@ -27,7 +27,10 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { AlertChannelForm } from '@/components/Alerts';
+import { AckAlert } from '@/components/alerts/AckAlert';
+import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { optionsToSelectData } from '@/utils';
@@ -70,11 +73,14 @@ export function TileAlertEditor({
     ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
     : undefined;
 
+  const { data: alertData } = api.useAlert(alert.id);
+  const alertItem = alertData?.data;
+
   return (
     <Paper data-testid="alert-details">
-      <Group justify="space-between" px="sm" pt="sm" pb={opened ? 0 : 'sm'}>
+      <Group justify="space-between" px="sm" pt="sm" pb="sm">
         <UnstyledButton onClick={toggle}>
-          <Group gap="xs" mb="xs">
+          <Group gap="xs">
             <IconChevronDown
               size={14}
               style={{
@@ -113,17 +119,23 @@ export function TileAlertEditor({
             </Group>
           </Group>
         </UnstyledButton>
-        <Tooltip label="Remove alert">
-          <ActionIcon
-            variant="danger"
-            color="red"
-            size="sm"
-            onClick={onRemove}
-            data-testid="remove-alert-button"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
-        </Tooltip>
+        <Group gap="xs">
+          {alertItem && alertItem.history.length > 0 && (
+            <AlertHistoryCardList history={alertItem.history} />
+          )}
+          {alertItem && <AckAlert alert={alertItem} />}
+          <Tooltip label="Remove alert">
+            <ActionIcon
+              variant="danger"
+              color="red"
+              size="sm"
+              onClick={onRemove}
+              data-testid="remove-alert-button"
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
       <Collapse expanded={opened}>
         <Box px="sm" pb="sm">

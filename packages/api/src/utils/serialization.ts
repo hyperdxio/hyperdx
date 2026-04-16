@@ -9,7 +9,7 @@ type JsonStringifiable = { toJSON(): string };
  * toJSON(): string). This allows passing raw Mongoose data to sendJson()
  * while keeping type inference from the typed Express response.
  */
-type PreSerialized<T> = T extends string
+export type PreSerialized<T> = T extends string
   ? string | JsonStringifiable
   : T extends (infer U)[]
     ? PreSerialized<U>[]
