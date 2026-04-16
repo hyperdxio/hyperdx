@@ -1702,6 +1702,16 @@ const DBSearchPageFiltersComponent = ({
               Analysis Mode
             </Text>
             <Group gap={0}>
+              {showRefreshButton && (
+                <TextButton
+                  label={
+                    <IconRefresh
+                      size={14}
+                      onClick={() => setDateRange(chartConfig.dateRange)}
+                    />
+                  }
+                />
+              )}
               <FilterSettingsPanel
                 isSharedFiltersVisible={isSharedFiltersVisible}
                 onSharedFiltersVisibilityChange={setSharedFiltersVisible}
@@ -1791,17 +1801,6 @@ const DBSearchPageFiltersComponent = ({
                 </Text>
               </UnstyledButton>
               <Group gap={0} wrap="nowrap">
-                {showRefreshButton && (
-                  <TextButton
-                    label={
-                      <IconRefresh
-                        size={14}
-                        className="ms-1"
-                        onClick={() => setDateRange(chartConfig.dateRange)}
-                      />
-                    }
-                  />
-                )}
                 {showFiltersClearButton && (
                   <Tooltip
                     label="Clear Filters"
