@@ -173,29 +173,24 @@ export function useMultipleAllFields(
   });
 }
 
-/** Tables that have rollup tables */
-const TABLES_WITH_ROLLUPS = new Set(['otel_logs', 'otel_traces']);
-
 /**
  * Resolves a field to the (ColumnIdentifier, Key) pair for querying the rollup table.
  * Map fields: ColumnIdentifier = column name (e.g. 'ResourceAttributes'), Key = map key
  * Native fields: ColumnIdentifier = 'NativeColumn', Key = column name (e.g. 'ServiceName')
+ *
+ * Only returns a result when the table connection has metadataMVs configured.
  */
 function fieldToRollupParams(
   field: Field | null,
-  tableName: string | undefined,
+  tableConnection: TableConnection | undefined,
 ): { columnIdentifier: string; key: string } | null {
-  if (!field || !tableName) return null;
+  if (!field || !tableConnection?.metadataMVs) return null;
 
   if (field.path.length >= 2) {
     const [column, mapKey] = field.path;
-    if (getMapColumnsForTable(tableName).includes(column)) {
-      return { columnIdentifier: column, key: mapKey };
-    }
+    return { columnIdentifier: column, key: mapKey };
   } else if (field.path.length === 1) {
-    if (TABLES_WITH_ROLLUPS.has(tableName)) {
-      return { columnIdentifier: 'NativeColumn', key: field.path[0] };
-    }
+    return { columnIdentifier: 'NativeColumn', key: field.path[0] };
   }
 
   return null;
@@ -224,10 +219,7 @@ export function useCompleteKeyValues({
     return () => clearTimeout(timer);
   }, [searchField]);
 
-  const rollupParams = fieldToRollupParams(
-    debouncedField,
-    tableConnection?.tableName,
-  );
+  const rollupParams = fieldToRollupParams(debouncedField, tableConnection);
 
   return useQuery<string[]>({
     queryKey: [
@@ -250,6 +242,7 @@ export function useCompleteKeyValues({
         column: rollupParams.columnIdentifier,
         key: rollupParams.key,
         connectionId: tableConnection.connectionId,
+        metadataMVs: tableConnection.metadataMVs,
         dateRange,
         signal,
       });

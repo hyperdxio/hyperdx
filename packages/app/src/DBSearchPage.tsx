@@ -1612,19 +1612,10 @@ export function DBSearchPage() {
     ],
   );
 
-  const inputSourceTableConnection = useMemo(() => {
-    const tc = tcFromSource(inputSourceObj);
-    if (tc.tableName === 'otel_logs' || tc.tableName === 'otel_traces') {
-      return {
-        ...tc,
-        fieldsRollupView: {
-          name: `${tc.tableName}_key_rollup_15m`,
-          granularity: '15 minute',
-        },
-      };
-    }
-    return tc;
-  }, [inputSourceObj]);
+  const inputSourceTableConnection = useMemo(
+    () => tcFromSource(inputSourceObj),
+    [inputSourceObj],
+  );
 
   const sourceSchemaPreview = useMemo(
     () => <SourceSchemaPreview source={inputSourceObj} variant="text" />,

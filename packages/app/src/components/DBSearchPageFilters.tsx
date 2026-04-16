@@ -1048,20 +1048,14 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
-  const fieldsRollupView =
-    chartConfig.from.tableName === 'otel_logs' ||
-    chartConfig.from.tableName === 'otel_traces'
-      ? {
-          name: `${chartConfig.from.tableName}_key_rollup_15m`,
-          granularity: '15 minute',
-        }
-      : undefined;
+  const { data: source } = useSource({ id: sourceId });
+  const sourceTableConnection = tcFromSource(source);
   const { data, isLoading, error } = useAllFields(
     {
       databaseName: chartConfig.from.databaseName,
       tableName: chartConfig.from.tableName,
       connectionId: chartConfig.connection,
-      fieldsRollupView,
+      metadataMVs: sourceTableConnection.metadataMVs,
     },
     {
       dateRange: chartConfig.dateRange,
@@ -1073,8 +1067,7 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
-  const { data: source } = useSource({ id: sourceId });
-  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+  const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
   useEffect(() => {
     if (error) {
