@@ -19,7 +19,11 @@ module.exports = async ({ github, context }) => {
     // Use context.payload.inputs to avoid script-injection via template interpolation
     const input = (context.payload.inputs?.pr_number ?? '').trim();
     if (input !== '') {
-      prNumbers = [Number(input)];
+      const num = Number(input);
+      if (!Number.isInteger(num) || num <= 0) {
+        throw new Error(`Invalid PR number: "${input}"`);
+      }
+      prNumbers = [num];
     } else {
       const openPRs = await github.paginate(
         github.rest.pulls.list,

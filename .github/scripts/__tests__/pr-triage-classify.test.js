@@ -117,6 +117,10 @@ describe('isCriticalFile', () => {
     assert.ok(!isCriticalFile('.github/workflows/claude.yml'));
   });
 
+  it('matches docker/hyperdx/', () => {
+    assert.ok(isCriticalFile('docker/hyperdx/Dockerfile'));
+  });
+
   it('does NOT match non-critical API models', () => {
     assert.ok(!isCriticalFile('packages/api/src/models/alert.ts'));
     assert.ok(!isCriticalFile('packages/api/src/models/dashboard.ts'));
@@ -125,6 +129,13 @@ describe('isCriticalFile', () => {
   it('does NOT match regular app and API files', () => {
     assert.ok(!isCriticalFile('packages/app/src/App.tsx'));
     assert.ok(!isCriticalFile('packages/api/src/routers/logs.ts'));
+  });
+
+  // Note: isCriticalFile DOES return true for test files under critical paths
+  // (e.g. packages/api/src/tasks/tests/util.test.ts). The exclusion happens in
+  // computeSignals, which filters test files out before building criticalFiles.
+  it('returns true for test files under critical paths (exclusion is in computeSignals)', () => {
+    assert.ok(isCriticalFile('packages/api/src/tasks/tests/util.test.ts'));
   });
 });
 
@@ -243,6 +254,15 @@ describe('determineTier', () => {
       ]), 1);
     });
 
+    // package.json is not in TIER1_PATTERNS (it's a production file), but bot
+    // author short-circuits to Tier 1 before the trivial-file check fires.
+    it('bot author with package.json (non-trivial file) is still Tier 1', () => {
+      assert.equal(classify('dependabot[bot]', 'dependabot/npm/lodash', [
+        makeFile('package.json', 5, 3),
+        makeFile('packages/api/package.json', 2, 2),
+      ]), 1);
+    });
+
     it('all trivial files (docs + lock)', () => {
       assert.equal(classify('alice', 'docs/update-readme', [
         makeFile('README.md', 10, 2),
@@ -344,6 +364,12 @@ describe('determineTier', () => {
         makeFile('packages/app/src/Foo.tsx', 100, 49),  // 149 lines
       ]), 2);
     });
+
+    it('agent branch at exactly 49 prod lines qualifies for Tier 2', () => {
+      assert.equal(classify('alice', 'claude/fix', [
+        makeFile('packages/app/src/Foo.tsx', 49, 0),
+      ]), 2);
+    });
   });
 
   describe('Tier 3', () => {
@@ -363,6 +389,12 @@ describe('determineTier', () => {
     it('touches API models (non-critical)', () => {
       assert.equal(classify('alice', 'feat/model-field', [
         makeFile('packages/api/src/models/alert.ts', 20, 3),
+      ]), 3);
+    });
+
+    it('agent branch at exactly 50 prod lines is blocked from Tier 2', () => {
+      assert.equal(classify('alice', 'claude/feature', [
+        makeFile('packages/app/src/Foo.tsx', 50, 0),  // exactly AGENT_TIER2_MAX_LINES — >= blocks it
       ]), 3);
     });
 
@@ -394,6 +426,12 @@ describe('determineTier', () => {
       ];
       // 250 prod lines > TIER2_MAX_LINES (150) → Tier 3, not Tier 4
       assert.equal(classify('alice', 'feat/alert-thresholds', files), 3);
+    });
+
+    it('human branch at exactly 150 prod lines is Tier 3, not Tier 2', () => {
+      assert.equal(classify('alice', 'fix/component', [
+        makeFile('packages/app/src/Foo.tsx', 100, 50),  // exactly TIER2_MAX_LINES — < is exclusive
+      ]), 3);
     });
 
     it('does NOT escalate human branch at exactly 1000 prod lines', () => {

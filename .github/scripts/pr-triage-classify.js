@@ -12,6 +12,7 @@ const TIER4_PATTERNS = [
   /^packages\/otel-collector\//,
   /^docker\/otel-collector\//,
   /^docker\/clickhouse\//,
+  /^docker\/hyperdx\//,
   /^\.github\/workflows\/(main|release)\.yml$/,
 ];
 

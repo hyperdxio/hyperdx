@@ -17,6 +17,12 @@ permissions:
   pull-requests: write
   issues: write
 
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id
+    }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test triage logic
@@ -32,6 +38,7 @@ jobs:
     name: Classify PR risk tier
     needs: test
     runs-on: ubuntu-24.04
+    timeout-minutes: 8
     # For pull_request events skip drafts; workflow_dispatch always runs
     if:
       ${{ github.event_name == 'workflow_dispatch' ||
@@ -42,4 +49,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          script-path: .github/scripts/pr-triage.js
+          script: |
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/pr-triage.js'));
+            await run({ github, context });
