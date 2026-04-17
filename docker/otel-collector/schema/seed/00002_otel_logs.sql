@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   `ScopeVersion` LowCardinality(String) CODEC(ZSTD(1)),
   `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
   `LogAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  `ResourceAttributeTokens` Array(String) ALIAS arrayMap((k,v) -> concat(k, '=', v), mapKeys(ResourceAttributes), mapValues(ResourceAttributes)),
+  `LogAttributeTokens`      Array(String) ALIAS arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes)),
+  `ScopeAttributeTokens`    Array(String) ALIAS arrayMap((k,v) -> concat(k, '=', v), mapKeys(ScopeAttributes), mapValues(ScopeAttributes)),
   `__hdx_materialized_k8s.cluster.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.cluster.name'] CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.container.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.container.name'] CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.deployment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.deployment.name'] CODEC(ZSTD(1)),
@@ -27,11 +30,11 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   `__hdx_materialized_deployment.environment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment.name'] CODEC(ZSTD(1)),
   INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
   INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+  INDEX idx_res_attr_kv_text ResourceAttributeTokens TYPE text(tokenizer = 'array'),
   INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+  INDEX idx_scope_attr_kv_text ScopeAttributeTokens TYPE text(tokenizer = 'array')
   INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+  INDEX idx_log_attr_kv_text LogAttributeTokens TYPE text(tokenizer = 'array'),
   INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 )
 ENGINE = MergeTree

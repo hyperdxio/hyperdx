@@ -398,6 +398,8 @@ export abstract class SQLSerializer implements Serializer {
     found: boolean;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
+    mapTokensColumn?: string;
+    mapKey?: string;
   }>;
 
   operator(op: lucene.Operator) {
@@ -436,6 +438,8 @@ export abstract class SQLSerializer implements Serializer {
       isArray,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
+      mapTokensColumn,
+      mapKey,
     } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
@@ -450,6 +454,22 @@ export abstract class SQLSerializer implements Serializer {
         isNegatedField,
         exactMatch: true,
       });
+    }
+
+    // Map tokens skip-index optimization: use has(TokensColumn, 'key=value')
+    // when a text-indexed tokens column exists for this map column.
+    // Only for non-negated string equality where the key doesn't contain '='.
+    if (
+      mapTokensColumn &&
+      mapKey &&
+      !isNegatedField &&
+      !mapKey.includes('=') &&
+      propertyType === JSDataType.String
+    ) {
+      return SqlString.format(`(has(??, ?))`, [
+        mapTokensColumn,
+        `${mapKey}=${term}`,
+      ]);
     }
 
     const expressionPostfix =
@@ -705,6 +725,10 @@ type CustomSchemaSQLColumnExpression = {
   };
   mapKeyIndexExpression?: string;
   arrayMapKeyExpression?: string;
+  /** Tokens column name for map skip-index optimization (e.g. 'LogAttributeTokens') */
+  mapTokensColumn?: string;
+  /** Map key for tokens optimization (e.g. 'userId') */
+  mapKey?: string;
 };
 
 export type CustomSchemaConfig = {
@@ -1112,6 +1136,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
       if (prefixMatch.type.startsWith('Map')) {
         const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
+        const tokensColumn = await this.findTokensColumnForMap(
+          prefixMatch.name,
+        );
         return {
           found: true,
           columnExpression: SqlString.format(`??[?]`, [
@@ -1120,6 +1147,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ]),
           mapKeyIndexExpression: `indexHint(${buildMapContains(`${prefixMatch.name}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
+          mapTokensColumn: tokensColumn,
+          mapKey: fieldPostfix,
         };
       } else if (prefixMatch.type.startsWith('JSON')) {
         // ignore original column expression at here
@@ -1171,6 +1200,41 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       columnType: 'Unknown',
     };
     // throw new Error(`Column not found: ${field}`);
+  }
+
+  /**
+   * Finds an ALIAS column that tokenizes a Map column into 'key=value' pairs
+   * and has a text index on it, enabling skip-index optimization.
+   */
+  private async findTokensColumnForMap(
+    mapColumnName: string,
+  ): Promise<string | undefined> {
+    try {
+      const columns = await this.metadata.getColumns({
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        connectionId: this.connectionId,
+      });
+
+      // Find ALIAS columns derived from this map column
+      const tokensColumn = columns.find(
+        c =>
+          c.default_type === 'ALIAS' &&
+          c.default_expression.includes(`mapKeys(${mapColumnName})`) &&
+          c.default_expression.includes(`mapValues(${mapColumnName})`),
+      );
+
+      if (!tokensColumn) return undefined;
+
+      // Verify there's a text index on the tokens column
+      const textIndex = await this.findTextIndex(tokensColumn.name);
+      if (!textIndex) return undefined;
+
+      return tokensColumn.name;
+    } catch (e) {
+      console.debug('Error in findTokensColumnForMap', e);
+      return undefined;
+    }
   }
 
   private async findTextIndex(
@@ -1320,6 +1384,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression
         : undefined,
+      mapTokensColumn: expression.mapTokensColumn,
+      mapKey: expression.mapKey,
     };
   }
 }
