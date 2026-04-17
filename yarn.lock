@@ -4280,7 +4280,7 @@ __metadata:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.17.1"
+    "@hyperdx/common-utils": "npm:^0.18.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -4365,7 +4365,7 @@ __metadata:
     "@eslint/compat": "npm:^2.0.0"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.22.0"
-    "@hyperdx/common-utils": "npm:^0.17.1"
+    "@hyperdx/common-utils": "npm:^0.18.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@jedmao/location": "npm:^3.0.0"
     "@mantine/core": "npm:^9.0.0"
@@ -4495,7 +4495,7 @@ __metadata:
   dependencies:
     "@clickhouse/client": "npm:^1.12.1"
     "@clickhouse/client-common": "npm:^1.12.1"
-    "@hyperdx/common-utils": "npm:^0.17.1"
+    "@hyperdx/common-utils": "npm:^0.18.0"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/react": "npm:^19.0.0"
     "@types/sqlstring": "npm:^2.3.2"
@@ -4517,7 +4517,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/common-utils@npm:^0.17.1, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.18.0, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
