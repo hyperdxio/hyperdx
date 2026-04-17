@@ -201,7 +201,7 @@ function fieldToRollupParams(
  * Works for both map keys (e.g. "ResourceAttributes.http.method") and
  * native columns (e.g. "ServiceName").
  */
-export function useCompleteKeyValues({
+export function useAllKeyValues({
   tableConnection,
   searchField,
   dateRange,
@@ -212,18 +212,11 @@ export function useCompleteKeyValues({
 }) {
   const metadata = useMetadataWithSettings();
 
-  // Debounce: only query after the field stabilizes for 300ms
-  const [debouncedField, setDebouncedField] = useState<Field | null>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedField(searchField), 300);
-    return () => clearTimeout(timer);
-  }, [searchField]);
-
-  const rollupParams = fieldToRollupParams(debouncedField, tableConnection);
+  const rollupParams = fieldToRollupParams(searchField, tableConnection);
 
   return useQuery<string[]>({
     queryKey: [
-      'useCompleteKeyValues',
+      'useAllKeyValues',
       tableConnection?.databaseName,
       tableConnection?.tableName,
       tableConnection?.connectionId,
@@ -233,10 +226,10 @@ export function useCompleteKeyValues({
       dateRange[1].getTime(),
     ],
     queryFn: async ({ signal }) => {
-      if (!tableConnection || !rollupParams || !debouncedField) return [];
+      if (!tableConnection || !rollupParams || !searchField) return [];
 
       // Try rollup first
-      const rollupValues = await metadata.getCompleteKeyValues({
+      const rollupValues = await metadata.getAllKeyValues({
         databaseName: tableConnection.databaseName,
         tableName: tableConnection.tableName,
         column: rollupParams.columnIdentifier,
@@ -264,7 +257,7 @@ export function useCompleteKeyValues({
         return metadata.getMapValues({
           databaseName: tableConnection.databaseName,
           tableName: tableConnection.tableName,
-          column: debouncedField.path[0],
+          column: searchField.path[0],
           connectionId: tableConnection.connectionId,
         });
       }

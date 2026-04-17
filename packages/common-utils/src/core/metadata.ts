@@ -21,7 +21,10 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
-import { optimizeGetKeyValuesCalls } from './materializedViews';
+import {
+  optimizeGetKeyValuesCalls,
+  renderStartOfBucketExpr,
+} from './materializedViews';
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
@@ -376,7 +379,15 @@ export class Metadata {
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
       return this.cache.getOrFetch<string[]>(cacheKey, async () => {
-        const timeFilter = chSql`AND Timestamp >= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})) AND Timestamp <= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }}))`;
+        const startExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+        );
+        const endExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+        );
+        const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
         const sql = chSql`
           SELECT Key
           FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
@@ -1191,7 +1202,7 @@ export class Metadata {
    * Autocomplete: fetches top values for a specific map key from the KV rollup table.
    * Only filters by date range — no WHERE conditions. Values ordered by frequency.
    */
-  async getCompleteKeyValues({
+  async getAllKeyValues({
     databaseName,
     tableName,
     column,
@@ -1214,8 +1225,22 @@ export class Metadata {
   }): Promise<string[]> {
     if (!metadataMVs) return [];
 
-    const timeFilter = chSql`AND Timestamp >= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})) AND Timestamp <= toStartOfFifteenMinutes(fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }}))`;
-    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.${dateRange[0].getTime()}.${dateRange[1].getTime()}.completeKeyValues`;
+    // Align date range to rollup granularity for consistent cache keys
+    const alignedDateRange = getAlignedDateRange(
+      dateRange,
+      metadataMVs.granularity,
+    );
+
+    const startExpr = renderStartOfBucketExpr(
+      metadataMVs.granularity,
+      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+    );
+    const endExpr = renderStartOfBucketExpr(
+      metadataMVs.granularity,
+      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+    );
+    const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues`;
 
     return this.cache.getOrFetch(cacheKey, async () => {
       try {

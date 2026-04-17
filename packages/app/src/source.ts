@@ -7,6 +7,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { inferGranularityFromMVSelect } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -348,8 +349,9 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
-  // Check if metadata rollup tables exist
-  const hasMetadataMVs =
+  // Check if metadata rollup tables exist and, if so, infer the bucketing
+  // granularity from the key-rollup view's `as_select`
+  const rollupMeta =
     isOtelLogSchema || isOtelSpanSchema
       ? await (async () => {
           const [keyMeta, kvMeta] = await Promise.all([
@@ -364,16 +366,22 @@ export async function inferTableSourceConfig({
               connectionId,
             }),
           ]);
-          return keyMeta != null && kvMeta != null;
+          return keyMeta != null && kvMeta != null
+            ? { keyMeta, kvMeta }
+            : undefined;
         })()
-      : false;
+      : undefined;
 
-  const metadataMVsConfig = hasMetadataMVs
+  const metadataMVsConfig = rollupMeta
     ? {
         metadataMaterializedViews: {
           keyRollupTable: `${tableName}_key_rollup_15m`,
           kvRollupTable: `${tableName}_kv_rollup_15m`,
-          granularity: '15 minute',
+          // Fall back to '15 minute' to preserve the prior default when the
+          // MV's `as_select` doesn't contain a recognized bucketing function.
+          granularity:
+            inferGranularityFromMVSelect(rollupMeta.keyMeta.as_select) ??
+            '15 minute',
         },
       }
     : {};
