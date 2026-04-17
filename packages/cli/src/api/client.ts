@@ -345,7 +345,7 @@ export interface SourceResponse {
   sessionSourceId?: string;
 }
 
-export interface ConnectionResponse {
+interface ConnectionResponse {
   id: string;
   _id: string;
   name: string;
