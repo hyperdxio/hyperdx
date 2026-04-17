@@ -891,9 +891,33 @@ Pattern mining (--patterns):
   desc). Useful for summarizing a large result set into a small
   number of templated lines.
 
-  By default the whole row is JSON-serialized and clustered as a
-  single string (works for any SELECT shape). Pass --body-column
-  <name> to cluster only that column's string value instead.
+  Drain runs in-process over whatever rows the SQL returns, so the
+  result quality depends on the rows you give it:
+
+    --body-column <name>
+      When set, only that column's string value is clustered. Useful
+      when you SELECT * but only want to mine over (e.g.) Body or
+      SpanName. If <name> isn't in the result, the command exits 1
+      and lists available columns on stderr.
+
+      When omitted, the whole row is JSON-serialized and clustered as
+      a single string. This works for any SELECT shape without column
+      guessing, but produces noisier templates than clustering a
+      single text column.
+
+  Sampling tip:
+    For very large tables, prefer sampling over a tight LIMIT to
+    avoid biasing toward a single time slice. Append \`ORDER BY rand()\`
+    to your SQL, e.g.:
+
+      --sql "SELECT Body FROM default.otel_logs
+             WHERE Timestamp > now() - INTERVAL 1 HOUR
+             ORDER BY rand() LIMIT 10000"
+
+    Be aware: \`ORDER BY rand()\` forces ClickHouse to scan and sort
+    all rows matched by the WHERE clause before applying LIMIT, which
+    can be expensive on large tables. Always pair it with a selective
+    WHERE (time range, service, severity, etc.) to bound the scan.
 
   Output forces JSON internally regardless of --format. Each line is:
     {"pattern":"<template>","count":<n>,"sample":"<first sample>"}
