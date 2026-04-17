@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   `ScopeVersion` LowCardinality(String) CODEC(ZSTD(1)),
   `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
   `LogAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  `EventName` String CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.cluster.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.cluster.name'] CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.container.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.container.name'] CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.deployment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.deployment.name'] CODEC(ZSTD(1)),

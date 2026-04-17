@@ -1,5 +1,5 @@
 ---
-"@hyperdx/otel-collector": patch
+"@hyperdx/otel-collector": minor
 ---
 
 feat: new optimized otel schema based on weeks of benchmarks.
