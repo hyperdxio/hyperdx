@@ -848,7 +848,9 @@ Examples:
 
 program
   .command('query')
-  .description('Run a raw SQL query against a ClickHouse connection')
+  .description(
+    'Run raw SQL against a ClickHouse connection (add --patterns to cluster result into Drain log patterns)',
+  )
   .requiredOption(
     '--connection-id <id>',
     "Connection ID (from 'hdx connections --json')",
