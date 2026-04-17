@@ -1,5 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertErrorType,
   AlertState,
   AlertThresholdType,
   SourceKind,
@@ -2539,13 +2540,661 @@ describe('checkAlerts', () => {
         );
 
         // Alert should remain in its default OK state and no history/webhooks should be emitted
-        expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe('OK');
         expect(
           await AlertHistory.countDocuments({ alert: details.alert.id }),
         ).toBe(0);
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+
+        // The invalid alert configuration should be recorded on the Alert
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.INVALID_ALERT,
+        );
+        expect(updated!.executionErrors![0].message).toMatch(
+          /thresholdMax is required/,
+        );
       },
     );
+
+    describe('execution error recording', () => {
+      const setupTileAlertForErrors = async ({
+        webhookSettings,
+      }: Partial<{
+        webhookSettings: Partial<IWebhook>;
+      }> = {}) => {
+        const fixture = await setupSavedSearchAlertTest({
+          webhookSettings: webhookSettings as IWebhook,
+        });
+        const dashboard = await new Dashboard({
+          name: 'Errors Dashboard',
+          team: fixture.team._id,
+          tiles: [
+            {
+              id: 'tile-err',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: 'ServiceName:api',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: '',
+                displayType: 'line',
+                granularity: 'auto',
+                source: fixture.source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        if (!tile) throw new Error('tile not found');
+        return { ...fixture, dashboard, tile };
+      };
+
+      it('records a QUERY_ERROR and does not touch state/history when the ClickHouse query fails', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Seed the alert document with an existing ALERT state to prove the
+        // query-failure branch does NOT modify state.
+        await Alert.updateOne(
+          { _id: details.alert.id },
+          { $set: { state: AlertState.ALERT } },
+        );
+
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('clickhouse kaput'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        // State must be untouched — still ALERT
+        expect(updated!.state).toBe(AlertState.ALERT);
+        // No AlertHistory created
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(0);
+        // No webhook fired
+        expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+        // Error recorded
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.QUERY_ERROR,
+        );
+        expect(updated!.executionErrors![0].message).toContain(
+          'clickhouse kaput',
+        );
+      });
+
+      it('leaves OK state untouched when the ClickHouse query fails', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('boom'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        // Default state is OK — must stay OK (not flipped to ALERT or anything else)
+        expect(updated!.state).toBe(AlertState.OK);
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(0);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.QUERY_ERROR,
+        );
+      });
+
+      it('sets state to ALERT and records a WEBHOOK_ERROR when the query succeeds but the generic webhook fails', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: false,
+          status: 500,
+          text: jest.fn().mockResolvedValue('webhook exploded'),
+        }) as any;
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/fail',
+            name: 'Generic Webhook',
+            description: 'generic webhook',
+            body: JSON.stringify({ text: '{{title}}' }),
+          },
+        });
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = now.getTime() - ms('5m');
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        // Query succeeded, so AlertHistory should have been written
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(1);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        expect(updated!.executionErrors![0].message).toContain(
+          'webhook exploded',
+        );
+      });
+
+      it('sets state to OK and records a WEBHOOK_ERROR when a resolving webhook send fails', async () => {
+        const fetchMock = jest.fn();
+        fetchMock
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            text: jest.fn().mockResolvedValue(''),
+          })
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            text: jest.fn().mockResolvedValue('resolve send failed'),
+          });
+        global.fetch = fetchMock as any;
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/ok',
+            name: 'Generic Webhook',
+            description: 'generic webhook',
+            body: JSON.stringify({ text: '{{title}}' }),
+          },
+        });
+
+        const firstWindowEnd = new Date('2023-11-16T22:10:00.000Z');
+        const alertingNow = new Date('2023-11-16T22:12:00.000Z');
+        const resolvingNow = new Date('2023-11-16T22:17:00.000Z');
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(firstWindowEnd.getTime() - ms('3m')),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(firstWindowEnd.getTime() - ms('3m')),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        // First window — alert fires (first fetch succeeds)
+        await processAlertAtTime(
+          alertingNow,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect((await Alert.findById(details.alert.id))!.state).toBe(
+          AlertState.ALERT,
+        );
+
+        // Next window — no data, should resolve; but the webhook send fails
+        await processAlertAtTime(
+          resolvingNow,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.OK);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+      });
+
+      it('clears errors after a successful execution', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        // Seed a stale error so we can verify it gets cleared
+        await Alert.updateOne(
+          { _id: details.alert.id },
+          {
+            $set: {
+              executionErrors: [
+                {
+                  timestamp: new Date('2023-11-16T22:00:00.000Z'),
+                  type: AlertErrorType.QUERY_ERROR,
+                  message: 'old error',
+                },
+              ],
+            },
+          },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(now.getTime() - ms('5m')),
+            SeverityText: 'error',
+            Body: 'hi',
+          },
+        ]);
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        // Slack webhook (default) succeeded (mocked) → errors should be cleared
+        expect((updated!.executionErrors ?? []).length).toBe(0);
+      });
+
+      it('records one WEBHOOK_ERROR per failing group for a grouped alert', async () => {
+        // Every generic-webhook fetch fails. With two alerting groups in a
+        // single execution, the alert should end up with two WEBHOOK_ERRORs.
+        const fetchMock = jest.fn().mockResolvedValue({
+          ok: false,
+          status: 500,
+          text: jest.fn().mockResolvedValue('group webhook failed'),
+        });
+        global.fetch = fetchMock as any;
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/group-fail',
+            name: 'Generic Webhook',
+            description: 'generic webhook',
+            body: JSON.stringify({ text: '{{title}}' }),
+          } as IWebhook,
+        });
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'service-a',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Error from service-a',
+          },
+          {
+            ServiceName: 'service-a',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Error from service-a',
+          },
+          {
+            ServiceName: 'service-b',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Error from service-b',
+          },
+          {
+            ServiceName: 'service-b',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Error from service-b',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            groupBy: 'ServiceName',
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+
+        // Query succeeded → alert state should reflect the query result (ALERT,
+        // since both groups exceeded the threshold) and per-group histories
+        // should have been written.
+        expect(updated!.state).toBe(AlertState.ALERT);
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        });
+        expect(histories.length).toBe(2);
+        expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
+
+        // Each group attempted to send a webhook and each one failed, so there
+        // should be exactly one WEBHOOK_ERROR per group (two total).
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(2);
+        expect(
+          updated!.executionErrors!.every(
+            e => e.type === AlertErrorType.WEBHOOK_ERROR,
+          ),
+        ).toBe(true);
+        expect(
+          updated!.executionErrors!.every(e =>
+            e.message.includes('group webhook failed'),
+          ),
+        ).toBe(true);
+      });
+
+      it('records a WEBHOOK_ERROR when the referenced webhook is not found', async () => {
+        // Don't pre-create a webhook — we'll reference one that doesn't exist.
+        const { team, connection, source, savedSearch, clickhouseClient } =
+          await setupSavedSearchAlertTest();
+
+        // Fresh map with no webhooks in it, mimicking a deleted webhook.
+        const emptyWebhooksById = new Map<string, IWebhook>();
+        const missingWebhookId = new mongoose.Types.ObjectId().toString();
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: missingWebhookId,
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          emptyWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+
+        // Query succeeded, state should flip to ALERT, history written
+        expect(updated!.state).toBe(AlertState.ALERT);
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(1);
+
+        // A descriptive WEBHOOK_ERROR should be recorded so the user can debug
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        expect(updated!.executionErrors![0].message).toContain(
+          'Webhook not found',
+        );
+        // Hint the user on what to do about it
+        expect(updated!.executionErrors![0].message).toMatch(/deleted|update/);
+
+        // No actual network call should have been attempted
+        expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+      });
+    });
 
     it('TILE alert (events) - generic webhook', async () => {
       const fetchMock = jest.fn().mockResolvedValue({

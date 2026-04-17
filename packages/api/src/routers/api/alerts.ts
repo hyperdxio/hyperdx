@@ -82,6 +82,7 @@ const formatAlertResponse = (
       'tileId',
       'createdAt',
       'updatedAt',
+      'executionErrors',
     ]),
   };
 };

@@ -1,5 +1,6 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
+import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SearchPage } from '../page-objects/SearchPage';
@@ -445,3 +446,43 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
     },
   );
 });
+
+test.describe(
+  'Alert Execution Errors',
+  { tag: ['@alerts', '@full-stack'] },
+  () => {
+    let alertsPage: AlertsPage;
+
+    test.beforeEach(async ({ page }) => {
+      alertsPage = new AlertsPage(page);
+      await alertsPage.goto();
+      await expect(alertsPage.pageContainer).toBeVisible();
+    });
+
+    test('shows alert errors with the correct type and message', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      const errorIcon = alertsPage.getErrorIconForAlertCard(seededCard);
+      await expect(errorIcon).toBeVisible();
+
+      // Modal is hidden before the click
+      await expect(alertsPage.errorModal).toBeHidden();
+
+      await alertsPage.openErrorModalForAlertCard(seededCard);
+      await expect(alertsPage.errorModal).toBeVisible();
+
+      // QUERY_ERROR renders with the "Query Error" type label in the modal
+      await expect(
+        alertsPage.errorModal.getByText(/Query Error/),
+      ).toBeVisible();
+
+      // The <code> block contains the full seeded error message (not truncated)
+      await expect(alertsPage.errorModalMessage).toContainText(
+        SEEDED_ERROR_ALERT.errorMessage,
+      );
+    });
+  },
+);

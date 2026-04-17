@@ -1,4 +1,5 @@
 import {
+  AlertErrorType,
   AlertThresholdType,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
@@ -810,6 +811,97 @@ describe('alerts router', () => {
       expect(res.body.data.history[0].counts).toBe(5);
       expect(res.body.data.history[1].state).toBe('OK');
       expect(res.body.data.history[1].counts).toBe(0);
+    });
+  });
+
+  describe('errors propagation', () => {
+    it('returns the errors field on a single alert response', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const errorTimestamp = new Date('2026-04-17T12:00:00.000Z');
+      await Alert.updateOne(
+        { _id: alert.body.data._id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: errorTimestamp,
+                type: AlertErrorType.QUERY_ERROR,
+                message: 'ClickHouse returned 500',
+              },
+            ],
+          },
+        },
+      );
+
+      const res = await agent.get(`/alerts/${alert.body.data._id}`).expect(200);
+      expect(res.body.data.executionErrors).toHaveLength(1);
+      expect(res.body.data.executionErrors[0].type).toBe(
+        AlertErrorType.QUERY_ERROR,
+      );
+      expect(res.body.data.executionErrors[0].message).toBe(
+        'ClickHouse returned 500',
+      );
+      expect(
+        new Date(res.body.data.executionErrors[0].timestamp).toISOString(),
+      ).toBe(errorTimestamp.toISOString());
+    });
+
+    it('returns the errors field on the alerts list response', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      await Alert.updateOne(
+        { _id: alert.body.data._id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: new Date('2026-04-17T12:00:00.000Z'),
+                type: AlertErrorType.WEBHOOK_ERROR,
+                message: 'webhook delivery failed',
+              },
+            ],
+          },
+        },
+      );
+
+      const list = await agent.get('/alerts').expect(200);
+      expect(list.body.data).toHaveLength(1);
+      expect(list.body.data[0].executionErrors).toHaveLength(1);
+      expect(list.body.data[0].executionErrors[0].type).toBe(
+        AlertErrorType.WEBHOOK_ERROR,
+      );
+      expect(list.body.data[0].executionErrors[0].message).toBe(
+        'webhook delivery failed',
+      );
     });
   });
 });

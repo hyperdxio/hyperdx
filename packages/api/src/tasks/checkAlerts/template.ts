@@ -332,7 +332,7 @@ export const handleSendGenericWebhook = async (
       },
       'Failed to compile generic webhook body',
     );
-    return;
+    throw new Error('Failed to build webhook request body', { cause: e });
   }
 
   try {
@@ -354,6 +354,8 @@ export const handleSendGenericWebhook = async (
       },
       'Failed to send generic webhook message',
     );
+    // rethrow so that it can be recorded in alert errors
+    throw e;
   }
 };
 
@@ -474,7 +476,7 @@ const getPopulatedChannel = (
   channelType: AlertChannelType,
   channelIdOrNamePrefix: string,
   teamWebhooksById: Map<string, IWebhook>,
-): PopulatedAlertChannel | undefined => {
+): PopulatedAlertChannel => {
   switch (channelType) {
     case 'webhook': {
       const webhook =
@@ -488,13 +490,15 @@ const getPopulatedChannel = (
           },
           'webhook not found',
         );
-        return undefined;
+        throw new Error(
+          `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
+        );
       }
       return { type: 'webhook', channel: webhook };
     }
     default: {
       logger.error({ channelType }, 'Unsupported alert channel type');
-      return undefined;
+      throw new Error('Unsupported alert destination');
     }
   }
 };

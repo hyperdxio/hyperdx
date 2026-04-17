@@ -125,9 +125,7 @@ export function TileAlertEditor({
           </Group>
         </UnstyledButton>
         <Group gap="xs">
-          {alertItem && alertItem.history.length > 0 && (
-            <AlertHistoryCardList history={alertItem.history} />
-          )}
+          {alertItem && <AlertHistoryCardList alert={alertItem} />}
           {alertItem && <AckAlert alert={alertItem} />}
           <Tooltip label="Remove alert">
             <ActionIcon

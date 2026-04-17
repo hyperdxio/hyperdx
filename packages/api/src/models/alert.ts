@@ -1,5 +1,6 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  AlertErrorType,
   AlertThresholdType,
 } from '@hyperdx/common-utils/dist/types';
 export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
@@ -13,6 +14,12 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+}
+
+export interface IAlertError {
+  timestamp: Date;
+  type: AlertErrorType;
+  message: string;
 }
 
 // follow 'ms' pkg formats
@@ -73,6 +80,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Errors recorded during the most recent execution
+  executionErrors?: IAlertError[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -191,6 +201,22 @@ const AlertSchema = new Schema<IAlert>(
         },
         required: false,
       },
+    },
+    executionErrors: {
+      type: [
+        {
+          _id: false,
+          timestamp: { type: Date, required: true },
+          type: {
+            type: String,
+            enum: AlertErrorType,
+            required: true,
+          },
+          message: { type: String, required: true },
+        },
+      ],
+      required: false,
+      default: undefined,
     },
   },
   {
