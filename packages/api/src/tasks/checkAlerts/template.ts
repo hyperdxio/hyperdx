@@ -11,6 +11,7 @@ import {
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  isRangeThresholdType,
   pickSampleWeightExpressionProps,
   SourceKind,
   WebhookService,
@@ -59,6 +60,10 @@ const describeThresholdViolation = (
       return 'equals';
     case AlertThresholdType.NOT_EQUAL:
       return 'does not equal';
+    case AlertThresholdType.BETWEEN:
+      return 'falls between';
+    case AlertThresholdType.NOT_BETWEEN:
+      return 'falls outside';
   }
 };
 
@@ -78,7 +83,17 @@ const describeThresholdResolution = (
       return 'does not equal';
     case AlertThresholdType.NOT_EQUAL:
       return 'equals';
+    case AlertThresholdType.BETWEEN:
+      return 'falls outside';
+    case AlertThresholdType.NOT_BETWEEN:
+      return 'falls between';
   }
+};
+
+const describeThreshold = (alert: AlertInput): string => {
+  return isRangeThresholdType(alert.thresholdType)
+    ? `${alert.threshold} and ${alert.thresholdMax ?? '?'}`
+    : `${alert.threshold}`;
 };
 
 const MAX_MESSAGE_LENGTH = 500;
@@ -415,10 +430,10 @@ export const buildAlertMessageTemplateTitle = ({
     const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
-          doesExceedThreshold(alert.thresholdType, alert.threshold, value)
+          doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
-        } ${alert.threshold}`;
+        } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   }
 
@@ -684,7 +699,7 @@ ${targetTemplate}`;
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${alert.threshold} lines\n${timeRangeMessage}
+${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
@@ -696,10 +711,10 @@ ${truncatedResults}
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${formattedValue} ${
-      doesExceedThreshold(alert.thresholdType, alert.threshold, value)
+      doesExceedThreshold(alert, value)
         ? describeThresholdViolation(alert.thresholdType)
         : describeThresholdResolution(alert.thresholdType)
-    } ${alert.threshold}\n${timeRangeMessage}
+    } ${describeThreshold(alert)}\n${timeRangeMessage}
 ${targetTemplate}`;
   }
 

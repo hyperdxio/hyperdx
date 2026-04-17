@@ -3,19 +3,13 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, {
-  AlertChannel,
-  AlertInterval,
-  AlertSource,
-  IAlert,
-} from '@/models/alert';
+import Alert, { AlertSource, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
@@ -24,34 +18,23 @@ import { Api400Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
-export type AlertInput = {
+export type AlertInput = Omit<
+  IAlert,
+  | 'id'
+  | 'scheduleStartAt'
+  | 'savedSearchId'
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'team'
+  | 'state'
+> & {
   id?: string;
-  source?: AlertSource;
-  channel: AlertChannel;
-  interval: AlertInterval;
-  scheduleOffsetMinutes?: number;
+  // Replace the Date-type fields from IAlert
   scheduleStartAt?: string | null;
-  thresholdType: AlertThresholdType;
-  threshold: number;
-
-  // Message template
-  name?: string | null;
-  message?: string | null;
-
-  // Log alerts
-  groupBy?: string;
+  // Replace the ObjectId-type fields from IAlert
   savedSearchId?: string;
-
-  // Chart alerts
   dashboardId?: string;
-  tileId?: string;
-
-  // Silenced
-  silenced?: {
-    by?: ObjectId;
-    at: Date;
-    until: Date;
-  };
 };
 
 const validateObjectId = (id: string | undefined, message: string) => {
@@ -155,6 +138,7 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     }),
     source: alert.source,
     threshold: alert.threshold,
+    thresholdMax: alert.thresholdMax,
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 

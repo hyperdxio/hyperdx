@@ -7,6 +7,7 @@ import {
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
+  validateAlertThresholdMax,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
@@ -511,12 +512,14 @@ export const alertSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     threshold: z.number(),
     thresholdType: z.nativeEnum(AlertThresholdType),
+    thresholdMax: z.number().optional(),
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
 
 // ==============================
 // Webhooks

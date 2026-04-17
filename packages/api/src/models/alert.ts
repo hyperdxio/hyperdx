@@ -50,6 +50,8 @@ export interface IAlert {
   state: AlertState;
   team: ObjectId;
   threshold: number;
+  /** The upper bound for BETWEEN and NOT BETWEEN threshold types */
+  thresholdMax?: number;
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
@@ -82,6 +84,10 @@ const AlertSchema = new Schema<IAlert>(
     threshold: {
       type: Number,
       required: true,
+    },
+    thresholdMax: {
+      type: Number,
+      required: false,
     },
     thresholdType: {
       type: String,

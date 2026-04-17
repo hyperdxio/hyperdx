@@ -63,6 +63,7 @@ const makeSearchView = (
   overrides: Partial<AlertMessageTemplateDefaultView> & {
     thresholdType?: AlertThresholdType;
     threshold?: number;
+    thresholdMax?: number;
     value?: number;
     group?: string;
   } = {},
@@ -70,6 +71,7 @@ const makeSearchView = (
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
     threshold: overrides.threshold ?? 5,
+    thresholdMax: overrides.thresholdMax,
     source: AlertSource.SAVED_SEARCH,
     channel: { type: null },
     interval: '1m',
@@ -112,6 +114,7 @@ const makeTileView = (
   overrides: Partial<AlertMessageTemplateDefaultView> & {
     thresholdType?: AlertThresholdType;
     threshold?: number;
+    thresholdMax?: number;
     value?: number;
     group?: string;
   } = {},
@@ -119,6 +122,7 @@ const makeTileView = (
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
     threshold: overrides.threshold ?? 5,
+    thresholdMax: overrides.thresholdMax,
     source: AlertSource.TILE,
     channel: { type: null },
     interval: '1m',
@@ -158,6 +162,7 @@ const render = (view: AlertMessageTemplateDefaultView, state: AlertState) =>
 interface AlertCase {
   thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number; // for between-type thresholds
   alertValue: number; // value that would trigger the alert
   okValue: number; // value that would resolve the alert
 }
@@ -199,6 +204,20 @@ const alertCases: AlertCase[] = [
     alertValue: 10,
     okValue: 5,
   },
+  {
+    thresholdType: AlertThresholdType.BETWEEN,
+    threshold: 5,
+    thresholdMax: 7,
+    alertValue: 6,
+    okValue: 10,
+  },
+  {
+    thresholdType: AlertThresholdType.NOT_BETWEEN,
+    threshold: 5,
+    thresholdMax: 7,
+    alertValue: 12,
+    okValue: 6,
+  },
 ];
 
 describe('renderAlertTemplate', () => {
@@ -206,9 +225,14 @@ describe('renderAlertTemplate', () => {
     describe('ALERT state', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold alertValue=$alertValue',
-        async ({ thresholdType, threshold, alertValue }) => {
+        async ({ thresholdType, threshold, thresholdMax, alertValue }) => {
           const result = await render(
-            makeSearchView({ thresholdType, threshold, value: alertValue }),
+            makeSearchView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: alertValue,
+            }),
             AlertState.ALERT,
           );
           expect(result).toMatchSnapshot();
@@ -227,9 +251,14 @@ describe('renderAlertTemplate', () => {
     describe('OK state (resolved)', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold okValue=$okValue',
-        async ({ thresholdType, threshold, okValue }) => {
+        async ({ thresholdType, threshold, thresholdMax, okValue }) => {
           const result = await render(
-            makeSearchView({ thresholdType, threshold, value: okValue }),
+            makeSearchView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: okValue,
+            }),
             AlertState.OK,
           );
           expect(result).toMatchSnapshot();
@@ -250,9 +279,14 @@ describe('renderAlertTemplate', () => {
     describe('ALERT state', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold alertValue=$alertValue',
-        async ({ thresholdType, threshold, alertValue }) => {
+        async ({ thresholdType, threshold, thresholdMax, alertValue }) => {
           const result = await render(
-            makeTileView({ thresholdType, threshold, value: alertValue }),
+            makeTileView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: alertValue,
+            }),
             AlertState.ALERT,
           );
           expect(result).toMatchSnapshot();
@@ -295,9 +329,14 @@ describe('renderAlertTemplate', () => {
     describe('OK state (resolved)', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold okValue=$okValue',
-        async ({ thresholdType, threshold, okValue }) => {
+        async ({ thresholdType, threshold, thresholdMax, okValue }) => {
           const result = await render(
-            makeTileView({ thresholdType, threshold, value: okValue }),
+            makeTileView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: okValue,
+            }),
             AlertState.OK,
           );
           expect(result).toMatchSnapshot();
@@ -352,9 +391,14 @@ describe('buildAlertMessageTemplateTitle', () => {
     describe('ALERT state', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold alertValue=$alertValue',
-        ({ thresholdType, threshold, alertValue }) => {
+        ({ thresholdType, threshold, thresholdMax, alertValue }) => {
           const result = buildAlertMessageTemplateTitle({
-            view: makeTileView({ thresholdType, threshold, value: alertValue }),
+            view: makeTileView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: alertValue,
+            }),
             state: AlertState.ALERT,
           });
           expect(result).toMatchSnapshot();
@@ -389,9 +433,14 @@ describe('buildAlertMessageTemplateTitle', () => {
     describe('OK state (resolved)', () => {
       it.each(alertCases)(
         '$thresholdType threshold=$threshold okValue=$okValue',
-        ({ thresholdType, threshold, okValue }) => {
+        ({ thresholdType, threshold, thresholdMax, okValue }) => {
           const result = buildAlertMessageTemplateTitle({
-            view: makeTileView({ thresholdType, threshold, value: okValue }),
+            view: makeTileView({
+              thresholdType,
+              threshold,
+              thresholdMax,
+              value: okValue,
+            }),
             state: AlertState.OK,
           });
           expect(result).toMatchSnapshot();

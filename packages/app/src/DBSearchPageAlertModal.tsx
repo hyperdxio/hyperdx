@@ -10,10 +10,12 @@ import {
   AlertSource,
   AlertThresholdType,
   Filter,
+  isRangeThresholdType,
   scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
   validateAlertScheduleOffsetMinutes,
+  validateAlertThresholdMax,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -68,13 +70,15 @@ const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
     threshold: z.number(),
+    thresholdMax: z.number().optional(),
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
   .passthrough()
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
 
 const AlertForm = ({
   sourceId,
@@ -142,6 +146,7 @@ const AlertForm = ({
   });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const thresholdMax = useWatch({ control, name: 'thresholdMax' });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
@@ -181,6 +186,15 @@ const AlertForm = ({
                   data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
                   size="xs"
                   {...field}
+                  onChange={e => {
+                    field.onChange(e);
+                    if (
+                      isRangeThresholdType(e.currentTarget.value) &&
+                      thresholdMax == null
+                    ) {
+                      setValue('thresholdMax', (threshold ?? 0) + 1);
+                    }
+                  }}
                 />
               )}
             />
@@ -191,6 +205,25 @@ const AlertForm = ({
                 <NumberInput size="xs" w={80} {...field} />
               )}
             />
+            {isRangeThresholdType(thresholdType as AlertThresholdType) && (
+              <>
+                <Text size="sm" opacity={0.7}>
+                  and
+                </Text>
+                <Controller
+                  control={control}
+                  name="thresholdMax"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      size="xs"
+                      w={80}
+                      {...field}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </>
+            )}
             <Text size="sm" opacity={0.7}>
               lines appear within
             </Text>
@@ -324,6 +357,7 @@ const AlertForm = ({
                 interval={interval}
                 groupBy={groupByValue}
                 threshold={threshold}
+                thresholdMax={thresholdMax}
                 thresholdType={thresholdType}
               />
             )}

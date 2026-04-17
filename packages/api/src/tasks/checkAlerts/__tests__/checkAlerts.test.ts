@@ -68,262 +68,901 @@ beforeAll(async () => {
 describe('checkAlerts', () => {
   describe('doesExceedThreshold', () => {
     it('should return true when value exceeds ABOVE threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 11)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 10)).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10 },
+          11,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10 },
+          10,
+        ),
+      ).toBe(true);
     });
 
     it('should return true when value is below BELOW threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 9)).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10 },
+          9,
+        ),
+      ).toBe(true);
     });
 
     it('should return false when value equals BELOW threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 10)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10 },
+          10,
+        ),
+      ).toBe(false);
     });
 
     it('should return false when value is below ABOVE threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 9)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10 },
+          9,
+        ),
+      ).toBe(false);
     });
 
     it('should return false when value is above BELOW threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 11)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10 },
+          11,
+        ),
+      ).toBe(false);
     });
 
     it('should handle zero values correctly', () => {
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, 1)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, 0)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, -1)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, -1)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, 0)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, 1)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 0 },
+          1,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 0 },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 0 },
+          -1,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 0 },
+          -1,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 0 },
+          0,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 0 },
+          1,
+        ),
+      ).toBe(false);
     });
 
     it('should handle negative values correctly', () => {
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -3)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -5)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -7)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -7)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -5)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -3)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: -5 },
+          -3,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: -5 },
+          -5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: -5 },
+          -7,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: -5 },
+          -7,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: -5 },
+          -5,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: -5 },
+          -3,
+        ),
+      ).toBe(false);
     });
 
     it('should handle decimal values correctly', () => {
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 11.0)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 10.5)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 10.0)).toBe(
-        false,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 10.0)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 10.5)).toBe(
-        false,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10.5 },
+          11.0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10.5 },
+          10.5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE, threshold: 10.5 },
+          10.0,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10.5 },
+          10.0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10.5 },
+          10.5,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW, threshold: 10.5 },
+          11.0,
+        ),
+      ).toBe(false);
     });
 
     // ABOVE_EXCLUSIVE (>) tests
     it('should return true when value is strictly above ABOVE_EXCLUSIVE threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 11),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 10 },
+          11,
+        ),
       ).toBe(true);
     });
 
     it('should return false when value equals ABOVE_EXCLUSIVE threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 10),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 10 },
+          10,
+        ),
       ).toBe(false);
     });
 
     it('should return false when value is below ABOVE_EXCLUSIVE threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10, 9),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 10 },
+          9,
+        ),
       ).toBe(false);
     });
 
     it('should handle zero values correctly for ABOVE_EXCLUSIVE', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, 1),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 0 },
+          1,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, 0),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 0 },
+          0,
+        ),
       ).toBe(false);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 0, -1),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: 0 },
+          -1,
+        ),
       ).toBe(false);
     });
 
     it('should handle negative values correctly for ABOVE_EXCLUSIVE', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -3),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: -5 },
+          -3,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -5),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: -5 },
+          -5,
+        ),
       ).toBe(false);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, -5, -7),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE, threshold: -5 },
+          -7,
+        ),
       ).toBe(false);
     });
 
     it('should handle decimal values correctly for ABOVE_EXCLUSIVE', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 11.0),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+            threshold: 10.5,
+          },
+          11.0,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 10.5),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+            threshold: 10.5,
+          },
+          10.5,
+        ),
       ).toBe(false);
       expect(
-        doesExceedThreshold(AlertThresholdType.ABOVE_EXCLUSIVE, 10.5, 10.0),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+            threshold: 10.5,
+          },
+          10.0,
+        ),
       ).toBe(false);
     });
 
     // BELOW_OR_EQUAL (<=) tests
     it('should return true when value is below BELOW_OR_EQUAL threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 9),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 10 },
+          9,
+        ),
       ).toBe(true);
     });
 
     it('should return true when value equals BELOW_OR_EQUAL threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 10),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 10 },
+          10,
+        ),
       ).toBe(true);
     });
 
     it('should return false when value is above BELOW_OR_EQUAL threshold', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10, 11),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 10 },
+          11,
+        ),
       ).toBe(false);
     });
 
     it('should handle zero values correctly for BELOW_OR_EQUAL', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, -1),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 0 },
+          -1,
+        ),
       ).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, 0)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 0, 1)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 0 },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: 0 },
+          1,
+        ),
+      ).toBe(false);
     });
 
     it('should handle negative values correctly for BELOW_OR_EQUAL', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -7),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: -5 },
+          -7,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -5),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: -5 },
+          -5,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, -5, -3),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BELOW_OR_EQUAL, threshold: -5 },
+          -3,
+        ),
       ).toBe(false);
     });
 
     it('should handle decimal values correctly for BELOW_OR_EQUAL', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 10.0),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+            threshold: 10.5,
+          },
+          10.0,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 10.5),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+            threshold: 10.5,
+          },
+          10.5,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.BELOW_OR_EQUAL, 10.5, 11.0),
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+            threshold: 10.5,
+          },
+          11.0,
+        ),
       ).toBe(false);
     });
 
     // EQUAL (=) tests
     it('should return true when value equals EQUAL threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 10)).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10 },
+          10,
+        ),
+      ).toBe(true);
     });
 
     it('should return false when value is above EQUAL threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 11)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10 },
+          11,
+        ),
+      ).toBe(false);
     });
 
     it('should return false when value is below EQUAL threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10, 9)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10 },
+          9,
+        ),
+      ).toBe(false);
     });
 
     it('should handle zero values correctly for EQUAL', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, 0)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, 1)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 0, -1)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 0 },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 0 },
+          1,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 0 },
+          -1,
+        ),
+      ).toBe(false);
     });
 
     it('should handle negative values correctly for EQUAL', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -5)).toBe(true);
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -3)).toBe(false);
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, -5, -7)).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: -5 },
+          -5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: -5 },
+          -3,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: -5 },
+          -7,
+        ),
+      ).toBe(false);
     });
 
     it('should handle decimal values correctly for EQUAL', () => {
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 10.5)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 10.0)).toBe(
-        false,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.EQUAL, 10.5, 11.0)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10.5 },
+          10.5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10.5 },
+          10.0,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.EQUAL, threshold: 10.5 },
+          11.0,
+        ),
+      ).toBe(false);
     });
 
     // NOT_EQUAL (≠) tests
     it('should return true when value does not equal NOT_EQUAL threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 11)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 9)).toBe(
-        true,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10 },
+          11,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10 },
+          9,
+        ),
+      ).toBe(true);
     });
 
     it('should return false when value equals NOT_EQUAL threshold', () => {
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10, 10)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10 },
+          10,
+        ),
+      ).toBe(false);
     });
 
     it('should handle zero values correctly for NOT_EQUAL', () => {
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, 1)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, -1)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 0, 0)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 0 },
+          1,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 0 },
+          -1,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 0 },
+          0,
+        ),
+      ).toBe(false);
     });
 
     it('should handle negative values correctly for NOT_EQUAL', () => {
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -3)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -7)).toBe(
-        true,
-      );
-      expect(doesExceedThreshold(AlertThresholdType.NOT_EQUAL, -5, -5)).toBe(
-        false,
-      );
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: -5 },
+          -3,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: -5 },
+          -7,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: -5 },
+          -5,
+        ),
+      ).toBe(false);
     });
 
     it('should handle decimal values correctly for NOT_EQUAL', () => {
       expect(
-        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 11.0),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10.5 },
+          11.0,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 10.0),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10.5 },
+          10.0,
+        ),
       ).toBe(true);
       expect(
-        doesExceedThreshold(AlertThresholdType.NOT_EQUAL, 10.5, 10.5),
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_EQUAL, threshold: 10.5 },
+          10.5,
+        ),
       ).toBe(false);
+    });
+
+    // BETWEEN tests
+    it('should return true when value is within BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          7,
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true when value equals BETWEEN lower bound (inclusive)', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          5,
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true when value equals BETWEEN upper bound (inclusive)', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          10,
+        ),
+      ).toBe(true);
+    });
+
+    it('should return false when value is below BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          4,
+        ),
+      ).toBe(false);
+    });
+
+    it('should return false when value is above BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          11,
+        ),
+      ).toBe(false);
+    });
+
+    it('should handle zero values correctly for BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: -1,
+            thresholdMax: 1,
+          },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 0,
+            thresholdMax: 0,
+          },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 1,
+            thresholdMax: 5,
+          },
+          0,
+        ),
+      ).toBe(false);
+    });
+
+    it('should handle negative values correctly for BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -7,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -10,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -11,
+        ),
+      ).toBe(false);
+    });
+
+    it('should handle decimal values correctly for BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 10.0,
+            thresholdMax: 11.0,
+          },
+          10.5,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 10.0,
+            thresholdMax: 11.0,
+          },
+          9.9,
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true when threshold equals thresholdMax equals value for BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.BETWEEN,
+            threshold: 5,
+            thresholdMax: 5,
+          },
+          5,
+        ),
+      ).toBe(true);
+    });
+
+    it('should throw when thresholdMax is undefined for BETWEEN', () => {
+      expect(() =>
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.BETWEEN, threshold: 5 },
+          7,
+        ),
+      ).toThrow(/thresholdMax is required/);
+    });
+
+    // NOT_BETWEEN tests
+    it('should return true when value is below NOT_BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          3,
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true when value is above NOT_BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          12,
+        ),
+      ).toBe(true);
+    });
+
+    it('should return false when value is within NOT_BETWEEN range', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          7,
+        ),
+      ).toBe(false);
+    });
+
+    it('should return false when value equals NOT_BETWEEN lower bound (inclusive)', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          5,
+        ),
+      ).toBe(false);
+    });
+
+    it('should return false when value equals NOT_BETWEEN upper bound (inclusive)', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 5,
+            thresholdMax: 10,
+          },
+          10,
+        ),
+      ).toBe(false);
+    });
+
+    it('should handle zero values correctly for NOT_BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: -1,
+            thresholdMax: 1,
+          },
+          0,
+        ),
+      ).toBe(false);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 1,
+            thresholdMax: 5,
+          },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: -5,
+            thresholdMax: -1,
+          },
+          0,
+        ),
+      ).toBe(true);
+    });
+
+    it('should handle negative values correctly for NOT_BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -11,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -4,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: -10,
+            thresholdMax: -5,
+          },
+          -7,
+        ),
+      ).toBe(false);
+    });
+
+    it('should handle decimal values correctly for NOT_BETWEEN', () => {
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 10.0,
+            thresholdMax: 11.0,
+          },
+          9.9,
+        ),
+      ).toBe(true);
+      expect(
+        doesExceedThreshold(
+          {
+            thresholdType: AlertThresholdType.NOT_BETWEEN,
+            threshold: 10.0,
+            thresholdMax: 11.0,
+          },
+          10.5,
+        ),
+      ).toBe(false);
+    });
+
+    it('should throw when thresholdMax is undefined for NOT_BETWEEN', () => {
+      expect(() =>
+        doesExceedThreshold(
+          { thresholdType: AlertThresholdType.NOT_BETWEEN, threshold: 5 },
+          7,
+        ),
+      ).toThrow(/thresholdMax is required/);
     });
   });
 
@@ -1843,6 +2482,70 @@ describe('checkAlerts', () => {
         },
       );
     });
+
+    it.each([AlertThresholdType.BETWEEN, AlertThresholdType.NOT_BETWEEN])(
+      'should not fire or record history when thresholdMax is missing for %s',
+      async thresholdType => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType,
+            threshold: 1,
+            // thresholdMax intentionally omitted to simulate an invalid alert
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Alert should remain in its default OK state and no history/webhooks should be emitted
+        expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(0);
+        expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+      },
+    );
 
     it('TILE alert (events) - generic webhook', async () => {
       const fetchMock = jest.fn().mockResolvedValue({

@@ -87,6 +87,8 @@ export const ALERT_THRESHOLD_TYPE_OPTIONS: Record<string, string> = {
   below_or_equal: 'At most (≤)',
   equal: 'Equal to (=)',
   not_equal: 'Not equal to (≠)',
+  between: 'Between (≤ x ≤)',
+  not_between: 'Outside (< or >)',
 };
 
 export const TILE_ALERT_THRESHOLD_TYPE_OPTIONS: Record<string, string> = {
@@ -96,6 +98,8 @@ export const TILE_ALERT_THRESHOLD_TYPE_OPTIONS: Record<string, string> = {
   below_or_equal: 'is at most (≤)',
   equal: 'equals (=)',
   not_equal: 'does not equal (≠)',
+  between: 'is between (≤ x ≤)',
+  not_between: 'is outside (< or >)',
 };
 
 export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {

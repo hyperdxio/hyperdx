@@ -133,6 +133,7 @@ export function ChartPreviewPanel({
               alert &&
               getAlertReferenceLines({
                 threshold: alert.threshold,
+                thresholdMax: alert.thresholdMax,
                 thresholdType: alert.thresholdType,
               })
             }

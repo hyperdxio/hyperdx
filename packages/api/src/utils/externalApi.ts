@@ -228,6 +228,7 @@ export type ExternalAlert = {
   name?: string | null;
   message?: string | null;
   threshold: number;
+  thresholdMax?: number;
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: string | null;
@@ -309,6 +310,7 @@ export function translateAlertDocumentToExternalAlert(
     name: alertObj.name,
     message: alertObj.message,
     threshold: alertObj.threshold,
+    thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,
     ...(alertObj.scheduleOffsetMinutes != null && {
       scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,

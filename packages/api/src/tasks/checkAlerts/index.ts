@@ -138,8 +138,11 @@ export async function computeAliasWithClauses(
 }
 
 export const doesExceedThreshold = (
-  thresholdType: AlertThresholdType,
-  threshold: number,
+  {
+    threshold,
+    thresholdType,
+    thresholdMax,
+  }: Pick<IAlert, 'thresholdType' | 'threshold' | 'thresholdMax'>,
   value: number,
 ) => {
   switch (thresholdType) {
@@ -155,6 +158,16 @@ export const doesExceedThreshold = (
       return value === threshold;
     case AlertThresholdType.NOT_EQUAL:
       return value !== threshold;
+    case AlertThresholdType.BETWEEN:
+    case AlertThresholdType.NOT_BETWEEN:
+      if (thresholdMax == null) {
+        throw new Error(
+          `thresholdMax is required for threshold type "${thresholdType}"`,
+        );
+      }
+      return thresholdType === AlertThresholdType.BETWEEN
+        ? value >= threshold && value <= thresholdMax
+        : value < threshold || value > thresholdMax;
   }
 };
 
@@ -318,6 +331,7 @@ const fireChannelEvent = async ({
       silenced: alert.silenced,
       source: alert.source,
       threshold: alert.threshold,
+      thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
     },
@@ -956,7 +970,7 @@ export const processAlert = async (
           : 0;
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
-      if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
+      if (doesExceedThreshold(alert, value)) {
         history.state = AlertState.ALERT;
         history.counts += 1;
         await trySendNotification({
@@ -1009,11 +1023,7 @@ export const processAlert = async (
           'No data returned from ClickHouse for time bucket',
         );
 
-        const zeroValueIsAlert = doesExceedThreshold(
-          alert.thresholdType,
-          alert.threshold,
-          0,
-        );
+        const zeroValueIsAlert = doesExceedThreshold(alert, 0);
 
         const hasAlertsInPreviousMap = previousMap
           .values()
@@ -1054,7 +1064,7 @@ export const processAlert = async (
         const groupKey = hasGroupBy ? extraFields.join(', ') : '';
         const history = getOrCreateHistory(groupKey);
 
-        if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
+        if (doesExceedThreshold(alert, value)) {
           history.state = AlertState.ALERT;
           await trySendNotification({
             state: AlertState.ALERT,
@@ -1082,7 +1092,7 @@ export const processAlert = async (
         if (
           previousHistory.state === AlertState.ALERT &&
           !histories.has(groupKey) &&
-          !doesExceedThreshold(alert.thresholdType, alert.threshold, 0)
+          !doesExceedThreshold(alert, 0)
         ) {
           logger.info(
             {
