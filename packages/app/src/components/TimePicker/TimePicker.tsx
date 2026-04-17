@@ -43,7 +43,7 @@ const modeAtom = atomWithStorage<TimePickerMode>(
   TimePickerMode.Range,
 );
 
-const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
+const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 /** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
@@ -55,6 +55,11 @@ const toDate = (v: Date | string | null): Date | null =>
  * Mantine v9 DateInput expects/emits string values, but the TimePickerForm
  * stores Date objects (used by date-fns). This wrapper converts in both
  * directions: value (Date → string) and onChange (string → Date).
+ *
+ * `withTime` is required: by default DateInput strips the time part and
+ * normalizes values to midnight, even when `valueFormat` includes time
+ * tokens. Setting `withTime` preserves HH:mm:ss so manually-typed times
+ * survive blur/commit.
  */
 type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
   value?: Date | null;
@@ -69,6 +74,7 @@ const DateInputCmp = ({
   <DateInput
     size="xs"
     highlightToday
+    withTime
     placeholder={DATE_INPUT_PLACEHOLDER}
     valueFormat={DATE_INPUT_FORMAT}
     variant="filled"
