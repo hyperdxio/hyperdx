@@ -1,5 +1,6 @@
 import objectHash from 'object-hash';
 import store from 'store2';
+import type { PinnedFiltersValue } from '@hyperdx/common-utils/dist/types';
 import {
   SavedSearchListApiResponse,
   TSource,
@@ -110,4 +111,15 @@ export const localSources = createEntityStore<TSource>(
 /** Saved searches store (alerts remain cloud-only; no alert fields persisted locally). */
 export const localSavedSearches = createEntityStore<SavedSearchListApiResponse>(
   'hdx-local-saved-searches',
+);
+
+/** Pinned filters store for local mode. */
+type LocalPinnedFilter = {
+  id: string;
+  source: string;
+  fields: string[];
+  filters: PinnedFiltersValue;
+};
+export const localPinnedFilters = createEntityStore<LocalPinnedFilter>(
+  'hdx-local-pinned-filters',
 );
