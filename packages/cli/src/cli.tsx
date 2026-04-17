@@ -664,6 +664,66 @@ Examples:
     }
   });
 
+// ---- Connections ---------------------------------------------------
+
+program
+  .command('connections')
+  .description('List ClickHouse connections (id, name, host)')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+About:
+  Lists ClickHouse connections configured for the authenticated team.
+  Each connection is a named set of credentials that one or more
+  sources point at (via the 'connection' field on a source).
+
+  Use 'hdx sources --json' to see which connection each source uses.
+
+JSON output schema (--json):
+  Array of objects, each with:
+    id    - Connection ID (matches source.connection)
+    name  - Human-readable connection name
+    host  - ClickHouse host URL
+
+Examples:
+  $ hdx connections
+  $ hdx connections --json
+  $ hdx connections --json | jq '.[] | select(.name=="Default")'
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+
+    const connections = await client.getConnections();
+    if (connections.length === 0) {
+      if (opts.json) {
+        process.stdout.write('[]\n');
+      } else {
+        process.stdout.write('No connections found.\n');
+      }
+      return;
+    }
+
+    if (opts.json) {
+      const output = connections.map(c => ({
+        id: c.id,
+        name: c.name,
+        host: c.host,
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    // Human-readable: one line per connection
+    for (const c of connections) {
+      process.stdout.write(
+        `${chalk.bold.cyan(c.name)}  ${chalk.dim(c.host)}  ${chalk.dim(`[${c.id}]`)}\n`,
+      );
+    }
+  });
+
 // ---- Dashboards ----------------------------------------------------
 
 program
@@ -784,62 +844,52 @@ Examples:
 
 program
   .command('query')
-  .description('Run a raw SQL query against a ClickHouse source')
-  .requiredOption('--source <nameOrId>', 'Source name or ID')
+  .description('Run a raw SQL query against a ClickHouse connection')
+  .requiredOption(
+    '--connection-id <id>',
+    "Connection ID (from 'hdx connections --json')",
+  )
   .requiredOption('--sql <query>', 'SQL query to execute')
   .option('-a, --app-url <url>', 'HyperDX app URL')
-  .option('--format <format>', 'ClickHouse output format', 'JSON')
+  .option('--format <format>', 'ClickHouse output format', 'JSONEachRow')
   .addHelpText(
     'after',
     `
 About:
   Execute a raw ClickHouse SQL query through the HyperDX proxy, using
-  the connection credentials associated with a source. This is useful
-  for ad-hoc exploration, debugging, and agent-driven queries.
+  a configured ClickHouse connection. Designed for ad-hoc exploration,
+  debugging, and agent-driven queries.
 
-  The --source flag accepts either the source name (case-insensitive)
-  or the source ID (from 'hdx sources --json').
+  The --connection-id flag takes a connection ID. Use 'hdx connections
+  --json' to discover available connection IDs. Use 'hdx sources --json'
+  to see which connection each source uses (the 'connection' field).
 
   The query is sent as-is to ClickHouse — you are responsible for
-  writing valid SQL. Use 'hdx sources' to discover table names and
-  column schemas.
+  writing valid SQL. Output is written to stdout. Use --format to
+  control the ClickHouse response format (JSONEachRow, JSON,
+  TabSeparated, CSV, etc.). The default is JSONEachRow (one JSON
+  object per line) — streamable and easy to consume from agents and
+  shell pipelines (e.g. \`jq -c\`).
 
-  Output is written to stdout. Use --format to control the ClickHouse
-  response format (JSON, JSONEachRow, TabSeparated, CSV, etc.).
+Exit codes:
+  0  Success. Stdout contains the result (empty stdout means zero rows).
+  1  Failure. Stderr contains the error.
 
 Examples:
-  $ hdx query --source "Logs" --sql "SELECT count() FROM default.otel_logs"
-  $ hdx query --source "Traces" --sql "SELECT * FROM default.otel_traces LIMIT 5"
-  $ hdx query --source "Logs" --sql "SELECT Body FROM default.otel_logs LIMIT 3" --format JSONEachRow
+  $ CONN=$(hdx connections --json | jq -r '.[0].id')
+  $ hdx query --connection-id "$CONN" --sql "SELECT count() FROM default.otel_logs"
+  $ hdx query --connection-id "$CONN" --sql "SELECT * FROM default.otel_traces LIMIT 5"
 `,
   )
   .action(async opts => {
     const client = await ensureSession(opts.appUrl);
-
-    const sources = await client.getSources();
-    const source = sources.find(
-      s =>
-        s.name.toLowerCase() === opts.source.toLowerCase() ||
-        s.id === opts.source ||
-        s._id === opts.source,
-    );
-
-    if (!source) {
-      _origError(chalk.red(`Source "${opts.source}" not found.\n`));
-      _origError('Available sources:');
-      for (const s of sources) {
-        _origError(`  - ${s.name} (${s.kind}) [${s.id}]`);
-      }
-      process.exit(1);
-    }
-
     const chClient = client.createClickHouseClient();
 
     try {
       const resultSet = await chClient.query({
         query: opts.sql,
         format: opts.format,
-        connectionId: source.connection,
+        connectionId: opts.connectionId,
       });
       const text = await resultSet.text();
       process.stdout.write(text);
@@ -849,6 +899,28 @@ Examples:
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // On error, check whether the connection ID was even valid —
+      // gives agents a clear signal of which class of failure occurred.
+      try {
+        const connections = await client.getConnections();
+        const known = connections.some(
+          c => c.id === opts.connectionId || c._id === opts.connectionId,
+        );
+        if (!known) {
+          _origError(
+            chalk.red(`Connection "${opts.connectionId}" not found.\n`),
+          );
+          _origError('Available connections:');
+          for (const c of connections) {
+            _origError(`  - ${c.name} [${c.id}]`);
+          }
+          process.exit(1);
+        }
+      } catch {
+        // Couldn't list connections — fall through to the generic error.
+      }
+
       _origError(chalk.red(`Query failed: ${msg}\n`));
       process.exit(1);
     }
