@@ -16,6 +16,15 @@ import {
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
+  // Suppress expected console.warn noise from missing columns / optimization fallbacks
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     const columns = [
       { name: 'timestamp', type: 'DateTime' },
@@ -1293,6 +1302,52 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
       },
+      {
+        description: 'stays inclusive with date-type column',
+        timestampValueExpression: 'date',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for date-type column in multi-column timestampValueExpression',
+        timestampValueExpression: 'date, timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description: 'stays inclusive for toDate column',
+        timestampValueExpression: 'toDate(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for toDate column in multi-column timestampValueExpression',
+        timestampValueExpression: 'toDate(timestamp), timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
     ];
 
     beforeEach(() => {
@@ -1338,6 +1393,36 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+
+    it('stays inclusive for date-type column with non-subquery with clauses', async () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-02-12 03:53:38Z'),
+        new Date('2025-02-12 04:08:38Z'),
+      ];
+
+      const actual = await timeFilterExpr({
+        timestampValueExpression: 'date',
+        dateRangeEndInclusive: false,
+        dateRangeStartInclusive: false,
+        dateRange,
+        connectionId: 'test-connection',
+        databaseName: 'default',
+        tableName: 'target_table',
+        metadata: mockMetadata,
+        with: [
+          {
+            name: 'service',
+            sql: { sql: 'ServiceName', params: {} },
+            isSubquery: false,
+          },
+        ],
+      });
+
+      const actualSql = parameterizedQueryToSql(actual);
+      expect(actualSql).toBe(
+        `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+      );
+    });
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
@@ -1910,6 +1995,25 @@ describe('renderChartConfig', () => {
       );
       expect(result.sql).toBe(
         "SELECT * FROM logs WHERE ((duration > 100) AND (status = 'ok'))",
+      );
+    });
+
+    it('skips empty sql filters when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [{ type: 'sql', condition: '' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
       );
     });
 

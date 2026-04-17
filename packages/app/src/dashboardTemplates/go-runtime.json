@@ -2,16 +2,14 @@
   "version": "0.1.0",
   "name": "Go Runtime Metrics",
   "description": "Memory usage, allocations, GC targets, CPU utilization, and goroutine metrics for Go applications with the OTel Runtime (v0.62+) and Host Metrics instrumentations",
-  "tags": [
-    "OTel Runtime Metrics"
-  ],
+  "tags": ["OTel Runtime Metrics"],
   "tiles": [
     {
       "id": "109853",
       "x": 0,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Memory Used",
         "source": "Metrics",
@@ -39,7 +37,7 @@
       "x": 6,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Alloc Rate",
         "source": "Metrics",
@@ -67,7 +65,7 @@
       "x": 12,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "GC Heap Target",
         "source": "Metrics",
@@ -95,7 +93,7 @@
       "x": 18,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "CPU Utilization",
         "source": "Metrics",
@@ -121,7 +119,7 @@
     {
       "id": "bbde66",
       "x": 0,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -164,7 +162,7 @@
     {
       "id": "deb616",
       "x": 12,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -192,7 +190,7 @@
     {
       "id": "432607",
       "x": 0,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -220,7 +218,7 @@
     {
       "id": "08224d",
       "x": 12,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -244,7 +242,7 @@
     {
       "id": "fae8d7",
       "x": 0,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -273,7 +271,7 @@
     {
       "id": "545a68",
       "x": 12,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -302,7 +300,7 @@
     {
       "id": "c0fc04",
       "x": 0,
-      "y": 24,
+      "y": 25,
       "w": 12,
       "h": 7,
       "config": {
@@ -340,8 +338,8 @@
       "expression": "ServiceName",
       "source": "Metrics",
       "sourceMetricType": "sum",
-      "where": "ResourceAttributes['telemetry.sdk.language'] = 'go'",
-      "whereLanguage": "sql"
+      "where": "ResourceAttributes.telemetry.sdk.language:\"go\"",
+      "whereLanguage": "lucene"
     }
   ]
 }

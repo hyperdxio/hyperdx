@@ -1,5 +1,5 @@
 import { splitAndTrimWithBracket } from './core/utils';
-import { renderQueryParam } from './rawSqlParams';
+import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
 import {
   MetricsDataType,
   MetricsDataTypeSchema,
@@ -22,10 +22,11 @@ function expectArgs(
 }
 
 // Helpers to render ClickHouse time conversions using query params
-const startMs = () => renderQueryParam('startDateMilliseconds');
-const endMs = () => renderQueryParam('endDateMilliseconds');
-const intervalS = () => renderQueryParam('intervalSeconds');
-const intervalMs = () => renderQueryParam('intervalMilliseconds');
+const startMs = () => renderQueryParam(RawSqlQueryParam.startDateMilliseconds);
+const endMs = () => renderQueryParam(RawSqlQueryParam.endDateMilliseconds);
+const intervalS = () => renderQueryParam(RawSqlQueryParam.intervalSeconds);
+const intervalMs = () =>
+  renderQueryParam(RawSqlQueryParam.intervalMilliseconds);
 
 const timeToDate = (msParam: string) =>
   `toDate(fromUnixTimestamp64Milli(${msParam}))`;

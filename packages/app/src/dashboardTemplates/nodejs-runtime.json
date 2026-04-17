@@ -2,16 +2,14 @@
   "version": "0.1.0",
   "name": "Node.js Runtime Metrics",
   "description": "Event loop delay, heap usage, CPU utilization, and V8 memory for Node.js applications with OTel Runtime and Host Metrics instrumentations",
-  "tags": [
-    "OTel Runtime Metrics"
-  ],
+  "tags": ["OTel Runtime Metrics"],
   "tiles": [
     {
       "id": "55ef66",
       "x": 0,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "EL Delay p99 (ms)",
         "source": "Metrics",
@@ -40,7 +38,7 @@
       "x": 6,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Event Loop Util",
         "source": "Metrics",
@@ -68,7 +66,7 @@
       "x": 12,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Heap Used",
         "source": "Metrics",
@@ -96,7 +94,7 @@
       "x": 18,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "CPU Utilization",
         "source": "Metrics",
@@ -122,7 +120,7 @@
     {
       "id": "f9dae7",
       "x": 0,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -166,7 +164,7 @@
     {
       "id": "93c11e",
       "x": 12,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -194,7 +192,7 @@
     {
       "id": "7155d4",
       "x": 0,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -230,7 +228,7 @@
     {
       "id": "c2ea50",
       "x": 12,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -259,7 +257,7 @@
     {
       "id": "ea6e2d",
       "x": 0,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -287,7 +285,7 @@
     {
       "id": "a73b57",
       "x": 12,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -317,8 +315,8 @@
       "expression": "ServiceName",
       "source": "Metrics",
       "sourceMetricType": "gauge",
-      "where": "ResourceAttributes['telemetry.sdk.language'] = 'nodejs'",
-      "whereLanguage": "sql"
+      "where": "ResourceAttributes.telemetry.sdk.language:\"nodejs\"",
+      "whereLanguage": "lucene"
     }
   ]
 }

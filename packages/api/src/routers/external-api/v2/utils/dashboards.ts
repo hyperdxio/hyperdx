@@ -1,3 +1,4 @@
+import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
@@ -6,19 +7,35 @@ import {
   RawSqlSavedChartConfig,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
+import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
 import _ from 'lodash';
+import mongoose from 'mongoose';
+import { z } from 'zod';
 
+import { deleteDashboardAlerts } from '@/controllers/alerts';
+import { getConnectionsByTeam } from '@/controllers/connection';
+import { getSources } from '@/controllers/sources';
 import { DashboardDocument } from '@/models/dashboard';
-import { translateFilterToExternalFilter } from '@/utils/externalApi';
+import {
+  translateExternalChartToTileConfig,
+  translateExternalFilterToFilter,
+  translateFilterToExternalFilter,
+} from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
+  ExternalDashboardFilter,
+  externalDashboardFilterSchema,
+  externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
   ExternalDashboardRawSqlTileConfig,
+  externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
   ExternalDashboardTileConfig,
+  externalDashboardTileListSchema,
   ExternalDashboardTileWithId,
   externalQuantileLevelSchema,
+  tagsSchema,
 } from '@/utils/zod';
 
 // --------------------------------------------------------------------------------
@@ -475,3 +492,220 @@ export function convertToInternalTileConfig(
     config: strippedConfig,
   };
 }
+
+// --------------------------------------------------------------------------------
+// Shared dashboard validation helpers (used by both the REST router and MCP tools)
+// --------------------------------------------------------------------------------
+
+/** Returns source IDs referenced in tiles/filters that do not exist for the team */
+export async function getMissingSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
+): Promise<string[]> {
+  const sourceIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isSeriesTile(tile)) {
+      for (const series of tile.series) {
+        if ('sourceId' in series) {
+          sourceIds.add(series.sourceId);
+        }
+      }
+    } else if (isConfigTile(tile)) {
+      if ('sourceId' in tile.config && tile.config.sourceId) {
+        sourceIds.add(tile.config.sourceId);
+      }
+    }
+  }
+
+  if (filters?.length) {
+    for (const filter of filters) {
+      if ('sourceId' in filter) {
+        sourceIds.add(filter.sourceId);
+      }
+    }
+  }
+
+  const existingSources = await getSources(team.toString());
+  const existingSourceIds = new Set(
+    existingSources.map(source => source._id.toString()),
+  );
+  return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/** Returns connection IDs referenced in tiles that do not belong to the team */
+export async function getMissingConnections(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const connectionIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
+      connectionIds.add(tile.config.connectionId);
+    }
+  }
+
+  if (connectionIds.size === 0) return [];
+
+  const existingConnections = await getConnectionsByTeam(team.toString());
+  const existingConnectionIds = new Set(
+    existingConnections.map(connection => connection._id.toString()),
+  );
+
+  return [...connectionIds].filter(
+    connectionId => !existingConnectionIds.has(connectionId),
+  );
+}
+
+type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
+
+export function resolveSavedQueryLanguage(params: {
+  savedQuery: string | null | undefined;
+  savedQueryLanguage: SavedQueryLanguage | null | undefined;
+}): SavedQueryLanguage | null | undefined {
+  const { savedQuery, savedQueryLanguage } = params;
+  if (savedQueryLanguage !== undefined) return savedQueryLanguage;
+  if (savedQuery === null) return null;
+  if (savedQuery) return 'lucene';
+
+  return undefined;
+}
+
+const dashboardBodyBaseShape = {
+  name: z.string().max(1024),
+  tiles: externalDashboardTileListSchema,
+  tags: tagsSchema,
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: whereLanguageSchema.nullable().optional(),
+  savedFilterValues: z
+    .array(externalDashboardSavedFilterValueSchema)
+    .optional(),
+};
+
+// --------------------------------------------------------------------------------
+// Shared tile/filter conversion helpers (used by both external API and MCP)
+// --------------------------------------------------------------------------------
+
+/**
+ * Convert external tile definitions to internal Mongoose-compatible format.
+ * Generates new ObjectIds for tiles that don't already have a matching ID in
+ * `existingTileIds` (update path) or for all tiles (create path).
+ */
+export function convertExternalTilesToInternal(
+  tiles: ExternalDashboardTileWithId[],
+  existingTileIds?: Set<string>,
+): DashboardDocument['tiles'] {
+  return tiles.map(tile => {
+    const tileId =
+      existingTileIds && tile.id && existingTileIds.has(tile.id)
+        ? tile.id
+        : new mongoose.Types.ObjectId().toString();
+    const tileWithId = { ...tile, id: tileId };
+    if (isConfigTile(tileWithId)) {
+      return convertToInternalTileConfig(tileWithId);
+    }
+    if (isSeriesTile(tileWithId)) {
+      return translateExternalChartToTileConfig(tileWithId);
+    }
+    // Fallback for tiles with neither config nor series — treat as empty series tile.
+    // This shouldn't happen with valid input, but matches the previous behavior.
+    return translateExternalChartToTileConfig(tileWithId as SeriesTile);
+  });
+}
+
+/**
+ * Convert external filter definitions to internal format, preserving IDs that
+ * match `existingFilterIds` (update path) or generating new ones (create path).
+ */
+export function convertExternalFiltersToInternal(
+  filters: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
+  existingFilterIds?: Set<string>,
+) {
+  return filters.map(filter => {
+    const filterId =
+      existingFilterIds && 'id' in filter && existingFilterIds.has(filter.id)
+        ? filter.id
+        : new mongoose.Types.ObjectId().toString();
+    return translateExternalFilterToFilter({ ...filter, id: filterId });
+  });
+}
+
+/**
+ * Delete alerts for tiles that were removed or converted to raw SQL
+ * (which doesn't support alerts).
+ */
+export async function cleanupDashboardAlerts({
+  dashboardId,
+  teamId,
+  internalTiles,
+  existingTileIds,
+}: {
+  dashboardId: string;
+  teamId: string | mongoose.Types.ObjectId;
+  internalTiles: DashboardDocument['tiles'];
+  existingTileIds: Set<string>;
+}) {
+  const newTileIdSet = new Set(internalTiles.map(t => t.id));
+  const tileIdsToDeleteAlerts = [
+    ...internalTiles
+      .filter(
+        tile =>
+          isRawSqlSavedChartConfig(tile.config) &&
+          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
+      )
+      .map(tile => tile.id),
+    ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
+  ];
+  if (tileIdsToDeleteAlerts.length > 0) {
+    logger.info(
+      { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
+      'Deleting alerts for tiles with unsupported config or removed tiles',
+    );
+    const teamObjectId =
+      teamId instanceof mongoose.Types.ObjectId
+        ? teamId
+        : new mongoose.Types.ObjectId(teamId);
+    await deleteDashboardAlerts(
+      dashboardId,
+      teamObjectId,
+      tileIdsToDeleteAlerts,
+    );
+  }
+}
+
+// --------------------------------------------------------------------------------
+// Body validation schemas
+// --------------------------------------------------------------------------------
+
+function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
+  z.ZodObject<
+    typeof dashboardBodyBaseShape & {
+      filters: z.ZodOptional<z.ZodArray<z.ZodTypeAny>>;
+    }
+  >
+> {
+  return z
+    .object({
+      ...dashboardBodyBaseShape,
+      filters: z.array(filterSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.savedQuery != null && data.savedQueryLanguage === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'savedQueryLanguage cannot be null when savedQuery is provided',
+          path: ['savedQueryLanguage'],
+        });
+      }
+    });
+}
+
+export const createDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchema,
+);
+export const updateDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchemaWithId,
+);

@@ -66,9 +66,25 @@
             </svg>
             HyperDX Dev Portal
           </h1>
-          <div class="status">
-            <div class="dot"></div>
-            <span id="refresh-status">Auto-refreshing every 3s</span>
+
+          <div class="header-right">
+            <div class="status">
+              <div class="dot"></div>
+              <span id="refresh-status">Auto-refreshing every 3s</span>
+            </div>
+            <button
+              class="theme-toggle"
+              id="theme-toggle"
+              onclick="toggleTheme()"
+              title="Toggle light/dark mode"
+            >
+              <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m8.66-13.66l-.71.71M4.05 19.95l-.71.71M21 12h-1M4 12H3m16.66 7.66l-.71-.71M4.05 4.05l-.71-.71M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+              <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -120,6 +136,46 @@
     </div>
 
     <script>
+      // --- Theme ---
+      function getPreferredTheme() {
+        const stored = localStorage.getItem('hdx-dev-portal-theme');
+        if (stored === 'light' || stored === 'dark') return stored;
+        return window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark';
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        const sunIcon = document.getElementById('theme-icon-sun');
+        const moonIcon = document.getElementById('theme-icon-moon');
+        if (sunIcon && moonIcon) {
+          // Sun icon shown in dark mode (click to go light), moon in light mode
+          sunIcon.style.display = theme === 'dark' ? '' : 'none';
+          moonIcon.style.display = theme === 'light' ? '' : 'none';
+        }
+      }
+
+      function toggleTheme() {
+        const current =
+          document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('hdx-dev-portal-theme', next);
+        applyTheme(next);
+      }
+
+      // Apply immediately to avoid flash
+      applyTheme(getPreferredTheme());
+
+      // Listen for OS theme changes (only when no explicit preference saved)
+      window
+        .matchMedia('(prefers-color-scheme: light)')
+        .addEventListener('change', () => {
+          if (!localStorage.getItem('hdx-dev-portal-theme')) {
+            applyTheme(getPreferredTheme());
+          }
+        });
+
       const contentEl = document.getElementById('content');
       const historyEl = document.getElementById('history-content');
       const errorEl = document.getElementById('error-banner');

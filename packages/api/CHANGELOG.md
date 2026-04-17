@@ -1,5 +1,15 @@
 # @hyperdx/api
 
+## 2.23.2
+
+## 2.23.1
+
+### Patch Changes
+
+- f8d2edde: feat: Show created/updated metadata for saved searches and dashboards
+- Updated dependencies [24767c58]
+  - @hyperdx/common-utils@0.17.1
+
 ## 2.23.0
 
 ### Minor Changes

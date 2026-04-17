@@ -1,13 +1,12 @@
-import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
-
-export enum AlertThresholdType {
-  ABOVE = 'above',
-  BELOW = 'below',
-}
 
 export enum AlertState {
   ALERT = 'ALERT',
@@ -51,6 +50,8 @@ export interface IAlert {
   state: AlertState;
   team: ObjectId;
   threshold: number;
+  /** The upper bound for BETWEEN and NOT BETWEEN threshold types */
+  thresholdMax?: number;
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
@@ -83,6 +84,10 @@ const AlertSchema = new Schema<IAlert>(
     threshold: {
       type: Number,
       required: true,
+    },
+    thresholdMax: {
+      type: Number,
+      required: false,
     },
     thresholdType: {
       type: String,

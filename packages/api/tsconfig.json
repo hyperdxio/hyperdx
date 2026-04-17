@@ -5,6 +5,7 @@
     "paths": {
       "@/*": ["./*"]
     },
+    "types": ["jest", "node"],
     "outDir": "build",
     "isolatedModules": true,
     "skipLibCheck": true,
