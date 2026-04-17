@@ -331,9 +331,7 @@ const AlertForm = ({
             )}
             {alert && (
               <Group>
-                {alert.history.length > 0 && (
-                  <AlertHistoryCardList history={alert.history} />
-                )}
+                <AlertHistoryCardList alert={alert} />
                 <AckAlert alert={alert} />
               </Group>
             )}

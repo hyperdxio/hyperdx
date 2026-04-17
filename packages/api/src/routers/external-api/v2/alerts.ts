@@ -48,6 +48,31 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       type: string
  *       enum: [webhook]
  *       description: Channel type.
+ *     AlertErrorType:
+ *       type: string
+ *       enum: [QUERY_ERROR, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       description: Category of error recorded during alert execution.
+ *     AlertExecutionError:
+ *       type: object
+ *       description: An error recorded during a recent alert execution.
+ *       required:
+ *         - timestamp
+ *         - type
+ *         - message
+ *       properties:
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *           description: When the error occurred.
+ *           example: "2026-04-17T12:00:00.000Z"
+ *         type:
+ *           $ref: '#/components/schemas/AlertErrorType'
+ *           description: Category of the error.
+ *           example: "QUERY_ERROR"
+ *         message:
+ *           type: string
+ *           description: Human-readable error message.
+ *           example: "Query timed out after 30s"
  *     AlertSilenced:
  *       type: object
  *       description: Silencing metadata.
@@ -176,6 +201,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *               $ref: '#/components/schemas/AlertSilenced'
  *               description: Silencing metadata.
  *               nullable: true
+ *             executionErrors:
+ *               type: array
+ *               nullable: true
+ *               description: Errors recorded during the most recent alert execution, if any.
+ *               items:
+ *                 $ref: '#/components/schemas/AlertExecutionError'
  *             createdAt:
  *               type: string
  *               nullable: true

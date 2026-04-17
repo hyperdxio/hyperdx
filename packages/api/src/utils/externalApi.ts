@@ -1,4 +1,5 @@
 import {
+  AlertErrorType,
   AlertThresholdType,
   BuilderSavedChartConfig,
   DashboardFilter,
@@ -6,13 +7,14 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
-import { FlattenMaps, LeanDocument } from 'mongoose';
 
+import type { ObjectId } from '@/models';
 import {
   AlertChannel,
   AlertDocument,
   AlertInterval,
   AlertState,
+  IAlert,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
@@ -246,13 +248,16 @@ export type ExternalAlert = {
     at: string;
     until: string;
   };
+  executionErrors?: {
+    timestamp: string;
+    type: AlertErrorType;
+    message: string;
+  }[];
   createdAt?: string;
   updatedAt?: string;
 };
 
-type AlertDocumentObject =
-  | AlertDocument
-  | FlattenMaps<LeanDocument<AlertDocument>>;
+type AlertDocumentObject = IAlert & { _id: ObjectId };
 
 function hasCreatedAt(
   alert: AlertDocumentObject,
@@ -296,6 +301,19 @@ function transformSilencedToExternalSilenced(
     : undefined;
 }
 
+function transformErrorsToExternalErrors(
+  errors: AlertDocumentObject['executionErrors'],
+): ExternalAlert['executionErrors'] {
+  return errors?.map(err => ({
+    timestamp:
+      err.timestamp instanceof Date
+        ? err.timestamp.toISOString()
+        : String(err.timestamp),
+    type: err.type,
+    message: err.message,
+  }));
+}
+
 export function translateAlertDocumentToExternalAlert(
   alert: AlertDocument,
 ): ExternalAlert {
@@ -326,6 +344,7 @@ export function translateAlertDocumentToExternalAlert(
     savedSearchId: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
+    executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
     createdAt: hasCreatedAt(alertObj)
       ? alertObj.createdAt.toISOString()
       : undefined,

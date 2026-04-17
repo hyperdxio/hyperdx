@@ -297,6 +297,21 @@ export enum AlertState {
   OK = 'OK',
 }
 
+export enum AlertErrorType {
+  QUERY_ERROR = 'QUERY_ERROR',
+  WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  INVALID_ALERT = 'INVALID_ALERT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export const AlertErrorSchema = z.object({
+  timestamp: z.union([z.string(), z.date()]),
+  type: z.nativeEnum(AlertErrorType),
+  message: z.string(),
+});
+
+export type AlertError = z.infer<typeof AlertErrorSchema>;
+
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
@@ -1368,6 +1383,7 @@ export const AlertsPageItemSchema = z.object({
       until: z.string(),
     })
     .optional(),
+  executionErrors: z.array(AlertErrorSchema).optional(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;

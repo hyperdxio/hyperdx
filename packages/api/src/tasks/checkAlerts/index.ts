@@ -27,6 +27,7 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertErrorType,
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
@@ -43,7 +44,7 @@ import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
-import { AlertState, IAlert } from '@/models/alert';
+import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -137,6 +138,29 @@ export async function computeAliasWithClauses(
   return aliasMapToWithClauses(aliasMap);
 }
 
+export class InvalidAlertError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAlertError';
+  }
+}
+
+const makeAlertError = (
+  type: AlertErrorType,
+  message: string,
+): IAlertError => ({
+  timestamp: new Date(),
+  type,
+  message: message.slice(0, 10000),
+});
+
+const getErrorMessage = (e: unknown): string => {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  return String(e);
+};
+
 export const doesExceedThreshold = (
   {
     threshold,
@@ -161,7 +185,7 @@ export const doesExceedThreshold = (
     case AlertThresholdType.BETWEEN:
     case AlertThresholdType.NOT_BETWEEN:
       if (thresholdMax == null) {
-        throw new Error(
+        throw new InvalidAlertError(
           `thresholdMax is required for threshold type "${thresholdType}"`,
         );
       }
@@ -687,6 +711,9 @@ export const processAlert = async (
 ) => {
   const { alert, previousMap } = details;
   const source = 'source' in details ? details.source : undefined;
+  // Errors collected during this execution. Webhook errors accumulate here; query
+  // and validation errors are recorded via recordAlertErrors before returning.
+  const executionErrors: IAlertError[] = [];
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -841,13 +868,29 @@ export const processAlert = async (
       ? { readonly: '2' }
       : {};
 
-    // Query for alert data
-    const checksData = await clickhouseClient.queryChartConfig({
-      config: optimizedChartConfig,
-      metadata,
-      opts: { clickhouse_settings: clickHouseSettings },
-      querySettings: source?.querySettings,
-    });
+    // Query for alert data. If the query fails, record the error and exit
+    // without touching alert state or creating an AlertHistory.
+    let checksData;
+    try {
+      checksData = await clickhouseClient.queryChartConfig({
+        config: optimizedChartConfig,
+        metadata,
+        opts: { clickhouse_settings: clickHouseSettings },
+        querySettings: source?.querySettings,
+      });
+    } catch (e) {
+      logger.error(
+        {
+          alertId: alert.id,
+          error: serializeError(e),
+        },
+        'Alert query failed, skipping state/history update',
+      );
+      await alertProvider.recordAlertErrors(alert.id, [
+        makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e)),
+      ]);
+      return;
+    }
 
     logger.info(
       {
@@ -926,6 +969,9 @@ export const processAlert = async (
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
         );
+        executionErrors.push(
+          makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(e)),
+        );
       }
     };
 
@@ -986,7 +1032,11 @@ export const processAlert = async (
       await sendNotificationIfResolved(previous, history, '');
 
       const historyRecords = Array.from(histories.values());
-      await alertProvider.updateAlertState(alert.id, historyRecords);
+      await alertProvider.updateAlertState(
+        alert.id,
+        historyRecords,
+        executionErrors,
+      );
       return;
     }
 
@@ -1121,7 +1171,11 @@ export const processAlert = async (
 
     // Save all history records and update alert state
     const historyRecords = Array.from(histories.values());
-    await alertProvider.updateAlertState(alert.id, historyRecords);
+    await alertProvider.updateAlertState(
+      alert.id,
+      historyRecords,
+      executionErrors,
+    );
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
@@ -1132,6 +1186,25 @@ export const processAlert = async (
       },
       'Failed to process alert',
     );
+    // Record error without touching state/history.
+    const message = getErrorMessage(e);
+    const type =
+      e instanceof InvalidAlertError
+        ? AlertErrorType.INVALID_ALERT
+        : AlertErrorType.UNKNOWN;
+    try {
+      await alertProvider.recordAlertErrors(alert.id, [
+        makeAlertError(type, message),
+      ]);
+    } catch (recordErr) {
+      logger.error(
+        {
+          alertId: alert.id,
+          error: serializeError(recordErr),
+        },
+        'Failed to persist alert execution error',
+      );
+    }
   }
 };
 

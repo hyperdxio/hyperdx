@@ -161,7 +161,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       </Group>
 
       <Group>
-        <AlertHistoryCardList history={alert.history} alertUrl={alertUrl} />
+        <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
       </Group>
     </div>

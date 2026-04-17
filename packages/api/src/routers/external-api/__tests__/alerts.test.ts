@@ -1,3 +1,4 @@
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -1165,6 +1166,69 @@ describe('External API Alerts', () => {
       await unauthenticatedAgent
         .get(`${ALERTS_BASE_URL}/${testId}`)
         .expect(401);
+    });
+  });
+
+  describe('Errors field', () => {
+    it('returns recorded execution errors on GET by id', async () => {
+      const { alert } = await createTestAlert();
+
+      const errorTimestamp = new Date('2026-04-17T12:00:00.000Z');
+      await Alert.updateOne(
+        { _id: alert.id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: errorTimestamp,
+                type: AlertErrorType.QUERY_ERROR,
+                message: 'ClickHouse returned 500',
+              },
+            ],
+          },
+        },
+      );
+
+      const res = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+      expect(res.body.data.executionErrors).toHaveLength(1);
+      expect(res.body.data.executionErrors[0].type).toBe(
+        AlertErrorType.QUERY_ERROR,
+      );
+      expect(res.body.data.executionErrors[0].message).toBe(
+        'ClickHouse returned 500',
+      );
+      expect(res.body.data.executionErrors[0].timestamp).toBe(
+        errorTimestamp.toISOString(),
+      );
+    });
+
+    it('returns recorded execution errors on the list endpoint', async () => {
+      const { alert } = await createTestAlert();
+
+      await Alert.updateOne(
+        { _id: alert.id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: new Date('2026-04-17T12:00:00.000Z'),
+                type: AlertErrorType.WEBHOOK_ERROR,
+                message: 'webhook delivery failed',
+              },
+            ],
+          },
+        },
+      );
+
+      const res = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const match = res.body.data.find((a: any) => a.id === alert.id);
+      expect(match).toBeDefined();
+      expect(match.executionErrors).toHaveLength(1);
+      expect(match.executionErrors[0].type).toBe(AlertErrorType.WEBHOOK_ERROR);
+      expect(match.executionErrors[0].message).toBe('webhook delivery failed');
     });
   });
 });
