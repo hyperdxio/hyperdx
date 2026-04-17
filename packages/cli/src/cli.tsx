@@ -11,6 +11,10 @@ import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { Command } from 'commander';
 import chalk from 'chalk';
+import {
+  TemplateMiner,
+  TemplateMinerConfig,
+} from '@hyperdx/common-utils/dist/drain';
 
 import App from '@/App';
 import { ApiClient } from '@/api/client';
@@ -852,6 +856,14 @@ program
   .requiredOption('--sql <query>', 'SQL query to execute')
   .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--format <format>', 'ClickHouse output format', 'JSONEachRow')
+  .option(
+    '--patterns',
+    'Mine Drain log patterns from the query result instead of emitting rows',
+  )
+  .option(
+    '--body-column <name>',
+    'Column whose string value is clustered when --patterns is set (default: whole row JSON)',
+  )
   .addHelpText(
     'after',
     `
@@ -871,6 +883,19 @@ About:
   object per line) — streamable and easy to consume from agents and
   shell pipelines (e.g. \`jq -c\`).
 
+Pattern mining (--patterns):
+  Cluster the result's text into log patterns using the Drain
+  algorithm, then emit one JSON object per pattern (sorted by count
+  desc). Useful for summarizing a large result set into a small
+  number of templated lines.
+
+  By default the whole row is JSON-serialized and clustered as a
+  single string (works for any SELECT shape). Pass --body-column
+  <name> to cluster only that column's string value instead.
+
+  Output forces JSON internally regardless of --format. Each line is:
+    {"pattern":"<template>","count":<n>,"sample":"<first sample>"}
+
 Exit codes:
   0  Success. Stdout contains the result (empty stdout means zero rows).
   1  Failure. Stderr contains the error.
@@ -879,6 +904,8 @@ Examples:
   $ CONN=$(hdx connections --json | jq -r '.[0].id')
   $ hdx query --connection-id "$CONN" --sql "SELECT count() FROM default.otel_logs"
   $ hdx query --connection-id "$CONN" --sql "SELECT * FROM default.otel_traces LIMIT 5"
+  $ hdx query --connection-id "$CONN" --patterns \\
+      --sql "SELECT Body FROM default.otel_logs LIMIT 10000" --body-column Body
 `,
   )
   .action(async opts => {
@@ -886,6 +913,82 @@ Examples:
     const chClient = client.createClickHouseClient();
 
     try {
+      if (opts.patterns) {
+        // Pattern mining forces JSON internally so we can iterate named rows.
+        if (
+          opts.format &&
+          opts.format !== 'JSON' &&
+          opts.format !== 'JSONEachRow'
+        ) {
+          _origError(
+            chalk.dim('--patterns: ignoring --format, using JSON internally\n'),
+          );
+        }
+        const resultSet = await chClient.query({
+          query: opts.sql,
+          format: 'JSON',
+          connectionId: opts.connectionId,
+        });
+        const json = (await resultSet.json()) as {
+          data?: Array<Record<string, unknown>>;
+        };
+        const rows = json.data ?? [];
+        if (rows.length === 0) {
+          return; // exit 0, empty stdout
+        }
+
+        // If --body-column was provided, validate it exists in the result.
+        if (opts.bodyColumn) {
+          const cols = Object.keys(rows[0]);
+          if (!cols.includes(opts.bodyColumn)) {
+            _origError(
+              chalk.red(
+                `--body-column '${opts.bodyColumn}' not found in result. ` +
+                  `Available columns: ${cols.join(', ')}\n`,
+              ),
+            );
+            process.exit(1);
+          }
+        }
+
+        const flatten = (s: string): string =>
+          s
+            .replace(/\n/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        const miner = new TemplateMiner(new TemplateMinerConfig());
+        const groups = new Map<number, { count: number; sample: string }>();
+        for (const row of rows) {
+          const raw = opts.bodyColumn
+            ? row[opts.bodyColumn]
+            : JSON.stringify(row);
+          const text = raw != null ? flatten(String(raw)) : '';
+          const { clusterId } = miner.addLogMessage(text);
+          const existing = groups.get(clusterId);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            groups.set(clusterId, { count: 1, sample: text });
+          }
+        }
+
+        const out: Array<{ pattern: string; count: number; sample: string }> =
+          [];
+        for (const [, g] of groups) {
+          const tpl =
+            miner.match(g.sample, 'fallback')?.getTemplate() ?? g.sample;
+          out.push({ pattern: tpl, count: g.count, sample: g.sample });
+        }
+        out.sort((a, b) => b.count - a.count);
+
+        for (const p of out) {
+          process.stdout.write(JSON.stringify(p) + '\n');
+        }
+        return;
+      }
+
+      // Default: raw SQL → stdout in the requested format.
       const resultSet = await chClient.query({
         query: opts.sql,
         format: opts.format,
