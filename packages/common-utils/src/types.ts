@@ -910,6 +910,27 @@ export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
+export function addDuplicateTileIdIssues(
+  tiles: { id?: string }[],
+  ctx: z.RefinementCtx,
+  options?: { messageSuffix?: string },
+) {
+  const suffix = options?.messageSuffix ?? '';
+  const seen = new Set<string>();
+  for (let i = 0; i < tiles.length; i++) {
+    const id = tiles[i].id;
+    if (!id) continue;
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate tile ID: ${id}${suffix}`,
+        path: [i, 'id'],
+      });
+    }
+    seen.add(id);
+  }
+}
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -939,7 +960,7 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   version: z.string().min(1),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  tiles: z.array(TileTemplateSchema),
+  tiles: z.array(TileTemplateSchema).superRefine(addDuplicateTileIdIssues),
   filters: z.array(DashboardFilterSchema).optional(),
 });
 export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
