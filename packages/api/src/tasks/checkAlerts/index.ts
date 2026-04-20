@@ -145,13 +145,25 @@ export class InvalidAlertError extends Error {
   }
 }
 
+// For security, we do not surface raw error messages for webhook or unknown
+// failures — they may leak URLs, response bodies, or other sensitive detail
+// from upstream systems. QUERY_ERROR and INVALID_ALERT messages are authored
+// by us (ClickHouse errors or our own validation) and are safe to display.
+const HARDCODED_ALERT_ERROR_MESSAGES: Partial<Record<AlertErrorType, string>> =
+  {
+    [AlertErrorType.WEBHOOK_ERROR]:
+      'Failed to send webhook notification. Check the webhook configuration and destination.',
+    [AlertErrorType.UNKNOWN]:
+      'An unknown error occurred while processing the alert.',
+  };
+
 const makeAlertError = (
   type: AlertErrorType,
   message: string,
 ): IAlertError => ({
   timestamp: new Date(),
   type,
-  message: message.slice(0, 10000),
+  message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
 });
 
 const getErrorMessage = (e: unknown): string => {
