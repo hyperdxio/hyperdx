@@ -2813,8 +2813,8 @@ describe('checkAlerts', () => {
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toContain(
-          'webhook exploded',
+        expect(updated!.executionErrors![0].message).toBe(
+          'Failed to send webhook notification. Check the webhook configuration and destination.',
         );
       });
 
@@ -3108,9 +3108,18 @@ describe('checkAlerts', () => {
             e => e.type === AlertErrorType.WEBHOOK_ERROR,
           ),
         ).toBe(true);
+        // Webhook error messages are hardcoded for security; the raw upstream
+        // error ("group webhook failed") must not leak into the stored message.
         expect(
-          updated!.executionErrors!.every(e =>
-            e.message.includes('group webhook failed'),
+          updated!.executionErrors!.every(
+            e => !e.message.includes('group webhook failed'),
+          ),
+        ).toBe(true);
+        expect(
+          updated!.executionErrors!.every(
+            e =>
+              e.message ===
+              'Failed to send webhook notification. Check the webhook configuration and destination.',
           ),
         ).toBe(true);
       });
@@ -3179,20 +3188,79 @@ describe('checkAlerts', () => {
           await AlertHistory.countDocuments({ alert: details.alert.id }),
         ).toBe(1);
 
-        // A descriptive WEBHOOK_ERROR should be recorded so the user can debug
+        // A WEBHOOK_ERROR should be recorded. The message is hardcoded for
+        // security — the raw internal error ("Webhook not found ... deleted")
+        // must not leak into the stored message.
         expect(updated!.executionErrors).toBeDefined();
         expect(updated!.executionErrors!.length).toBe(1);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toContain(
-          'Webhook not found',
+        expect(updated!.executionErrors![0].message).toBe(
+          'Failed to send webhook notification. Check the webhook configuration and destination.',
         );
-        // Hint the user on what to do about it
-        expect(updated!.executionErrors![0].message).toMatch(/deleted|update/);
 
         // No actual network call should have been attempted
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+      });
+
+      it('records an UNKNOWN error with a hardcoded message when an unexpected error is thrown', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Force an unexpected (non-InvalidAlert) failure deep in processAlert
+        // by making updateAlertState reject. This should end up as UNKNOWN.
+        const updateAlertStateSpy = jest
+          .spyOn(alertProvider, 'updateAlertState')
+          .mockImplementationOnce(() => {
+            throw new Error('secret internal detail');
+          });
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(AlertErrorType.UNKNOWN);
+        expect(updated!.executionErrors![0].message).toBe(
+          'An unknown error occurred while processing the alert.',
+        );
+
+        updateAlertStateSpy.mockRestore();
       });
     });
 
