@@ -15,39 +15,38 @@ export interface IDashboard extends z.infer<typeof DashboardSchema> {
 
 export type DashboardDocument = mongoose.HydratedDocument<IDashboard>;
 
-export default mongoose.model<IDashboard>(
-  'Dashboard',
-  new Schema<IDashboard>(
-    {
-      name: {
-        type: String,
-        required: true,
-      },
-      tiles: { type: mongoose.Schema.Types.Mixed, required: true },
-      team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-      tags: {
-        type: [String],
-        default: [],
-      },
-      filters: { type: mongoose.Schema.Types.Array, default: [] },
-      savedQuery: { type: String, required: false },
-      savedQueryLanguage: { type: String, required: false },
-      savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
-      containers: { type: mongoose.Schema.Types.Array, required: false },
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: false,
-      },
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: false,
-      },
+const dashboardSchema = new Schema<IDashboard>(
+  {
+    name: {
+      type: String,
+      required: true,
     },
-    {
-      timestamps: true,
-      toJSON: { getters: true },
+    tiles: { type: mongoose.Schema.Types.Mixed, required: true },
+    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    tags: {
+      type: [String],
+      default: [],
     },
-  ),
+    filters: { type: mongoose.Schema.Types.Array, default: [] },
+    savedQuery: { type: String, required: false },
+    savedQueryLanguage: { type: String, required: false },
+    savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
+    containers: { type: mongoose.Schema.Types.Array, required: false },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+  },
 );
+
+export default mongoose.model<IDashboard>('Dashboard', dashboardSchema);

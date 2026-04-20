@@ -6,6 +6,7 @@ import {
   NumberFormatSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  TableOnClickSchema,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
@@ -262,11 +263,13 @@ const externalDashboardTableChartConfigSchema = z.object({
   orderBy: z.string().max(10000).optional(),
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  onClick: TableOnClickSchema.optional(),
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('table'),
+    onClick: TableOnClickSchema.optional(),
   });
 
 const externalDashboardNumberRawSqlChartConfigSchema =

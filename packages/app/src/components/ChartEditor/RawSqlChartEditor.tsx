@@ -18,8 +18,10 @@ import {
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
+import TableOnClickDrawer from '@/components/DBEditTimeChartForm/TableOnClickDrawer';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
@@ -63,6 +65,18 @@ export default function RawSqlChartEditor({
   const source = useWatch({ control, name: 'source' });
   const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
   const sourceObject = sources?.find(s => s.id === source);
+
+  const [
+    onClickDrawerOpened,
+    { open: openOnClickDrawer, close: closeOnClickDrawer },
+  ] = useDisclosure(false);
+  const onClickValue = useWatch({ control, name: 'onClick' });
+  const onClickTypeLabel =
+    onClickValue?.type === 'dashboard'
+      ? 'Navigate to Dashboard'
+      : onClickValue?.type === 'search'
+        ? 'Search'
+        : 'Default';
 
   const rawSqlConfig = useMemo(
     () =>
@@ -222,6 +236,15 @@ export default function RawSqlChartEditor({
                 Add Alert
               </Button>
             )}
+          {displayType === DisplayType.Table && (
+            <Button
+              onClick={openOnClickDrawer}
+              size="compact-sm"
+              variant="secondary"
+            >
+              Row Click Action: {onClickTypeLabel}
+            </Button>
+          )}
           <Button
             onClick={onOpenDisplaySettings}
             size="compact-sm"
@@ -255,6 +278,12 @@ export default function RawSqlChartEditor({
           tooltip={alertTooltip}
         />
       )}
+      <TableOnClickDrawer
+        opened={onClickDrawerOpened}
+        value={onClickValue}
+        onChange={next => setValue('onClick', next, { shouldDirty: true })}
+        onClose={closeOnClickDrawer}
+      />
     </Stack>
   );
 }

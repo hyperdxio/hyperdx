@@ -4,6 +4,7 @@ import {
   FieldErrors,
   UseFormClearErrors,
   UseFormSetValue,
+  useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -14,6 +15,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { IconBell, IconCirclePlus } from '@tabler/icons-react';
 
 import {
@@ -29,6 +31,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ChartSeriesEditor } from './ChartSeriesEditor';
+import TableOnClickDrawer from './TableOnClickDrawer';
 import { TileAlertEditor } from './TileAlertEditor';
 
 type ChartEditorControlsProps = {
@@ -84,6 +87,18 @@ export function ChartEditorControls({
   onSubmit,
   openDisplaySettings,
 }: ChartEditorControlsProps) {
+  const [
+    onClickDrawerOpened,
+    { open: openOnClickDrawer, close: closeOnClickDrawer },
+  ] = useDisclosure(false);
+  const onClickValue = useWatch({ control, name: 'onClick' });
+  const onClickTypeLabel =
+    onClickValue?.type === 'dashboard'
+      ? 'Navigate to Dashboard'
+      : onClickValue?.type === 'search'
+        ? 'Search'
+        : 'Default';
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -259,13 +274,24 @@ export function ChartEditorControls({
                   </Button>
                 )}
             </Group>
-            <Button
-              onClick={openDisplaySettings}
-              size="compact-sm"
-              variant="secondary"
-            >
-              Display Settings
-            </Button>
+            <Group>
+              {displayType === DisplayType.Table && (
+                <Button
+                  onClick={openOnClickDrawer}
+                  size="compact-sm"
+                  variant="secondary"
+                >
+                  Row Click Action: {onClickTypeLabel}
+                </Button>
+              )}
+              <Button
+                onClick={openDisplaySettings}
+                size="compact-sm"
+                variant="secondary"
+              >
+                Display Settings
+              </Button>
+            </Group>
           </Flex>
         </>
       ) : (
@@ -311,6 +337,15 @@ export function ChartEditorControls({
           />
         </Box>
       )}
+      <TableOnClickDrawer
+        opened={onClickDrawerOpened}
+        value={onClickValue}
+        onChange={next => {
+          setValue('onClick', next, { shouldDirty: true });
+          onSubmit();
+        }}
+        onClose={closeOnClickDrawer}
+      />
     </>
   );
 }

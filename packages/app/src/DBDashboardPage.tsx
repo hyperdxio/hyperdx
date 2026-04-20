@@ -47,6 +47,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
   Breadcrumbs,
@@ -64,6 +65,7 @@ import {
 import { useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
@@ -110,6 +112,7 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useTableOnClickResolver } from './hooks/useTableOnClickResolver';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
@@ -226,6 +229,26 @@ const Tile = forwardRef(
     const { data: source, isFetched: isSourceFetched } = useSource({
       id: chart.config.source,
     });
+
+    const onClickResolver = useTableOnClickResolver({
+      onClick: chart.config.onClick,
+      dateRange,
+    });
+
+    const router = useRouter();
+    const onRowLinkClick = useCallback(
+      (row: Record<string, unknown>, e: React.MouseEvent) => {
+        if (!onClickResolver) return;
+        const url = onClickResolver(row);
+        if (!url) return; // resolver surfaced the error via toast already
+        if (e.metaKey || e.ctrlKey || e.button === 1) {
+          window.open(url, '_blank');
+        } else {
+          router.push(url);
+        }
+      },
+      [onClickResolver, router],
+    );
 
     const isSourceMissing =
       !!chart.config.source && isSourceFetched && source == null;
@@ -580,6 +603,9 @@ const Tile = forwardRef(
                               })
                           : undefined
                       }
+                      onRowLinkClick={
+                        onClickResolver ? onRowLinkClick : undefined
+                      }
                     />
                   </Box>
                 )}
@@ -665,6 +691,8 @@ const Tile = forwardRef(
         filterWarning,
         isSourceMissing,
         isSourceUnset,
+        onClickResolver,
+        onRowLinkClick,
       ],
     );
 
@@ -895,8 +923,25 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
-    useDashboardFilters(filters);
+  const {
+    filterValues,
+    setFilterValue,
+    filterQueries,
+    setFilterQueries,
+    ignoredFilterExpressions,
+  } = useDashboardFilters(filters);
+
+  // Warn when the URL has filter values that don't correspond to any declared
+  // dashboard filter — they'd otherwise be silently dropped, and users who
+  // arrive via a shared link, bookmark, or onClick action might not notice.
+  // Only consider URL filters ignored once the dashboard has finished loading
+  // so we don't flash the banner before `dashboard.filters` is available.
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
+  const shouldShowIgnoredFiltersBanner =
+    dashboardReady && ignoredFilterExpressions.length > 0;
 
   const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
@@ -996,19 +1041,25 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Query defaults: URL query overrides saved defaults. If switching to a
     // dashboard without defaults, clear query. On first load/reload, keep current state.
-    if (!hasWhereInUrl) {
-      if (dashboard.savedQuery) {
-        setValue('where', dashboard.savedQuery);
-        setWhere(dashboard.savedQuery);
-        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
-        setValue('whereLanguage', savedLanguage);
-        setWhereLanguage(savedLanguage);
-      } else if (isSwitchingDashboards) {
-        setValue('where', '');
-        setWhere('');
-        setValue('whereLanguage', 'lucene');
-        setWhereLanguage('lucene');
+    if (hasWhereInUrl) {
+      // Form defaults were evaluated before nuqs finished hydrating from the
+      // URL, so sync them now that the URL value is available (e.g., landing
+      // here from an onClick link with a pre-populated WHERE template).
+      setValue('where', where);
+      if (whereLanguage) {
+        setValue('whereLanguage', whereLanguage as SearchConditionLanguage);
       }
+    } else if (dashboard.savedQuery) {
+      setValue('where', dashboard.savedQuery);
+      setWhere(dashboard.savedQuery);
+      const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+      setValue('whereLanguage', savedLanguage);
+      setWhereLanguage(savedLanguage);
+    } else if (isSwitchingDashboards) {
+      setValue('where', '');
+      setWhere('');
+      setValue('whereLanguage', 'lucene');
+      setWhereLanguage('lucene');
     }
 
     // Filter defaults: URL filters override saved defaults. If switching to a
@@ -1031,6 +1082,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isFetchingDashboard,
     router.isReady,
     router.query,
+    where,
+    whereLanguage,
     setValue,
     setWhere,
     setWhereLanguage,
@@ -1629,18 +1682,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Group>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
-        <EditablePageName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
+        <Box>
+          <EditablePageName
+            key={`${dashboardHash}`}
+            name={dashboard?.name ?? ''}
+            onSave={editedName => {
+              if (dashboard != null) {
+                setDashboard({
+                  ...dashboard,
+                  name: editedName,
+                });
+              }
+            }}
+          />
+        </Box>
         <Group gap="xs">
           {!isLocalDashboard && dashboard?.id && (
             <FavoriteButton
@@ -1843,6 +1898,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           Run
         </Button>
       </Flex>
+      {shouldShowIgnoredFiltersBanner && (
+        <Alert
+          mt="sm"
+          color="yellow"
+          icon={<IconAlertTriangle size={16} />}
+          title="Some filters could not be applied"
+          data-testid="ignored-url-filters-banner"
+        >
+          No dashboard filter(s) found for{' '}
+          {ignoredFilterExpressions.length === 1 ? 'expression' : 'expressions'}
+          : {ignoredFilterExpressions.join(', ')}. Add a filter with a matching
+          expression to apply these filters.
+        </Alert>
+      )}
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}

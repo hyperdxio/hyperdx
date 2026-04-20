@@ -38,7 +38,34 @@ export function registerSaveDashboard(
         'Call hyperdx_list_sources first to obtain sourceId and connectionId values. ' +
         'IMPORTANT: After saving a dashboard, always run hyperdx_query_tile on each tile ' +
         'to confirm the queries work and return expected data. Tiles can silently fail ' +
-        'due to incorrect filter syntax, missing attributes, or wrong column names.',
+        'due to incorrect filter syntax, missing attributes, or wrong column names.\n\n' +
+        'LINKED DASHBOARDS (drill-downs):\n' +
+        'Table tiles can declare an `onClick` config that navigates the user from a ' +
+        "clicked row to another dashboard or the search page, with the row's column " +
+        'values threaded through Handlebars templates (e.g. `{{ServiceName}}`). Use ' +
+        'this to build multi-level flows — an overview dashboard that drills into ' +
+        'per-entity detail dashboards.\n\n' +
+        'Recipe for creating a set of linked dashboards in one session:\n' +
+        '  1. Create the LEAF (detail) dashboards first. These should declare the ' +
+        '     `filters` they expect to receive (e.g. a `ServiceName` filter), since ' +
+        "     the parent's onClick will drive those filter expressions.\n" +
+        '  2. Create the PARENT (overview) dashboard with table tiles whose ' +
+        '     `onClick` points at the leaf dashboards. Two ways to reference the ' +
+        '     target:\n' +
+        '       - mode="id" + the ObjectId returned from step 1 (most precise).\n' +
+        '       - mode="name-template" + a Handlebars template that resolves to the ' +
+        '         EXACT name of the target dashboard. Dashboard names must be unique ' +
+        '         on the team for this to resolve. Use this when the target is ' +
+        '         dynamic (e.g. "{{ServiceName}} Details").\n' +
+        '  3. Populate `filterValueTemplates` with one entry per filter value to ' +
+        '     forward. Each entry is `{ filter: "<column/expression>", ' +
+        '     template: "{{ColumnName}}" }`. Values are SQL-escaped automatically.\n' +
+        '  4. Alternatively use `whereTemplate` for free-form SQL/Lucene conditions ' +
+        '     (not auto-escaped — prefer filterValueTemplates for row values).\n\n' +
+        'Supported Handlebars helpers: `int` (round to integer), `default`, `eq` ' +
+        '(block), `json`, `encodeURIComponent`. Built-in helpers (#if, #each, #with, ' +
+        'lookup, etc.) are disabled. Strict mode is on: referencing a column the row ' +
+        'does not have aborts navigation with a toast error.',
       inputSchema: z.object({
         id: z
           .string()

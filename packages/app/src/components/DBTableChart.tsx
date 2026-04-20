@@ -27,6 +27,7 @@ import { SQLPreview } from './ChartSQLPreview';
 export default function DBTableChart({
   config,
   getRowSearchLink,
+  onRowLinkClick,
   enabled = true,
   queryKeyPrefix,
   onSortingChange,
@@ -40,6 +41,7 @@ export default function DBTableChart({
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
+  onRowLinkClick?: (row: any, e: React.MouseEvent) => void;
   queryKeyPrefix?: string;
   enabled?: boolean;
   onSortingChange?: (sort: SortingState) => void;
@@ -237,6 +239,7 @@ export default function DBTableChart({
           data={data?.data ?? []}
           columns={columns}
           getRowSearchLink={getRowSearchLink}
+          onRowLinkClick={onRowLinkClick}
           sorting={effectiveSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}

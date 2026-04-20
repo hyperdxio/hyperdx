@@ -36,6 +36,7 @@ export const Table = ({
   groupColumnName,
   columns,
   getRowSearchLink,
+  onRowLinkClick,
   tableBottom,
   enableClientSideSorting = false,
   sorting,
@@ -55,6 +56,14 @@ export const Table = ({
   }[];
   groupColumnName?: string;
   getRowSearchLink?: (row: any) => string | null;
+  /**
+   * Row-level click handler for the configurable per-tile onClick action.
+   * When provided, takes precedence over `getRowSearchLink` and each cell
+   * becomes clickable without a pre-computed href — the handler resolves
+   * and navigates on demand so large tables don't pay for every row up
+   * front. Pass the MouseEvent through for meta/ctrl-click handling.
+   */
+  onRowLinkClick?: (row: any, e: React.MouseEvent) => void;
   tableBottom?: React.ReactNode;
   enableClientSideSorting?: boolean;
   sorting: SortingState;
@@ -140,6 +149,51 @@ export const Table = ({
                 formattedValue = JSON.stringify(value);
               } else if (numberFormat) {
                 formattedValue = formatNumber(value, numberFormat);
+              }
+
+              if (onRowLinkClick != null) {
+                return (
+                  <div
+                    role="link"
+                    tabIndex={0}
+                    className={cx('align-top overflow-hidden py-1 pe-3', {
+                      'text-break': wrapLinesEnabled,
+                      'text-truncate': !wrapLinesEnabled,
+                    })}
+                    style={{ cursor: 'pointer' }}
+                    // Left-click: fires onClick with button === 0. The parent
+                    // handler detects meta/ctrl for cmd/ctrl-click → new tab.
+                    onClick={e => onRowLinkClick(row.original, e)}
+                    // Middle-click (button === 1) fires onAuxClick but NOT
+                    // onClick on non-anchor elements, so route it explicitly.
+                    // Right-click (button === 2) is left alone for browser
+                    // context menu defaults.
+                    onAuxClick={e => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        onRowLinkClick(row.original, e);
+                      }
+                    }}
+                    // Suppress the browser's middle-click autoscroll cursor
+                    // on non-anchor elements.
+                    onMouseDown={e => {
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        // Synthesize a minimal MouseEvent-like object for the
+                        // handler; keyboard activations never open a new tab.
+                        onRowLinkClick(
+                          row.original,
+                          e as unknown as React.MouseEvent,
+                        );
+                      }
+                    }}
+                  >
+                    {formattedValue}
+                  </div>
+                );
               }
 
               if (getRowSearchLink == null) {

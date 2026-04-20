@@ -671,6 +671,76 @@ export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 // schema as well (packages/api/src/utils/zod.ts).
 
 /**
+ * Each entry targets a DashboardFilter on the destination dashboard. `filter`
+ * matches the target filter's `id` first, then falls back to a
+ * case-insensitive `name` match. Array (rather than a record keyed by id) so
+ * name-template links — where the target is unknown at edit time — can still
+ * supply arbitrary filter-name keys.
+ */
+export const TableOnClickFilterTemplateSchema = z.object({
+  // Allow empty strings so the drawer can render blank rows while the user is
+  // editing. The URL builder skips entries with no filter/template at click
+  // time, so empty rows are harmless on persist.
+  filter: z.string(),
+  template: z.string(),
+});
+export type TableOnClickFilterTemplate = z.infer<
+  typeof TableOnClickFilterTemplateSchema
+>;
+
+export const TableOnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  // Empty strings are permitted so the drawer can be committed mid-edit (e.g.,
+  // user switched to dashboard mode but hasn't picked a target yet). Empty
+  // values are surfaced as errors at click time by the URL builder.
+  target: z.discriminatedUnion('mode', [
+    z.object({
+      mode: z.literal('id'),
+      dashboardId: z.string(),
+    }),
+    z.object({
+      mode: z.literal('name-template'),
+      nameTemplate: z.string(),
+    }),
+  ]),
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+  filterValueTemplates: z.array(TableOnClickFilterTemplateSchema).optional(),
+});
+export type TableOnClickDashboard = z.infer<typeof TableOnClickDashboardSchema>;
+
+export const TableOnClickSearchSchema = z.object({
+  type: z.literal('search'),
+  // Same as dashboard above: allow empty strings so Apply can commit
+  // mid-edit; the URL builder validates at click time.
+  source: z.discriminatedUnion('mode', [
+    z.object({
+      mode: z.literal('id'),
+      sourceId: z.string(),
+    }),
+    z.object({
+      mode: z.literal('template'),
+      sourceTemplate: z.string(),
+    }),
+  ]),
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+  /**
+   * Per-filter templates rendered into SQL `IN` conditions. `filter` is used
+   * as the raw expression (column / SQL snippet).
+   */
+  filterValueTemplates: z.array(TableOnClickFilterTemplateSchema).optional(),
+});
+export type TableOnClickSearch = z.infer<typeof TableOnClickSearchSchema>;
+
+export const TableOnClickSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('none') }),
+  TableOnClickDashboardSchema,
+  TableOnClickSearchSchema,
+]);
+export type TableOnClick = z.infer<typeof TableOnClickSchema>;
+
+/**
  * Schema describing display settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
  **/
@@ -681,6 +751,7 @@ const SharedChartDisplaySettingsSchema = z.object({
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  onClick: TableOnClickSchema.optional(),
 });
 
 export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({

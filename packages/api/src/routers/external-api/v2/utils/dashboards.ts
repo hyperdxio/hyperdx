@@ -144,6 +144,7 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          onClick: config.onClick,
         };
       case DisplayType.Number:
         return {
@@ -241,7 +242,7 @@ const convertToExternalTileChartConfig = (
       };
     case DisplayType.Table:
       return {
-        ...pick(config, ['having', 'numberFormat']),
+        ...pick(config, ['having', 'numberFormat', 'onClick']),
         displayType: config.displayType,
         sourceId,
         asRatio:
@@ -383,6 +384,10 @@ export function convertToInternalTileConfig(
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
           numberFormat: externalConfig.numberFormat,
+          onClick:
+            externalConfig.displayType === 'table'
+              ? externalConfig.onClick
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -423,6 +428,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'having',
             'orderBy',
+            'onClick',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),

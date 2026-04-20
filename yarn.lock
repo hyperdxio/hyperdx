@@ -4533,6 +4533,7 @@ __metadata:
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     dotenv: "npm:^17.2.3"
+    handlebars: "npm:^4.7.9"
     jest: "npm:^30.2.0"
     lodash: "npm:^4.17.23"
     node-sql-parser: "npm:^5.3.5"

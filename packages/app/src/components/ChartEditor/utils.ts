@@ -78,6 +78,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alert',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
