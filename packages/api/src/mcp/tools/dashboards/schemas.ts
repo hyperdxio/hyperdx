@@ -26,6 +26,60 @@ const mcpOnClickFilterEntrySchema = z.object({
     ),
 });
 
+// Both dashboard and search onClicks share the same target shape. `mode:'id'`
+// means "send me to this specific dashboard/source by ObjectId", and
+// `mode:'template'` means "render this Handlebars template per row and
+// resolve it to a target at click time" — a dashboard name for dashboard
+// onClicks, or a source id / name for search onClicks.
+const mcpOnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('id'),
+    id: z
+      .string()
+      .describe(
+        'Destination ObjectId. For type="dashboard" this is the target ' +
+          'dashboard id (usually the id returned from a prior ' +
+          'hyperdx_save_dashboard call in the same session). For ' +
+          'type="search" this is a source id from hyperdx_list_sources.',
+      ),
+  }),
+  z.object({
+    mode: z.literal('template'),
+    template: z
+      .string()
+      .describe(
+        'Handlebars template rendered per row. For type="dashboard" it ' +
+          'must resolve to the EXACT name of one dashboard on the team ' +
+          '(case-insensitive) — non-unique names abort with a toast. For ' +
+          'type="search" it resolves to either a source id or a case-' +
+          'insensitive source name. Example: "{{ServiceName}} Details".',
+      ),
+  }),
+]);
+
+const mcpOnClickSharedFields = {
+  target: mcpOnClickTargetSchema,
+  whereTemplate: z
+    .string()
+    .optional()
+    .describe(
+      "Optional Handlebars template rendered into the destination's " +
+        'global WHERE input. Example: "ServiceName = \'{{ServiceName}}\'". ' +
+        'Row values are NOT auto-escaped here — use filterValueTemplates ' +
+        'for values coming from the row unless you need raw SQL.',
+    ),
+  whereLanguage: SearchConditionLanguageSchema.optional().describe(
+    'Language of whereTemplate: "sql" or "lucene". Default "sql".',
+  ),
+  filterValueTemplates: z
+    .array(mcpOnClickFilterEntrySchema)
+    .optional()
+    .describe(
+      'Adds per-column filters to the destination URL as ' +
+        '`expression IN (value)`. Values are SQL-escaped automatically.',
+    ),
+} as const;
+
 const mcpOnClickSchema = z
   .discriminatedUnion('type', [
     z
@@ -33,84 +87,20 @@ const mcpOnClickSchema = z
       .describe('Default: row click opens search pre-filtered by group-by.'),
     z.object({
       type: z.literal('dashboard'),
-      target: z.discriminatedUnion('mode', [
-        z.object({
-          mode: z.literal('id'),
-          dashboardId: z
-            .string()
-            .describe(
-              'Target dashboard ObjectId. Use this when the target is a ' +
-                'specific, known dashboard (you usually have its id from a ' +
-                'prior hyperdx_save_dashboard call in the same session).',
-            ),
-        }),
-        z.object({
-          mode: z.literal('name-template'),
-          nameTemplate: z
-            .string()
-            .describe(
-              'Handlebars template that must resolve to the exact name of ' +
-                'a dashboard on the same team (case-insensitive). The rendered ' +
-                'name must match EXACTLY ONE dashboard or the click surfaces ' +
-                'a toast error. Example: "{{ServiceName}} Details".',
-            ),
-        }),
-      ]),
-      whereTemplate: z
-        .string()
-        .optional()
-        .describe(
-          'Optional Handlebars template rendered into the destination ' +
-            "dashboard's global WHERE input. Example: \"ServiceName = '{{ServiceName}}'\". " +
-            'Row values are NOT auto-escaped here — use filterValueTemplates ' +
-            'for values coming from the row unless you need raw SQL.',
-        ),
-      whereLanguage: SearchConditionLanguageSchema.optional().describe(
-        'Language of whereTemplate: "sql" or "lucene". Default "sql".',
-      ),
-      filterValueTemplates: z
-        .array(mcpOnClickFilterEntrySchema)
-        .optional()
-        .describe(
-          'Adds per-column filters to the destination URL as ' +
-            '`expression IN (value)`. Values are SQL-escaped automatically.',
-        ),
+      ...mcpOnClickSharedFields,
     }),
     z.object({
       type: z.literal('search'),
-      source: z.discriminatedUnion('mode', [
-        z.object({
-          mode: z.literal('id'),
-          sourceId: z
-            .string()
-            .describe('Target source id from hyperdx_list_sources.'),
-        }),
-        z.object({
-          mode: z.literal('template'),
-          sourceTemplate: z
-            .string()
-            .describe(
-              'Handlebars template rendered to a source id or case-insensitive ' +
-                'source name. Example: "{{SourceName}}".',
-            ),
-        }),
-      ]),
-      whereTemplate: z.string().optional(),
-      whereLanguage: SearchConditionLanguageSchema.optional(),
-      filterValueTemplates: z
-        .array(mcpOnClickFilterEntrySchema)
-        .optional()
-        .describe(
-          'Adds per-column filters on the destination search page as ' +
-            '`expression IN (value)`.',
-        ),
+      ...mcpOnClickSharedFields,
     }),
   ])
   .describe(
     'Row-click drill-down action. Only applies to table tiles. On click, the ' +
       "row's column values are threaded through Handlebars templates so the " +
       "destination reflects the clicked row. The current dashboard's time " +
-      'range is always propagated.\n\n' +
+      'range is always propagated. Dashboard and Search onClicks share the ' +
+      'same shape — only the `type` (and where the target resolves to) ' +
+      'differs.\n\n' +
       'Available Handlebars helpers:\n' +
       '  • {{int v}}              round a number / numeric string to an integer\n' +
       '  • {{default v "fb"}}     fallback when v is null/empty\n' +
@@ -123,11 +113,11 @@ const mcpOnClickSchema = z
       'toast error.\n\n' +
       'Typical patterns:\n' +
       '1. Drill from a services table into a per-service dashboard:\n' +
-      '   { "type": "dashboard", "target": { "mode": "name-template", ' +
-      '"nameTemplate": "{{ServiceName}} Details" }, ' +
+      '   { "type": "dashboard", "target": { "mode": "template", ' +
+      '"template": "{{ServiceName}} Details" }, ' +
       '"filterValueTemplates": [{ "filter": "ServiceName", "template": "{{ServiceName}}" }] }\n' +
       '2. Drill into search for a specific error:\n' +
-      '   { "type": "search", "source": { "mode": "id", "sourceId": "<log source>" }, ' +
+      '   { "type": "search", "target": { "mode": "id", "id": "<log source id>" }, ' +
       '"filterValueTemplates": [{ "filter": "TraceId", "template": "{{TraceId}}" }] }',
   );
 
@@ -460,13 +450,13 @@ export const mcpTilesParam = z
       '5. Linked table (drill into a per-service dashboard by name): ' +
       '{ "name": "Services", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
       '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count" }], ' +
-      '"onClick": { "type": "dashboard", "target": { "mode": "name-template", ' +
-      '"nameTemplate": "{{`ResourceAttributes[\'service.name\']`}} Details" }, ' +
+      '"onClick": { "type": "dashboard", "target": { "mode": "template", ' +
+      '"template": "{{`ResourceAttributes[\'service.name\']`}} Details" }, ' +
       '"filterValueTemplates": [{ "filter": "ResourceAttributes[\'service.name\']", ' +
       '"template": "{{`ResourceAttributes[\'service.name\']`}}" }] } } }\n' +
       '6. Linked table (drill into search by trace id): ' +
       '{ "name": "Recent Errors", "config": { "displayType": "table", "sourceId": "<log source>", ' +
       '"groupBy": "TraceId", "select": [{ "aggFn": "count", "where": "SeverityText:ERROR" }], ' +
-      '"onClick": { "type": "search", "source": { "mode": "id", "sourceId": "<log source>" }, ' +
+      '"onClick": { "type": "search", "target": { "mode": "id", "id": "<log source>" }, ' +
       '"filterValueTemplates": [{ "filter": "TraceId", "template": "{{TraceId}}" }] } } }',
   );

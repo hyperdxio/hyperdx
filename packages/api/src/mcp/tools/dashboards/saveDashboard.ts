@@ -50,13 +50,15 @@ export function registerSaveDashboard(
         '     `filters` they expect to receive (e.g. a `ServiceName` filter), since ' +
         "     the parent's onClick will drive those filter expressions.\n" +
         '  2. Create the PARENT (overview) dashboard with table tiles whose ' +
-        '     `onClick` points at the leaf dashboards. Two ways to reference the ' +
-        '     target:\n' +
-        '       - mode="id" + the ObjectId returned from step 1 (most precise).\n' +
-        '       - mode="name-template" + a Handlebars template that resolves to the ' +
-        '         EXACT name of the target dashboard. Dashboard names must be unique ' +
-        '         on the team for this to resolve. Use this when the target is ' +
-        '         dynamic (e.g. "{{ServiceName}} Details").\n' +
+        '     `onClick` points at the leaf dashboards. The target shape is the ' +
+        '     same for both dashboard and search onClicks:\n' +
+        '       - `{ mode: "id", id: "<ObjectId>" }` — precise, use when you have ' +
+        '         the returned id from step 1 (dashboard) or from ' +
+        '         hyperdx_list_sources (source).\n' +
+        '       - `{ mode: "template", template: "<Handlebars>" }` — rendered ' +
+        '         per row; for dashboard onClicks the rendered value must match ' +
+        '         the EXACT name of one dashboard on the team, and for search ' +
+        '         onClicks it resolves to a source id or case-insensitive name.\n' +
         '  3. Populate `filterValueTemplates` with one entry per filter value to ' +
         '     forward. Each entry is `{ filter: "<column/expression>", ' +
         '     template: "{{ColumnName}}" }`. Values are SQL-escaped automatically.\n' +

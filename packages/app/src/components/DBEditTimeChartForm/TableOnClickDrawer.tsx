@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Control, Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,11 +18,11 @@ import {
   Select,
   Stack,
   Text,
-  Textarea,
   TextInput,
 } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { useDashboards } from '@/dashboard';
 import { useSources } from '@/source';
 
@@ -40,7 +40,7 @@ const DrawerSchema = z.object({ onClick: TableOnClickSchema });
 function emptyDashboardOnClick(): TableOnClick {
   return {
     type: 'dashboard',
-    target: { mode: 'id', dashboardId: '' },
+    target: { mode: 'id', id: '' },
     whereLanguage: 'sql',
   };
 }
@@ -48,13 +48,36 @@ function emptyDashboardOnClick(): TableOnClick {
 function emptySearchOnClick(): TableOnClick {
   return {
     type: 'search',
-    source: { mode: 'id', sourceId: '' },
+    target: { mode: 'id', id: '' },
     whereLanguage: 'sql',
   };
 }
 
 function noneOnClick(): TableOnClick {
   return { type: 'none' };
+}
+
+/**
+ * Fields shared by the `dashboard` and `search` onClick variants. Preserved
+ * across mode toggles so users don't lose a half-written WHERE template or
+ * their filter rows when experimenting with destinations.
+ */
+type SharedTemplateFields = Pick<
+  Extract<TableOnClick, { type: 'dashboard' }>,
+  'whereTemplate' | 'whereLanguage' | 'filterValueTemplates'
+>;
+
+function carryAcrossModes(
+  from: TableOnClick | undefined,
+): SharedTemplateFields {
+  if (!from || from.type === 'none') return {};
+  const out: SharedTemplateFields = {};
+  if (from.whereTemplate !== undefined) out.whereTemplate = from.whereTemplate;
+  if (from.whereLanguage !== undefined) out.whereLanguage = from.whereLanguage;
+  if (from.filterValueTemplates !== undefined) {
+    out.filterValueTemplates = from.filterValueTemplates;
+  }
+  return out;
 }
 
 type TableOnClickDrawerProps = {
@@ -128,11 +151,18 @@ export default function TableOnClickDrawer({
               ]}
               value={onClickValue?.type ?? 'none'}
               onChange={next => {
-                if (next === 'none') setValue('onClick', noneOnClick());
-                else if (next === 'dashboard')
-                  setValue('onClick', emptyDashboardOnClick());
-                else if (next === 'search')
-                  setValue('onClick', emptySearchOnClick());
+                if (next === 'none') {
+                  setValue('onClick', noneOnClick());
+                  return;
+                }
+                const base =
+                  next === 'dashboard'
+                    ? emptyDashboardOnClick()
+                    : emptySearchOnClick();
+                setValue('onClick', {
+                  ...base,
+                  ...carryAcrossModes(onClickValue),
+                });
               }}
               fullWidth
             />
@@ -171,11 +201,23 @@ function ModeFields({
   if (!onClick) return null;
 
   if (onClick.type === 'dashboard') {
-    return <DashboardOnClickFields onClick={onClick} setValue={setValue} />;
+    return (
+      <DashboardOnClickFields
+        onClick={onClick}
+        setValue={setValue}
+        control={control}
+      />
+    );
   }
 
   if (onClick.type === 'search') {
-    return <SearchOnClickFields onClick={onClick} setValue={setValue} />;
+    return (
+      <SearchOnClickFields
+        onClick={onClick}
+        setValue={setValue}
+        control={control}
+      />
+    );
   }
 
   // Default (type: 'none')
@@ -190,9 +232,11 @@ function ModeFields({
 function DashboardOnClickFields({
   onClick,
   setValue,
+  control,
 }: {
   onClick: Extract<TableOnClick, { type: 'dashboard' }>;
   setValue: (name: 'onClick', value: TableOnClick) => void;
+  control: Control<DrawerFormValues>;
 }) {
   const { data: dashboards } = useDashboards();
 
@@ -203,24 +247,53 @@ function DashboardOnClickFields({
 
   const mode = onClick.target.mode;
 
+  // Seed the filter list with the selected dashboard's declared filter
+  // expressions (value templates left blank) the first time a user picks
+  // a specific dashboard while the current list is "blank" — i.e. empty, or
+  // every entry has no template value filled in yet. The ref tracks the
+  // last dashboard we've handled so clearing rows or switching away and
+  // back doesn't silently re-populate on top of user intent.
+  const seededForDashboardRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const dashboardId =
+      onClick.target.mode === 'id' ? onClick.target.id : undefined;
+    if (!dashboardId) return;
+    if (seededForDashboardRef.current === dashboardId) return;
+    const target = (dashboards ?? []).find(d => d.id === dashboardId);
+    if (!target) return;
+    seededForDashboardRef.current = dashboardId;
+    const targetFilters = target.filters ?? [];
+    if (targetFilters.length === 0) return;
+    const currentEntries = onClick.filterValueTemplates ?? [];
+    const allTemplatesBlank = currentEntries.every(e => !e.template);
+    if (!allTemplatesBlank) return; // preserve anything the user typed
+    setValue('onClick', {
+      ...onClick,
+      filterValueTemplates: targetFilters.map(f => ({
+        filter: f.expression,
+        template: '',
+      })),
+    });
+  }, [onClick, dashboards, setValue]);
+
   return (
     <Stack gap="xs">
       <SegmentedControl
         data={[
           { label: 'By Dashboard', value: 'id' },
-          { label: 'By Name (templated)', value: 'name-template' },
+          { label: 'By Name (templated)', value: 'template' },
         ]}
         value={mode}
         onChange={next => {
           if (next === 'id') {
             setValue('onClick', {
               ...onClick,
-              target: { mode: 'id', dashboardId: '' },
+              target: { mode: 'id', id: '' },
             });
           } else {
             setValue('onClick', {
               ...onClick,
-              target: { mode: 'name-template', nameTemplate: '' },
+              target: { mode: 'template', template: '' },
             });
           }
         }}
@@ -232,65 +305,50 @@ function DashboardOnClickFields({
           placeholder="Select a dashboard"
           searchable
           data={dashboardOptions}
-          value={onClick.target.mode === 'id' ? onClick.target.dashboardId : ''}
+          value={onClick.target.mode === 'id' ? onClick.target.id : ''}
           onChange={next => {
             setValue('onClick', {
               ...onClick,
-              target: { mode: 'id', dashboardId: next ?? '' },
+              target: { mode: 'id', id: next ?? '' },
             });
           }}
         />
       )}
 
-      {mode === 'name-template' && (
+      {mode === 'template' && (
         <TextInput
           label="Target dashboard name (Handlebars)"
           description="Rendered per row. Target name must match exactly one dashboard on your team."
           placeholder="{{ServiceName}} Errors"
           value={
-            onClick.target.mode === 'name-template'
-              ? onClick.target.nameTemplate
-              : ''
+            onClick.target.mode === 'template' ? onClick.target.template : ''
           }
           onChange={e => {
             setValue('onClick', {
               ...onClick,
               target: {
-                mode: 'name-template',
-                nameTemplate: e.currentTarget.value,
+                mode: 'template',
+                template: e.currentTarget.value,
               },
             });
           }}
         />
       )}
 
-      <Textarea
-        label="Global WHERE template (optional)"
-        placeholder="ServiceName = '{{ServiceName}}'"
-        autosize
-        minRows={2}
-        value={onClick.whereTemplate ?? ''}
-        onChange={e => {
-          setValue('onClick', {
-            ...onClick,
-            whereTemplate: e.currentTarget.value || undefined,
-          });
-        }}
-      />
-
-      <SegmentedControl
-        data={[
-          { label: 'SQL', value: 'sql' },
-          { label: 'Lucene', value: 'lucene' },
-        ]}
-        value={onClick.whereLanguage ?? 'sql'}
-        onChange={next => {
-          setValue('onClick', {
-            ...onClick,
-            whereLanguage: next as 'sql' | 'lucene',
-          });
-        }}
-      />
+      <Box>
+        <Text size="sm" fw={500} mb={4}>
+          Global WHERE template (optional)
+        </Text>
+        <SearchWhereInput
+          control={control}
+          name="onClick.whereTemplate"
+          languageName="onClick.whereLanguage"
+          showLabel={false}
+          allowMultiline
+          sqlPlaceholder="ServiceName = '{{ServiceName}}'"
+          lucenePlaceholder="ServiceName:{{ServiceName}}"
+        />
+      </Box>
 
       <FilterExpressionList
         entries={onClick.filterValueTemplates ?? []}
@@ -394,9 +452,11 @@ function FilterExpressionList({
 function SearchOnClickFields({
   onClick,
   setValue,
+  control,
 }: {
   onClick: Extract<TableOnClick, { type: 'search' }>;
   setValue: (name: 'onClick', value: TableOnClick) => void;
+  control: Control<DrawerFormValues>;
 }) {
   const { data: sources } = useSources();
   const sourceOptions = useMemo(
@@ -404,7 +464,7 @@ function SearchOnClickFields({
     [sources],
   );
 
-  const mode = onClick.source.mode;
+  const mode = onClick.target.mode;
 
   return (
     <Stack gap="xs">
@@ -418,12 +478,12 @@ function SearchOnClickFields({
           if (next === 'id') {
             setValue('onClick', {
               ...onClick,
-              source: { mode: 'id', sourceId: '' },
+              target: { mode: 'id', id: '' },
             });
           } else {
             setValue('onClick', {
               ...onClick,
-              source: { mode: 'template', sourceTemplate: '' },
+              target: { mode: 'template', template: '' },
             });
           }
         }}
@@ -435,11 +495,11 @@ function SearchOnClickFields({
           placeholder="Select a source"
           searchable
           data={sourceOptions}
-          value={onClick.source.mode === 'id' ? onClick.source.sourceId : ''}
+          value={onClick.target.mode === 'id' ? onClick.target.id : ''}
           onChange={next => {
             setValue('onClick', {
               ...onClick,
-              source: { mode: 'id', sourceId: next ?? '' },
+              target: { mode: 'id', id: next ?? '' },
             });
           }}
         />
@@ -448,52 +508,37 @@ function SearchOnClickFields({
       {mode === 'template' && (
         <TextInput
           label="Source template"
-          description="Resolves to a source name (case-insensitive)"
-          placeholder="Logs-{{SourceName}}"
+          description="Resolves to a source id or case-insensitive source name."
+          placeholder="{{SourceName}}"
           value={
-            onClick.source.mode === 'template'
-              ? onClick.source.sourceTemplate
-              : ''
+            onClick.target.mode === 'template' ? onClick.target.template : ''
           }
           onChange={e => {
             setValue('onClick', {
               ...onClick,
-              source: {
+              target: {
                 mode: 'template',
-                sourceTemplate: e.currentTarget.value,
+                template: e.currentTarget.value,
               },
             });
           }}
         />
       )}
 
-      <Textarea
-        label="WHERE template"
-        placeholder="ServiceName = '{{ServiceName}}'"
-        autosize
-        minRows={2}
-        value={onClick.whereTemplate ?? ''}
-        onChange={e => {
-          setValue('onClick', {
-            ...onClick,
-            whereTemplate: e.currentTarget.value || undefined,
-          });
-        }}
-      />
-
-      <SegmentedControl
-        data={[
-          { label: 'SQL', value: 'sql' },
-          { label: 'Lucene', value: 'lucene' },
-        ]}
-        value={onClick.whereLanguage ?? 'sql'}
-        onChange={next => {
-          setValue('onClick', {
-            ...onClick,
-            whereLanguage: next as 'sql' | 'lucene',
-          });
-        }}
-      />
+      <Box>
+        <Text size="sm" fw={500} mb={4}>
+          WHERE template
+        </Text>
+        <SearchWhereInput
+          control={control}
+          name="onClick.whereTemplate"
+          languageName="onClick.whereLanguage"
+          showLabel={false}
+          allowMultiline
+          sqlPlaceholder="ServiceName = '{{ServiceName}}'"
+          lucenePlaceholder="ServiceName:{{ServiceName}}"
+        />
+      </Box>
 
       <FilterExpressionList
         entries={onClick.filterValueTemplates ?? []}

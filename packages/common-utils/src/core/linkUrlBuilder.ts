@@ -87,11 +87,11 @@ function renderFilterTemplates(
 
 /**
  * Build a URL to navigate from a table row click to another dashboard.
- * For `mode: 'name-template'`, resolves the rendered dashboard name against
- * the supplied lookup (case-insensitive). Since dashboard names are not
- * unique per team, ambiguous resolutions surface an error rather than
- * silently picking one. Renders handlebars templates with the row context
- * and appends the current dashboard's time range so it is preserved across
+ * For `mode: 'template'`, resolves the rendered dashboard name against the
+ * supplied lookup (case-insensitive). Since dashboard names are not unique
+ * per team, ambiguous resolutions surface an error rather than silently
+ * picking one. Renders handlebars templates with the row context and
+ * appends the current dashboard's time range so it is preserved across
  * navigation.
  */
 export function buildDashboardLinkUrl({
@@ -107,16 +107,16 @@ export function buildDashboardLinkUrl({
 }): LinkBuildResult {
   let dashboardId: string;
   if (onClick.target.mode === 'id') {
-    if (!onClick.target.dashboardId) {
+    if (!onClick.target.id) {
       return {
         ok: false,
         error: 'Dashboard link: no target dashboard selected',
       };
     }
-    dashboardId = onClick.target.dashboardId;
+    dashboardId = onClick.target.id;
   } else {
     const nameResult = renderOrError(
-      onClick.target.nameTemplate,
+      onClick.target.template,
       row,
       'Dashboard link',
     );
@@ -203,8 +203,8 @@ export function renderSearchLinkPieces({
 }): { ok: true; value: RenderedSearchLink } | { ok: false; error: string } {
   let sourceId: string;
   let sourceResolvedFrom: RenderedSearchLink['sourceResolvedFrom'];
-  if (onClick.source.mode === 'id') {
-    sourceId = onClick.source.sourceId;
+  if (onClick.target.mode === 'id') {
+    sourceId = onClick.target.id;
     if (!sourceId) {
       return { ok: false, error: 'Search link: no target source selected' };
     }
@@ -216,11 +216,7 @@ export function renderSearchLinkPieces({
     }
     sourceResolvedFrom = 'id';
   } else {
-    const rendered = renderOrError(
-      onClick.source.sourceTemplate,
-      row,
-      'Search link',
-    );
+    const rendered = renderOrError(onClick.target.template, row, 'Search link');
     if (!rendered.ok) return rendered;
     const value = rendered.value.trim();
     if (value === '') {

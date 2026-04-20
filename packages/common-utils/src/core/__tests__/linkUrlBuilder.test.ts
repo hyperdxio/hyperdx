@@ -25,7 +25,7 @@ describe('buildDashboardLinkUrl', () => {
   it('uses a concrete id target', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'id', dashboardId: 'dash_1' },
+      target: { mode: 'id', id: 'dash_1' },
       whereLanguage: 'sql',
     };
     const result = buildDashboardLinkUrl({
@@ -46,8 +46,8 @@ describe('buildDashboardLinkUrl', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
       target: {
-        mode: 'name-template',
-        nameTemplate: '{{ServiceName}} Errors',
+        mode: 'template',
+        template: '{{ServiceName}} Errors',
       },
       whereLanguage: 'sql',
     };
@@ -64,7 +64,7 @@ describe('buildDashboardLinkUrl', () => {
   it('resolves case-insensitively', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'name-template', nameTemplate: 'API ERRORS' },
+      target: { mode: 'template', template: 'API ERRORS' },
       whereLanguage: 'sql',
     };
     const result = buildDashboardLinkUrl({
@@ -81,8 +81,8 @@ describe('buildDashboardLinkUrl', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
       target: {
-        mode: 'name-template',
-        nameTemplate: '{{ServiceName}} Errors',
+        mode: 'template',
+        template: '{{ServiceName}} Errors',
       },
       whereLanguage: 'sql',
     };
@@ -101,7 +101,7 @@ describe('buildDashboardLinkUrl', () => {
   it('errors when the rendered name matches more than one dashboard', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'name-template', nameTemplate: 'Errors' },
+      target: { mode: 'template', template: 'Errors' },
       whereLanguage: 'sql',
     };
     const result = buildDashboardLinkUrl({
@@ -126,7 +126,7 @@ describe('buildDashboardLinkUrl', () => {
       // In strict mode, referencing a missing key throws — so a template that
       // legitimately resolves to empty needs the key to exist with a falsy
       // value and a helper default.
-      target: { mode: 'name-template', nameTemplate: '{{default v ""}}' },
+      target: { mode: 'template', template: '{{default v ""}}' },
       whereLanguage: 'sql',
     };
     const result = buildDashboardLinkUrl({
@@ -143,8 +143,8 @@ describe('buildDashboardLinkUrl', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
       target: {
-        mode: 'name-template',
-        nameTemplate: '{{ServiceName}} Errors',
+        mode: 'template',
+        template: '{{ServiceName}} Errors',
       },
       whereLanguage: 'sql',
     };
@@ -163,7 +163,7 @@ describe('buildDashboardLinkUrl', () => {
   it('renders whereTemplate into the url', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'id', dashboardId: 'd1' },
+      target: { mode: 'id', id: 'd1' },
       whereTemplate: "ServiceName = '{{ServiceName}}'",
       whereLanguage: 'sql',
     };
@@ -184,7 +184,7 @@ describe('buildDashboardLinkUrl', () => {
   it('renders filterValueTemplates into SQL IN conditions using the raw expression', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'id', dashboardId: 'd1' },
+      target: { mode: 'id', id: 'd1' },
       filterValueTemplates: [
         { filter: 'ServiceName', template: '{{ServiceName}}' },
         { filter: 'Env', template: 'prod' },
@@ -211,7 +211,7 @@ describe('buildDashboardLinkUrl', () => {
   it('skips filterValueTemplates rows with empty filter or template', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'id', dashboardId: 'd1' },
+      target: { mode: 'id', id: 'd1' },
       filterValueTemplates: [
         { filter: '', template: '{{ServiceName}}' },
         { filter: 'Env', template: '' },
@@ -236,7 +236,7 @@ describe('buildDashboardLinkUrl', () => {
   it('merges repeated filter expressions into a single IN clause', () => {
     const onClick: TableOnClickDashboard = {
       type: 'dashboard',
-      target: { mode: 'id', dashboardId: 'd1' },
+      target: { mode: 'id', id: 'd1' },
       filterValueTemplates: [
         { filter: 'ServiceName', template: 'api' },
         { filter: 'Env', template: 'prod' },
@@ -274,7 +274,7 @@ describe('renderSearchLinkPieces', () => {
   it('resolves source by id', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'id', sourceId: 'src_1' },
+      target: { mode: 'id', id: 'src_1' },
       whereLanguage: 'sql',
     };
     const result = renderSearchLinkPieces({
@@ -290,7 +290,7 @@ describe('renderSearchLinkPieces', () => {
   it('resolves source by templated name', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'template', sourceTemplate: '{{Src}}' },
+      target: { mode: 'template', template: '{{Src}}' },
       whereLanguage: 'sql',
     };
     const result = renderSearchLinkPieces({
@@ -309,7 +309,7 @@ describe('renderSearchLinkPieces', () => {
   it('errors when source template does not match any source', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'template', sourceTemplate: '{{Src}}' },
+      target: { mode: 'template', template: '{{Src}}' },
       whereLanguage: 'sql',
     };
     const result = renderSearchLinkPieces({
@@ -325,7 +325,7 @@ describe('renderSearchLinkPieces', () => {
   it('renders filterValueTemplates into SQL IN conditions', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'id', sourceId: 'src_1' },
+      target: { mode: 'id', id: 'src_1' },
       whereLanguage: 'sql',
       filterValueTemplates: [
         { filter: 'ServiceName', template: '{{ServiceName}}' },
@@ -350,7 +350,7 @@ describe('renderSearchLinkPieces', () => {
   it('skips filterValueTemplates rows with empty filter or template', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'id', sourceId: 'src_1' },
+      target: { mode: 'id', id: 'src_1' },
       whereLanguage: 'sql',
       filterValueTemplates: [
         { filter: '', template: '{{ServiceName}}' },
@@ -375,7 +375,7 @@ describe('renderSearchLinkPieces', () => {
   it('merges repeated filter expressions into a single IN clause', () => {
     const onClick: TableOnClickSearch = {
       type: 'search',
-      source: { mode: 'id', sourceId: 'src_1' },
+      target: { mode: 'id', id: 'src_1' },
       whereLanguage: 'sql',
       filterValueTemplates: [
         { filter: 'ServiceName', template: 'api' },

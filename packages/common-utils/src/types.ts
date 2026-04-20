@@ -688,21 +688,23 @@ export type TableOnClickFilterTemplate = z.infer<
   typeof TableOnClickFilterTemplateSchema
 >;
 
+/**
+ * Shared target shape for both dashboard and search onClicks:
+ * - `{ mode: 'id', id }` references a specific destination by its ObjectId.
+ * - `{ mode: 'template', template }` renders a Handlebars template to either
+ *   a name (for dashboards) or a name / id (for sources) at click time.
+ * Empty strings are permitted so the drawer can be committed mid-edit; the
+ * URL builder surfaces empty values as explicit errors at click time.
+ */
+export const TableOnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string() }),
+  z.object({ mode: z.literal('template'), template: z.string() }),
+]);
+export type TableOnClickTarget = z.infer<typeof TableOnClickTargetSchema>;
+
 export const TableOnClickDashboardSchema = z.object({
   type: z.literal('dashboard'),
-  // Empty strings are permitted so the drawer can be committed mid-edit (e.g.,
-  // user switched to dashboard mode but hasn't picked a target yet). Empty
-  // values are surfaced as errors at click time by the URL builder.
-  target: z.discriminatedUnion('mode', [
-    z.object({
-      mode: z.literal('id'),
-      dashboardId: z.string(),
-    }),
-    z.object({
-      mode: z.literal('name-template'),
-      nameTemplate: z.string(),
-    }),
-  ]),
+  target: TableOnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
   filterValueTemplates: z.array(TableOnClickFilterTemplateSchema).optional(),
@@ -711,18 +713,7 @@ export type TableOnClickDashboard = z.infer<typeof TableOnClickDashboardSchema>;
 
 export const TableOnClickSearchSchema = z.object({
   type: z.literal('search'),
-  // Same as dashboard above: allow empty strings so Apply can commit
-  // mid-edit; the URL builder validates at click time.
-  source: z.discriminatedUnion('mode', [
-    z.object({
-      mode: z.literal('id'),
-      sourceId: z.string(),
-    }),
-    z.object({
-      mode: z.literal('template'),
-      sourceTemplate: z.string(),
-    }),
-  ]),
+  target: TableOnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
   /**
