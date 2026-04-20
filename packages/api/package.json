@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.23.2",
+  "version": "2.24.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -10,7 +10,7 @@
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.47",
     "@esm2cjs/p-queue": "^7.3.0",
-    "@hyperdx/common-utils": "^0.17.1",
+    "@hyperdx/common-utils": "^0.18.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@modelcontextprotocol/sdk": "^1.27.1",

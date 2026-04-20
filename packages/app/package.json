@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.23.2",
+  "version": "2.24.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -34,7 +34,7 @@
     "@dagrejs/dagre": "^1.1.5",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.22.0",
-    "@hyperdx/common-utils": "^0.17.1",
+    "@hyperdx/common-utils": "^0.18.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",
