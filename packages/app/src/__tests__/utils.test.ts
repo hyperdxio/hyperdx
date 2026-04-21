@@ -6,6 +6,7 @@ import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
   formatAttributeClause,
+  formatDurationMs,
   formatNumber,
   getAllMetricTables,
   getMetricTableName,
@@ -357,6 +358,68 @@ describe('formatNumber', () => {
     });
   });
 
+  describe('duration format', () => {
+    it('formats seconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(30.41, format)).toBe('30.41s');
+      expect(formatNumber(0.045, format)).toBe('45ms');
+      expect(formatNumber(3661, format)).toBe('1.02h');
+    });
+
+    it('formats milliseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.001,
+      };
+      expect(formatNumber(30410, format)).toBe('30.41s');
+      expect(formatNumber(45, format)).toBe('45ms');
+    });
+
+    it('formats nanoseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.000000001,
+      };
+      expect(formatNumber(30410000000, format)).toBe('30.41s');
+      expect(formatNumber(45000000, format)).toBe('45ms');
+      expect(formatNumber(500, format)).toBe('0.5µs');
+    });
+
+    it('handles zero value', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0, format)).toBe('0ms');
+    });
+
+    it('defaults factor to 1 (seconds) when not specified', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+      };
+      expect(formatNumber(1.5, format)).toBe('1.5s');
+    });
+
+    it('formats sub-millisecond values as microseconds', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0.0003, format)).toBe('300µs');
+    });
+
+    it('formats large values as hours', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(7200, format)).toBe('2h');
+    });
+  });
+
   describe('unit handling', () => {
     it('appends unit to formatted number', () => {
       const format: NumberFormat = {
@@ -593,6 +656,49 @@ describe('formatNumber', () => {
         formatNumber('not a number', { output: 'number', mantissa: 2 }),
       ).toBe('not a number');
     });
+  });
+});
+
+describe('formatDurationMs', () => {
+  it('formats zero', () => {
+    expect(formatDurationMs(0)).toBe('0ms');
+  });
+
+  it('formats microseconds', () => {
+    expect(formatDurationMs(0.5)).toBe('500µs');
+    expect(formatDurationMs(0.003)).toBe('3µs');
+    expect(formatDurationMs(0.01)).toBe('10µs');
+  });
+
+  it('formats milliseconds', () => {
+    expect(formatDurationMs(1)).toBe('1ms');
+    expect(formatDurationMs(45)).toBe('45ms');
+    expect(formatDurationMs(999)).toBe('999ms');
+    expect(formatDurationMs(5.5)).toBe('5.5ms');
+  });
+
+  it('formats seconds', () => {
+    expect(formatDurationMs(1000)).toBe('1s');
+    expect(formatDurationMs(1500)).toBe('1.5s');
+    expect(formatDurationMs(30410)).toBe('30.41s');
+  });
+
+  it('formats minutes', () => {
+    expect(formatDurationMs(60000)).toBe('1min');
+    expect(formatDurationMs(90000)).toBe('1.5min');
+  });
+
+  it('formats hours', () => {
+    expect(formatDurationMs(3600000)).toBe('1h');
+    expect(formatDurationMs(7200000)).toBe('2h');
+  });
+
+  it('handles negative values', () => {
+    expect(formatDurationMs(-1500)).toBe('-1.5s');
+  });
+
+  it('handles sub-microsecond precision', () => {
+    expect(formatDurationMs(0.0005)).toBe('0.5µs');
   });
 });
 

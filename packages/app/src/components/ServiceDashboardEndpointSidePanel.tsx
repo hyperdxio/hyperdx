@@ -102,7 +102,7 @@ export default function ServiceDashboardEndpointSidePanel({
             onClose={onClose}
           />
           <DrawerBody>
-            <Grid grow={false} w="100%" maw="100%" overflow="hidden">
+            <Grid grow={false} w="100%" maw="100%">
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   {source && expressions && (

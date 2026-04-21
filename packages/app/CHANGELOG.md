@@ -1,5 +1,64 @@
 # @hyperdx/app
 
+## 2.24.0
+
+### Minor Changes
+
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+- 0bfec148: Upgrade Mantine from v7 to v9 and remove react-hook-form-mantine dependency
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- c4a1311e: fix: Fix "Copy entire row as JSON" button crashing on rows with non-string values
+- a5869f0e: Dedupe source validation issue toasts so repeated source refetches update a single notification instead of stacking duplicates.
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 5149fabd: feat: Add Python Runtime Metrics dashboard template
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 739fe140: fix: time selector always resets to 00:00
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- 4ca1d472: Allow manually constructed /trace URLs to land in the existing search experience with the trace viewer opened from URL state. This keeps trace deep links user-friendly while reusing the search page for source selection, not-found handling, and trace inspection.
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
+## 2.23.2
+
+### Patch Changes
+
+- 0daa5299: feat: Generate stable source IDs in local mode
+
+## 2.23.1
+
+### Patch Changes
+
+- 7d1a8e54: fix: Show sidebar favorites empty state when none are starred yet
+- 800689ac: feat: Add reusable EmptyState component and adopt it across pages for consistent empty/no-data states
+- 2570ff84: fix: Change K8s CPU chart format from percentage to number to support both old and new OTel collector metric names
+- ad71dc2e: feat: Add keyboard shortcuts modal from the Help menu
+
+  - New **Keyboard shortcuts** item opens a modal documenting app shortcuts (command palette ⌘/Ctrl+K, search focus, time picker, tables, traces, dashboards, and more).
+  - Help menu items ordered by importance (documentation and setup before shortcuts and community).
+  - Shortcuts modal uses a readable width, row dividers, and **or** vs **+** labels so alternative keys are not confused with key chords.
+
+- 1bcca2cd: feat: Add alert icons to dashboard list page
+- 52986a94: Fix bug when accessing session replay panel from search page
+- ffc961c6: fix: Add error message and edit button when tile source is missing
+- 3ffafced: feat: show error details in search event patterns
+- 61db3e8b: refactor: Create TileAlertEditor component
+- f8d2edde: feat: Show created/updated metadata for saved searches and dashboards
+- Updated dependencies [24767c58]
+  - @hyperdx/common-utils@0.17.1
+
 ## 2.23.0
 
 ### Minor Changes

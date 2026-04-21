@@ -26,6 +26,9 @@ services:
       context: .
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
+      args:
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION}
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
@@ -63,6 +66,9 @@ services:
       context: .
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
+      args:
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION}
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
@@ -74,9 +80,9 @@ services:
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
       OTEL_SUPERVISOR_LOGS: 'true'
-      # Uncomment to enable JSON schema in ClickHouse
+      # Enable JSON schema in the ClickHouse exporter (per-exporter config)
       # Be sure to also set BETA_CH_OTEL_JSON_SCHEMA_ENABLED to 'true' in ch-server
-      OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE: 'true'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
@@ -103,7 +109,7 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       # Set to 'true' to allow for proper OTel JSON Schema creation
-      # Be sure to also set the OTEL_AGENT_FEATURE_GATE_ARG env in otel-collector
+      # Be sure to also set HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE in otel-collector
       # BETA_CH_OTEL_JSON_SCHEMA_ENABLED: 'true'
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml

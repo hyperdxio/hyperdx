@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
@@ -36,7 +36,6 @@ import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
-import type { SavedSearch } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
@@ -204,7 +203,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   }, [meData]);
 
   const renderSavedSearchLink = useCallback(
-    (savedSearch: SavedSearch) => (
+    (savedSearch: SavedSearchListApiResponse) => (
       <Link
         href={`/search/${savedSearch.id}`}
         key={savedSearch.id}
@@ -229,9 +228,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => {
       const alerts = dashboard.tiles
-        .map(t =>
-          isBuilderSavedChartConfig(t.config) ? t.config.alert : undefined,
-        )
+        .map(t => t.config.alert)
         .filter(a => a != null);
       return (
         <Link
@@ -400,10 +397,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
 
-            {!isCollapsed && !!favoritedSavedSearches.length && (
-              <Collapse in={isSavedSearchExpanded}>
+            {!isCollapsed && (
+              <Collapse expanded={isSavedSearchExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedSavedSearches.map(renderSavedSearchLink)}
+                  {favoritedSavedSearches.length > 0 ? (
+                    favoritedSavedSearches.map(renderSavedSearchLink)
+                  ) : favorites != null && savedSearches != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor component={Link} href="/search/list" size="xs">
+                        Saved Searches
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}
@@ -430,10 +437,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               onToggle={() => setIsDashboardsExpanded(!isDashboardsExpanded)}
             />
 
-            {!isCollapsed && !!favoritedDashboards.length && (
-              <Collapse in={isDashboardsExpanded}>
+            {!isCollapsed && (
+              <Collapse expanded={isDashboardsExpanded}>
                 <div className={styles.subMenu}>
-                  {favoritedDashboards.map(renderDashboardLink)}
+                  {favoritedDashboards.length > 0 ? (
+                    favoritedDashboards.map(renderDashboardLink)
+                  ) : favorites != null && dashboards != null ? (
+                    <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
+                      No favorites. Star on{' '}
+                      <Anchor
+                        component={Link}
+                        href="/dashboards/list"
+                        size="xs"
+                      >
+                        Dashboards
+                      </Anchor>
+                      .
+                    </Text>
+                  ) : null}
                 </div>
               </Collapse>
             )}

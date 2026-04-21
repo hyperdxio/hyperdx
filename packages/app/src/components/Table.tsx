@@ -114,7 +114,7 @@ export const TableCellButton: React.FC<{
 }> = ({ onClick, title, label, biIcon }) => {
   return (
     <button className={styles.tableCellButton} title={title} onClick={onClick}>
-      {label && <span>{label}</span>}
+      {!!label && <span>{label}</span>}
       {biIcon === 'chevron-up' && <IconChevronUp size={14} />}
       {biIcon === 'chevron-down' && <IconChevronDown size={14} />}
     </button>

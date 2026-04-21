@@ -1,6 +1,7 @@
 import {
   FormEvent,
   FormEventHandler,
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -12,6 +13,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import router from 'next/router';
+import { formatDistanceToNow } from 'date-fns';
 import {
   parseAsBoolean,
   parseAsInteger,
@@ -48,7 +50,6 @@ import {
   Breadcrumbs,
   Button,
   Card,
-  Center,
   Code,
   Flex,
   Grid,
@@ -71,6 +72,7 @@ import {
   IconBolt,
   IconPlayerPlay,
   IconPlus,
+  IconStack2,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -82,6 +84,7 @@ import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
@@ -125,6 +128,7 @@ import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
+import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
@@ -132,6 +136,10 @@ import {
 } from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import {
+  buildDirectTraceWhereClause,
+  getDefaultDirectTraceDateRange,
+} from './utils/directTrace';
 import {
   parseAsJsonEncoded,
   parseAsSortingStateString,
@@ -142,6 +150,7 @@ import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
+import { FormatTime } from './useFormatTime';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
 
@@ -405,7 +414,7 @@ function SaveSearchModalComponent({
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    handleSubmit(({ name }) => {
+    handleSubmit(async ({ name }) => {
       if (isUpdate) {
         if (savedSearchId == null) {
           throw new Error('savedSearchId is required for update');
@@ -428,11 +437,20 @@ function SaveSearchModalComponent({
             onSuccess: () => {
               onClose();
             },
+            onError: error => {
+              console.error('Error updating saved search:', error);
+              notifications.show({
+                color: 'red',
+                title: 'Error',
+                message:
+                  'An error occurred while updating your saved search. Please try again.',
+              });
+            },
           },
         );
       } else {
-        createSavedSearch.mutate(
-          {
+        try {
+          const savedSearch = await createSavedSearch.mutateAsync({
             name,
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
@@ -442,17 +460,24 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
-          },
-          {
-            onSuccess: savedSearch => {
-              router.push(`/search/${savedSearch.id}${window.location.search}`);
-              onClose();
-            },
-          },
-        );
+          });
+
+          router.push(`/search/${savedSearch.id}${window.location.search}`);
+          onClose();
+        } catch (error) {
+          console.error('Error creating saved search:', error);
+          notifications.show({
+            color: 'red',
+            title: 'Error',
+            message:
+              'An error occurred while saving your search. Please try again.',
+          });
+        }
       }
     })();
   };
+
+  const isPending = createSavedSearch.isPending || updateSavedSearch.isPending;
 
   const { data: chartConfig } = useSearchedConfigToChartConfig(searchedConfig);
 
@@ -568,6 +593,7 @@ function SaveSearchModalComponent({
             variant="primary"
             type="submit"
             disabled={!formState.isValid}
+            loading={isPending}
           >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
@@ -783,7 +809,7 @@ const queryStateMap = {
   orderBy: parseAsStringEncoded,
 };
 
-function DBSearchPage() {
+export function DBSearchPage() {
   const brandName = useBrandDisplayName();
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
@@ -791,6 +817,10 @@ function DBSearchPage() {
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [directTraceId, setDirectTraceId] = useQueryState(
+    'traceId',
+    parseAsStringEncoded,
+  );
 
   const { data: savedSearch } = useSavedSearch(
     { id: `${savedSearchId}` },
@@ -808,6 +838,14 @@ function DBSearchPage() {
     id: searchedConfig.source,
     kinds: [SourceKind.Log, SourceKind.Trace],
   });
+  const directTraceSource =
+    directTraceId != null && searchedSource?.kind === SourceKind.Trace
+      ? searchedSource
+      : undefined;
+  const chartSourceId =
+    directTraceId != null && !directTraceSource
+      ? ''
+      : (searchedConfig.source ?? '');
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -865,7 +903,9 @@ function DBSearchPage() {
       where: searchedConfig.where || '',
       whereLanguage:
         searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      source: searchedConfig.source || defaultSourceId,
+      source:
+        searchedConfig.source ||
+        (savedSearchId || directTraceId ? '' : defaultSourceId),
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -964,6 +1004,10 @@ function DBSearchPage() {
       return;
     }
 
+    if (savedSearchId == null && directTraceId != null && !source) {
+      return;
+    }
+
     // Landed on a new search - ensure we have a source selected
     if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
       setSearchedConfig({
@@ -982,6 +1026,7 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
+    directTraceId,
     sources,
   ]);
 
@@ -1104,9 +1149,28 @@ function DBSearchPage() {
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
+  const chartSearchConfig = useMemo(
+    () => ({
+      select: searchedConfig.select ?? '',
+      source: chartSourceId,
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+      filters: searchedConfig.filters ?? [],
+      orderBy: searchedConfig.orderBy ?? '',
+    }),
+    [
+      chartSourceId,
+      searchedConfig.filters,
+      searchedConfig.orderBy,
+      searchedConfig.select,
+      searchedConfig.where,
+      searchedConfig.whereLanguage,
+    ],
+  );
 
   const { data: chartConfig, isLoading: isChartConfigLoading } =
-    useSearchedConfigToChartConfig(searchedConfig, defaultSearchConfig);
+    useSearchedConfigToChartConfig(chartSearchConfig, defaultSearchConfig);
 
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
@@ -1347,17 +1411,67 @@ function DBSearchPage() {
 
   const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
     useDisclosure();
+  const directTraceRangeAppliedRef = useRef<string | null>(null);
+  const directTraceFilterAppliedRef = useRef<string | null>(null);
 
-  // Add this effect to trigger initial search when component mounts
+  useEffect(() => {
+    if (!isReady || !directTraceId) {
+      directTraceRangeAppliedRef.current = null;
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has('from') && searchParams.has('to')) {
+      return;
+    }
+
+    if (directTraceRangeAppliedRef.current === directTraceId) {
+      return;
+    }
+
+    directTraceRangeAppliedRef.current = directTraceId;
+    setIsLive(false);
+    const [start, end] = getDefaultDirectTraceDateRange();
+    onTimeRangeSelect(start, end, null);
+  }, [directTraceId, isReady, onTimeRangeSelect, setIsLive]);
+
+  useEffect(() => {
+    if (!directTraceId || !directTraceSource) {
+      directTraceFilterAppliedRef.current = null;
+      return;
+    }
+
+    const nextKey = `${directTraceSource.id}:${directTraceId}`;
+    if (directTraceFilterAppliedRef.current === nextKey) {
+      return;
+    }
+
+    directTraceFilterAppliedRef.current = nextKey;
+    setIsLive(false);
+    setSearchedConfig({
+      source: directTraceSource.id,
+      where: buildDirectTraceWhereClause(
+        directTraceSource.traceIdExpression,
+        directTraceId,
+      ),
+      whereLanguage: 'sql',
+      filters: [],
+    });
+  }, [directTraceId, directTraceSource, setIsLive, setSearchedConfig]);
+
   useEffect(() => {
     if (isReady && queryReady && !isChartConfigLoading) {
       // Only trigger if we haven't searched yet (no time range in URL)
       const searchParams = new URLSearchParams(window.location.search);
-      if (!searchParams.has('from') && !searchParams.has('to')) {
+      if (
+        directTraceId == null &&
+        !searchParams.has('from') &&
+        !searchParams.has('to')
+      ) {
         onSearch('Live Tail');
       }
     }
-  }, [isReady, queryReady, isChartConfigLoading, onSearch]);
+  }, [directTraceId, isReady, queryReady, isChartConfigLoading, onSearch]);
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
@@ -1525,6 +1639,52 @@ function DBSearchPage() {
     },
     [setIsLive, setInterval, onTimeRangeSelect],
   );
+  const directTraceFocusDate = useMemo(
+    () =>
+      new Date(
+        (searchedTimeRange[0].getTime() + searchedTimeRange[1].getTime()) / 2,
+      ),
+    [searchedTimeRange],
+  );
+
+  const onDirectTraceSourceChange = useCallback(
+    (sourceId: string | null) => {
+      setIsLive(false);
+      if (sourceId == null) {
+        directTraceFilterAppliedRef.current = null;
+        setSearchedConfig({
+          source: null,
+          where: '',
+          whereLanguage: getStoredLanguage() ?? 'lucene',
+          filters: [],
+        });
+        return;
+      }
+
+      const nextSource = sources?.find(
+        (source): source is Extract<TSource, { kind: SourceKind.Trace }> =>
+          source.id === sourceId && isTraceSource(source),
+      );
+      if (!nextSource || !directTraceId) {
+        return;
+      }
+
+      setSearchedConfig({
+        source: nextSource.id,
+        where: buildDirectTraceWhereClause(
+          nextSource.traceIdExpression,
+          directTraceId,
+        ),
+        whereLanguage: 'sql',
+        filters: [],
+      });
+    },
+    [directTraceId, setIsLive, setSearchedConfig, sources],
+  );
+
+  const closeDirectTraceSidePanel = useCallback(() => {
+    setDirectTraceId(null);
+  }, [setDirectTraceId]);
 
   const clearSaveSearchModalState = useCallback(
     () => setSaveSearchModalState(undefined),
@@ -1578,9 +1738,9 @@ function DBSearchPage() {
       )}
       <OnboardingModal />
       {savedSearch && (
-        <Group justify="space-between" align="flex-end" mt="lg" mx="xs">
-          <Stack gap={0}>
-            <Breadcrumbs fz="sm" mb="xs">
+        <Stack mt="lg" mx="xs">
+          <Group justify="space-between">
+            <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
                 Saved Searches
               </Anchor>
@@ -1588,53 +1748,82 @@ function DBSearchPage() {
                 {savedSearch.name}
               </Text>
             </Breadcrumbs>
-            <EditablePageName
-              key={savedSearch.id}
-              name={savedSearch?.name ?? 'Untitled Search'}
-              onSave={editedName => {
-                updateSavedSearch.mutate({
-                  id: savedSearch.id,
-                  name: editedName,
-                });
-              }}
-            />
-          </Stack>
-
-          <Group gap="xs">
-            <FavoriteButton
-              resourceType="savedSearch"
-              resourceId={savedSearch.id}
-            />
-            <Tags
-              allowCreate
-              values={savedSearch.tags || []}
-              onChange={handleUpdateTags}
-            >
-              <Button
-                data-testid="tags-button"
-                variant="secondary"
-                size="xs"
-                style={{ flexShrink: 0 }}
-              >
-                <IconTags size={14} className="me-1" />
-                {savedSearch.tags?.length || 0}
-              </Button>
-            </Tags>
-
-            <SearchPageActionBar
-              onClickDeleteSavedSearch={() => {
-                deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                  onSuccess: () => {
-                    router.push('/search/list');
-                  },
-                });
-              }}
-              onClickSaveAsNew={() => {
-                setSaveSearchModalState('create');
-              }}
-            />
+            <Text size="xs" c="dimmed" lh={1}>
+              {savedSearch.createdBy && (
+                <span>
+                  Created by{' '}
+                  {savedSearch.createdBy.name || savedSearch.createdBy.email}.{' '}
+                </span>
+              )}
+              {savedSearch.updatedAt && (
+                <Tooltip
+                  label={
+                    <>
+                      <FormatTime
+                        value={savedSearch.updatedAt}
+                        format="short"
+                      />
+                      {savedSearch.updatedBy
+                        ? ` by ${savedSearch.updatedBy.name || savedSearch.updatedBy.email}`
+                        : ''}
+                    </>
+                  }
+                >
+                  <span>{`Updated ${formatDistanceToNow(new Date(savedSearch.updatedAt), { addSuffix: true })}.`}</span>
+                </Tooltip>
+              )}
+            </Text>
           </Group>
-        </Group>
+          <Group justify="space-between" align="flex-end">
+            <div data-testid="saved-search-name">
+              <EditablePageName
+                key={savedSearch.id}
+                name={savedSearch?.name ?? 'Untitled Search'}
+                onSave={editedName => {
+                  updateSavedSearch.mutate({
+                    id: savedSearch.id,
+                    name: editedName,
+                  });
+                }}
+              />
+            </div>
+
+            <Group gap="xs">
+              <FavoriteButton
+                resourceType="savedSearch"
+                resourceId={savedSearch.id}
+              />
+              <Tags
+                allowCreate
+                values={savedSearch.tags || []}
+                onChange={handleUpdateTags}
+              >
+                <Button
+                  data-testid="tags-button"
+                  variant="secondary"
+                  size="xs"
+                  style={{ flexShrink: 0 }}
+                >
+                  <IconTags size={14} className="me-1" />
+                  {savedSearch.tags?.length || 0}
+                </Button>
+              </Tags>
+
+              <SearchPageActionBar
+                onClickDeleteSavedSearch={() => {
+                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                    onSuccess: () => {
+                      router.push('/search/list');
+                    },
+                  });
+                }}
+                onClickSaveAsNew={() => {
+                  setSaveSearchModalState('create');
+                }}
+              />
+            </Group>
+          </Group>
+        </Stack>
       )}
       <form
         data-testid="search-form"
@@ -1791,20 +1980,27 @@ function DBSearchPage() {
           savedSearchId={savedSearchId}
         />
       )}
+      <DirectTraceSidePanel
+        opened={directTraceId != null}
+        traceId={directTraceId ?? ''}
+        traceSourceId={directTraceSource?.id ?? null}
+        dateRange={searchedTimeRange}
+        focusDate={directTraceFocusDate}
+        onClose={closeDirectTraceSidePanel}
+        onSourceChange={onDirectTraceSourceChange}
+      />
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
         className="bg-body"
       >
         {!queryReady ? (
-          <Paper shadow="xs" p="xl" h="100%">
-            <Center mih={100} h="100%">
-              <Text size="sm">
-                Please start by selecting a source and then click the play
-                button to query data.
-              </Text>
-            </Center>
-          </Paper>
+          <EmptyState
+            h="100%"
+            icon={<IconStack2 size={32} />}
+            title="No data to display"
+            description="Select a source and click the play button to query data."
+          />
         ) : (
           <>
             <div
@@ -1977,7 +2173,7 @@ function DBSearchPage() {
                             </Text>
                             <Grid>
                               {whereSuggestions!.map(s => (
-                                <>
+                                <Fragment key={s.corrected()}>
                                   <Grid.Col span={10}>
                                     <Text>{s.userMessage('where')}</Text>
                                   </Grid.Col>
@@ -1990,7 +2186,7 @@ function DBSearchPage() {
                                       Accept
                                     </Button>
                                   </Grid.Col>
-                                </>
+                                </Fragment>
                               ))}
                             </Grid>
                           </Box>

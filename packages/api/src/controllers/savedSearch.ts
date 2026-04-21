@@ -1,16 +1,22 @@
-import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
-import { groupBy, pick } from 'lodash';
+import {
+  SavedSearchListApiResponse,
+  SavedSearchSchema,
+} from '@hyperdx/common-utils/dist/types';
+import { groupBy } from 'lodash';
 import { z } from 'zod';
 
 import { deleteSavedSearchAlerts } from '@/controllers/alerts';
 import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
-import type { IUser } from '@/models/user';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
-export async function getSavedSearches(teamId: string) {
-  const savedSearches = await SavedSearch.find({ team: teamId });
+export async function getSavedSearches(
+  teamId: string,
+): Promise<SavedSearchListApiResponse[]> {
+  const savedSearches = await SavedSearch.find({ team: teamId })
+    .populate('createdBy', 'email name')
+    .populate('updatedBy', 'email name');
   const alerts = await Alert.find(
     { team: teamId, savedSearch: { $exists: true, $ne: null } },
     { __v: 0 },
@@ -27,26 +33,36 @@ export async function getSavedSearches(teamId: string) {
 }
 
 export function getSavedSearch(teamId: string, savedSearchId: string) {
-  return SavedSearch.findOne({ _id: savedSearchId, team: teamId });
+  return SavedSearch.findOne({ _id: savedSearchId, team: teamId })
+    .populate('createdBy', 'email name')
+    .populate('updatedBy', 'email name');
 }
 
 export function createSavedSearch(
   teamId: string,
   savedSearch: SavedSearchWithoutId,
+  userId?: string,
 ) {
-  return SavedSearch.create({ ...savedSearch, team: teamId });
+  return SavedSearch.create({
+    ...savedSearch,
+    team: teamId,
+    createdBy: userId,
+    updatedBy: userId,
+  });
 }
 
 export function updateSavedSearch(
   teamId: string,
   savedSearchId: string,
   savedSearch: SavedSearchWithoutId,
+  userId?: string,
 ) {
   return SavedSearch.findOneAndUpdate(
     { _id: savedSearchId, team: teamId },
     {
       ...savedSearch,
       team: teamId,
+      updatedBy: userId,
     },
     { new: true },
   );

@@ -93,6 +93,34 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 
 This pattern cannot be enforced by ESLint and requires manual code review.
 
+### EmptyState Component (REQUIRED)
+
+**Use `EmptyState` (`@/components/EmptyState`) for all empty/no-data states.** Do not create ad-hoc inline empty states.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `icon` | `ReactNode` | — | Icon in the theme circle (hidden if not provided) |
+| `title` | `string` | — | Heading text (headline style — no trailing period) |
+| `description` | `ReactNode` | — | Subtext below the title |
+| `children` | `ReactNode` | — | Actions (buttons, links) below description |
+| `variant` | `"default" \| "card"` | `"default"` | `"card"` wraps in a bordered Paper |
+
+```tsx
+// ❌ BAD - ad-hoc inline empty states
+<div className="text-center my-4 fs-8">No data</div>
+<Text ta="center" c="dimmed">Nothing here</Text>
+
+// ✅ GOOD - use the EmptyState component
+<EmptyState
+  icon={<IconBell size={32} />}
+  title="No alerts created yet"
+  description="Create alerts from dashboard charts or saved searches."
+  variant="card"
+/>
+```
+
+**Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
 ## Refactoring
 
 - Edit files directly - don't create `component-v2.tsx` copies

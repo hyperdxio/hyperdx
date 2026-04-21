@@ -38,6 +38,10 @@ export type Dashboard = {
   savedQueryLanguage?: SearchConditionLanguage | null;
   savedFilterValues?: Filter[];
   containers?: DashboardContainer[];
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: { email: string; name?: string };
+  updatedBy?: { email: string; name?: string };
 };
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');

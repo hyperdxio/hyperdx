@@ -1,5 +1,6 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
+import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -11,6 +12,7 @@ import {
   getSampleWeightExpression,
   isLogSource,
   isMetricSource,
+  isRangeThresholdType,
   isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
@@ -75,6 +77,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alert',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -205,7 +208,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     form.displayType !== DisplayType.Markdown &&
-    !form.source
+    (!form.source || !source)
   ) {
     errors.push({ path: `source`, message: 'Source is required' });
   }
@@ -244,6 +247,41 @@ export const validateChartForm = (
         });
       }
     });
+  }
+
+  // Validate raw SQL alert has required time filters and interval parameters
+  if (isRawSqlChart && form.alert) {
+    const config = {
+      configType: 'sql',
+      sqlTemplate: form.sqlTemplate ?? '',
+      connection: form.connection ?? '',
+      from: source?.from,
+      displayType: form.displayType,
+    } satisfies RawSqlChartConfig;
+    const { errors: alertErrors } = validateRawSqlForAlert(config);
+    if (alertErrors.length > 0) {
+      errors.push({
+        path: `sqlTemplate`,
+        message: alertErrors.join('. '),
+      });
+    }
+  }
+
+  // Validate thresholdMax for range threshold types (between / not between)
+  if (form.alert && isRangeThresholdType(form.alert.thresholdType)) {
+    if (form.alert.thresholdMax == null) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      });
+    } else if (form.alert.thresholdMax < form.alert.threshold) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
+      });
+    }
   }
 
   // Validate number and pie charts only have one series

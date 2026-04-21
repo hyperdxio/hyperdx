@@ -3,6 +3,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { DashboardsListPage } from '../page-objects/DashboardsListPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
@@ -380,9 +381,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
-      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Remove Alert',
-      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();
@@ -820,6 +818,83 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test('should show error message and allow editing when tile source is missing', async ({
+    page,
+  }) => {
+    const apiUrl = getApiUrl();
+    const DELETABLE_SOURCE_NAME = `E2E Deletable Source ${Date.now()}`;
+
+    // Get an existing log source to copy its connection
+    const logSources = await getSources(page, 'log');
+    const { connection, from } = logSources[0];
+
+    // Create a dedicated source for this test via the API
+    const createResponse = await page.request.post(`${apiUrl}/sources`, {
+      data: {
+        kind: 'log',
+        name: DELETABLE_SOURCE_NAME,
+        connection,
+        from,
+        timestampValueExpression: 'TimestampTime',
+        defaultTableSelectExpression:
+          'Timestamp, ServiceName, SeverityText, Body',
+        serviceNameExpression: 'ServiceName',
+        implicitColumnExpression: 'Body',
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const createdSource = await createResponse.json();
+
+    await test.step('Create dashboard with tile using the deletable source', async () => {
+      await dashboardPage.goto();
+      await dashboardPage.createNewDashboard();
+
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.setChartName('Missing Source Tile');
+      await dashboardPage.chartEditor.selectSource(DELETABLE_SOURCE_NAME);
+      await dashboardPage.chartEditor.runQuery();
+      await dashboardPage.saveTile();
+
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Delete the source and reload the dashboard', async () => {
+      const dashboardUrl = page.url();
+
+      const deleteResponse = await page.request.delete(
+        `${apiUrl}/sources/${createdSource.id}`,
+      );
+      expect(deleteResponse.ok()).toBeTruthy();
+
+      await page.goto(dashboardUrl);
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Verify tile shows error message for missing source', async () => {
+      const tile = dashboardPage.getTiles().first();
+      await expect(tile).toContainText(
+        'The data source for this tile no longer exists',
+      );
+    });
+
+    await test.step('Verify tile can be edited when source is missing', async () => {
+      await dashboardPage.hoverOverTile(0);
+
+      const editButton = dashboardPage.getTileButton('edit');
+      await expect(editButton).toBeVisible();
+      await editButton.click();
+
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible({
+        timeout: 5000,
+      });
+    });
+  });
 
   test(
     'should clear saved query when WHERE input is cleared and saved',

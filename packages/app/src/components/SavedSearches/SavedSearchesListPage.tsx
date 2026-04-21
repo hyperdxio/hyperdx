@@ -25,6 +25,7 @@ import {
 } from '@tabler/icons-react';
 
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
@@ -121,12 +122,21 @@ export default function SavedSearchesListPage() {
   );
 
   return (
-    <div data-testid="saved-searches-list-page">
+    <div
+      data-testid="saved-searches-list-page"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
         <title>Saved Searches - {brandName}</title>
       </Head>
       <PageHeader>Saved Searches</PageHeader>
-      <Container maw={1200} py="lg" px="lg">
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         {favoritedSavedSearches.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
@@ -147,6 +157,8 @@ export default function SavedSearchesListPage() {
                   statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                   resourceId={s.id}
                   resourceType="savedSearch"
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                 />
               ))}
             </SimpleGrid>
@@ -218,22 +230,29 @@ export default function SavedSearchesListPage() {
             Failed to load saved searches. Please try refreshing the page.
           </Text>
         ) : filteredSavedSearches.length === 0 ? (
-          <Stack align="center" gap="sm" py="xl">
-            <IconTable size={40} opacity={0.3} />
-            <Text size="sm" c="dimmed" ta="center">
-              {search || tagFilter
-                ? 'No matching saved searches.'
-                : 'No saved searches yet.'}
-            </Text>
-            <Button
-              variant="primary"
-              leftSection={<IconTable size={16} />}
-              onClick={() => Router.push('/search')}
-              data-testid="empty-new-search-button"
+          <Flex
+            align="center"
+            justify="center"
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            <EmptyState
+              icon={<IconTable size={32} />}
+              title={
+                search || tagFilter
+                  ? 'No matching saved searches yet'
+                  : 'No saved searches yet'
+              }
             >
-              New Search
-            </Button>
-          </Stack>
+              <Button
+                variant="primary"
+                leftSection={<IconTable size={16} />}
+                onClick={() => Router.push('/search')}
+                data-testid="empty-new-search-button"
+              >
+                New Search
+              </Button>
+            </EmptyState>
+          </Flex>
         ) : viewMode === 'list' ? (
           <Table highlightOnHover>
             <Table.Thead>
@@ -241,6 +260,8 @@ export default function SavedSearchesListPage() {
                 <Table.Th w={40} />
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Tags</Table.Th>
+                <Table.Th>Created By</Table.Th>
+                <Table.Th>Last Updated</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
@@ -253,6 +274,9 @@ export default function SavedSearchesListPage() {
                   href={`/search/${s.id}`}
                   tags={s.tags}
                   onDelete={handleDelete}
+                  createdBy={s.createdBy?.name || s.createdBy?.email}
+                  updatedAt={s.updatedAt}
+                  updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                   leftSection={
                     <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
                       <FavoriteButton
@@ -285,6 +309,8 @@ export default function SavedSearchesListPage() {
                       statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                       resourceId={s.id}
                       resourceType="savedSearch"
+                      updatedAt={s.updatedAt}
+                      updatedBy={s.updatedBy?.name || s.updatedBy?.email}
                     />
                   ))}
                 </SimpleGrid>

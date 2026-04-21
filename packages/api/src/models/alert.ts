@@ -1,19 +1,25 @@
-import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertErrorType,
+  AlertThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
-
-export enum AlertThresholdType {
-  ABOVE = 'above',
-  BELOW = 'below',
-}
 
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+}
+
+export interface IAlertError {
+  timestamp: Date;
+  type: AlertErrorType;
+  message: string;
 }
 
 // follow 'ms' pkg formats
@@ -51,6 +57,8 @@ export interface IAlert {
   state: AlertState;
   team: ObjectId;
   threshold: number;
+  /** The upper bound for BETWEEN and NOT BETWEEN threshold types */
+  thresholdMax?: number;
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
@@ -72,6 +80,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Errors recorded during the most recent execution
+  executionErrors?: IAlertError[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +94,10 @@ const AlertSchema = new Schema<IAlert>(
     threshold: {
       type: Number,
       required: true,
+    },
+    thresholdMax: {
+      type: Number,
+      required: false,
     },
     thresholdType: {
       type: String,
@@ -186,6 +201,22 @@ const AlertSchema = new Schema<IAlert>(
         },
         required: false,
       },
+    },
+    executionErrors: {
+      type: [
+        {
+          _id: false,
+          timestamp: { type: Date, required: true },
+          type: {
+            type: String,
+            enum: AlertErrorType,
+            required: true,
+          },
+          message: { type: String, required: true },
+        },
+      ],
+      required: false,
+      default: undefined,
     },
   },
   {

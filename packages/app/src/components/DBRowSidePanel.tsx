@@ -506,9 +506,11 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <div className="overflow-hidden flex-grow-1">
+          <div
+            className="overflow-hidden flex-grow-1"
+            data-testid="side-panel-tab-replay"
+          >
             <DBSessionPanel
-              data-testid="side-panel-tab-replay"
               dateRange={fourHourRange}
               focusDate={focusDate}
               setSubDrawerOpen={setSubDrawerOpen}
@@ -590,7 +592,6 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withOverlay={!isNestedPanel}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();

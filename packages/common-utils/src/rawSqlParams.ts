@@ -1,4 +1,3 @@
-import { ChSql } from './clickhouse';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -23,7 +22,14 @@ const getIntervalSeconds = (config: RawSqlChartConfig & Partial<DateRange>) => {
   return convertGranularityToSeconds(effectiveGranularity);
 };
 
-export const QUERY_PARAMS: Record<string, QueryParamDefinition> = {
+export enum RawSqlQueryParam {
+  startDateMilliseconds = 'startDateMilliseconds',
+  endDateMilliseconds = 'endDateMilliseconds',
+  intervalSeconds = 'intervalSeconds',
+  intervalMilliseconds = 'intervalMilliseconds',
+}
+
+export const QUERY_PARAMS: Record<RawSqlQueryParam, QueryParamDefinition> = {
   startDateMilliseconds: {
     name: 'startDateMilliseconds',
     type: 'Int64',
