@@ -3,8 +3,29 @@ import {
   TLogSource,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
+import { notifications } from '@mantine/notifications';
 
-import { getEventBody, getTraceDurationNumberFormat } from '../source';
+import {
+  getEventBody,
+  getSourceValidationNotificationId,
+  getTraceDurationNumberFormat,
+  useSources,
+} from '../source';
+
+jest.mock('../api', () => ({ hdxServer: jest.fn() }));
+jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
+jest.mock('@mantine/notifications', () => ({
+  notifications: { show: jest.fn() },
+}));
+jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(),
+  useMutation: jest.fn(),
+  useQueryClient: jest.fn(),
+}));
+
+import { useQuery } from '@tanstack/react-query';
+
+import { hdxServer } from '../api';
 
 const TRACE_SOURCE: TTraceSource = {
   kind: SourceKind.Trace,
@@ -180,5 +201,60 @@ describe('getTraceDurationNumberFormat', () => {
 
   it('returns undefined when select is empty', () => {
     expect(getTraceDurationNumberFormat(TRACE_SOURCE, [])).toBeUndefined();
+  });
+});
+
+describe('useSources validation notifications', () => {
+  const mockUseQuery = useQuery as jest.Mock;
+  const mockHdxServer = hdxServer as jest.Mock;
+  const mockShow = notifications.show as jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('reuses the same notification id for repeated validation errors', async () => {
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    mockUseQuery.mockImplementation(({ queryFn }) => {
+      capturedQueryFn = queryFn;
+      return { data: [] };
+    });
+
+    const invalidSource = {
+      id: 'source-1',
+      kind: SourceKind.Log,
+      name: 'Broken Source',
+      connection: 'conn-1',
+      from: { databaseName: 'default', tableName: 'logs' },
+      timestampValueExpression: 'Timestamp',
+      // Intentionally invalid for SourceSchema to trigger validation error.
+      serviceNameExpression: 42,
+    };
+
+    mockHdxServer.mockReturnValue({
+      json: jest.fn().mockResolvedValue([invalidSource]),
+    });
+
+    useSources();
+    expect(capturedQueryFn).toBeDefined();
+
+    await capturedQueryFn?.();
+    await capturedQueryFn?.();
+
+    expect(mockShow).toHaveBeenCalledTimes(2);
+    expect(mockShow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: getSourceValidationNotificationId('source-1'),
+        autoClose: false,
+      }),
+    );
+    expect(mockShow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: getSourceValidationNotificationId('source-1'),
+        autoClose: false,
+      }),
+    );
   });
 });

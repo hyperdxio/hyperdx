@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.23.2",
+  "version": "2.24.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -18,7 +18,7 @@
     "lint:styles": "stylelint **/*/*.{css,scss}",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
     "ci:unit": "jest --ci --coverage",
-    "dev:unit": "jest --watchAll --detectOpenHandles",
+    "dev:unit": "jest --watchAll",
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",
@@ -34,7 +34,7 @@
     "@dagrejs/dagre": "^1.1.5",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.22.0",
-    "@hyperdx/common-utils": "^0.17.1",
+    "@hyperdx/common-utils": "^0.18.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",

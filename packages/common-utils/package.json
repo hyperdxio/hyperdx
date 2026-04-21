@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "license": "MIT",
   "private": true,
   "files": [
@@ -26,12 +26,12 @@
   },
   "devDependencies": {
     "@types/hyperdx__lucene": "npm:@types/lucene@*",
-    "@types/jest": "^28.1.1",
+    "@types/jest": "^29.5.14",
     "@types/lodash": "^4.14.198",
     "@types/object-hash": "^2.2.1",
     "@types/sqlstring": "^2.3.0",
     "dotenv": "^17.2.3",
-    "jest": "^28.1.1",
+    "jest": "^30.2.0",
     "nodemon": "^2.0.20",
     "ts-jest": "^29.4.5",
     "tsup": "^8.4.0",
@@ -45,9 +45,9 @@
     "lint": "npx eslint --quiet . --ext .ts",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
-    "ci:unit": "jest --runInBand --ci --forceExit --coverage",
-    "dev:unit": "jest --watchAll --runInBand --detectOpenHandles",
-    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --forceExit --coverage",
-    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand --detectOpenHandles"
+    "ci:unit": "jest --runInBand --ci --coverage",
+    "dev:unit": "jest --watchAll --runInBand",
+    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage",
+    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand"
   }
 }

@@ -215,6 +215,7 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
         <EventViewer
           clickhouseClient={client.createClickHouseClient()}
           metadata={client.createMetadata()}
+          appUrl={currentAppUrl}
           source={selectedSource}
           sources={eventSources}
           savedSearches={savedSearches}

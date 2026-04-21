@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Box, useStdout } from 'ink';
 
 import type { TimeRange } from '@/utils/editor';
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { EventViewerProps, SwitchItem } from './types';
 import { getColumns, getDynamicColumns, formatDynamicRow } from './utils';
@@ -14,13 +15,17 @@ import {
   SqlPreviewScreen,
 } from './SubComponents';
 import { TableView } from './TableView';
+import { PatternView } from './PatternView';
+import { PatternSamplesView } from './PatternSamplesView';
 import { DetailPanel } from './DetailPanel';
 import { useEventData } from './useEventData';
+import { usePatternData } from './usePatternData';
 import { useKeybindings } from './useKeybindings';
 
 export default function EventViewer({
   clickhouseClient,
   metadata,
+  appUrl,
   source,
   sources,
   savedSearches,
@@ -70,6 +75,16 @@ export default function EventViewer({
   const [traceSelectedIndex, setTraceSelectedIndex] = useState<number | null>(
     null,
   );
+  const [traceDetailExpanded, setTraceDetailExpanded] = useState(false);
+  const [traceSelectedNode, setTraceSelectedNode] = useState<SpanNode | null>(
+    null,
+  );
+  const [showPatterns, setShowPatterns] = useState(false);
+  const [patternSelectedRow, setPatternSelectedRow] = useState(0);
+  const [patternScrollOffset, setPatternScrollOffset] = useState(0);
+  const [expandedPattern, setExpandedPattern] = useState<number | null>(null);
+  const [sampleSelectedRow, setSampleSelectedRow] = useState(0);
+  const [sampleScrollOffset, setSampleScrollOffset] = useState(0);
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
     const now = new Date();
     return { start: new Date(now.getTime() - 60 * 60 * 1000), end: now };
@@ -89,6 +104,7 @@ export default function EventViewer({
     expandedRowError,
     expandedTraceId,
     expandedSpanId,
+    expandedRowWhere,
     lastChSql,
     lastExpandedChSql,
     fetchNextPage,
@@ -102,6 +118,23 @@ export default function EventViewer({
     isFollowing,
     setTimeRange,
     expandedRow,
+  });
+
+  // ---- Pattern mining -----------------------------------------------
+
+  const {
+    patterns,
+    loading: patternsLoading,
+    error: patternsError,
+    totalCount: patternsTotalCount,
+  } = usePatternData({
+    clickhouseClient,
+    metadata,
+    source,
+    submittedQuery,
+    startTime: timeRange.start,
+    endTime: timeRange.end,
+    enabled: showPatterns,
   });
 
   // ---- Derived values ----------------------------------------------
@@ -164,10 +197,22 @@ export default function EventViewer({
     focusDetailSearch,
     showHelp,
     showSql,
+    showPatterns,
     expandedRow,
     detailTab,
+    traceDetailExpanded,
     selectedRow,
     scrollOffset,
+    patternSelectedRow,
+    patternScrollOffset,
+    patternCount: patterns.length,
+    expandedPattern,
+    sampleSelectedRow,
+    sampleScrollOffset,
+    sampleCount:
+      expandedPattern !== null
+        ? (patterns[expandedPattern]?.samples.length ?? 0)
+        : 0,
     isFollowing,
     hasMore,
     events,
@@ -176,8 +221,12 @@ export default function EventViewer({
     source,
     timeRange,
     customSelect,
-    detailMaxRows,
+    submittedQuery,
     fullDetailMaxRows,
+    appUrl,
+    expandedTraceId,
+    expandedRowWhere,
+    traceSelectedNode,
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
@@ -186,11 +235,18 @@ export default function EventViewer({
     setFocusDetailSearch,
     setShowHelp,
     setShowSql,
+    setShowPatterns,
     setSqlScrollOffset,
+    setPatternSelectedRow,
+    setPatternScrollOffset,
+    setExpandedPattern,
+    setSampleSelectedRow,
+    setSampleScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
     setDetailTab,
+    setTraceDetailExpanded,
     setIsFollowing,
     setWrapLines,
     setDetailSearchQuery,
@@ -272,6 +328,7 @@ export default function EventViewer({
             source={source}
             sources={sources}
             clickhouseClient={clickhouseClient}
+            metadata={metadata}
             detailTab={detailTab}
             expandedRowData={expandedRowData}
             expandedRowLoading={expandedRowLoading}
@@ -279,6 +336,7 @@ export default function EventViewer({
             expandedTraceId={expandedTraceId}
             expandedSpanId={expandedSpanId}
             traceSelectedIndex={traceSelectedIndex}
+            traceDetailExpanded={traceDetailExpanded}
             onTraceSelectedIndexChange={setTraceSelectedIndex}
             detailSearchQuery={detailSearchQuery}
             focusDetailSearch={focusDetailSearch}
@@ -296,6 +354,28 @@ export default function EventViewer({
             scrollOffset={scrollOffset}
             expandedRow={expandedRow}
             onTraceChSqlChange={setTraceChSql}
+            onTraceSelectedNodeChange={setTraceSelectedNode}
+          />
+        ) : showPatterns &&
+          expandedPattern !== null &&
+          patterns[expandedPattern] ? (
+          <PatternSamplesView
+            pattern={patterns[expandedPattern]}
+            columns={columns}
+            selectedRow={sampleSelectedRow}
+            scrollOffset={sampleScrollOffset}
+            maxRows={maxRows}
+            wrapLines={wrapLines}
+          />
+        ) : showPatterns ? (
+          <PatternView
+            patterns={patterns}
+            selectedRow={patternSelectedRow}
+            scrollOffset={patternScrollOffset}
+            maxRows={maxRows}
+            loading={patternsLoading}
+            error={patternsError}
+            wrapLines={wrapLines}
           />
         ) : (
           <TableView
@@ -312,13 +392,35 @@ export default function EventViewer({
         )}
 
         <Footer
-          rowCount={events.length}
-          cursorPos={scrollOffset + selectedRow + 1}
+          rowCount={
+            showPatterns && expandedPattern !== null
+              ? (patterns[expandedPattern]?.samples.length ?? 0)
+              : showPatterns
+                ? patterns.length
+                : events.length
+          }
+          cursorPos={
+            showPatterns && expandedPattern !== null
+              ? sampleScrollOffset + sampleSelectedRow + 1
+              : showPatterns
+                ? patternScrollOffset + patternSelectedRow + 1
+                : scrollOffset + selectedRow + 1
+          }
           wrapLines={wrapLines}
           isFollowing={isFollowing}
           loadingMore={loadingMore}
           paginationError={paginationError}
-          scrollInfo={expandedRow !== null ? `Ctrl+D/U to scroll` : undefined}
+          scrollInfo={
+            expandedRow !== null
+              ? 'Ctrl+D/U to scroll'
+              : showPatterns && expandedPattern !== null
+                ? '[SAMPLES] h to go back'
+                : showPatterns
+                  ? patternsLoading
+                    ? '[PATTERNS] Sampling…'
+                    : `[PATTERNS] ${patterns.length} patterns${patternsTotalCount != null ? ` from ~${patternsTotalCount.toLocaleString()} events` : ''} — l to expand, P/Esc to close`
+                  : undefined
+          }
         />
       </Box>
     </Box>

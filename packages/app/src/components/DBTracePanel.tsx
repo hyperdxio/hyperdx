@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -49,6 +49,7 @@ export default function DBTracePanel({
   focusDate,
   parentSourceId,
   initialRowHighlightHint,
+  emptyState,
   'data-testid': dataTestId,
 }: {
   parentSourceId?: string | null;
@@ -64,13 +65,18 @@ export default function DBTracePanel({
     spanId: string;
     body: string;
   };
+  emptyState?: ReactNode;
   'data-testid'?: string;
 }) {
-  const { control } = useForm({
+  const { control, setValue } = useForm({
     defaultValues: {
       source: childSourceId,
     },
   });
+
+  useEffect(() => {
+    setValue('source', childSourceId ?? null);
+  }, [childSourceId, setValue]);
 
   const sourceId = useWatch({ control, name: 'source' });
 
@@ -239,6 +245,7 @@ export default function DBTracePanel({
           highlightedRowWhere={eventRowWhere?.id}
           onClick={setEventRowWhere}
           initialRowHighlightHint={initialRowHighlightHint}
+          emptyState={emptyState}
         />
       )}
       {traceSourceData != null && eventRowWhere != null && (

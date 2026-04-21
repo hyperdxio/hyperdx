@@ -16,6 +16,15 @@ import {
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
+  // Suppress expected console.warn noise from missing columns / optimization fallbacks
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     const columns = [
       { name: 'timestamp', type: 'DateTime' },
@@ -1986,6 +1995,25 @@ describe('renderChartConfig', () => {
       );
       expect(result.sql).toBe(
         "SELECT * FROM logs WHERE ((duration > 100) AND (status = 'ok'))",
+      );
+    });
+
+    it('skips empty sql filters when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [{ type: 'sql', condition: '' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
       );
     });
 

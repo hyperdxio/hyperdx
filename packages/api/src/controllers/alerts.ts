@@ -9,13 +9,7 @@ import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, {
-  AlertChannel,
-  AlertInterval,
-  AlertSource,
-  AlertThresholdType,
-  IAlert,
-} from '@/models/alert';
+import Alert, { AlertSource, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
@@ -24,34 +18,23 @@ import { Api400Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
-export type AlertInput = {
+export type AlertInput = Omit<
+  IAlert,
+  | 'id'
+  | 'scheduleStartAt'
+  | 'savedSearchId'
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'team'
+  | 'state'
+> & {
   id?: string;
-  source?: AlertSource;
-  channel: AlertChannel;
-  interval: AlertInterval;
-  scheduleOffsetMinutes?: number;
+  // Replace the Date-type fields from IAlert
   scheduleStartAt?: string | null;
-  thresholdType: AlertThresholdType;
-  threshold: number;
-
-  // Message template
-  name?: string | null;
-  message?: string | null;
-
-  // Log alerts
-  groupBy?: string;
+  // Replace the ObjectId-type fields from IAlert
   savedSearchId?: string;
-
-  // Chart alerts
   dashboardId?: string;
-  tileId?: string;
-
-  // Silenced
-  silenced?: {
-    by?: ObjectId;
-    at: Date;
-    until: Date;
-  };
 };
 
 const validateObjectId = (id: string | undefined, message: string) => {
@@ -88,7 +71,7 @@ export const validateAlertInput = async (
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
       if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
         throw new Api400Error(
-          'Alerts on Raw SQL tiles are only supported for Line or Stacked Bar display types',
+          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
         );
       }
 
@@ -155,6 +138,7 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     }),
     source: alert.source,
     threshold: alert.threshold,
+    thresholdMax: alert.thresholdMax,
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
@@ -293,6 +277,20 @@ export const deleteSavedSearchAlerts = async (
 
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
+    savedSearch: ISavedSearch;
+    dashboard: IDashboard;
+    createdBy?: IUser;
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+};
+
+export const getAlertEnhanced = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId,
+) => {
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
     createdBy?: IUser;

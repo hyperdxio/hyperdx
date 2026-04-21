@@ -12,6 +12,7 @@ import {
   getSampleWeightExpression,
   isLogSource,
   isMetricSource,
+  isRangeThresholdType,
   isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
@@ -262,6 +263,23 @@ export const validateChartForm = (
       errors.push({
         path: `sqlTemplate`,
         message: alertErrors.join('. '),
+      });
+    }
+  }
+
+  // Validate thresholdMax for range threshold types (between / not between)
+  if (form.alert && isRangeThresholdType(form.alert.thresholdType)) {
+    if (form.alert.thresholdMax == null) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      });
+    } else if (form.alert.thresholdMax < form.alert.threshold) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
       });
     }
   }

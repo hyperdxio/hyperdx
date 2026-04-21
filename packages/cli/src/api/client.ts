@@ -25,6 +25,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
@@ -418,7 +419,7 @@ export interface AlertItem {
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: string | null;
   threshold: number;
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   channel: { type?: string | null };
   state?: 'ALERT' | 'OK' | 'INSUFFICIENT_DATA' | 'DISABLED';
   source?: 'saved_search' | 'tile';

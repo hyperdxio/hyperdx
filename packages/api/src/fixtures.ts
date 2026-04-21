@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
   RawSqlSavedChartConfig,
@@ -15,7 +16,7 @@ import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
-import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertInterval, AlertSource } from '@/models/alert';
 import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
@@ -61,6 +62,13 @@ export const getTestFixtureClickHouseClient = async () => {
     });
   }
   return clickhouseClient;
+};
+
+export const closeTestFixtureClickHouseClient = async () => {
+  if (clickhouseClient) {
+    await clickhouseClient.close();
+    clickhouseClient = null;
+  }
 };
 
 const healthCheck = async () => {
@@ -132,6 +140,7 @@ export const closeDB = async () => {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
   await mongooseConnection.dropDatabase();
+  await mongoose.disconnect();
 };
 
 export const clearDBCollections = async () => {
@@ -175,8 +184,8 @@ class MockServer extends Server {
     }
   }
 
-  stop() {
-    return new Promise<void>((resolve, reject) => {
+  async stop() {
+    await new Promise<void>((resolve, reject) => {
       this.appServer.close(err => {
         if (err) {
           reject(err);
@@ -187,13 +196,12 @@ class MockServer extends Server {
             reject(err);
             return;
           }
-          super
-            .shutdown()
-            .then(() => resolve())
-            .catch(err => reject(err));
+          resolve();
         });
       });
     });
+    await closeTestFixtureClickHouseClient();
+    await super.shutdown();
   }
 
   clearDBs() {
@@ -543,6 +551,31 @@ export const makeRawSqlAlertTile = (opts?: {
     configType: 'sql',
     displayType: DisplayType.Line,
     sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
+    connection: opts?.connectionId ?? 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
+});
+
+export const RAW_SQL_NUMBER_ALERT_TEMPLATE = [
+  'SELECT count() AS cnt',
+  ' FROM default.otel_logs',
+  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+].join('');
+
+export const makeRawSqlNumberAlertTile = (opts?: {
+  id?: string;
+  connectionId?: string;
+  sqlTemplate?: string;
+}): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: DisplayType.Number,
+    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_NUMBER_ALERT_TEMPLATE,
     connection: opts?.connectionId ?? 'test-connection',
   } satisfies RawSqlSavedChartConfig,
 });

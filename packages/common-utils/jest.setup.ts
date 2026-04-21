@@ -1,6 +1,4 @@
-global.console = {
-  ...console,
-  // Turn off noisy console logs in tests
-  debug: jest.fn(),
-  info: jest.fn(),
-};
+// Suppress noisy console.debug output (e.g. ClickHouse query logging)
+// during test runs. Warnings and errors still appear.
+jest.spyOn(console, 'debug').mockImplementation(() => {});
+jest.spyOn(console, 'info').mockImplementation(() => {});

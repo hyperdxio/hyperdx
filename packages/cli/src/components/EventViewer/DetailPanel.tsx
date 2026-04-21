@@ -2,11 +2,16 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+
 import type { SourceResponse, ProxyClickhouseClient } from '@/api/client';
+import { ROW_DATA_ALIASES } from '@/shared/rowDataPanel';
+import { getDisplayedTimestampValueExpression } from '@/shared/source';
 import ColumnValues from '@/components/ColumnValues';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import RowOverview from '@/components/RowOverview';
 import TraceWaterfall from '@/components/TraceWaterfall';
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { FormattedRow } from './types';
 import { SearchBar } from './SubComponents';
@@ -18,6 +23,7 @@ type DetailPanelProps = {
   source: SourceResponse;
   sources: SourceResponse[];
   clickhouseClient: ProxyClickhouseClient;
+  metadata: Metadata;
   detailTab: DetailTab;
   expandedRowData: Record<string, unknown> | null;
   expandedRowLoading: boolean;
@@ -25,6 +31,7 @@ type DetailPanelProps = {
   expandedTraceId: string | null;
   expandedSpanId: string | null;
   traceSelectedIndex: number | null;
+  traceDetailExpanded: boolean;
   onTraceSelectedIndexChange: (index: number | null) => void;
   detailSearchQuery: string;
   focusDetailSearch: boolean;
@@ -46,12 +53,15 @@ type DetailPanelProps = {
   onTraceChSqlChange?: (
     chSql: { sql: string; params: Record<string, unknown> } | null,
   ) => void;
+  /** Callback when the selected span/log node in the trace waterfall changes */
+  onTraceSelectedNodeChange?: (node: SpanNode | null) => void;
 };
 
 export function DetailPanel({
   source,
   sources,
   clickhouseClient,
+  metadata,
   detailTab,
   expandedRowData,
   expandedRowLoading,
@@ -59,6 +69,7 @@ export function DetailPanel({
   expandedTraceId,
   expandedSpanId,
   traceSelectedIndex,
+  traceDetailExpanded,
   onTraceSelectedIndexChange,
   detailSearchQuery,
   focusDetailSearch,
@@ -74,7 +85,19 @@ export function DetailPanel({
   scrollOffset,
   expandedRow,
   onTraceChSqlChange,
+  onTraceSelectedNodeChange,
 }: DetailPanelProps) {
+  // Extract the event timestamp from the full row data (or the raw
+  // table row) so we can scope the trace waterfall date range tightly
+  // for partition pruning.
+  const eventTimestamp = (() => {
+    const tsExpr = getDisplayedTimestampValueExpression(source);
+    const data = expandedRowData ?? expandedFormattedRow?.raw;
+    if (!data) return undefined;
+    const val = data[ROW_DATA_ALIASES.TIMESTAMP] ?? data[tsExpr] ?? undefined;
+    return val != null ? String(val) : undefined;
+  })();
+
   const hasTrace =
     source.kind === 'trace' || (source.kind === 'log' && source.traceSourceId);
 
@@ -202,12 +225,15 @@ export function DetailPanel({
           return (
             <TraceWaterfall
               clickhouseClient={clickhouseClient}
+              metadata={metadata}
               source={traceSource}
               logSource={logSource}
               traceId={expandedTraceId}
+              eventTimestamp={eventTimestamp}
               searchQuery={detailSearchQuery}
               selectedIndex={traceSelectedIndex}
               onSelectedIndexChange={onTraceSelectedIndexChange}
+              detailExpanded={traceDetailExpanded}
               maxRows={waterfallMaxRows}
               highlightHint={
                 expandedSpanId
@@ -221,6 +247,7 @@ export function DetailPanel({
               detailScrollOffset={traceDetailScrollOffset}
               detailMaxRows={detailMaxRows}
               onChSqlChange={onTraceChSqlChange}
+              onSelectedNodeChange={onTraceSelectedNodeChange}
             />
           );
         })()}

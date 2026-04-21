@@ -1542,7 +1542,9 @@ async function renderFiltersToSql(
         if (filter.type === 'sql_ast') {
           return `(${filter.left} ${filter.operator} ${filter.right})`;
         } else if (filter.type === 'sql' && !hasSourceTable) {
-          return `(${filter.condition})`; // Don't pass to renderWhereExpressionStr since it requires source table metadata
+          return filter.condition.trim()
+            ? `(${filter.condition})` // Don't pass to renderWhereExpressionStr since it requires source table metadata
+            : undefined;
         } else if (
           (filter.type === 'lucene' || filter.type === 'sql') &&
           filter.condition.trim() &&

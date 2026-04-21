@@ -1,6 +1,10 @@
-/** @type {import('ts-jest/dist/types').InitialOptionsTsJest} */
+const { createJsWithTsPreset } = require('ts-jest');
+
+const tsJestTransformCfg = createJsWithTsPreset();
+
+/** @type {import("jest").Config} **/
 module.exports = {
-  preset: 'ts-jest',
+  ...tsJestTransformCfg,
   testEnvironment: 'node',
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
   verbose: true,

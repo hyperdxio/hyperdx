@@ -10,16 +10,21 @@ import type {
 import { chSqlToAliasMap } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import SqlString from 'sqlstring';
+import type {
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 
 import type { SourceResponse } from './client';
-import {
-  getFirstTimestampValueExpression,
-  getDisplayedTimestampValueExpression,
-} from '@/shared/source';
+import { getFirstTimestampValueExpression } from '@/shared/source';
 import { buildRowDataSelectList } from '@/shared/rowDataPanel';
+import {
+  buildTraceSpansConfig,
+  buildTraceLogsConfig,
+  buildTraceRowDetailConfig,
+} from '@/shared/traceConfig';
 import { buildColumnMap, getRowWhere } from '@/shared/useRowWhere';
 
 export interface SearchQueryOptions {
@@ -102,96 +107,195 @@ export async function buildEventSearchQuery(
   return renderChartConfig(config, metadata, source.querySettings);
 }
 
+// ---- Alias WITH clauses from source select --------------------------
+
+/**
+ * Compute WITH clauses from the source's default select expression.
+ * When a source defines `SeverityText as level`, searches for `level:error`
+ * need `WITH SeverityText AS level` so the alias is available in WHERE.
+ */
+async function buildAliasWithClauses(
+  source: SourceResponse,
+  metadata: Metadata,
+): Promise<BuilderChartConfigWithDateRange['with']> {
+  const selectExpr = source.defaultTableSelectExpression;
+  if (!selectExpr) return undefined;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+
+  // Render a dummy query with the source's select to extract aliases
+  const dummyConfig: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Search,
+    select: selectExpr,
+    from: source.from,
+    where: '',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    limit: { limit: 0 },
+    dateRange: [new Date(), new Date()],
+  };
+
+  const dummySql = await renderChartConfig(
+    dummyConfig,
+    metadata,
+    source.querySettings,
+  );
+  const aliasMap = chSqlToAliasMap(dummySql);
+  return aliasMapToWithClauses(aliasMap);
+}
+
+// ---- Pattern sampling query -----------------------------------------
+
+export interface PatternSampleQueryOptions {
+  source: SourceResponse;
+  searchQuery?: string;
+  startTime: Date;
+  endTime: Date;
+  /** Number of random rows to sample (default 100_000) */
+  sampleLimit?: number;
+}
+
+/**
+ * Build a query that randomly samples events for pattern mining.
+ * Selects the body column and timestamp, ordered by rand().
+ */
+export async function buildPatternSampleQuery(
+  opts: PatternSampleQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const {
+    source,
+    searchQuery = '',
+    startTime,
+    endTime,
+    sampleLimit = 100_000,
+  } = opts;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+
+  // Use the same select as the main event table so sample rows have all columns
+  let selectExpr = source.defaultTableSelectExpression ?? '';
+  if (!selectExpr && source.kind === 'trace') {
+    selectExpr = buildTraceSelectExpression(source);
+  }
+
+  // Compute alias WITH clauses so search aliases (e.g. `level`) resolve in WHERE
+  const aliasWith = searchQuery
+    ? await buildAliasWithClauses(source, metadata)
+    : undefined;
+
+  const config: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Search,
+    select: selectExpr,
+    from: source.from,
+    where: searchQuery,
+    whereLanguage: searchQuery ? 'lucene' : 'sql',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    orderBy: 'rand()',
+    limit: { limit: sampleLimit },
+    dateRange: [startTime, endTime],
+    ...(aliasWith ? { with: aliasWith } : {}),
+  };
+
+  return renderChartConfig(config, metadata, source.querySettings);
+}
+
+// ---- Total count query ----------------------------------------------
+
+export interface TotalCountQueryOptions {
+  source: SourceResponse;
+  searchQuery?: string;
+  startTime: Date;
+  endTime: Date;
+}
+
+/**
+ * Build a query to get the total count of events matching the search.
+ */
+export async function buildTotalCountQuery(
+  opts: TotalCountQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const { source, searchQuery = '', startTime, endTime } = opts;
+
+  const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
+
+  // Compute alias WITH clauses so search aliases (e.g. `level`) resolve in WHERE
+  const aliasWith = searchQuery
+    ? await buildAliasWithClauses(source, metadata)
+    : undefined;
+
+  const config: BuilderChartConfigWithDateRange = {
+    displayType: DisplayType.Table,
+    select: 'count() as total',
+    from: source.from,
+    where: searchQuery,
+    whereLanguage: searchQuery ? 'lucene' : 'sql',
+    connection: source.connection,
+    timestampValueExpression: tsExpr,
+    implicitColumnExpression: source.implicitColumnExpression,
+    limit: { limit: 1 },
+    dateRange: [startTime, endTime],
+    ...(aliasWith ? { with: aliasWith } : {}),
+  };
+
+  return renderChartConfig(config, metadata, source.querySettings);
+}
+
 // ---- Full row fetch (SELECT *) -------------------------------------
 
-// ---- Trace waterfall query (all spans for a traceId) ----------------
+// ---- Trace waterfall queries ----------------------------------------
 
 export interface TraceSpansQueryOptions {
   source: SourceResponse;
   traceId: string;
+  dateRange?: [Date, Date];
 }
 
 /**
- * Build a raw SQL query to fetch all spans for a given traceId.
- * Returns columns needed for the waterfall chart.
+ * Build a query to fetch all spans for a given traceId using
+ * renderChartConfig. Enables time partition pruning when dateRange
+ * is provided and materialized field optimisation.
  */
-export function buildTraceSpansSql(opts: TraceSpansQueryOptions): {
-  sql: string;
-  connectionId: string;
-} {
-  const { source, traceId } = opts;
-
-  const db = source.from.databaseName;
-  const table = source.from.tableName;
-  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
-  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
-  const parentSpanIdExpr = source.parentSpanIdExpression ?? 'ParentSpanId';
-  const spanNameExpr = source.spanNameExpression ?? 'SpanName';
-  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
-  const durationExpr = source.durationExpression ?? 'Duration';
-  const statusCodeExpr = source.statusCodeExpression ?? 'StatusCode';
-
-  const tsExpr = getDisplayedTimestampValueExpression(source);
-
-  const cols = [
-    `${tsExpr} AS Timestamp`,
-    `${traceIdExpr} AS TraceId`,
-    `${spanIdExpr} AS SpanId`,
-    `${parentSpanIdExpr} AS ParentSpanId`,
-    `${spanNameExpr} AS SpanName`,
-    `${serviceNameExpr} AS ServiceName`,
-    `${durationExpr} AS Duration`,
-    `${statusCodeExpr} AS StatusCode`,
-  ];
-
-  const escapedTraceId = SqlString.escape(traceId);
-  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
-
-  return {
-    sql,
-    connectionId: source.connection,
-  };
+export async function buildTraceSpansQuery(
+  opts: TraceSpansQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceSpansConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
 }
 
 /**
- * Build a raw SQL query to fetch correlated log events for a given traceId.
- * Returns columns matching the SpanRow shape used by the waterfall chart.
- * Logs are linked to spans via their SpanId.
+ * Build a query to fetch correlated log events for a given traceId
+ * using renderChartConfig.
  */
-export function buildTraceLogsSql(opts: TraceSpansQueryOptions): {
-  sql: string;
-  connectionId: string;
-} {
-  const { source, traceId } = opts;
+export async function buildTraceLogsQuery(
+  opts: TraceSpansQueryOptions,
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceLogsConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
+}
 
-  const db = source.from.databaseName;
-  const table = source.from.tableName;
-  const traceIdExpr = source.traceIdExpression ?? 'TraceId';
-  const spanIdExpr = source.spanIdExpression ?? 'SpanId';
-  const bodyExpr = source.bodyExpression ?? 'Body';
-  const serviceNameExpr = source.serviceNameExpression ?? 'ServiceName';
-  const sevExpr = source.severityTextExpression ?? 'SeverityText';
-
-  const tsExpr = getDisplayedTimestampValueExpression(source);
-
-  const cols = [
-    `${tsExpr} AS Timestamp`,
-    `${traceIdExpr} AS TraceId`,
-    `${spanIdExpr} AS SpanId`,
-    `'' AS ParentSpanId`,
-    `${bodyExpr} AS SpanName`,
-    `${serviceNameExpr} AS ServiceName`,
-    `0 AS Duration`,
-    `${sevExpr} AS StatusCode`,
-  ];
-
-  const escapedTraceId = SqlString.escape(traceId);
-  const sql = `SELECT ${cols.join(', ')} FROM ${db}.${table} WHERE ${traceIdExpr} = ${escapedTraceId} ORDER BY ${tsExpr} ASC LIMIT 10000`;
-
-  return {
-    sql,
-    connectionId: source.connection,
-  };
+/**
+ * Build a query to fetch a single span/log row (SELECT *) from the
+ * trace waterfall detail panel. Omits dateRange so ClickHouse uses
+ * the WHERE clause directly.
+ */
+export async function buildTraceRowDetailQuery(
+  opts: {
+    source: SourceResponse;
+    traceId: string;
+    spanId?: string;
+    timestamp: string;
+  },
+  metadata: Metadata,
+): Promise<ChSql> {
+  const config = buildTraceRowDetailConfig(opts);
+  return renderChartConfig(config, metadata, opts.source.querySettings);
 }
 
 export interface FullRowQueryOptions {
@@ -216,6 +320,12 @@ export interface FullRowQueryOptions {
  *   WITH <aliasWith>
  *   LIMIT 1
  */
+export interface FullRowQueryResult {
+  chSql: ChSql;
+  /** The SQL WHERE clause that uniquely identifies the row (for browser URL) */
+  rowWhere: string;
+}
+
 export async function buildFullRowQuery(
   opts: FullRowQueryOptions & {
     /** The rendered ChSql from the table query (for alias resolution) */
@@ -224,7 +334,7 @@ export async function buildFullRowQuery(
     tableMeta: ColumnMetaType[];
     metadata: Metadata;
   },
-): Promise<ChSql> {
+): Promise<FullRowQueryResult> {
   const { source, row, tableChSql, tableMeta, metadata } = opts;
 
   // Parse the rendered table SQL to get alias → expression mapping
@@ -242,17 +352,13 @@ export async function buildFullRowQuery(
 
   const selectList = buildRowDataSelectList(source);
 
-  // Use a very wide date range — the WHERE clause already uniquely
-  // identifies the row, so the time range is just a safety net
-  const now = new Date();
-  const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-
-  const config: BuilderChartConfigWithDateRange = {
+  // Omit dateRange and timestampValueExpression — the WHERE clause
+  // already uniquely identifies the row so ClickHouse can use the
+  // filter directly without scanning time partitions.
+  // This matches the web frontend's useRowData in DBRowDataPanel.tsx.
+  const config: BuilderChartConfigWithOptDateRange = {
     connection: source.connection,
     from: source.from,
-    timestampValueExpression:
-      source.timestampValueExpression ?? 'TimestampTime',
-    dateRange: [yearAgo, now],
     select: selectList,
     where: rowWhereResult.where,
     limit: { limit: 1 },
@@ -262,5 +368,6 @@ export async function buildFullRowQuery(
       : {}),
   };
 
-  return renderChartConfig(config, metadata, source.querySettings);
+  const chSql = await renderChartConfig(config, metadata, source.querySettings);
+  return { chSql, rowWhere: rowWhereResult.where };
 }

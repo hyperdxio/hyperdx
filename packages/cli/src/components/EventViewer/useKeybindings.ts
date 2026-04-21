@@ -7,8 +7,12 @@ import {
   openEditorForTimeRange,
   type TimeRange,
 } from '@/utils/editor';
+import { openUrl } from '@/utils/openUrl';
+
+import type { SpanNode } from '@/components/TraceWaterfall/types';
 
 import type { EventRow, SwitchItem } from './types';
+import { buildBrowserUrl, buildSpanEventRowWhere } from './utils';
 
 // ---- Types ---------------------------------------------------------
 
@@ -18,10 +22,19 @@ export interface KeybindingParams {
   focusDetailSearch: boolean;
   showHelp: boolean;
   showSql: boolean;
+  showPatterns: boolean;
   expandedRow: number | null;
   detailTab: 'overview' | 'columns' | 'trace';
+  traceDetailExpanded: boolean;
   selectedRow: number;
   scrollOffset: number;
+  patternSelectedRow: number;
+  patternScrollOffset: number;
+  patternCount: number;
+  expandedPattern: number | null;
+  sampleSelectedRow: number;
+  sampleScrollOffset: number;
+  sampleCount: number;
   isFollowing: boolean;
   hasMore: boolean;
   events: EventRow[];
@@ -30,8 +43,15 @@ export interface KeybindingParams {
   source: SourceResponse;
   timeRange: TimeRange;
   customSelect: string | undefined;
-  detailMaxRows: number;
+  /** The user's submitted search query (Lucene) */
+  submittedQuery: string;
   fullDetailMaxRows: number;
+
+  // Browser integration
+  appUrl: string;
+  expandedTraceId: string | null;
+  expandedRowWhere: string | null;
+  traceSelectedNode: SpanNode | null;
 
   // Tab switching
   switchItems: SwitchItem[];
@@ -46,13 +66,20 @@ export interface KeybindingParams {
   setFocusDetailSearch: React.Dispatch<React.SetStateAction<boolean>>;
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSql: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowPatterns: React.Dispatch<React.SetStateAction<boolean>>;
   setSqlScrollOffset: React.Dispatch<React.SetStateAction<number>>;
+  setPatternSelectedRow: React.Dispatch<React.SetStateAction<number>>;
+  setPatternScrollOffset: React.Dispatch<React.SetStateAction<number>>;
+  setExpandedPattern: React.Dispatch<React.SetStateAction<number | null>>;
+  setSampleSelectedRow: React.Dispatch<React.SetStateAction<number>>;
+  setSampleScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setSelectedRow: React.Dispatch<React.SetStateAction<number>>;
   setScrollOffset: React.Dispatch<React.SetStateAction<number>>;
   setExpandedRow: React.Dispatch<React.SetStateAction<number | null>>;
   setDetailTab: React.Dispatch<
     React.SetStateAction<'overview' | 'columns' | 'trace'>
   >;
+  setTraceDetailExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   setIsFollowing: React.Dispatch<React.SetStateAction<boolean>>;
   setWrapLines: React.Dispatch<React.SetStateAction<boolean>>;
 
@@ -80,10 +107,19 @@ export function useKeybindings(params: KeybindingParams): void {
     focusDetailSearch,
     showHelp,
     showSql,
+    showPatterns,
     expandedRow,
     detailTab,
+    traceDetailExpanded,
     selectedRow,
     scrollOffset,
+    patternSelectedRow,
+    patternScrollOffset,
+    patternCount,
+    expandedPattern,
+    sampleSelectedRow,
+    sampleScrollOffset,
+    sampleCount,
     isFollowing,
     hasMore,
     events,
@@ -92,8 +128,12 @@ export function useKeybindings(params: KeybindingParams): void {
     source,
     timeRange,
     customSelect,
-    detailMaxRows,
+    submittedQuery,
     fullDetailMaxRows,
+    appUrl,
+    expandedTraceId,
+    expandedRowWhere,
+    traceSelectedNode,
     switchItems,
     findActiveIndex,
     onSavedSearchSelect,
@@ -102,11 +142,18 @@ export function useKeybindings(params: KeybindingParams): void {
     setFocusDetailSearch,
     setShowHelp,
     setShowSql,
+    setShowPatterns,
     setSqlScrollOffset,
+    setPatternSelectedRow,
+    setPatternScrollOffset,
+    setExpandedPattern,
+    setSampleSelectedRow,
+    setSampleScrollOffset,
     setSelectedRow,
     setScrollOffset,
     setExpandedRow,
     setDetailTab,
+    setTraceDetailExpanded,
     setIsFollowing,
     setWrapLines,
     setDetailSearchQuery,
@@ -194,28 +241,204 @@ export function useKeybindings(params: KeybindingParams): void {
       }
       return;
     }
-    // j/k in Trace tab: navigate spans/log events in the waterfall
-    // Ctrl+D/U: scroll Event Details section
+
+    // Pattern samples navigation (expanded pattern)
+    if (showPatterns && expandedPattern !== null && expandedRow === null) {
+      if (input === 'h' || key.escape) {
+        setExpandedPattern(null);
+        return;
+      }
+      if (input === 'j' || key.downArrow) {
+        setSampleSelectedRow(r => {
+          const next = r + 1;
+          const visibleCount = Math.min(
+            sampleCount - sampleScrollOffset,
+            maxRows,
+          );
+          if (next >= maxRows) {
+            setSampleScrollOffset(o =>
+              Math.min(o + 1, Math.max(0, sampleCount - maxRows)),
+            );
+            return r;
+          }
+          return Math.min(next, visibleCount - 1);
+        });
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        setSampleSelectedRow(r => {
+          const next = r - 1;
+          if (next < 0) {
+            setSampleScrollOffset(o => Math.max(0, o - 1));
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+      if (input === 'G') {
+        const maxOffset = Math.max(0, sampleCount - maxRows);
+        setSampleScrollOffset(maxOffset);
+        setSampleSelectedRow(Math.min(sampleCount - 1, maxRows - 1));
+        return;
+      }
+      if (input === 'g') {
+        setSampleScrollOffset(0);
+        setSampleSelectedRow(0);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        const half = Math.floor(maxRows / 2);
+        const maxOffset = Math.max(0, sampleCount - maxRows);
+        setSampleScrollOffset(o => Math.min(o + half, maxOffset));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        const half = Math.floor(maxRows / 2);
+        setSampleScrollOffset(o => Math.max(0, o - half));
+        return;
+      }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
+      if (input === 'q') process.exit(0);
+      return;
+    }
+
+    // Pattern view navigation
+    if (showPatterns && expandedRow === null) {
+      if (input === 'P') {
+        setShowPatterns(false);
+        if (wasFollowingRef.current) {
+          setIsFollowing(true);
+        }
+        return;
+      }
+      if (key.escape) {
+        setShowPatterns(false);
+        if (wasFollowingRef.current) {
+          setIsFollowing(true);
+        }
+        return;
+      }
+      if (key.return || input === 'l') {
+        setExpandedPattern(patternScrollOffset + patternSelectedRow);
+        setSampleSelectedRow(0);
+        setSampleScrollOffset(0);
+        return;
+      }
+      if (input === 'j' || key.downArrow) {
+        setPatternSelectedRow(r => {
+          const next = r + 1;
+          const visibleCount = Math.min(
+            patternCount - patternScrollOffset,
+            maxRows,
+          );
+          if (next >= maxRows) {
+            setPatternScrollOffset(o =>
+              Math.min(o + 1, Math.max(0, patternCount - maxRows)),
+            );
+            return r;
+          }
+          return Math.min(next, visibleCount - 1);
+        });
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        setPatternSelectedRow(r => {
+          const next = r - 1;
+          if (next < 0) {
+            setPatternScrollOffset(o => Math.max(0, o - 1));
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+      if (input === 'G') {
+        const maxOffset = Math.max(0, patternCount - maxRows);
+        setPatternScrollOffset(maxOffset);
+        setPatternSelectedRow(Math.min(patternCount - 1, maxRows - 1));
+        return;
+      }
+      if (input === 'g') {
+        setPatternScrollOffset(0);
+        setPatternSelectedRow(0);
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        const half = Math.floor(maxRows / 2);
+        const maxOffset = Math.max(0, patternCount - maxRows);
+        setPatternScrollOffset(o => Math.min(o + half, maxOffset));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        const half = Math.floor(maxRows / 2);
+        setPatternScrollOffset(o => Math.max(0, o - half));
+        return;
+      }
+      if (input === 'w') {
+        setWrapLines(w => !w);
+        return;
+      }
+      if (input === '/') {
+        setFocusSearch(true);
+        return;
+      }
+      if (input === 'q') process.exit(0);
+      return;
+    }
+
+    // ---- Trace tab keybindings ----------------------------------------
     if (expandedRow !== null && detailTab === 'trace') {
+      // When detail view is expanded (full-page Event Details):
+      // h/Esc = collapse back to waterfall, Ctrl+D/U = scroll
+      if (traceDetailExpanded) {
+        if (input === 'h' || key.escape) {
+          setTraceDetailExpanded(false);
+          return;
+        }
+        const detailHalfPage = Math.max(1, Math.floor(fullDetailMaxRows / 2));
+        if (key.ctrl && input === 'd') {
+          setTraceDetailScrollOffset(prev => prev + detailHalfPage);
+          return;
+        }
+        if (key.ctrl && input === 'u') {
+          setTraceDetailScrollOffset(prev =>
+            Math.max(0, prev - detailHalfPage),
+          );
+          return;
+        }
+        // Block other keys while in detail view
+        if (input === 'q') process.exit(0);
+        if (input === '/') {
+          setFocusDetailSearch(true);
+          return;
+        }
+        if (input === 'w') {
+          setWrapLines(w => !w);
+          return;
+        }
+        return;
+      }
+
+      // Waterfall view: j/k navigate spans, l expands detail
       if (input === 'j' || key.downArrow) {
         setTraceSelectedIndex(prev => (prev === null ? 0 : prev + 1));
-        setTraceDetailScrollOffset(0); // reset detail scroll on span change
+        setTraceDetailScrollOffset(0);
         return;
       }
       if (input === 'k' || key.upArrow) {
         setTraceSelectedIndex(prev =>
           prev === null ? 0 : Math.max(0, prev - 1),
         );
-        setTraceDetailScrollOffset(0); // reset detail scroll on span change
+        setTraceDetailScrollOffset(0);
         return;
       }
-      const detailHalfPage = Math.max(1, Math.floor(detailMaxRows / 2));
-      if (key.ctrl && input === 'd') {
-        setTraceDetailScrollOffset(prev => prev + detailHalfPage);
-        return;
-      }
-      if (key.ctrl && input === 'u') {
-        setTraceDetailScrollOffset(prev => Math.max(0, prev - detailHalfPage));
+      if (input === 'l' || key.return) {
+        setTraceDetailExpanded(true);
+        setTraceDetailScrollOffset(0);
         return;
       }
     }
@@ -284,6 +507,7 @@ export function useKeybindings(params: KeybindingParams): void {
       if (expandedRow !== null) {
         setExpandedRow(null);
         setDetailTab('columns');
+        setTraceDetailExpanded(false);
         // Restore follow mode if it was active before expanding
         if (wasFollowingRef.current) {
           setIsFollowing(true);
@@ -328,6 +552,7 @@ export function useKeybindings(params: KeybindingParams): void {
           ? ['overview', 'columns', 'trace']
           : ['overview', 'columns'];
         setTraceSelectedIndex(null);
+        setTraceDetailExpanded(false);
         setTraceDetailScrollOffset(0);
         setColumnValuesScrollOffset(0);
         setDetailTab(prev => {
@@ -340,11 +565,56 @@ export function useKeybindings(params: KeybindingParams): void {
       handleTabSwitch(key.shift ? -1 : 1);
       return;
     }
+    if (input === 'P') {
+      wasFollowingRef.current = isFollowing;
+      setIsFollowing(false);
+      setShowPatterns(true);
+      setPatternSelectedRow(0);
+      setPatternScrollOffset(0);
+      return;
+    }
     if (input === 'A' && onOpenAlerts) {
       onOpenAlerts();
       return;
     }
     if (input === 'w') setWrapLines(w => !w);
+    // o = open current trace/span in the browser
+    if (input === 'o' && expandedRow !== null) {
+      // Build eventRowWhere for trace tab when a span is selected
+      let eventRowWhere: {
+        id: string;
+        type: string;
+        aliasWith: never[];
+      } | null = null;
+      if (detailTab === 'trace' && traceSelectedNode) {
+        const traceSource =
+          source.kind === 'trace'
+            ? source
+            : // For log sources viewing the trace tab, use the trace source
+              // expressions. The node's kind tells us which source it came from.
+              null;
+        // Only build eventRowWhere if we have a trace source to reference
+        if (traceSource) {
+          eventRowWhere = {
+            id: buildSpanEventRowWhere(traceSelectedNode, traceSource),
+            type: traceSelectedNode.kind === 'log' ? 'log' : 'trace',
+            aliasWith: [] as never[],
+          };
+        }
+      }
+      const url = buildBrowserUrl({
+        appUrl,
+        source,
+        traceId: expandedTraceId,
+        searchQuery: submittedQuery,
+        timeRange,
+        rowWhere: expandedRowWhere,
+        detailTab,
+        eventRowWhere,
+      });
+      openUrl(url);
+      return;
+    }
     // f = toggle follow mode (disabled in detail panel — follow is
     // automatically paused on expand and restored on close)
     if (input === 'f' && expandedRow === null) {
