@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
 import { useAISummarize } from '@/hooks/ai';
@@ -122,6 +123,19 @@ export default function AISummarizeButton({
     () => (traceSourceData?.kind === 'trace' ? traceSourceData : undefined),
     [traceSourceData],
   );
+  // Minimal stub source so getConfig inside useEventsAroundFocus doesn't crash
+  // when the real source hasn't loaded yet. The hook's `enabled: false` prevents
+  // any actual query — this just satisfies the useMemo that builds the config.
+  const stubSource = useMemo<TTraceSource>(
+    () =>
+      ({
+        kind: SourceKind.Trace,
+        from: { databaseName: '', tableName: '' },
+        timestampValueExpression: '',
+        connection: '',
+      }) as TTraceSource,
+    [],
+  );
   // Stable fallback date to avoid re-renders from new Date() in render path
   const fallbackDate = useMemo(() => new Date(0), []);
   const fallbackRange = useMemo(
@@ -129,7 +143,7 @@ export default function AISummarizeButton({
     [fallbackDate],
   );
   const { rows: traceSpans } = useEventsAroundFocus({
-    tableSource: traceSource!,
+    tableSource: traceSource ?? stubSource,
     focusDate: focusDate ?? fallbackDate,
     dateRange: dateRange ?? fallbackRange,
     traceId: traceId ?? '',
