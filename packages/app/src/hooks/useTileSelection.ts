@@ -30,6 +30,12 @@ export default function useTileSelection({
     if (!dashboard || selectedTileIds.size === 0) return;
     const groupId = makeId();
     const tabId = makeId();
+    const sourceContainerIds = new Set<string>();
+    for (const tile of dashboard.tiles) {
+      if (selectedTileIds.has(tile.id) && tile.containerId) {
+        sourceContainerIds.add(tile.containerId);
+      }
+    }
     setDashboard(
       produce(dashboard, draft => {
         if (!draft.containers) draft.containers = [];
@@ -45,6 +51,13 @@ export default function useTileSelection({
             tile.containerId = groupId;
             tile.tabId = tabId;
           }
+        }
+        if (sourceContainerIds.size > 0) {
+          draft.containers = draft.containers.filter(
+            c =>
+              !sourceContainerIds.has(c.id) ||
+              draft.tiles.some(t => t.containerId === c.id),
+          );
         }
       }),
     );
