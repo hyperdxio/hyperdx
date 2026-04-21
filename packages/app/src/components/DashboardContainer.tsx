@@ -372,7 +372,7 @@ export default function DashboardContainer({
               >
                 {collapsedTabLabel ?? headerTitle}
               </Text>
-              {isCollapsed && hasContainerAlert && <AlertDot />}
+              {hasContainerAlert && <AlertDot />}
             </Flex>
           )}
           {addTileButton}

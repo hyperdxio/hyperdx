@@ -392,6 +392,26 @@ describe('DashboardContainer', () => {
       expect(dots.length).toBe(0);
     });
 
+    it('shows alert dot on expanded plain (single-tab) group header', () => {
+      const { container: wrapper } = renderDashboardContainer({
+        collapsed: false,
+        alertingTabIds: new Set(['tab-1']),
+        container: {
+          id: 'g1',
+          title: 'My Group',
+          collapsed: false,
+          tabs: [{ id: 'tab-1', title: 'Only' }],
+        },
+      });
+      // No tab bar is rendered for single-tab groups — the indicator must
+      // appear on the group header itself so alerts are visible at a glance
+      // even when the alerting tile is below the fold.
+      const dots = wrapper.querySelectorAll(
+        'span[style*="border-radius: 50%"]',
+      );
+      expect(dots.length).toBeGreaterThan(0);
+    });
+
     it('shows alert dot on specific tab in expanded tab bar', () => {
       renderDashboardContainer({
         collapsed: false,
