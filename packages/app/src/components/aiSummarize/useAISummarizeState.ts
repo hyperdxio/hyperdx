@@ -113,9 +113,13 @@ export function useAISummarizeState<TInput>({
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    // release abort flag synchronously on next microtask — in-flight
-    // callbacks queued before this point see abortRef=true and bail out;
-    // any mutate() called *after* this runs works normally.
+    // Release abort flag on the next microtask — in-flight callbacks queued
+    // before this point see abortRef=true and bail out; any mutate() called
+    // *after* this runs works normally.
+    //
+    // Uses queueMicrotask (not setTimeout(0)) deliberately: tests that enable
+    // jest.useFakeTimers() would freeze a setTimeout-based reset and block
+    // all subsequent onSuccess callbacks. Microtasks are not faked by Jest.
     queueMicrotask(() => {
       abortRef.current = false;
     });

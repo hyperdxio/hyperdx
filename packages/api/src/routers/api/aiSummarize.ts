@@ -32,6 +32,15 @@ export const summarizeBodySchema = z.object({
   tone: z.enum(TONE_VALUES).optional(),
   // Optional conversation history for future follow-up-question flows.
   // Each message is bounded; history is bounded; prevents unbounded prompt growth.
+  //
+  // SECURITY / TRUST BOUNDARY: messages are client-supplied, which means a
+  // caller can claim the assistant previously said anything. That is fine for
+  // the current single-shot summarize flow (no downstream consumer trusts
+  // these as "authentic model output"). When a real follow-up UI is built,
+  // move conversation state to the server (keyed by a server-issued
+  // conversationId) instead of round-tripping messages through the client, or
+  // restrict `role` to 'user' only and let the server interleave its own
+  // prior assistant replies from storage.
   messages: z
     .array(
       z.object({
@@ -119,17 +128,41 @@ export function wrapContent(content: string): string {
 
 // ---------------------------------------------------------------------------
 // Secret redaction — scrubs obvious credentials from context before sending.
-// Catches common patterns: `password=...`, `token=...`, `api_key=...`,
-// `Authorization: Bearer ...`, JWT-shaped strings.
+// Best-effort allowlist; not a guarantee. Recipes matched today:
+// - key=value pairs:              password=secret, api_key=abc
+// - JSON key/value pairs:         "password": "secret"
+// - HTTP Authorization values:    Bearer ..., Basic ...
+// - HTTP-style secret headers:    X-Api-Key: abc, X-Auth-Token: xyz
+// - JWT-shaped strings:           eyJ...header.payload.signature
+//
+// Missing recipes (extend when spotted): URL-encoded values, basic-auth URLs
+// (user:pass@host), SSH private key blocks. If redaction fires in production,
+// count it so we can tell if users are routinely sending secrets.
 // ---------------------------------------------------------------------------
 
+const SECRET_KEY_TOKENS =
+  'password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|authorization|auth';
+
 const REDACTION_PATTERNS: { re: RegExp; replace: string }[] = [
-  // key=value pairs with secret-ish keys
+  // key=value pairs
   {
-    re: /\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|authorization|auth)=([^\s,;&"'`]+)/gi,
+    re: new RegExp(`\\b(${SECRET_KEY_TOKENS})=([^\\s,;&"'\`]+)`, 'gi'),
     replace: '$1=[REDACTED]',
   },
-  // HTTP Authorization headers
+  // JSON-shape: "key": "value" or "key":"value" (quoted value)
+  {
+    re: new RegExp(`("(?:${SECRET_KEY_TOKENS})"\\s*:\\s*)"[^"]*"`, 'gi'),
+    replace: '$1"[REDACTED]"',
+  },
+  // HTTP-header shape: X-Api-Key: value  (colon-separated on one line)
+  {
+    re: new RegExp(
+      `\\b(x[-_]?(?:api[-_]?key|auth[-_]?token|access[-_]?token)|api[-_]?key)\\s*:\\s*([^\\s,;]+)`,
+      'gi',
+    ),
+    replace: '$1: [REDACTED]',
+  },
+  // Authorization headers
   {
     re: /Bearer\s+[A-Za-z0-9._~+/=-]+/gi,
     replace: 'Bearer [REDACTED]',

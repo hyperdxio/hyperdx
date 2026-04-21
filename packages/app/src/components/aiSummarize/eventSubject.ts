@@ -1,4 +1,5 @@
 // Subject: single log or trace event
+import { attrToString } from './formatHelpers';
 import { SummarySubject } from './subjects';
 
 export interface EventSubjectInput {
@@ -6,16 +7,9 @@ export interface EventSubjectInput {
   severityText?: string;
 }
 
-function coerceAttrValue(v: unknown): string {
-  if (v == null) return '';
-  if (typeof v === 'string') return v;
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
-}
+// Effectively unlimited for event attributes — 500 is far above typical
+// attribute lengths but caps pathological cases.
+const coerceAttrValue = (v: unknown) => attrToString(v, 500);
 
 export function formatEventContent(
   { rowData, severityText }: EventSubjectInput,

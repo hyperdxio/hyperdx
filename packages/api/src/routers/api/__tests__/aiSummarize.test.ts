@@ -151,6 +151,30 @@ describe('redactSecrets', () => {
       'error: database timeout after 30s',
     );
   });
+
+  it('redacts JSON-shape secrets (quoted key/value)', () => {
+    const input = '{"password":"s3cret","user":"alice"}';
+    const out = redactSecrets(input);
+    expect(out).not.toContain('s3cret');
+    expect(out).toContain('"password":"[REDACTED]"');
+    expect(out).toContain('"user":"alice"');
+  });
+
+  it('redacts JSON-shape with whitespace', () => {
+    const input = '{ "api_key" : "abc123" }';
+    const out = redactSecrets(input);
+    expect(out).not.toContain('abc123');
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it('redacts HTTP-style secret headers', () => {
+    expect(redactSecrets('X-Api-Key: abc123')).toContain(
+      'X-Api-Key: [REDACTED]',
+    );
+    expect(redactSecrets('X-Auth-Token: xyz')).toContain(
+      'X-Auth-Token: [REDACTED]',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

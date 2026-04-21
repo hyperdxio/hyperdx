@@ -2,18 +2,10 @@
 // Includes: summary stats, span groups with duration stats, and error spans.
 
 import { isErrorEvent } from './classifiers';
+import { attrToString } from './formatHelpers';
 
-// SpanAttributes come from ClickHouse Map columns — values can be string,
-// number, boolean, or nested objects depending on the source. Normalize
-// before using.
-export type TraceAttributeValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | unknown;
-
+// SpanAttributes come from ClickHouse Map columns — values can be any type
+// depending on the source schema.
 export interface TraceSpan {
   Body?: string;
   ServiceName?: string;
@@ -22,7 +14,7 @@ export interface TraceSpan {
   SeverityText?: string;
   SpanId?: string;
   ParentSpanId?: string;
-  SpanAttributes?: Record<string, TraceAttributeValue>;
+  SpanAttributes?: Record<string, unknown>;
 }
 
 interface SpanGroup {
@@ -42,22 +34,6 @@ function fmtMs(ms: number): string {
   if (ms < 1) return '<1ms';
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
-}
-
-// Coerce any attribute value to a short string for the LLM prompt.
-function attrToString(v: TraceAttributeValue, maxLen = 100): string {
-  if (v == null) return '';
-  let s: string;
-  if (typeof v === 'string') s = v;
-  else if (typeof v === 'number' || typeof v === 'boolean') s = String(v);
-  else {
-    try {
-      s = JSON.stringify(v);
-    } catch {
-      s = String(v);
-    }
-  }
-  return s.length > maxLen ? s.slice(0, maxLen - 3) + '...' : s;
 }
 
 function isSpanError(span: TraceSpan): boolean {

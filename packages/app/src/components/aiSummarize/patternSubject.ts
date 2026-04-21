@@ -5,6 +5,7 @@ import {
   SEVERITY_TEXT_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 
+import { attrToString } from './formatHelpers';
 import { SummarySubject } from './subjects';
 
 export interface PatternSubjectInput {
@@ -19,15 +20,9 @@ const SKIP_KEYS = new Set([
   'SortKey',
 ]);
 
-function coerceAttr(v: unknown): string {
-  if (typeof v === 'string') return v;
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
-}
+// Per-attribute cap; 200 chars is enough for URLs, status codes, short
+// messages — anything longer is likely redacted body content.
+const coerceAttr = (v: unknown) => attrToString(v, 200);
 
 export function formatPatternContent({
   pattern,

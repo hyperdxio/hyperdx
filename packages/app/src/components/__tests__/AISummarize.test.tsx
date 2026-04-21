@@ -38,8 +38,13 @@ jest.mock('@/source', () => ({
   useSource: () => ({ data: undefined, isLoading: false }),
 }));
 
+const mockUseEventsAroundFocus = jest.fn((_args: unknown) => ({
+  rows: [] as unknown[],
+  meta: [] as unknown[],
+  isFetching: false,
+}));
 jest.mock('../DBTraceWaterfallChart', () => ({
-  useEventsAroundFocus: () => ({ rows: [], meta: [], isFetching: false }),
+  useEventsAroundFocus: (args: unknown) => mockUseEventsAroundFocus(args),
 }));
 
 let mockEasterEggVisible = true;
@@ -469,6 +474,54 @@ describe('AISummarizePatternButton', () => {
 
 // Direct import of the panel for isolated tests
 import AISummaryPanelComponent from '../aiSummarize/AISummaryPanel';
+
+// ---------------------------------------------------------------------------
+// supportsTraceContext gate — a subject without trace context support must
+// never enable the trace-span fetch, even when trace props are passed.
+// ---------------------------------------------------------------------------
+
+describe('trace context gate', () => {
+  beforeEach(() => {
+    mockUseEventsAroundFocus.mockClear();
+    mockMeData = { aiAssistantEnabled: true };
+    mockEasterEggVisible = false;
+  });
+
+  it('pattern subject never enables trace fetch', () => {
+    const pattern: Pattern = {
+      id: 'p1',
+      pattern: 'GET /api/<*>',
+      count: 10,
+      samples: [],
+    };
+    renderWithMantine(
+      <AISummarizePatternButton
+        pattern={pattern}
+        serviceNameExpression="ServiceName"
+      />,
+    );
+    expect(mockUseEventsAroundFocus).toHaveBeenCalled();
+    // Every call must have enabled=false for a pattern subject, regardless
+    // of other props — the subject doesn't support trace context.
+    for (const call of mockUseEventsAroundFocus.mock.calls) {
+      const args = call[0] as { enabled: boolean };
+      expect(args.enabled).toBe(false);
+    }
+  });
+
+  it('event subject without traceId does not enable trace fetch', () => {
+    renderWithMantine(
+      <AISummarizeButton
+        rowData={{ __hdx_body: 'test' }}
+        severityText="info"
+      />,
+    );
+    for (const call of mockUseEventsAroundFocus.mock.calls) {
+      const args = call[0] as { enabled: boolean };
+      expect(args.enabled).toBe(false);
+    }
+  });
+});
 
 describe('AISummaryPanel', () => {
   const AISummaryPanel = AISummaryPanelComponent;
