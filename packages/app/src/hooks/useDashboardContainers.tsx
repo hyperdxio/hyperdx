@@ -37,19 +37,6 @@ export default function useDashboardContainers({
     );
   }, [dashboard, setDashboard]);
 
-  const handleToggleCollapsed = useCallback(
-    (containerId: string) => {
-      if (!dashboard) return;
-      setDashboard(
-        produce(dashboard, draft => {
-          const container = draft.containers?.find(s => s.id === containerId);
-          if (container) container.collapsed = !container.collapsed;
-        }),
-      );
-    },
-    [dashboard, setDashboard],
-  );
-
   const handleRenameContainer = useCallback(
     (containerId: string, newTitle: string) => {
       if (!dashboard || !newTitle.trim()) return;
@@ -224,7 +211,6 @@ export default function useDashboardContainers({
 
   return {
     handleAddContainer,
-    handleToggleCollapsed,
     handleRenameContainer,
     handleDeleteContainer,
     handleReorderContainers,

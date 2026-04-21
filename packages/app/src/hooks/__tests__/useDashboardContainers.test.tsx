@@ -289,17 +289,6 @@ describe('useDashboardContainers', () => {
       expect(result.containers![0].title).toBe('New Name');
     });
 
-    it('handleToggleCollapsed works on legacy container', () => {
-      const { hook, getDashboard } = renderContainersHook(legacyDashboard);
-      act(() => {
-        hook.result.current.handleToggleCollapsed('section-2');
-      });
-
-      const result = getDashboard();
-      // Was true, now false
-      expect(result.containers![1].collapsed).toBe(false);
-    });
-
     it('handleDeleteContainer action="ungroup" moves tiles from legacy container to top level', () => {
       const { hook, getDashboard } = renderContainersHook(legacyDashboard);
       act(() => {

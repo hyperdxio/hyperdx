@@ -923,7 +923,7 @@ function DashboardContainerRow({
   onRenameContainer,
   onTabChange,
   dragHandleProps,
-  layoutChangeHandler,
+  makeLayoutChangeHandler,
   tileToLayoutItem,
   renderTileComponent,
 }: {
@@ -944,12 +944,23 @@ function DashboardContainerRow({
   onRenameContainer: (newTitle: string) => void;
   onTabChange: (tabId: string) => void;
   dragHandleProps: DragHandleProps;
-  layoutChangeHandler?: (newLayout: RGL.Layout[]) => void;
+  makeLayoutChangeHandler: (tiles: Tile[]) => (newLayout: RGL.Layout[]) => void;
   tileToLayoutItem: (tile: Tile) => RGL.Layout;
   renderTileComponent: (tile: Tile) => React.ReactNode;
 }) {
   const groupTabs = container.tabs ?? [];
   const hasTabs = groupTabs.length >= 2;
+  // Tiles actually rendered inside RGL (active tab only for multi-tab
+  // containers). Handler must be built from these so RGL's `newLayout` and our
+  // `currentLayout` have matching sizes — otherwise every drag triggers a
+  // bogus diff + setDashboard write.
+  const visibleTiles = hasTabs
+    ? containerTiles.filter(t => t.tabId === activeTabId)
+    : containerTiles;
+  const layoutChangeHandler = useMemo(
+    () => makeLayoutChangeHandler(visibleTiles),
+    [makeLayoutChangeHandler, visibleTiles],
+  );
 
   return (
     <DashboardContainer
@@ -1295,6 +1306,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
   // Per-viewer active tab selection: array of "containerId:tabId" entries.
   // Overrides container.activeTabId (the DB-stored default for new viewers).
+  // Uses ':' as the separator — safe because makeId() produces base-36 strings
+  // which cannot contain ':'. If a future ID source changes, switch the
+  // separator or encode entries as JSON.
   const [urlActiveTabs, setUrlActiveTabs] = useQueryState(
     'activeTabs',
     parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
@@ -1681,7 +1695,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const {
     handleAddContainer,
-    handleToggleCollapsed: _handleToggleCollapsedDB,
     handleRenameContainer,
     handleDeleteContainer,
     handleReorderContainers,
@@ -1770,15 +1783,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => makeOnLayoutChange(ungroupedTiles),
     [makeOnLayoutChange, ungroupedTiles],
   );
-
-  const containerLayoutChangeHandlers = useMemo(() => {
-    const map = new Map<string, (newLayout: RGL.Layout[]) => void>();
-    for (const c of containers) {
-      const tiles = tilesByContainerId.get(c.id) ?? [];
-      map.set(c.id, makeOnLayoutChange(tiles));
-    }
-    return map;
-  }, [containers, tilesByContainerId, makeOnLayoutChange]);
 
   const deleteDashboard = useDeleteDashboard();
 
@@ -2261,9 +2265,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         handleTabChange(container.id, tabId)
                       }
                       dragHandleProps={dragHandleProps}
-                      layoutChangeHandler={containerLayoutChangeHandlers.get(
-                        container.id,
-                      )}
+                      makeLayoutChangeHandler={makeOnLayoutChange}
                       tileToLayoutItem={tileToLayoutItem}
                       renderTileComponent={renderTileComponent}
                     />
