@@ -14,6 +14,10 @@ jest.mock('@/hooks/useOffsetPaginatedQuery', () => ({
   default: jest.fn(),
 }));
 
+jest.mock('next/router', () => ({
+  useRouter: jest.fn(),
+}));
+
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
   useMVOptimizationExplanation: jest.fn().mockReturnValue({
     data: undefined,
@@ -24,6 +28,7 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
+  useSources: jest.fn().mockReturnValue({ data: [] }),
   useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 

@@ -667,23 +667,41 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+]);
+export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
+
+const OnClickSearchSchema = z.object({
+  type: z.literal('search'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
+
+export const OnClickSchema = z.discriminatedUnion('type', [
+  OnClickSearchSchema,
+]);
+export type OnClick = z.infer<typeof OnClickSchema>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-
 /**
- * Schema describing display settings which are shared between Raw SQL
+ * Schema describing settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
  **/
-const SharedChartDisplaySettingsSchema = z.object({
+const SharedChartSettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
   granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  onClick: OnClickSchema.optional(),
 });
 
-export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   sampleWeightExpression: z.string().optional(),
@@ -742,7 +760,7 @@ const BuilderChartConfigSchema = z.intersection(
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
 
 /** Base schema for Raw SQL chart configs */
-const RawSqlBaseChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+const RawSqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('sql'),
   sqlTemplate: z.string(),
   connection: z.string(),

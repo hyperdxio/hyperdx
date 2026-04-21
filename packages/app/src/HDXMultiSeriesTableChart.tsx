@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import cx from 'classnames';
 import { UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
@@ -35,7 +34,7 @@ export const Table = ({
   data,
   groupColumnName,
   columns,
-  getRowSearchLink,
+  onRowClick,
   tableBottom,
   enableClientSideSorting = false,
   sorting,
@@ -54,7 +53,7 @@ export const Table = ({
     sortingFn?: SortingFnOption<any>;
   }[];
   groupColumnName?: string;
-  getRowSearchLink?: (row: any) => string | null;
+  onRowClick?: (row: any, e?: React.MouseEvent) => void;
   tableBottom?: React.ReactNode;
   enableClientSideSorting?: boolean;
   sorting: SortingState;
@@ -142,40 +141,46 @@ export const Table = ({
                 formattedValue = formatNumber(value, numberFormat);
               }
 
-              if (getRowSearchLink == null) {
-                return formattedValue;
-              }
-              const link = getRowSearchLink(row.original);
+              const className = cx('align-top overflow-hidden py-1 pe-3', {
+                'text-break': wrapLinesEnabled,
+                'text-truncate': !wrapLinesEnabled,
+              });
 
-              if (!link) {
+              if (onRowClick) {
                 return (
                   <div
-                    className={cx('align-top overflow-hidden py-1 pe-3', {
-                      'text-break': wrapLinesEnabled,
-                      'text-truncate': !wrapLinesEnabled,
-                    })}
+                    role="link"
+                    tabIndex={0}
+                    className={className}
+                    style={{ cursor: 'pointer' }}
+                    // Left-click: fires onClick with button === 0. The parent
+                    // handler detects meta/ctrl for cmd/ctrl-click → new tab.
+                    onClick={e => onRowClick(row.original, e)}
+                    // Middle-click (button === 1) fires onAuxClick but NOT
+                    // onClick on non-anchor elements.
+                    onAuxClick={e => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        onRowClick(row.original, e);
+                      }
+                    }}
+                    // Suppress the browser's middle-click autoscroll cursor on non-anchor elements.
+                    onMouseDown={e => {
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick(row.original);
+                      }
+                    }}
                   >
                     {formattedValue}
                   </div>
                 );
               }
 
-              return (
-                <Link
-                  href={link}
-                  className={cx('align-top overflow-hidden py-1 pe-3', {
-                    'text-break': wrapLinesEnabled,
-                    'text-truncate': !wrapLinesEnabled,
-                  })}
-                  style={{
-                    display: 'block',
-                    color: 'inherit',
-                    textDecoration: 'none',
-                  }}
-                >
-                  {formattedValue}
-                </Link>
-              );
+              return <div className={className}>{formattedValue}</div>;
             },
             size:
               i === numColumns - 2

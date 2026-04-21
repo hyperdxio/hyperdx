@@ -305,6 +305,78 @@ export class ChartEditorComponent {
     await input.blur();
   }
 
+  // ---- Row Click Action drawer helpers ----
+
+  /**
+   * Open the "Row Click Action" drawer. Only available on Table tiles.
+   */
+  async openRowClickDrawer() {
+    await this.page.getByTestId('onclick-drawer-trigger').click();
+    await this.rowClickDrawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * Switch the Row Click Action mode (SegmentedControl).
+   */
+  async setRowClickMode(mode: 'Default' | 'Search') {
+    await this.page
+      .getByTestId('onclick-mode-segmented')
+      .getByText(mode, { exact: true })
+      .click();
+  }
+
+  /**
+   * Fill the "Source (template)" text input in the drawer.
+   */
+  async fillRowClickSourceTemplate(template: string) {
+    await this.page.getByTestId('onclick-source-template-input').fill(template);
+  }
+
+  /**
+   * Select SQL or Lucene on the WHERE template's language select inside the drawer.
+   */
+  async setRowClickWhereLanguage(language: 'SQL' | 'Lucene') {
+    const select = this.rowClickDrawer
+      .getByTestId('where-language-switch')
+      .getByLabel('Query language');
+    await select.click();
+    await this.page
+      .getByRole('option', { name: language, exact: true })
+      .click();
+  }
+
+  /**
+   * Fill the WHERE template input in the drawer. Handles both SQL (CodeMirror)
+   * and Lucene (textarea) variants of SearchWhereInput.
+   */
+  async fillRowClickWhereTemplate(
+    template: string,
+    language: 'sql' | 'lucene',
+  ) {
+    if (language === 'sql') {
+      const editor = this.rowClickDrawer
+        .locator('.cm-editor .cm-content')
+        .first();
+      await editor.click();
+      await this.page.keyboard.type(template);
+    } else {
+      const textarea = this.rowClickDrawer.locator('textarea').first();
+      await textarea.fill(template);
+    }
+  }
+
+  /**
+   * Click the drawer's Apply button and wait for the drawer to close.
+   */
+  async applyRowClickDrawer() {
+    await this.page.getByTestId('onclick-apply-button').click();
+    await this.rowClickDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  get rowClickDrawer() {
+    return this.page.getByTestId('onclick-drawer');
+  }
+
   // Getters for assertions
 
   get nameInput() {

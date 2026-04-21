@@ -30,6 +30,7 @@ import { getAllMetricTables, usePrevious } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
+import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import SourceSchemaPreview from '../SourceSchemaPreview';
 import { SourceSelectControlled } from '../SourceSelect';
 
@@ -222,13 +223,19 @@ export default function RawSqlChartEditor({
                 Add Alert
               </Button>
             )}
-          <Button
-            onClick={onOpenDisplaySettings}
-            size="compact-sm"
-            variant="secondary"
-          >
-            Display Settings
-          </Button>
+
+          <Group>
+            {displayType === DisplayType.Table && (
+              <OnClickFormButton control={control} setValue={setValue} />
+            )}
+            <Button
+              onClick={onOpenDisplaySettings}
+              size="compact-sm"
+              variant="secondary"
+            >
+              Display Settings
+            </Button>
+          </Group>
         </Group>
       </Group>
       <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />

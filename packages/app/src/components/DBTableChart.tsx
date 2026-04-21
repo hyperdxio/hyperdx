@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isBuilderChartConfig,
@@ -12,9 +13,11 @@ import {
   buildMVDateRangeIndicator,
   convertToTableChartConfig,
 } from '@/ChartUtils';
+import { IS_DASHBOARD_LINKING_ENABLED } from '@/config';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useResolvedNumberFormat, useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
@@ -23,7 +26,6 @@ import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
-// TODO: Support clicking in to view matched events
 export default function DBTableChart({
   config,
   getRowSearchLink,
@@ -195,6 +197,34 @@ export default function DBTableChart({
     queriedConfig,
   ]);
 
+  const getOnClickLink = useOnClickLinkBuilder({
+    onClick: config.onClick,
+    dateRange: queriedConfig.dateRange,
+  });
+
+  const router = useRouter();
+  const hasOnRowClick = !!getOnClickLink || !!getRowSearchLink;
+  const onRowClick = useCallback(
+    (row: Record<string, unknown>, e?: React.MouseEvent) => {
+      const url =
+        getOnClickLink && IS_DASHBOARD_LINKING_ENABLED
+          ? getOnClickLink(row)
+          : getRowSearchLink
+            ? getRowSearchLink(row)
+            : null;
+
+      // getOnClickLink will surface any errors notifications
+      if (!url) return;
+
+      if (e?.metaKey || e?.ctrlKey || e?.button === 1) {
+        window.open(url, '_blank');
+      } else {
+        router.push(url);
+      }
+    },
+    [getOnClickLink, getRowSearchLink, router],
+  );
+
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
@@ -236,7 +266,7 @@ export default function DBTableChart({
         <Table
           data={data?.data ?? []}
           columns={columns}
-          getRowSearchLink={getRowSearchLink}
+          onRowClick={hasOnRowClick ? onRowClick : undefined}
           sorting={effectiveSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}

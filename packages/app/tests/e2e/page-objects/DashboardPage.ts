@@ -591,6 +591,56 @@ export class DashboardPage {
     }
   }
 
+  // ---- Table tile helpers ----
+
+  /**
+   * Wait for the table tile at the given index to render at least one data row.
+   */
+  async waitForTableTileRows(tileIndex = 0) {
+    await this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+  }
+
+  /**
+   * Get the `title` attribute of a cell (by column index) in the first row of
+   * a table tile. The <td> title mirrors the cell's stringified value — useful
+   * for extracting column values (e.g. a ServiceName) for later assertions.
+   */
+  async getFirstTableRowValue(tileIndex = 0, columnIndex = 0): Promise<string> {
+    const cell = this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .locator('td')
+      .nth(columnIndex);
+    return (await cell.getAttribute('title')) ?? '';
+  }
+
+  /**
+   * Click the first row's first cell of a table tile. Each cell contains a
+   * div[role="link"] that owns the onRowClick handler — click that directly
+   * to trigger the configured action.
+   */
+  async clickFirstTableRow(tileIndex = 0) {
+    await this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .locator('div[role="link"]')
+      .first()
+      .click();
+  }
+
+  /**
+   * Locator for the Mantine toast raised by useOnClickLinkBuilder when the
+   * configured onClick action fails (unknown source, missing row column, etc).
+   */
+  getLinkErrorNotification() {
+    return this.page
+      .locator('.mantine-Notification-root')
+      .filter({ hasText: 'Link error' });
+  }
+
   // Getters for assertions
 
   get createButton() {
