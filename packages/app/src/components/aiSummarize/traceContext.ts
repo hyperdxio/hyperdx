@@ -1,6 +1,19 @@
 // Build a compact trace context string for the AI summarize prompt.
 // Includes: summary stats, span groups with duration stats, and error spans.
 
+import { isErrorEvent } from './classifiers';
+
+// SpanAttributes come from ClickHouse Map columns — values can be string,
+// number, boolean, or nested objects depending on the source. Normalize
+// before using.
+export type TraceAttributeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | unknown;
+
 export interface TraceSpan {
   Body?: string;
   ServiceName?: string;
@@ -9,7 +22,7 @@ export interface TraceSpan {
   SeverityText?: string;
   SpanId?: string;
   ParentSpanId?: string;
-  SpanAttributes?: Record<string, string>;
+  SpanAttributes?: Record<string, TraceAttributeValue>;
 }
 
 interface SpanGroup {
@@ -31,6 +44,44 @@ function fmtMs(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+// Coerce any attribute value to a short string for the LLM prompt.
+function attrToString(v: TraceAttributeValue, maxLen = 100): string {
+  if (v == null) return '';
+  let s: string;
+  if (typeof v === 'string') s = v;
+  else if (typeof v === 'number' || typeof v === 'boolean') s = String(v);
+  else {
+    try {
+      s = JSON.stringify(v);
+    } catch {
+      s = String(v);
+    }
+  }
+  return s.length > maxLen ? s.slice(0, maxLen - 3) + '...' : s;
+}
+
+function isSpanError(span: TraceSpan): boolean {
+  return isErrorEvent({
+    severity: span.SeverityText,
+    statusCode: span.StatusCode,
+    body: span.Body,
+    exceptionMessage:
+      typeof span.SpanAttributes?.['exception.message'] === 'string'
+        ? (span.SpanAttributes['exception.message'] as string)
+        : undefined,
+    exceptionType:
+      typeof span.SpanAttributes?.['exception.type'] === 'string'
+        ? (span.SpanAttributes['exception.type'] as string)
+        : undefined,
+    httpStatus:
+      typeof span.SpanAttributes?.['http.status_code'] === 'number'
+        ? (span.SpanAttributes['http.status_code'] as number)
+        : typeof span.SpanAttributes?.['http.status_code'] === 'string'
+          ? (span.SpanAttributes['http.status_code'] as string)
+          : undefined,
+  });
+}
+
 // Cap the trace context to ~4KB to stay well within the 50KB content limit
 const MAX_TRACE_CONTEXT_CHARS = 4000;
 
@@ -38,19 +89,16 @@ export function buildTraceContext(spans: TraceSpan[]): string {
   if (!spans || spans.length === 0) return '';
 
   const totalSpans = spans.length;
-  const errorSpans = spans.filter(
-    s =>
-      s.StatusCode === 'Error' ||
-      s.StatusCode === 'STATUS_CODE_ERROR' ||
-      s.SeverityText?.toLowerCase() === 'error',
-  );
+  const errorSpans = spans.filter(isSpanError);
   const errorCount = errorSpans.length;
 
-  // Compute end-to-end duration from span durations
   const durationsMs = spans
     .map(s => (s.Duration != null ? s.Duration * 1000 : NaN))
     .filter(d => !isNaN(d));
-  const maxDuration = durationsMs.length > 0 ? Math.max(...durationsMs) : 0;
+  // Longest single span — a coarse proxy for the critical path without needing
+  // timestamps. True end-to-end trace duration would require span start/end
+  // spans + parent/child topology, which is more data than we need here.
+  const longestSpanMs = durationsMs.length > 0 ? Math.max(...durationsMs) : 0;
 
   // Group by span name (Body field in trace waterfall)
   const groups = new Map<string, SpanGroup>();
@@ -62,25 +110,26 @@ export function buildTraceContext(spans: TraceSpan[]): string {
       groups.set(name, group);
     }
     group.count++;
-    if (
-      span.StatusCode === 'Error' ||
-      span.StatusCode === 'STATUS_CODE_ERROR' ||
-      span.SeverityText?.toLowerCase() === 'error'
-    ) {
+    if (isSpanError(span)) {
       group.errors++;
     }
     const dMs = span.Duration != null ? span.Duration * 1000 : NaN;
     if (!isNaN(dMs)) group.durations.push(dMs);
   }
 
-  // Sort groups by count descending, take top 15
+  // Sort groups: error groups first, then by count descending; cap at 15
   const sortedGroups = [...groups.values()]
-    .sort((a, b) => b.count - a.count)
+    .sort((a, b) => {
+      if ((b.errors > 0 ? 1 : 0) !== (a.errors > 0 ? 1 : 0)) {
+        return (b.errors > 0 ? 1 : 0) - (a.errors > 0 ? 1 : 0);
+      }
+      return b.count - a.count;
+    })
     .slice(0, 15);
 
   const parts: string[] = [];
   parts.push(
-    `Trace Context (${totalSpans} spans, ${errorCount} errors, ${fmtMs(maxDuration)} longest span):`,
+    `Trace Context (${totalSpans} spans, ${errorCount} errors, ${fmtMs(longestSpanMs)} longest span):`,
   );
   parts.push('Span groups:');
   for (const g of sortedGroups) {
@@ -100,13 +149,14 @@ export function buildTraceContext(spans: TraceSpan[]): string {
       const name = span.Body || '(unknown)';
       const dMs = span.Duration != null ? fmtMs(span.Duration * 1000) : 'n/a';
       const svc = span.ServiceName ? ` (${span.ServiceName})` : '';
-      // Include key error attributes if available
+      // Error detail: prefer exception info, then http status.
+      // Skip db.statement — often contains credentials/PII even after server-
+      // side redaction; the span body usually carries enough context.
       const attrs = span.SpanAttributes ?? {};
       const errDetail =
-        attrs['exception.message'] ||
-        attrs['exception.type'] ||
-        attrs['http.status_code'] ||
-        attrs['db.statement']?.slice(0, 100) ||
+        attrToString(attrs['exception.message'], 120) ||
+        attrToString(attrs['exception.type'], 60) ||
+        attrToString(attrs['http.status_code'], 10) ||
         '';
       parts.push(
         `  [ERROR] ${name}${svc} ${dMs}${errDetail ? ' — ' + errDetail : ''}`,

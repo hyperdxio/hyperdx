@@ -14,9 +14,17 @@ import {
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { createRateLimiter } from '@/middleware/rateLimit';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
+
+import {
+  buildSystemPrompt,
+  redactSecrets,
+  summarizeBodySchema,
+  wrapContent,
+} from './aiSummarize';
 
 const router = express.Router();
 
@@ -123,69 +131,52 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 );
 
 // ---------------------------------------------------------------------------
-// POST /ai/summarize — generate a natural-language summary of a log, trace, or
-// pattern using the configured LLM.
+// POST /ai/summarize — generate a natural-language summary of a log, trace,
+// pattern, alert, or future subject kind using the configured LLM.
+//
+// Prompts are registered per-kind in ./aiSummarize.ts. User content is
+// redacted of obvious secrets and wrapped in <data>...</data> tags to mark
+// it as data (not instructions) to the model. Rate-limited per user.
 // ---------------------------------------------------------------------------
 
-const TONE_VALUES = ['default', 'noir', 'attenborough', 'shakespeare'] as const;
-type Tone = (typeof TONE_VALUES)[number];
-
-const summarizeBodySchema = z.object({
-  type: z.enum(['event', 'pattern']),
-  content: z.string().min(1).max(50000),
-  tone: z.enum(TONE_VALUES).optional(),
+const summarizeRateLimit = createRateLimiter({
+  windowMs: 60_000, // 1 minute
+  max: 30,
+  name: 'ai/summarize',
 });
-
-// Hardcoded tone modifiers — never accept freeform style text from the client.
-const TONE_SUFFIXES: Record<Exclude<Tone, 'default'>, string> = {
-  noir: 'Write in the style of a hard-boiled detective noir narrator.',
-  attenborough:
-    'Write in the style of Sir David Attenborough narrating a nature documentary.',
-  shakespeare: 'Write in the style of a Shakespearean dramatic monologue.',
-};
 
 router.post(
   '/summarize',
+  summarizeRateLimit,
   validateRequest({ body: summarizeBodySchema }),
   async (req, res, next) => {
     try {
       const model = getAIModel();
-      const { type, content, tone } = req.body;
+      const { kind, content, tone, messages } = req.body;
 
-      const toneInstruction =
-        tone && tone !== 'default' ? `\n\n${TONE_SUFFIXES[tone]}` : '';
-
-      const formatInstruction = `
-
-Format:
-- Use **bold** for key details: service names, error types, status codes, durations.
-- Use \`code\` for specific values: config keys, connection strings, env vars.
-- Separate distinct points with line breaks.
-- Keep total length under 4 sentences.`;
-
-      const systemPrompt =
-        type === 'pattern'
-          ? `You are an expert observability engineer. The user will provide a log/trace pattern (a templatized message with occurrence count and sample events). Summarize it for an operator scanning a dashboard.
-
-Rules:
-- Lead with what matters: errors, failures, or elevated latency come first.
-- If the pattern is healthy and routine, say so in ONE sentence and stop — do not invent concerns.
-- If there is a real problem, explain what is wrong and one concrete next step (2-3 sentences max).
-- Be terse and technical. Do not repeat the raw pattern — paraphrase.${formatInstruction}${toneInstruction}`
-          : `You are an expert observability engineer. The user will provide a single log or trace event (body, attributes, severity, timing, etc.). Summarize it for an operator scanning a dashboard.
-
-Rules:
-- Lead with what matters: errors, failures, or elevated latency come first.
-- If the event is healthy and routine, say so in ONE sentence and stop — do not invent concerns.
-- If there is a real problem, explain what is wrong and one concrete next step (2-3 sentences max).
-- Be terse and technical. Do not repeat the raw event — paraphrase.${formatInstruction}${toneInstruction}`;
+      const systemPrompt = buildSystemPrompt(kind, tone);
+      const wrappedPrompt = wrapContent(redactSecrets(content));
 
       try {
         const result = await generateText({
           model,
           system: systemPrompt,
           experimental_telemetry: { isEnabled: true },
-          prompt: content,
+          ...(messages && messages.length > 0
+            ? {
+                // Conversation mode: prior turns + latest user content
+                messages: [
+                  ...messages.map(m => ({
+                    role: m.role,
+                    content: redactSecrets(m.content),
+                  })),
+                  { role: 'user' as const, content: wrappedPrompt },
+                ],
+              }
+            : {
+                // Single-shot mode
+                prompt: wrappedPrompt,
+              }),
         });
 
         return res.json({ summary: result.text });

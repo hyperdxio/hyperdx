@@ -6,6 +6,7 @@ export enum StatusCode {
   INTERNAL_SERVER = 500,
   NOT_FOUND = 404,
   OK = 200,
+  TOO_MANY_REQUESTS = 429,
   UNAUTHORIZED = 401,
 }
 
@@ -47,6 +48,12 @@ export class Api400Error extends BaseError {
 export class Api404Error extends BaseError {
   constructor(name: string) {
     super(name, StatusCode.NOT_FOUND, true, 'Not Found');
+  }
+}
+
+export class Api429Error extends BaseError {
+  constructor(name: string) {
+    super(name, StatusCode.TOO_MANY_REQUESTS, true, 'Too Many Requests');
   }
 }
 

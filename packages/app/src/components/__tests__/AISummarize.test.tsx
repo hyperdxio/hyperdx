@@ -43,8 +43,8 @@ jest.mock('../DBTraceWaterfallChart', () => ({
 }));
 
 let mockEasterEggVisible = true;
-jest.mock('../aiSummarize', () => {
-  const actual = jest.requireActual('../aiSummarize');
+jest.mock('../aiSummarize/helpers', () => {
+  const actual = jest.requireActual('../aiSummarize/helpers');
   return {
     ...actual,
     isEasterEggVisible: () => mockEasterEggVisible,
@@ -57,30 +57,36 @@ jest.mock('../aiSummarize', () => {
 
 describe('formatEventContent', () => {
   it('returns empty string for empty rowData', () => {
-    expect(formatEventContent({})).toBe('');
+    expect(formatEventContent({ rowData: {} })).toBe('');
   });
 
   it('includes severity when provided', () => {
-    const result = formatEventContent({}, 'error');
+    const result = formatEventContent({ rowData: {}, severityText: 'error' });
     expect(result).toBe('Severity: error');
   });
 
   it('includes body string', () => {
-    const result = formatEventContent({ __hdx_body: 'request failed' });
+    const result = formatEventContent({
+      rowData: { __hdx_body: 'request failed' },
+    });
     expect(result).toContain('Body: request failed');
   });
 
   it('JSON-stringifies non-string body', () => {
-    const result = formatEventContent({ __hdx_body: { key: 'val' } });
+    const result = formatEventContent({
+      rowData: { __hdx_body: { key: 'val' } },
+    });
     expect(result).toContain('Body: {"key":"val"}');
   });
 
   it('includes service, span, status, duration', () => {
     const result = formatEventContent({
-      ServiceName: 'api-svc',
-      SpanName: 'GET /users',
-      StatusCode: 'STATUS_CODE_ERROR',
-      Duration: 5000000,
+      rowData: {
+        ServiceName: 'api-svc',
+        SpanName: 'GET /users',
+        StatusCode: 'STATUS_CODE_ERROR',
+        Duration: 5000000,
+      },
     });
     expect(result).toContain('Service: api-svc');
     expect(result).toContain('Span: GET /users');
@@ -94,7 +100,7 @@ describe('formatEventContent', () => {
       attrs[`key${i}`] = `val${i}`;
     }
     const result = formatEventContent({
-      __hdx_event_attributes: attrs,
+      rowData: { __hdx_event_attributes: attrs },
     });
     expect(result).toContain('Attributes:');
     expect(result).toContain('key0=val0');
@@ -108,7 +114,7 @@ describe('formatEventContent', () => {
       res[`res${i}`] = `v${i}`;
     }
     const result = formatEventContent({
-      __hdx_resource_attributes: res,
+      rowData: { __hdx_resource_attributes: res },
     });
     expect(result).toContain('Resource:');
     expect(result).toContain('res0=v0');
@@ -117,9 +123,11 @@ describe('formatEventContent', () => {
 
   it('includes exception info', () => {
     const result = formatEventContent({
-      __hdx_events_exception_attributes: {
-        'exception.type': 'NullPointerException',
-        'exception.message': 'obj is null',
+      rowData: {
+        __hdx_events_exception_attributes: {
+          'exception.type': 'NullPointerException',
+          'exception.message': 'obj is null',
+        },
       },
     });
     expect(result).toContain('Exception: NullPointerException');
@@ -128,10 +136,12 @@ describe('formatEventContent', () => {
 
   it('skips empty/null attribute values', () => {
     const result = formatEventContent({
-      __hdx_event_attributes: {
-        filled: 'yes',
-        empty: '',
-        nul: null,
+      rowData: {
+        __hdx_event_attributes: {
+          filled: 'yes',
+          empty: '',
+          nul: null,
+        },
       },
     });
     expect(result).toContain('filled=yes');
@@ -155,7 +165,10 @@ describe('formatPatternContent', () => {
   });
 
   it('includes pattern name and count', () => {
-    const result = formatPatternContent(makePattern(), 'ServiceName');
+    const result = formatPatternContent({
+      pattern: makePattern(),
+      serviceNameExpression: 'ServiceName',
+    });
     expect(result).toContain('Pattern: GET /api/<*>');
     expect(result).toContain('Occurrences: 42');
   });
@@ -167,10 +180,10 @@ describe('formatPatternContent', () => {
       ServiceName: `svc-${i}`,
       __hdx_severity_text: `info`,
     }));
-    const result = formatPatternContent(
-      makePattern({ samples }),
-      'ServiceName',
-    );
+    const result = formatPatternContent({
+      pattern: makePattern({ samples }),
+      serviceNameExpression: 'ServiceName',
+    });
     expect(result).toContain('Sample events:');
     expect(result).toContain('body 0');
     expect(result).toContain('body 4');
@@ -178,10 +191,10 @@ describe('formatPatternContent', () => {
   });
 
   it('handles empty samples', () => {
-    const result = formatPatternContent(
-      makePattern({ samples: [] }),
-      'ServiceName',
-    );
+    const result = formatPatternContent({
+      pattern: makePattern({ samples: [] }),
+      serviceNameExpression: 'ServiceName',
+    });
     expect(result).not.toContain('Sample events:');
   });
 });
@@ -268,7 +281,7 @@ describe('AISummarizeButton', () => {
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'event',
+        kind: 'event',
         content: expect.stringContaining('Severity: error'),
       }),
       expect.objectContaining({
@@ -408,7 +421,7 @@ describe('AISummarizePatternButton', () => {
     fireEvent.click(screen.getByText('Summarize'));
     expect(mockMutate).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'pattern',
+        kind: 'pattern',
         content: expect.stringContaining('Pattern: GET /api/<*>'),
       }),
       expect.any(Object),
