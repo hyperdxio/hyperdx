@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
+import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
@@ -21,8 +21,8 @@ import {
 import { type DragHandleProps } from '@/components/DashboardDndContext';
 import GroupTabBar, { AlertDot } from '@/components/GroupTabBar';
 
-type GroupContainerProps = {
-  container: DashboardContainer;
+type DashboardContainerProps = {
+  container: DashboardContainerSchema;
   collapsed: boolean;
   defaultCollapsed: boolean;
   onToggle: () => void;
@@ -43,7 +43,7 @@ type GroupContainerProps = {
   alertingTabIds?: Set<string>;
 };
 
-export default function GroupContainer({
+export default function DashboardContainer({
   container,
   collapsed,
   defaultCollapsed,
@@ -62,7 +62,7 @@ export default function GroupContainer({
   children,
   dragHandleProps,
   alertingTabIds,
-}: GroupContainerProps) {
+}: DashboardContainerProps) {
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState(container.title);
   const [hovered, setHovered] = useState(false);

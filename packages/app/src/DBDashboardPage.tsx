@@ -33,7 +33,7 @@ import {
 import {
   AlertState,
   ChartConfigWithDateRange,
-  DashboardContainer,
+  DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   DisplayType,
   Filter,
@@ -100,7 +100,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import GroupContainer from '@/components/GroupContainer';
+import DashboardContainer from '@/components/DashboardContainer';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -905,7 +905,7 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
   downloadAnchorNode.remove();
 }
 
-function DashboardGroupItem({
+function DashboardContainerRow({
   container,
   containerTiles,
   isCollapsed,
@@ -926,7 +926,7 @@ function DashboardGroupItem({
   tileToLayoutItem,
   renderTileComponent,
 }: {
-  container: DashboardContainer;
+  container: DashboardContainerSchema;
   containerTiles: Tile[];
   isCollapsed: boolean;
   alertingTabIds?: Set<string>;
@@ -951,7 +951,7 @@ function DashboardGroupItem({
   const hasTabs = groupTabs.length >= 2;
 
   return (
-    <GroupContainer
+    <DashboardContainer
       container={container}
       collapsed={isCollapsed}
       defaultCollapsed={container.collapsed ?? false}
@@ -997,7 +997,7 @@ function DashboardGroupItem({
           </EmptyContainerPlaceholder>
         );
       }}
-    </GroupContainer>
+    </DashboardContainer>
   );
 }
 
@@ -1302,7 +1302,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const isContainerCollapsed = useCallback(
-    (container: DashboardContainer): boolean => {
+    (container: DashboardContainerSchema): boolean => {
       // URL state takes precedence over DB default
       if (collapsedIdSet.has(container.id)) return true;
       if (expandedIdSet.has(container.id)) return false;
@@ -2162,7 +2162,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   containerTitle={container.title}
                 >
                   {(dragHandleProps: DragHandleProps) => (
-                    <DashboardGroupItem
+                    <DashboardContainerRow
                       container={container}
                       containerTiles={
                         tilesByContainerId.get(container.id) ?? []

@@ -2,12 +2,12 @@ import * as React from 'react';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import GroupContainer from '@/components/GroupContainer';
+import DashboardContainer from '@/components/DashboardContainer';
 
-function renderGroupContainer(
-  props: Partial<React.ComponentProps<typeof GroupContainer>> = {},
+function renderDashboardContainer(
+  props: Partial<React.ComponentProps<typeof DashboardContainer>> = {},
 ) {
-  const defaults: React.ComponentProps<typeof GroupContainer> = {
+  const defaults: React.ComponentProps<typeof DashboardContainer> = {
     container: {
       id: 'g1',
       title: 'Test Group',
@@ -22,20 +22,20 @@ function renderGroupContainer(
   };
   return render(
     <MantineProvider>
-      <GroupContainer {...defaults} />
+      <DashboardContainer {...defaults} />
     </MantineProvider>,
   );
 }
 
-describe('GroupContainer', () => {
+describe('DashboardContainer', () => {
   describe('collapsible behavior', () => {
     it('renders chevron when collapsible (default)', () => {
-      renderGroupContainer();
+      renderDashboardContainer();
       expect(screen.getByTestId('group-chevron-g1')).toBeInTheDocument();
     });
 
     it('hides chevron when collapsible is false', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         container: {
           id: 'g1',
           title: 'Test',
@@ -48,18 +48,18 @@ describe('GroupContainer', () => {
     });
 
     it('shows children when expanded', () => {
-      renderGroupContainer({ collapsed: false });
+      renderDashboardContainer({ collapsed: false });
       expect(screen.getByTestId('group-children')).toBeInTheDocument();
     });
 
     it('hides children when collapsed', () => {
-      renderGroupContainer({ collapsed: true });
+      renderDashboardContainer({ collapsed: true });
       expect(screen.queryByTestId('group-children')).not.toBeInTheDocument();
     });
 
     it('calls onToggle when chevron is clicked', () => {
       const onToggle = jest.fn();
-      renderGroupContainer({ onToggle });
+      renderDashboardContainer({ onToggle });
       fireEvent.click(screen.getByTestId('group-chevron-g1'));
       expect(onToggle).toHaveBeenCalledTimes(1);
     });
@@ -67,13 +67,13 @@ describe('GroupContainer', () => {
 
   describe('bordered behavior', () => {
     it('renders border by default', () => {
-      renderGroupContainer();
+      renderDashboardContainer();
       const container = screen.getByTestId('group-container-g1');
       expect(container.style.border).toContain('1px solid');
     });
 
     it('hides border when bordered is false', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         container: {
           id: 'g1',
           title: 'Test',
@@ -89,7 +89,7 @@ describe('GroupContainer', () => {
 
   describe('collapsed tab summary', () => {
     it('shows all tab names when collapsed with multiple tabs', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         collapsed: true,
         container: {
           id: 'g1',
@@ -106,7 +106,7 @@ describe('GroupContainer', () => {
     });
 
     it('does not show tab summary when expanded', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         collapsed: false,
         container: {
           id: 'g1',
@@ -122,7 +122,7 @@ describe('GroupContainer', () => {
     });
 
     it('shows header title for single-tab collapsed group (no pipe summary)', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         collapsed: true,
         container: {
           id: 'g1',
@@ -141,7 +141,7 @@ describe('GroupContainer', () => {
     // Mantine Menu renders dropdown items in a portal only when opened,
     // so we test the negative case (items that should NOT be in the DOM).
     it('hides default-collapsed toggle when collapsible is false', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         onToggleDefaultCollapsed: jest.fn(),
         container: {
           id: 'g1',
@@ -159,7 +159,7 @@ describe('GroupContainer', () => {
 
   describe('tab bar', () => {
     it('renders tab bar with 2+ tabs when expanded', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         container: {
           id: 'g1',
           title: 'Group',
@@ -178,7 +178,7 @@ describe('GroupContainer', () => {
     });
 
     it('renders plain header with single tab', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         container: {
           id: 'g1',
           title: 'Group',
@@ -209,7 +209,7 @@ describe('GroupContainer', () => {
 
     it('opens delete modal when tab delete button is clicked', async () => {
       const onDeleteTab = jest.fn();
-      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+      renderDashboardContainer({ onDeleteTab, ...twoTabProps });
 
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
@@ -223,7 +223,7 @@ describe('GroupContainer', () => {
 
     it('calls onDeleteTab with "delete" when Delete Tab & Tiles is clicked', async () => {
       const onDeleteTab = jest.fn();
-      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+      renderDashboardContainer({ onDeleteTab, ...twoTabProps });
 
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
@@ -235,7 +235,7 @@ describe('GroupContainer', () => {
 
     it('calls onDeleteTab with "move" when Move Tiles is clicked', async () => {
       const onDeleteTab = jest.fn();
-      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+      renderDashboardContainer({ onDeleteTab, ...twoTabProps });
 
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
@@ -247,7 +247,7 @@ describe('GroupContainer', () => {
 
     it('does not call onDeleteTab when cancel is clicked', async () => {
       const onDeleteTab = jest.fn();
-      renderGroupContainer({ onDeleteTab, ...twoTabProps });
+      renderDashboardContainer({ onDeleteTab, ...twoTabProps });
 
       const firstTab = screen.getByRole('tab', { name: 'First' });
       fireEvent.mouseEnter(firstTab);
@@ -260,7 +260,7 @@ describe('GroupContainer', () => {
 
   describe('alert indicators', () => {
     it('shows alert dot on collapsed group header when alertingTabIds is non-empty', () => {
-      const { container: wrapper } = renderGroupContainer({
+      const { container: wrapper } = renderDashboardContainer({
         collapsed: true,
         alertingTabIds: new Set(['tab-1']),
         container: {
@@ -281,7 +281,7 @@ describe('GroupContainer', () => {
     });
 
     it('does not show alert dot when alertingTabIds is empty', () => {
-      const { container: wrapper } = renderGroupContainer({
+      const { container: wrapper } = renderDashboardContainer({
         collapsed: true,
         alertingTabIds: new Set(),
         container: {
@@ -301,7 +301,7 @@ describe('GroupContainer', () => {
     });
 
     it('shows alert dot on specific tab in expanded tab bar', () => {
-      renderGroupContainer({
+      renderDashboardContainer({
         collapsed: false,
         alertingTabIds: new Set(['tab-2']),
         container: {
