@@ -67,7 +67,6 @@ export default function useDashboardContainers({
           const container = draft.containers?.find(s => s.id === containerId);
           if (container) {
             container.title = newTitle.trim();
-            // Sync tabs[0].title when there is 1 tab (they share the header)
             if (container.tabs?.length === 1) {
               container.tabs[0].title = newTitle.trim();
             }
@@ -155,8 +154,6 @@ export default function useDashboardContainers({
     [dashboard, setDashboard],
   );
 
-  // --- Tab management ---
-
   const handleAddTab = useCallback(
     (containerId: string) => {
       if (!dashboard) return;
@@ -170,8 +167,6 @@ export default function useDashboardContainers({
           if (!c) return;
 
           if (existingTabs.length === 0) {
-            // Legacy container with no tabs: create 2 tabs and assign
-            // all existing tiles to the first tab
             const tab1Id = makeId();
             const tab2Id = makeId();
             c.tabs = [
@@ -185,7 +180,6 @@ export default function useDashboardContainers({
               }
             }
           } else {
-            // 1+ tabs: add a new tab and ensure tiles have a tabId
             if (!c.tabs) c.tabs = [];
             const newTabId = makeId();
             c.tabs.push({
@@ -193,7 +187,6 @@ export default function useDashboardContainers({
               title: `Tab ${existingTabs.length + 1}`,
             });
             c.activeTabId = newTabId;
-            // Assign any orphaned tiles (no tabId) to the first tab
             const firstTabId = existingTabs[0].id;
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId && !tile.tabId) {
@@ -216,7 +209,6 @@ export default function useDashboardContainers({
           const tab = container?.tabs?.find(t => t.id === tabId);
           if (tab) {
             tab.title = newTitle.trim();
-            // Keep container.title in sync when renaming the first (or only) tab
             if (container && container.tabs?.[0]?.id === tabId) {
               container.title = newTitle.trim();
             }
@@ -244,7 +236,6 @@ export default function useDashboardContainers({
               t => !(t.containerId === containerId && t.tabId === tabId),
             );
           } else {
-            // Move tiles to first remaining tab
             const targetTabId = remaining[0]?.id;
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId && tile.tabId === tabId) {

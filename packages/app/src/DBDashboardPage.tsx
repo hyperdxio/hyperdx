@@ -1342,7 +1342,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const hasContainers = containers.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
-  // --- Select-and-group workflow (Shift+click → Cmd+G) ---
   const {
     selectedTileIds,
     setSelectedTileIds,
@@ -1358,13 +1357,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           const tile = draft.tiles.find(t => t.id === tileId);
           if (!tile) return;
 
-          // Update container assignment
           if (containerId) tile.containerId = containerId;
           else delete tile.containerId;
           if (tabId) tile.tabId = tabId;
           else delete tile.tabId;
 
-          // Place in next available slot in target grid
           const targetTiles = draft.tiles.filter(t => {
             if (t.id === tileId) return false;
             if (containerId) {
@@ -1625,8 +1622,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
-  // Use the hook for container/tab CRUD operations, but override
-  // handleToggleCollapsed with the URL-based version above.
   const {
     handleAddContainer,
     handleToggleCollapsed: _handleToggleCollapsedDB,
@@ -1650,7 +1645,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // Default new tile size: w=8 (1/3 width), h=10 — matches original behavior
     const newW = 8;
     const newH = 10;
-    // Place tile in next available slot (fill right, then wrap)
     const targetTiles = (dashboard?.tiles ?? []).filter(t => {
       if (containerId) {
         if (t.containerId !== containerId) return false;
@@ -1674,8 +1668,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     });
   };
 
-  // Group tiles by container.
-  // Orphaned tiles (containerId not matching any container) become ungrouped.
+  // Orphaned tiles (containerId not matching any container) render as ungrouped.
   const tilesByContainerId = useMemo(() => {
     const map = new Map<string, Tile[]>();
     for (const c of containers) {
@@ -1687,7 +1680,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     return map;
   }, [containers, allTiles]);
 
-  // Pre-compute which tabs have alerting tiles per container
   const alertingTabIdsByContainer = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const container of containers) {

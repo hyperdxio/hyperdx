@@ -16,8 +16,6 @@ import {
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { Box, Text } from '@mantine/core';
 
-// --- Types ---
-
 export type DragHandleProps = React.HTMLAttributes<HTMLElement>;
 
 export type DragData = {
@@ -31,8 +29,6 @@ type Props = {
   containers: DashboardContainer[];
   onReorderContainers: (fromIndex: number, toIndex: number) => void;
 };
-
-// --- Provider (container reorder only) ---
 
 export function DashboardDndProvider({
   children,
@@ -67,7 +63,6 @@ export function DashboardDndProvider({
       const activeData = active.data.current as DragData | undefined;
       if (!activeData) return;
 
-      // Container reorder via sortable
       const overData = over.data.current as DragData | undefined;
       if (
         overData?.type === 'container' &&

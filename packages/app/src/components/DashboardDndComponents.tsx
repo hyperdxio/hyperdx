@@ -6,9 +6,6 @@ import { IconPlus } from '@tabler/icons-react';
 
 import { type DragData, type DragHandleProps } from './DashboardDndContext';
 
-// --- Empty container placeholder ---
-// Visual placeholder for empty groups/tabs with optional add-tile click.
-
 export function EmptyContainerPlaceholder({
   containerId,
   children,
@@ -43,8 +40,6 @@ export function EmptyContainerPlaceholder({
     </Box>
   );
 }
-
-// --- Sortable container wrapper (for container reordering) ---
 
 export function SortableContainerWrapper({
   containerId,

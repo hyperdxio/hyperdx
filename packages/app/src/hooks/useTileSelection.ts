@@ -26,7 +26,6 @@ export default function useTileSelection({
     });
   }, []);
 
-  // Creates a group container and assigns selected tiles to it.
   const handleGroupSelected = useCallback(() => {
     if (!dashboard || selectedTileIds.size === 0) return;
     const groupId = makeId();
@@ -52,7 +51,6 @@ export default function useTileSelection({
     setSelectedTileIds(new Set());
   }, [dashboard, selectedTileIds, setDashboard]);
 
-  // Cmd+G / Ctrl+G to group selected tiles
   useHotkeys([
     [
       'mod+g',
@@ -61,7 +59,6 @@ export default function useTileSelection({
         handleGroupSelected();
       },
     ],
-    // Escape to clear selection
     ['escape', () => setSelectedTileIds(new Set())],
   ]);
 
