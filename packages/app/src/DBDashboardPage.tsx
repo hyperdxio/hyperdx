@@ -86,6 +86,7 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import DashboardContainer from '@/components/DashboardContainer';
 import {
   EmptyContainerPlaceholder,
   SortableContainerWrapper,
@@ -100,7 +101,6 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import DashboardContainer from '@/components/DashboardContainer';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -909,6 +909,7 @@ function DashboardContainerRow({
   container,
   containerTiles,
   isCollapsed,
+  activeTabId,
   alertingTabIds,
   onToggleCollapse,
   onToggleDefaultCollapsed,
@@ -929,6 +930,7 @@ function DashboardContainerRow({
   container: DashboardContainerSchema;
   containerTiles: Tile[];
   isCollapsed: boolean;
+  activeTabId: string | undefined;
   alertingTabIds?: Set<string>;
   onToggleCollapse: () => void;
   onToggleDefaultCollapsed: () => void;
@@ -947,7 +949,6 @@ function DashboardContainerRow({
   renderTileComponent: (tile: Tile) => React.ReactNode;
 }) {
   const groupTabs = container.tabs ?? [];
-  const groupActiveTabId = container.activeTabId ?? groupTabs[0]?.id;
   const hasTabs = groupTabs.length >= 2;
 
   return (
@@ -961,9 +962,9 @@ function DashboardContainerRow({
       onToggleBordered={onToggleBordered}
       onDelete={onDeleteContainer}
       onAddTile={() =>
-        onAddTile(container.id, hasTabs ? groupActiveTabId : undefined)
+        onAddTile(container.id, hasTabs ? activeTabId : undefined)
       }
-      activeTabId={groupActiveTabId}
+      activeTabId={activeTabId}
       onTabChange={onTabChange}
       onAddTab={onAddTab}
       onRenameTab={onRenameTab}
@@ -1291,6 +1292,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'expanded',
     parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
   );
+  // Per-viewer active tab selection: array of "containerId:tabId" entries.
+  // Overrides container.activeTabId (the DB-stored default for new viewers).
+  const [urlActiveTabs, setUrlActiveTabs] = useQueryState(
+    'activeTabs',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
 
   const collapsedIdSet = useMemo(
     () => new Set(urlCollapsedIds ?? []),
@@ -1300,6 +1307,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => new Set(urlExpandedIds ?? []),
     [urlExpandedIds],
   );
+  const urlActiveTabByContainer = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of urlActiveTabs ?? []) {
+      const [containerId, tabId] = entry.split(':');
+      if (containerId && tabId) map.set(containerId, tabId);
+    }
+    return map;
+  }, [urlActiveTabs]);
 
   const isContainerCollapsed = useCallback(
     (container: DashboardContainerSchema): boolean => {
@@ -1309,6 +1324,30 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       return container.collapsed ?? false;
     },
     [collapsedIdSet, expandedIdSet],
+  );
+
+  const getActiveTabId = useCallback(
+    (container: DashboardContainerSchema): string | undefined => {
+      const urlTabId = urlActiveTabByContainer.get(container.id);
+      if (urlTabId && container.tabs?.some(t => t.id === urlTabId)) {
+        return urlTabId;
+      }
+      return container.activeTabId ?? container.tabs?.[0]?.id;
+    },
+    [urlActiveTabByContainer],
+  );
+
+  const handleTabChange = useCallback(
+    (containerId: string, tabId: string) => {
+      setUrlActiveTabs(prev => {
+        const filtered = (prev ?? []).filter(
+          entry => !entry.startsWith(`${containerId}:`),
+        );
+        filtered.push(`${containerId}:${tabId}`);
+        return filtered;
+      });
+    },
+    [setUrlActiveTabs],
   );
 
   // Valid move targets: groups and individual tabs within groups
@@ -1631,7 +1670,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     handleAddTab,
     handleRenameTab,
     handleDeleteTab,
-    handleTabChange,
   } = useDashboardContainers({ dashboard, setDashboard, confirm });
 
   const onAddTile = (containerId?: string, tabId?: string) => {
@@ -2168,6 +2206,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         tilesByContainerId.get(container.id) ?? []
                       }
                       isCollapsed={isContainerCollapsed(container)}
+                      activeTabId={getActiveTabId(container)}
                       alertingTabIds={alertingTabIdsByContainer.get(
                         container.id,
                       )}

@@ -256,22 +256,6 @@ export default function useDashboardContainers({
     [dashboard, setDashboard],
   );
 
-  // Intentionally persisted to server (same as collapsed state) — shared
-  // across all viewers. If user-local tab state is needed later, move to
-  // useState/localStorage instead.
-  const handleTabChange = useCallback(
-    (containerId: string, tabId: string) => {
-      if (!dashboard) return;
-      setDashboard(
-        produce(dashboard, draft => {
-          const container = draft.containers?.find(c => c.id === containerId);
-          if (container) container.activeTabId = tabId;
-        }),
-      );
-    },
-    [dashboard, setDashboard],
-  );
-
   return {
     handleAddContainer,
     handleToggleCollapsed,
@@ -281,6 +265,5 @@ export default function useDashboardContainers({
     handleAddTab,
     handleRenameTab,
     handleDeleteTab,
-    handleTabChange,
   };
 }

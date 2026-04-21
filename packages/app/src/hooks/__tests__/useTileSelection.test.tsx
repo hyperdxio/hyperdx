@@ -109,9 +109,7 @@ describe('useTileSelection — handleGroupSelected', () => {
     const result = getDashboard();
     expect(result.containers).toHaveLength(2);
     expect(result.containers!.some(c => c.id === 'c-source')).toBe(true);
-    expect(
-      result.tiles.find(t => t.id === 't2')!.containerId,
-    ).toBe('c-source');
+    expect(result.tiles.find(t => t.id === 't2')!.containerId).toBe('c-source');
   });
 
   it('does not delete unrelated empty containers', () => {
