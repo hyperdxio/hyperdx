@@ -1,16 +1,9 @@
 import { useCallback } from 'react';
 import produce from 'immer';
 import { arrayMove } from '@dnd-kit/sortable';
-import { Text } from '@mantine/core';
 
 import { Dashboard } from '@/dashboard';
 import { makeId } from '@/utils/tilePositioning';
-
-type ConfirmFn = (
-  message: React.ReactNode,
-  confirmLabel?: string,
-  options?: { variant?: 'primary' | 'danger' },
-) => Promise<boolean>;
 
 // Tab/title semantics:
 // Every container has a `title` field used as the display name.
@@ -22,11 +15,9 @@ type ConfirmFn = (
 export default function useDashboardContainers({
   dashboard,
   setDashboard,
-  confirm,
 }: {
   dashboard: Dashboard | undefined;
   setDashboard: (dashboard: Dashboard) => void;
-  confirm: ConfirmFn;
 }) {
   const handleAddContainer = useCallback(() => {
     if (!dashboard) return;
@@ -78,56 +69,31 @@ export default function useDashboardContainers({
   );
 
   const handleDeleteContainer = useCallback(
-    async (containerId: string) => {
+    (containerId: string, action: 'ungroup' | 'delete') => {
       if (!dashboard) return;
-      const container = dashboard.containers?.find(c => c.id === containerId);
-      const tileCount = dashboard.tiles.filter(
-        t => t.containerId === containerId,
-      ).length;
-      const label = container?.title ?? 'this group';
-
-      const message =
-        tileCount > 0 ? (
-          <>
-            Delete{' '}
-            <Text component="span" fw={700}>
-              {label}
-            </Text>
-            ?{' '}
-            {`${tileCount} tile${tileCount > 1 ? 's' : ''} will become ungrouped.`}
-          </>
-        ) : (
-          <>
-            Delete{' '}
-            <Text component="span" fw={700}>
-              {label}
-            </Text>
-            ?
-          </>
-        );
-
-      const confirmed = await confirm(message, 'Delete', {
-        variant: 'danger',
-      });
-      if (!confirmed) return;
-
       setDashboard(
         produce(dashboard, draft => {
-          const allContainerIds = new Set(
-            draft.containers?.map(c => c.id) ?? [],
-          );
-          let maxUngroupedY = 0;
-          for (const tile of draft.tiles) {
-            if (!tile.containerId || !allContainerIds.has(tile.containerId)) {
-              maxUngroupedY = Math.max(maxUngroupedY, tile.y + tile.h);
+          if (action === 'delete') {
+            draft.tiles = draft.tiles.filter(
+              t => t.containerId !== containerId,
+            );
+          } else {
+            const allContainerIds = new Set(
+              draft.containers?.map(c => c.id) ?? [],
+            );
+            let maxUngroupedY = 0;
+            for (const tile of draft.tiles) {
+              if (!tile.containerId || !allContainerIds.has(tile.containerId)) {
+                maxUngroupedY = Math.max(maxUngroupedY, tile.y + tile.h);
+              }
             }
-          }
 
-          for (const tile of draft.tiles) {
-            if (tile.containerId === containerId) {
-              tile.y += maxUngroupedY;
-              delete tile.containerId;
-              delete tile.tabId;
+            for (const tile of draft.tiles) {
+              if (tile.containerId === containerId) {
+                tile.y += maxUngroupedY;
+                delete tile.containerId;
+                delete tile.tabId;
+              }
             }
           }
 
@@ -137,7 +103,7 @@ export default function useDashboardContainers({
         }),
       );
     },
-    [dashboard, setDashboard, confirm],
+    [dashboard, setDashboard],
   );
 
   const handleReorderContainers = useCallback(

@@ -258,6 +258,98 @@ describe('DashboardContainer', () => {
     });
   });
 
+  describe('group delete prompt', () => {
+    const baseContainer = {
+      id: 'g1',
+      title: 'My Group',
+      collapsed: false,
+      tabs: [{ id: 'tab-1', title: 'My Group' }],
+    };
+
+    it('opens the delete modal when "Delete Group" menu item is clicked', async () => {
+      renderDashboardContainer({
+        onDelete: jest.fn(),
+        tileCount: 2,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      expect(
+        await screen.findByTestId('group-delete-modal'),
+      ).toBeInTheDocument();
+    });
+
+    it('offers Ungroup + Delete when tileCount > 0', async () => {
+      renderDashboardContainer({
+        onDelete: jest.fn(),
+        tileCount: 3,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      expect(
+        await screen.findByTestId('group-delete-ungroup'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('group-delete-confirm')).toBeInTheDocument();
+      expect(screen.getByTestId('group-delete-cancel')).toBeInTheDocument();
+    });
+
+    it('hides Ungroup option when tileCount is 0', async () => {
+      renderDashboardContainer({
+        onDelete: jest.fn(),
+        tileCount: 0,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      expect(
+        screen.queryByTestId('group-delete-ungroup'),
+      ).not.toBeInTheDocument();
+      expect(
+        await screen.findByTestId('group-delete-confirm'),
+      ).toBeInTheDocument();
+    });
+
+    it('calls onDelete with "ungroup" when Ungroup Tiles is clicked', async () => {
+      const onDelete = jest.fn();
+      renderDashboardContainer({
+        onDelete,
+        tileCount: 2,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-ungroup'));
+      expect(onDelete).toHaveBeenCalledWith('ungroup');
+    });
+
+    it('calls onDelete with "delete" when Delete Group & Tiles is clicked', async () => {
+      const onDelete = jest.fn();
+      renderDashboardContainer({
+        onDelete,
+        tileCount: 2,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-confirm'));
+      expect(onDelete).toHaveBeenCalledWith('delete');
+    });
+
+    it('does not call onDelete when Cancel is clicked', async () => {
+      const onDelete = jest.fn();
+      renderDashboardContainer({
+        onDelete,
+        tileCount: 2,
+        container: baseContainer,
+      });
+      fireEvent.click(screen.getByTestId('group-menu-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-g1'));
+      fireEvent.click(await screen.findByTestId('group-delete-cancel'));
+      expect(onDelete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('alert indicators', () => {
     it('shows alert dot on collapsed group header when alertingTabIds is non-empty', () => {
       const { container: wrapper } = renderDashboardContainer({

@@ -3,8 +3,11 @@ import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-
 import {
   ActionIcon,
   Box,
+  Button,
   Flex,
+  Group,
   Menu,
+  Modal,
   Tabs,
   Text,
   TextInput,
@@ -29,7 +32,9 @@ type DashboardContainerProps = {
   onToggleDefaultCollapsed?: () => void;
   onToggleCollapsible?: () => void;
   onToggleBordered?: () => void;
-  onDelete?: () => void;
+  onDelete?: (action: 'ungroup' | 'delete') => void;
+  /** Tile count inside this container — determines whether "Ungroup Tiles" is offered. */
+  tileCount?: number;
   onAddTile?: () => void;
   activeTabId?: string;
   onTabChange?: (tabId: string) => void;
@@ -52,6 +57,7 @@ export default function DashboardContainer({
   onToggleCollapsible,
   onToggleBordered,
   onDelete,
+  tileCount = 0,
   onAddTile,
   activeTabId,
   onTabChange,
@@ -67,6 +73,7 @@ export default function DashboardContainer({
   const [groupRenameValue, setGroupRenameValue] = useState(container.title);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const tabs = container.tabs ?? [];
   const hasTabs = tabs.length >= 2;
@@ -149,6 +156,7 @@ export default function DashboardContainer({
           size="sm"
           tabIndex={showControls ? 0 : -1}
           style={hoverControlStyle}
+          data-testid={`group-menu-${container.id}`}
         >
           <IconDotsVertical size={14} />
         </ActionIcon>
@@ -196,7 +204,8 @@ export default function DashboardContainer({
             <Menu.Item
               leftSection={<IconTrash size={14} />}
               color="red"
-              onClick={onDelete}
+              onClick={() => setDeleteModalOpen(true)}
+              data-testid={`group-delete-${container.id}`}
             >
               Delete Group
             </Menu.Item>
@@ -373,6 +382,58 @@ export default function DashboardContainer({
       {!isCollapsed && (
         <Box>{children(hasTabs ? resolvedActiveTabId : undefined)}</Box>
       )}
+      <Modal
+        data-testid="group-delete-modal"
+        opened={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        centered
+        withCloseButton={false}
+      >
+        <Text size="sm" opacity={0.7}>
+          Delete{' '}
+          <Text component="span" fw={700}>
+            {headerTitle}
+          </Text>
+          ?
+          {tileCount > 0
+            ? ` This group contains ${tileCount} tile${tileCount > 1 ? 's' : ''}.`
+            : ''}
+        </Text>
+        <Group justify="flex-end" mt="md" gap="xs">
+          <Button
+            data-testid="group-delete-cancel"
+            size="xs"
+            variant="secondary"
+            onClick={() => setDeleteModalOpen(false)}
+          >
+            Cancel
+          </Button>
+          {tileCount > 0 && (
+            <Button
+              data-testid="group-delete-ungroup"
+              size="xs"
+              variant="primary"
+              onClick={() => {
+                onDelete?.('ungroup');
+                setDeleteModalOpen(false);
+              }}
+            >
+              Ungroup Tiles
+            </Button>
+          )}
+          <Button
+            data-testid="group-delete-confirm"
+            size="xs"
+            variant="danger"
+            onClick={() => {
+              onDelete?.('delete');
+              setDeleteModalOpen(false);
+            }}
+          >
+            {tileCount > 0 ? 'Delete Group & Tiles' : 'Delete Group'}
+          </Button>
+        </Group>
+      </Modal>
     </Box>
   );
 }

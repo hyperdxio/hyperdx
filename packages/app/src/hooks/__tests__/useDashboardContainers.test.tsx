@@ -18,15 +18,13 @@ function renderContainersHook(dashboard: Dashboard) {
   const setDashboard = jest.fn((d: Dashboard) => {
     current = d;
   });
-  const confirm = jest.fn().mockResolvedValue(true);
   const hook = renderHook(() =>
     useDashboardContainers({
       dashboard: current,
       setDashboard,
-      confirm,
     }),
   );
-  return { hook, setDashboard, confirm, getDashboard: () => current };
+  return { hook, setDashboard, getDashboard: () => current };
 }
 
 describe('useDashboardContainers', () => {
@@ -302,21 +300,78 @@ describe('useDashboardContainers', () => {
       expect(result.containers![1].collapsed).toBe(false);
     });
 
-    it('handleDeleteContainer ungroups tiles from legacy container', async () => {
+    it('handleDeleteContainer action="ungroup" moves tiles from legacy container to top level', () => {
       const { hook, getDashboard } = renderContainersHook(legacyDashboard);
-      await act(async () => {
-        await hook.result.current.handleDeleteContainer('section-1');
+      act(() => {
+        hook.result.current.handleDeleteContainer('section-1', 'ungroup');
       });
 
       const result = getDashboard();
-      // Container removed
       expect(result.containers).toHaveLength(1);
       expect(result.containers![0].id).toBe('section-2');
-      // Tiles from section-1 are ungrouped
       const formerTiles = result.tiles.filter(
         t => t.id === 't1' || t.id === 't2',
       );
       expect(formerTiles.every(t => t.containerId === undefined)).toBe(true);
+      expect(formerTiles.every(t => t.tabId === undefined)).toBe(true);
+    });
+
+    it('handleDeleteContainer action="delete" removes tiles from legacy container', () => {
+      const { hook, getDashboard } = renderContainersHook(legacyDashboard);
+      act(() => {
+        hook.result.current.handleDeleteContainer('section-1', 'delete');
+      });
+
+      const result = getDashboard();
+      expect(result.containers).toHaveLength(1);
+      expect(result.tiles.find(t => t.id === 't1')).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 't2')).toBeUndefined();
+    });
+  });
+
+  describe('handleDeleteContainer — multi-tab group', () => {
+    const multiTabDashboard = makeDashboard({
+      containers: [
+        {
+          id: 'g1',
+          title: 'Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-a', title: 'Tab A' },
+            { id: 'tab-b', title: 'Tab B' },
+          ],
+          activeTabId: 'tab-a',
+        },
+      ],
+      tiles: [
+        { id: 't1', containerId: 'g1', tabId: 'tab-a', x: 0, y: 0, w: 6, h: 4 },
+        { id: 't2', containerId: 'g1', tabId: 'tab-a', x: 6, y: 0, w: 6, h: 4 },
+        { id: 't3', containerId: 'g1', tabId: 'tab-b', x: 0, y: 0, w: 6, h: 4 },
+      ] as Dashboard['tiles'],
+    });
+
+    it('action="ungroup" strips containerId and tabId from all tiles across all tabs', () => {
+      const { hook, getDashboard } = renderContainersHook(multiTabDashboard);
+      act(() => {
+        hook.result.current.handleDeleteContainer('g1', 'ungroup');
+      });
+
+      const result = getDashboard();
+      expect(result.containers).toHaveLength(0);
+      expect(result.tiles).toHaveLength(3);
+      expect(result.tiles.every(t => t.containerId === undefined)).toBe(true);
+      expect(result.tiles.every(t => t.tabId === undefined)).toBe(true);
+    });
+
+    it('action="delete" removes all tiles across all tabs', () => {
+      const { hook, getDashboard } = renderContainersHook(multiTabDashboard);
+      act(() => {
+        hook.result.current.handleDeleteContainer('g1', 'delete');
+      });
+
+      const result = getDashboard();
+      expect(result.containers).toHaveLength(0);
+      expect(result.tiles).toHaveLength(0);
     });
   });
 });

@@ -936,7 +936,7 @@ function DashboardContainerRow({
   onToggleDefaultCollapsed: () => void;
   onToggleCollapsible: () => void;
   onToggleBordered: () => void;
-  onDeleteContainer: () => void;
+  onDeleteContainer: (action: 'ungroup' | 'delete') => void;
   onAddTile: (containerId: string, tabId?: string) => void;
   onAddTab: () => void;
   onRenameTab: (tabId: string, newTitle: string) => void;
@@ -961,6 +961,7 @@ function DashboardContainerRow({
       onToggleCollapsible={onToggleCollapsible}
       onToggleBordered={onToggleBordered}
       onDelete={onDeleteContainer}
+      tileCount={containerTiles.length}
       onAddTile={() =>
         onAddTile(container.id, hasTabs ? activeTabId : undefined)
       }
@@ -1687,7 +1688,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     handleAddTab,
     handleRenameTab,
     handleDeleteTab,
-  } = useDashboardContainers({ dashboard, setDashboard, confirm });
+  } = useDashboardContainers({ dashboard, setDashboard });
 
   const onAddTile = (containerId?: string, tabId?: string) => {
     // Auto-expand collapsed container via URL state so the new tile is visible
@@ -2239,8 +2240,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       onToggleBordered={() =>
                         handleToggleBordered(container.id)
                       }
-                      onDeleteContainer={() =>
-                        handleDeleteContainer(container.id)
+                      onDeleteContainer={action =>
+                        handleDeleteContainer(container.id, action)
                       }
                       onAddTile={onAddTile}
                       onAddTab={() => {
