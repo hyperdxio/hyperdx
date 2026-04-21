@@ -1328,11 +1328,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const getActiveTabId = useCallback(
     (container: DashboardContainerSchema): string | undefined => {
+      const tabs = container.tabs ?? [];
       const urlTabId = urlActiveTabByContainer.get(container.id);
-      if (urlTabId && container.tabs?.some(t => t.id === urlTabId)) {
-        return urlTabId;
+      if (urlTabId && tabs.some(t => t.id === urlTabId)) return urlTabId;
+      if (
+        container.activeTabId &&
+        tabs.some(t => t.id === container.activeTabId)
+      ) {
+        return container.activeTabId;
       }
-      return container.activeTabId ?? container.tabs?.[0]?.id;
+      return tabs[0]?.id;
     },
     [urlActiveTabByContainer],
   );
@@ -1345,6 +1350,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         );
         filtered.push(`${containerId}:${tabId}`);
         return filtered;
+      });
+    },
+    [setUrlActiveTabs],
+  );
+
+  const clearUrlActiveTab = useCallback(
+    (containerId: string) => {
+      setUrlActiveTabs(prev => {
+        const filtered = (prev ?? []).filter(
+          entry => !entry.startsWith(`${containerId}:`),
+        );
+        return filtered.length > 0 ? filtered : null;
       });
     },
     [setUrlActiveTabs],
@@ -2226,7 +2243,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         handleDeleteContainer(container.id)
                       }
                       onAddTile={onAddTile}
-                      onAddTab={() => handleAddTab(container.id)}
+                      onAddTab={() => {
+                        handleAddTab(container.id);
+                        clearUrlActiveTab(container.id);
+                      }}
                       onRenameTab={(tabId, title) =>
                         handleRenameTab(container.id, tabId, title)
                       }
