@@ -1,3 +1,4 @@
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   Filter,
@@ -7,7 +8,6 @@ import {
 import { act, renderHook } from '@testing-library/react';
 
 import api from '@/api';
-import { FilterState } from '@/searchFilters';
 
 import useDashboardFilters from '../useDashboardFilters';
 import usePresetDashboardFilters from '../usePresetDashboardFilters';

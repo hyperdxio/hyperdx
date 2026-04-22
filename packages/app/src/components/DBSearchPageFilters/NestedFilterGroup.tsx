@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-
-import { FilterState } from '@/searchFilters';
 
 import { FilterGroup } from '../DBSearchPageFilters';
 

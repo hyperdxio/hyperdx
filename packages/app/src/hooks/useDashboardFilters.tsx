@@ -1,8 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
+import {
+  FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 
-import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
+import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
