@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { CSSProperties, useState } from 'react';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -13,6 +13,7 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronRight,
   IconDotsVertical,
@@ -23,29 +24,30 @@ import {
 
 import { type DragHandleProps } from '@/components/DashboardDndContext';
 import GroupTabBar, { AlertDot } from '@/components/GroupTabBar';
+import { TabDeleteAction } from '@/hooks/useDashboardContainers';
 
 type DashboardContainerProps = {
   container: DashboardContainerSchema;
   collapsed: boolean;
   defaultCollapsed: boolean;
   onToggle: () => void;
-  onToggleDefaultCollapsed?: () => void;
-  onToggleCollapsible?: () => void;
-  onToggleBordered?: () => void;
-  onDelete?: (action: 'ungroup' | 'delete') => void;
+  onToggleDefaultCollapsed: () => void;
+  onToggleCollapsible: () => void;
+  onToggleBordered: () => void;
+  onDelete: (action: 'ungroup' | 'delete') => void;
   /** Tile count inside this container — determines whether "Ungroup Tiles" is offered. */
-  tileCount?: number;
-  onAddTile?: () => void;
-  activeTabId?: string;
-  onTabChange?: (tabId: string) => void;
-  onAddTab?: () => void;
-  onRenameTab?: (tabId: string, newTitle: string) => void;
-  onDeleteTab?: (tabId: string, action: 'delete' | 'move') => void;
-  onRename?: (newTitle: string) => void;
+  tileCount: number;
+  onAddTile: () => void;
+  activeTabId: string | undefined;
+  onTabChange: (tabId: string) => void;
+  onAddTab: () => void;
+  onRenameTab: (tabId: string, newTitle: string) => void;
+  onDeleteTab: (tabId: string, action: TabDeleteAction) => void;
+  onRename: (newTitle: string) => void;
   children: (activeTabId: string | undefined) => React.ReactNode;
-  dragHandleProps?: DragHandleProps;
-  /** Tab IDs that contain tiles with active alerts */
-  alertingTabIds?: Set<string>;
+  dragHandleProps: DragHandleProps;
+  /** Tab IDs that contain tiles with active alerts, if any */
+  alertingTabIds: Set<string> | undefined;
 };
 
 export default function DashboardContainer({
@@ -57,7 +59,7 @@ export default function DashboardContainer({
   onToggleCollapsible,
   onToggleBordered,
   onDelete,
-  tileCount = 0,
+  tileCount,
   onAddTile,
   activeTabId,
   onTabChange,
@@ -73,7 +75,8 @@ export default function DashboardContainer({
   const [groupRenameValue, setGroupRenameValue] = useState(container.title);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalOpen, { open: openDeleteModal, close: closeDeleteModal }] =
+    useDisclosure(false);
 
   const tabs = container.tabs ?? [];
   const hasTabs = tabs.length >= 2;
@@ -90,9 +93,9 @@ export default function DashboardContainer({
     const trimmed = groupRenameValue.trim();
     if (trimmed && trimmed !== headerTitle) {
       if (firstTab) {
-        onRenameTab?.(firstTab.id, trimmed);
+        onRenameTab(firstTab.id, trimmed);
       } else {
-        onRename?.(trimmed);
+        onRename(trimmed);
       }
     } else {
       setGroupRenameValue(headerTitle);
@@ -100,12 +103,9 @@ export default function DashboardContainer({
     setIsRenamingGroup(false);
   };
 
-  // Visibility style for controls that appear on hover
-  const hoverControlStyle = {
+  const hoverControlStyle: CSSProperties = {
     opacity: showControls ? 1 : 0,
-    pointerEvents: (showControls
-      ? 'auto'
-      : 'none') as React.CSSProperties['pointerEvents'],
+    pointerEvents: showControls ? 'auto' : 'none',
   };
 
   const chevron = collapsible ? (
@@ -126,14 +126,14 @@ export default function DashboardContainer({
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onToggle?.();
+          onToggle();
         }
       }}
       data-testid={`group-chevron-${container.id}`}
     />
   ) : null;
 
-  const addTileButton = !isCollapsed && onAddTile && (
+  const addTileButton = !isCollapsed && (
     <Tooltip label="Add Tile" position="top" withArrow>
       <ActionIcon
         variant="subtle"
@@ -162,24 +162,17 @@ export default function DashboardContainer({
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        {onAddTab && (
-          <Menu.Item leftSection={<IconPlus size={14} />} onClick={onAddTab}>
-            Add Tab
-          </Menu.Item>
-        )}
-        {(onToggleCollapsible ||
-          onToggleBordered ||
-          onToggleDefaultCollapsed) &&
-          onAddTab && <Menu.Divider />}
-        {onToggleCollapsible && (
-          <Menu.Item
-            onClick={onToggleCollapsible}
-            data-testid={`group-toggle-collapsible-${container.id}`}
-          >
-            {collapsible ? 'Disable Collapse' : 'Enable Collapse'}
-          </Menu.Item>
-        )}
-        {collapsible && onToggleDefaultCollapsed && (
+        <Menu.Item leftSection={<IconPlus size={14} />} onClick={onAddTab}>
+          Add Tab
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item
+          onClick={onToggleCollapsible}
+          data-testid={`group-toggle-collapsible-${container.id}`}
+        >
+          {collapsible ? 'Disable Collapse' : 'Enable Collapse'}
+        </Menu.Item>
+        {collapsible && (
           <Menu.Item
             onClick={onToggleDefaultCollapsed}
             data-testid={`group-toggle-default-${container.id}`}
@@ -187,35 +180,26 @@ export default function DashboardContainer({
             {defaultCollapsed ? 'Expand by Default' : 'Collapse by Default'}
           </Menu.Item>
         )}
-        {onToggleBordered && (
-          <Menu.Item
-            onClick={onToggleBordered}
-            data-testid={`group-toggle-bordered-${container.id}`}
-          >
-            {bordered ? 'Hide Border' : 'Show Border'}
-          </Menu.Item>
-        )}
-        {onDelete && (
-          <>
-            {(onAddTab ||
-              onToggleCollapsible ||
-              onToggleBordered ||
-              onToggleDefaultCollapsed) && <Menu.Divider />}
-            <Menu.Item
-              leftSection={<IconTrash size={14} />}
-              color="red"
-              onClick={() => setDeleteModalOpen(true)}
-              data-testid={`group-delete-${container.id}`}
-            >
-              Delete Group
-            </Menu.Item>
-          </>
-        )}
+        <Menu.Item
+          onClick={onToggleBordered}
+          data-testid={`group-toggle-bordered-${container.id}`}
+        >
+          {bordered ? 'Hide Border' : 'Show Border'}
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item
+          leftSection={<IconTrash size={14} />}
+          color="red"
+          onClick={openDeleteModal}
+          data-testid={`group-delete-${container.id}`}
+        >
+          Delete Group
+        </Menu.Item>
       </Menu.Dropdown>
     </Menu>
   );
 
-  const dragHandle = dragHandleProps && (
+  const dragHandle = (
     <Flex
       {...dragHandleProps}
       align="center"
@@ -265,7 +249,7 @@ export default function DashboardContainer({
         /* Tab bar header (2+ tabs, expanded) */
         <Tabs
           value={resolvedActiveTabId}
-          onChange={val => val && onTabChange?.(val)}
+          onChange={val => val && onTabChange(val)}
         >
           <Flex
             align="center"
@@ -280,7 +264,6 @@ export default function DashboardContainer({
               tabs={tabs}
               activeTabId={resolvedActiveTabId}
               showControls={showControls}
-              onTabChange={onTabChange}
               onRenameTab={onRenameTab}
               onDeleteTab={onDeleteTab}
               containerId={container.id}
@@ -354,14 +337,9 @@ export default function DashboardContainer({
                 size="sm"
                 fw={500}
                 truncate
-                style={{
-                  cursor:
-                    !collapsedTabLabel && (onRenameTab || onRename)
-                      ? 'text'
-                      : undefined,
-                }}
+                style={{ cursor: !collapsedTabLabel ? 'text' : undefined }}
                 onClick={
-                  !collapsedTabLabel && (onRenameTab || onRename)
+                  !collapsedTabLabel
                     ? e => {
                         e.stopPropagation();
                         setGroupRenameValue(headerTitle);
@@ -385,7 +363,7 @@ export default function DashboardContainer({
       <Modal
         data-testid="group-delete-modal"
         opened={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
+        onClose={closeDeleteModal}
         centered
         withCloseButton={false}
       >
@@ -404,7 +382,7 @@ export default function DashboardContainer({
             data-testid="group-delete-cancel"
             size="xs"
             variant="secondary"
-            onClick={() => setDeleteModalOpen(false)}
+            onClick={closeDeleteModal}
           >
             Cancel
           </Button>
@@ -414,8 +392,8 @@ export default function DashboardContainer({
               size="xs"
               variant="primary"
               onClick={() => {
-                onDelete?.('ungroup');
-                setDeleteModalOpen(false);
+                onDelete('ungroup');
+                closeDeleteModal();
               }}
             >
               Ungroup Tiles
@@ -426,8 +404,8 @@ export default function DashboardContainer({
             size="xs"
             variant="danger"
             onClick={() => {
-              onDelete?.('delete');
-              setDeleteModalOpen(false);
+              onDelete('delete');
+              closeDeleteModal();
             }}
           >
             {tileCount > 0 ? 'Delete Group & Tiles' : 'Delete Group'}

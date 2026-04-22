@@ -5,6 +5,8 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { Dashboard } from '@/dashboard';
 import { makeId } from '@/utils/tilePositioning';
 
+export type TabDeleteAction = 'delete' | 'move';
+
 // Tab/title semantics:
 // Every container has a `title` field used as the display name.
 // When a container has a single tab, `container.title` and `tabs[0].title`
@@ -31,7 +33,6 @@ export default function useDashboardContainers({
           title: 'New Group',
           collapsed: false,
           tabs: [{ id: tabId, title: 'New Group' }],
-          activeTabId: tabId,
         });
       }),
     );
@@ -107,17 +108,19 @@ export default function useDashboardContainers({
     [dashboard, setDashboard],
   );
 
+  // Returns the tab the viewer should land on after Add Tab. For a legacy
+  // 0→2 split this is Tab 1 (the viewer's existing content); otherwise the
+  // newly-created empty tab.
   const handleAddTab = useCallback(
-    (containerId: string) => {
-      if (!dashboard) return;
-      const container = dashboard.containers?.find(c => c.id === containerId);
-      if (!container) return;
-      const existingTabs = container.tabs ?? [];
+    (containerId: string): string | undefined => {
+      if (!dashboard) return undefined;
 
+      let targetTabId: string | undefined;
       setDashboard(
         produce(dashboard, draft => {
           const c = draft.containers?.find(c => c.id === containerId);
           if (!c) return;
+          const existingTabs = c.tabs ?? [];
 
           if (existingTabs.length === 0) {
             const tab1Id = makeId();
@@ -126,12 +129,12 @@ export default function useDashboardContainers({
               { id: tab1Id, title: 'Tab 1' },
               { id: tab2Id, title: 'Tab 2' },
             ];
-            c.activeTabId = tab1Id;
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId) {
                 tile.tabId = tab1Id;
               }
             }
+            targetTabId = tab1Id;
           } else {
             if (!c.tabs) c.tabs = [];
             const newTabId = makeId();
@@ -139,16 +142,17 @@ export default function useDashboardContainers({
               id: newTabId,
               title: `Tab ${existingTabs.length + 1}`,
             });
-            c.activeTabId = newTabId;
             const firstTabId = existingTabs[0].id;
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId && !tile.tabId) {
                 tile.tabId = firstTabId;
               }
             }
+            targetTabId = newTabId;
           }
         }),
       );
+      return targetTabId;
     },
     [dashboard, setDashboard],
   );
@@ -173,7 +177,7 @@ export default function useDashboardContainers({
   );
 
   const handleDeleteTab = useCallback(
-    (containerId: string, tabId: string, action: 'delete' | 'move') => {
+    (containerId: string, tabId: string, action: TabDeleteAction) => {
       if (!dashboard) return;
       const container = dashboard.containers?.find(c => c.id === containerId);
       if (!container?.tabs) return;
@@ -199,9 +203,6 @@ export default function useDashboardContainers({
 
           c.tabs = c.tabs.filter(t => t.id !== tabId);
           const firstTab = c.tabs[0];
-          if (c.activeTabId === tabId) {
-            c.activeTabId = firstTab?.id;
-          }
           if (firstTab) c.title = firstTab.title;
         }),
       );

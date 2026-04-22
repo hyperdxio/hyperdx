@@ -108,7 +108,9 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
-import useDashboardContainers from '@/hooks/useDashboardContainers';
+import useDashboardContainers, {
+  TabDeleteAction,
+} from '@/hooks/useDashboardContainers';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer from './components/charts/ChartContainer';
@@ -223,7 +225,7 @@ const Tile = forwardRef(
       children?: React.ReactNode; // Resizer tooltip
       isHighlighted?: boolean;
       isSelected?: boolean;
-      onSelect?: (tileId: string, shiftKey: boolean) => void;
+      onSelect?: (tileId: string) => void;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -755,7 +757,7 @@ const Tile = forwardRef(
           onClick={e => {
             if (e.shiftKey && onSelect) {
               e.preventDefault();
-              onSelect(chart.id, true);
+              onSelect(chart.id);
             }
           }}
           onMouseDown={onMouseDown}
@@ -940,7 +942,7 @@ function DashboardContainerRow({
   onAddTile: (containerId: string, tabId?: string) => void;
   onAddTab: () => void;
   onRenameTab: (tabId: string, newTitle: string) => void;
-  onDeleteTab: (tabId: string, action: 'delete' | 'move') => void;
+  onDeleteTab: (tabId: string, action: TabDeleteAction) => void;
   onRenameContainer: (newTitle: string) => void;
   onTabChange: (tabId: string) => void;
   dragHandleProps: DragHandleProps;
@@ -1304,14 +1306,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'expanded',
     parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
   );
-  // Per-viewer active tab selection: array of "containerId:tabId" entries.
-  // Overrides container.activeTabId (the DB-stored default for new viewers).
-  // Uses ':' as the separator — safe because makeId() produces base-36 strings
-  // which cannot contain ':'. If a future ID source changes, switch the
-  // separator or encode entries as JSON.
+  // Per-viewer active tab selection: `{ [containerId]: tabId }`.
+  // Falls back to the first tab for any container not in the map.
   const [urlActiveTabs, setUrlActiveTabs] = useQueryState(
     'activeTabs',
-    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+    parseAsJsonEncoded<Record<string, string>>().withOptions({
+      history: 'replace',
+    }),
   );
 
   const collapsedIdSet = useMemo(
@@ -1322,14 +1323,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => new Set(urlExpandedIds ?? []),
     [urlExpandedIds],
   );
-  const urlActiveTabByContainer = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of urlActiveTabs ?? []) {
-      const [containerId, tabId] = entry.split(':');
-      if (containerId && tabId) map.set(containerId, tabId);
-    }
-    return map;
-  }, [urlActiveTabs]);
 
   const isContainerCollapsed = useCallback(
     (container: DashboardContainerSchema): boolean => {
@@ -1344,40 +1337,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const getActiveTabId = useCallback(
     (container: DashboardContainerSchema): string | undefined => {
       const tabs = container.tabs ?? [];
-      const urlTabId = urlActiveTabByContainer.get(container.id);
+      const urlTabId = urlActiveTabs?.[container.id];
       if (urlTabId && tabs.some(t => t.id === urlTabId)) return urlTabId;
-      if (
-        container.activeTabId &&
-        tabs.some(t => t.id === container.activeTabId)
-      ) {
-        return container.activeTabId;
-      }
       return tabs[0]?.id;
     },
-    [urlActiveTabByContainer],
+    [urlActiveTabs],
   );
 
   const handleTabChange = useCallback(
     (containerId: string, tabId: string) => {
-      setUrlActiveTabs(prev => {
-        const filtered = (prev ?? []).filter(
-          entry => !entry.startsWith(`${containerId}:`),
-        );
-        filtered.push(`${containerId}:${tabId}`);
-        return filtered;
-      });
-    },
-    [setUrlActiveTabs],
-  );
-
-  const clearUrlActiveTab = useCallback(
-    (containerId: string) => {
-      setUrlActiveTabs(prev => {
-        const filtered = (prev ?? []).filter(
-          entry => !entry.startsWith(`${containerId}:`),
-        );
-        return filtered.length > 0 ? filtered : null;
-      });
+      setUrlActiveTabs(prev => ({ ...(prev ?? {}), [containerId]: tabId }));
     },
     [setUrlActiveTabs],
   );
@@ -1416,7 +1385,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const {
     selectedTileIds,
     setSelectedTileIds,
-    handleTileSelect,
+    handleToggleTileSelect,
     handleGroupSelected,
   } = useTileSelection({ dashboard, setDashboard });
 
@@ -1441,7 +1410,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             }
             return !t.containerId;
           });
-          const pos = calculateNextTilePosition(targetTiles, tile.w, tile.h);
+          const pos = calculateNextTilePosition(targetTiles, tile.w);
           tile.x = pos.x;
           tile.y = pos.y;
         }),
@@ -1539,7 +1508,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           handleMoveTileToGroup(chart.id, containerId, tabId)
         }
         isSelected={selectedTileIds.has(chart.id)}
-        onSelect={handleTileSelect}
+        onSelect={handleToggleTileSelect}
       />
     ),
     [
@@ -1558,7 +1527,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
-      handleTileSelect,
+      handleToggleTileSelect,
     ],
   );
 
@@ -1721,7 +1690,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       }
       return !t.containerId;
     });
-    const pos = calculateNextTilePosition(targetTiles, newW, newH);
+    const pos = calculateNextTilePosition(targetTiles, newW);
     setEditedTile({
       id: makeId(),
       x: pos.x,
@@ -1756,10 +1725,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       const firstTabId = container.tabs?.[0]?.id;
       const alerting = new Set<string>();
       for (const tile of tiles) {
-        if (
-          isBuilderSavedChartConfig(tile.config) &&
-          tile.config.alert?.state === AlertState.ALERT
-        ) {
+        if (tile.config.alert?.state === AlertState.ALERT) {
           const attributedTabId = tile.tabId ?? firstTabId;
           if (attributedTabId) alerting.add(attributedTabId);
         }
@@ -2249,8 +2215,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       }
                       onAddTile={onAddTile}
                       onAddTab={() => {
-                        handleAddTab(container.id);
-                        clearUrlActiveTab(container.id);
+                        const newTabId = handleAddTab(container.id);
+                        if (newTabId) handleTabChange(container.id, newTabId);
                       }}
                       onRenameTab={(tabId, title) =>
                         handleRenameTab(container.id, tabId, title)

@@ -894,7 +894,6 @@ export const DashboardContainerSchema = z.object({
   // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
   // Tiles reference a specific tab via tabId.
   tabs: z.array(DashboardContainerTabSchema).optional(),
-  activeTabId: z.string().optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;

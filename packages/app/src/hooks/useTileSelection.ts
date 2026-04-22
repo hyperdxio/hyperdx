@@ -13,11 +13,10 @@ export default function useTileSelection({
   setDashboard: (dashboard: Dashboard) => void;
 }) {
   const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(
-    new Set(),
+    () => new Set(),
   );
 
-  const handleTileSelect = useCallback((tileId: string, shiftKey: boolean) => {
-    if (!shiftKey) return;
+  const handleToggleTileSelect = useCallback((tileId: string) => {
     setSelectedTileIds(prev => {
       const next = new Set(prev);
       if (next.has(tileId)) next.delete(tileId);
@@ -44,7 +43,6 @@ export default function useTileSelection({
           title: 'New Group',
           collapsed: false,
           tabs: [{ id: tabId, title: 'New Group' }],
-          activeTabId: tabId,
         });
         for (const tile of draft.tiles) {
           if (selectedTileIds.has(tile.id)) {
@@ -78,7 +76,7 @@ export default function useTileSelection({
   return {
     selectedTileIds,
     setSelectedTileIds,
-    handleTileSelect,
+    handleToggleTileSelect,
     handleGroupSelected,
   };
 }

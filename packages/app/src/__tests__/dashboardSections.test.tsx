@@ -76,13 +76,11 @@ describe('DashboardContainer schema', () => {
       title: 'New Group',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'New Group' }],
-      activeTabId: 'tab-1',
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.tabs).toHaveLength(1);
       expect(result.data.tabs![0].title).toBe('New Group');
-      expect(result.data.activeTabId).toBe('tab-1');
     }
   });
 
@@ -95,12 +93,10 @@ describe('DashboardContainer schema', () => {
         { id: 'tab-a', title: 'Tab A' },
         { id: 'tab-b', title: 'Tab B' },
       ],
-      activeTabId: 'tab-a',
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.tabs).toHaveLength(2);
-      expect(result.data.activeTabId).toBe('tab-a');
     }
   });
 
@@ -360,7 +356,6 @@ describe('Dashboard schema with containers', () => {
             { id: 'tab-a', title: 'Tab A' },
             { id: 'tab-b', title: 'Tab B' },
           ],
-          activeTabId: 'tab-a',
         },
       ],
     });
@@ -505,7 +500,6 @@ describe('container tile grouping logic', () => {
     // Simulates the schema: group with tabs array of 2+ entries
     type SimpleGroup = SimpleSection & {
       tabs?: { id: string; title: string }[];
-      activeTabId?: string;
     };
 
     const group: SimpleGroup = {
@@ -516,7 +510,6 @@ describe('container tile grouping logic', () => {
         { id: 'tab-1', title: 'Tab 1' },
         { id: 'tab-2', title: 'Tab 2' },
       ],
-      activeTabId: 'tab-1',
     };
 
     const tiles: SimpleTile[] = [
@@ -528,8 +521,8 @@ describe('container tile grouping logic', () => {
     const hasTabs = (group.tabs?.length ?? 0) >= 2;
     expect(hasTabs).toBe(true);
 
-    // When tabs exist, render prop receives activeTabId and filters tiles
-    const activeTabId = group.activeTabId ?? group.tabs![0].id;
+    // Without a DB activeTabId, default behavior is to render tabs[0]
+    const activeTabId = group.tabs![0].id;
     const visibleTiles = tiles.filter(t => t.tabId === activeTabId);
     expect(visibleTiles).toHaveLength(2);
     expect(visibleTiles.map(t => t.id)).toEqual(['a', 'c']);
@@ -925,7 +918,6 @@ describe('group tab operations', () => {
     title: string;
     collapsed: boolean;
     tabs?: SimpleTab[];
-    activeTabId?: string;
   };
   type SimpleTile = { id: string; containerId?: string; tabId?: string };
 
@@ -937,12 +929,10 @@ describe('group tab operations', () => {
       title: 'New Group',
       collapsed: false,
       tabs: [{ id: tabId, title: 'New Group' }],
-      activeTabId: tabId,
     };
 
     expect(group.tabs).toHaveLength(1);
     expect(group.tabs![0].title).toBe('New Group');
-    expect(group.activeTabId).toBe(tabId);
   });
 
   it('adding tab to 1-tab group creates second tab without renaming first', () => {
@@ -952,7 +942,6 @@ describe('group tab operations', () => {
       title: 'My Group',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'My Group' }],
-      activeTabId: 'tab-1',
     };
     const tiles: SimpleTile[] = [{ id: 'a', containerId: 'g1' }];
 
@@ -976,7 +965,6 @@ describe('group tab operations', () => {
       title: 'Old Name',
       collapsed: false,
       tabs: [{ id: 'tab-1', title: 'Old Name' }],
-      activeTabId: 'tab-1',
     };
 
     // Rename via header (which syncs to tabs[0])
@@ -1003,7 +991,6 @@ describe('group tab operations', () => {
         { id: 'tab-1', title: 'Tab A' },
         { id: 'tab-2', title: 'Tab B' },
       ],
-      activeTabId: 'tab-1',
     };
     const tiles: SimpleTile[] = [
       { id: 'a', containerId: 'g1', tabId: 'tab-1' },

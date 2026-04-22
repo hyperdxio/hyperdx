@@ -40,7 +40,6 @@ describe('useDashboardContainers', () => {
             { id: 'tab-2', title: 'Tab Two' },
             { id: 'tab-3', title: 'Tab Three' },
           ],
-          activeTabId: 'tab-1',
         },
       ],
       tiles: [
@@ -94,18 +93,6 @@ describe('useDashboardContainers', () => {
       ]);
     });
 
-    it('updates activeTabId when deleting the active tab', () => {
-      const { hook, getDashboard } = renderContainersHook(baseDashboard);
-      act(() => {
-        // Delete tab-1 which is the active tab
-        hook.result.current.handleDeleteTab('c1', 'tab-1', 'delete');
-      });
-
-      const result = getDashboard();
-      // activeTabId should switch to the new first tab
-      expect(result.containers![0].activeTabId).toBe('tab-2');
-    });
-
     it('syncs container.title to new first tab after deletion', () => {
       const { hook, getDashboard } = renderContainersHook(baseDashboard);
       act(() => {
@@ -139,7 +126,6 @@ describe('useDashboardContainers', () => {
               { id: 'tab-1', title: 'Has Tiles' },
               { id: 'tab-2', title: 'Empty' },
             ],
-            activeTabId: 'tab-2',
           },
         ],
         tiles: [
@@ -163,7 +149,7 @@ describe('useDashboardContainers', () => {
       const result = getDashboard();
       expect(result.tiles).toHaveLength(1);
       expect(result.containers![0].tabs).toHaveLength(1);
-      expect(result.containers![0].activeTabId).toBe('tab-1');
+      expect(result.containers![0].tabs![0].id).toBe('tab-1');
     });
 
     it('handles deleting last of 2 tabs (move)', () => {
@@ -177,7 +163,6 @@ describe('useDashboardContainers', () => {
               { id: 'tab-1', title: 'Keep' },
               { id: 'tab-2', title: 'Remove' },
             ],
-            activeTabId: 'tab-2',
           },
         ],
         tiles: [
@@ -329,7 +314,6 @@ describe('useDashboardContainers', () => {
             { id: 'tab-a', title: 'Tab A' },
             { id: 'tab-b', title: 'Tab B' },
           ],
-          activeTabId: 'tab-a',
         },
       ],
       tiles: [

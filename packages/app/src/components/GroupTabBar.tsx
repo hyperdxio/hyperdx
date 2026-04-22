@@ -13,6 +13,8 @@ import {
 } from '@mantine/core';
 import { IconPencil, IconTrash } from '@tabler/icons-react';
 
+import { TabDeleteAction } from '@/hooks/useDashboardContainers';
+
 function AlertDot({ size = 6 }: { size?: number }) {
   return (
     <Flex
@@ -35,9 +37,8 @@ type GroupTabBarProps = {
   tabs: NonNullable<DashboardContainer['tabs']>;
   activeTabId: string | undefined;
   showControls: boolean;
-  onTabChange?: (tabId: string) => void;
   onRenameTab?: (tabId: string, newTitle: string) => void;
-  onDeleteTab?: (tabId: string, action: 'delete' | 'move') => void;
+  onDeleteTab?: (tabId: string, action: TabDeleteAction) => void;
   containerId: string;
   alertingTabIds?: Set<string>;
   hoverControlStyle: React.CSSProperties;
@@ -47,7 +48,6 @@ export default function GroupTabBar({
   tabs,
   activeTabId,
   showControls,
-  onTabChange,
   onRenameTab,
   onDeleteTab,
   containerId,

@@ -25,7 +25,6 @@ describe('useTileSelection — handleGroupSelected', () => {
           title: 'Source',
           collapsed: false,
           tabs: [{ id: 'tab-source', title: 'Source' }],
-          activeTabId: 'tab-source',
         },
       ],
       tiles: [
@@ -73,7 +72,6 @@ describe('useTileSelection — handleGroupSelected', () => {
           title: 'Source',
           collapsed: false,
           tabs: [{ id: 'tab-source', title: 'Source' }],
-          activeTabId: 'tab-source',
         },
       ],
       tiles: [
@@ -121,7 +119,6 @@ describe('useTileSelection — handleGroupSelected', () => {
           title: 'Empty',
           collapsed: false,
           tabs: [{ id: 'tab-empty', title: 'Empty' }],
-          activeTabId: 'tab-empty',
         },
       ],
       tiles: [

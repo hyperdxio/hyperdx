@@ -7,6 +7,7 @@ const GRID_COLS = 24;
 /**
  * Generate a unique ID for tiles, containers, and tabs.
  * Uses two random values concatenated for lower collision risk.
+ * `.slice(2)` strips the leading "0." from `Math.random().toString(36)`.
  */
 export const makeId = () =>
   Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -18,11 +19,14 @@ export const makeId = () =>
  * Scans each row from top to bottom. For each row, checks if there's
  * enough horizontal space to fit the new tile. If so, returns that
  * position. If no row has space, places at the bottom-left.
+ *
+ * @param tiles - Existing tiles in the target grid
+ * @param newW - Width of the new tile in grid columns
+ * @returns Position `{ x, y }` in grid coordinates
  */
 export function calculateNextTilePosition(
   tiles: Tile[],
   newW: number,
-  newH: number,
 ): { x: number; y: number } {
   if (tiles.length === 0) {
     return { x: 0, y: 0 };
@@ -57,7 +61,10 @@ export function calculateNextTilePosition(
 }
 
 /**
- * Get default tile dimensions based on chart display type
+ * Get default tile dimensions based on chart display type.
+ *
+ * @param displayType - The type of chart visualization
+ * @returns Dimensions `{ w, h }` in grid units
  */
 export function getDefaultTileSize(displayType?: DisplayType): {
   w: number;
