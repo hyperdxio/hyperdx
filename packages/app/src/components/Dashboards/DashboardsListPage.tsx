@@ -52,11 +52,7 @@ import { groupByTags } from '@/utils/groupByTags';
 import { withAppNav } from '../../layout';
 
 function getDashboardAlerts(tiles: Dashboard['tiles']) {
-  return tiles
-    .map(t =>
-      isBuilderSavedChartConfig(t.config) ? t.config.alert : undefined,
-    )
-    .filter(a => a != null);
+  return tiles.map(t => t.config.alert).filter(a => a != null);
 }
 
 const PRESET_DASHBOARDS = [

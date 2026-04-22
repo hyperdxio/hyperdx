@@ -1,5 +1,36 @@
 # @hyperdx/app
 
+## 2.24.0
+
+### Minor Changes
+
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+- 0bfec148: Upgrade Mantine from v7 to v9 and remove react-hook-form-mantine dependency
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- c4a1311e: fix: Fix "Copy entire row as JSON" button crashing on rows with non-string values
+- a5869f0e: Dedupe source validation issue toasts so repeated source refetches update a single notification instead of stacking duplicates.
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 5149fabd: feat: Add Python Runtime Metrics dashboard template
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 739fe140: fix: time selector always resets to 00:00
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- 4ca1d472: Allow manually constructed /trace URLs to land in the existing search experience with the trace viewer opened from URL state. This keeps trace deep links user-friendly while reusing the search page for source selection, not-found handling, and trace inspection.
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
 ## 2.23.2
 
 ### Patch Changes

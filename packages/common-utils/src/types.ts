@@ -282,7 +282,13 @@ export enum AlertThresholdType {
   BELOW_OR_EQUAL = 'below_or_equal',
   EQUAL = 'equal',
   NOT_EQUAL = 'not_equal',
+  BETWEEN = 'between',
+  NOT_BETWEEN = 'not_between',
 }
+
+export const isRangeThresholdType = (type: string): boolean =>
+  type === AlertThresholdType.BETWEEN ||
+  type === AlertThresholdType.NOT_BETWEEN;
 
 export enum AlertState {
   ALERT = 'ALERT',
@@ -290,6 +296,21 @@ export enum AlertState {
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
 }
+
+export enum AlertErrorType {
+  QUERY_ERROR = 'QUERY_ERROR',
+  WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  INVALID_ALERT = 'INVALID_ALERT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export const AlertErrorSchema = z.object({
+  timestamp: z.union([z.string(), z.date()]),
+  type: z.nativeEnum(AlertErrorType),
+  message: z.string(),
+});
+
+export type AlertError = z.infer<typeof AlertErrorSchema>;
 
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
@@ -370,6 +391,32 @@ export const validateAlertScheduleOffsetMinutes = (
   }
 };
 
+export const validateAlertThresholdMax = (
+  alert: {
+    thresholdType: AlertThresholdType;
+    threshold: number;
+    thresholdMax?: number;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (isRangeThresholdType(alert.thresholdType)) {
+    if (alert.thresholdMax == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'thresholdMax is required for between/not_between threshold types',
+        path: ['thresholdMax'],
+      });
+    } else if (alert.thresholdMax < alert.threshold) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'thresholdMax must be greater than or equal to threshold',
+        path: ['thresholdMax'],
+      });
+    }
+  }
+};
+
 const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
 const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
 const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
@@ -406,6 +453,7 @@ export const AlertBaseObjectSchema = z.object({
   scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
@@ -425,7 +473,7 @@ export const AlertBaseSchema = AlertBaseObjectSchema;
 
 const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-);
+).superRefine(validateAlertThresholdMax);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
@@ -433,7 +481,7 @@ export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
 
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-);
+).superRefine(validateAlertThresholdMax);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
@@ -862,6 +910,27 @@ export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
+export function addDuplicateTileIdIssues(
+  tiles: { id?: string }[],
+  ctx: z.RefinementCtx,
+  options?: { messageSuffix?: string },
+) {
+  const suffix = options?.messageSuffix ?? '';
+  const seen = new Set<string>();
+  for (let i = 0; i < tiles.length; i++) {
+    const id = tiles[i].id;
+    if (!id) continue;
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate tile ID: ${id}${suffix}`,
+        path: [i, 'id'],
+      });
+    }
+    seen.add(id);
+  }
+}
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -891,7 +960,7 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   version: z.string().min(1),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  tiles: z.array(TileTemplateSchema),
+  tiles: z.array(TileTemplateSchema).superRefine(addDuplicateTileIdIssues),
   filters: z.array(DashboardFilterSchema).optional(),
 });
 export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
@@ -1286,6 +1355,7 @@ export const AlertsPageItemSchema = z.object({
   scheduleOffsetMinutes: z.number().optional(),
   scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
   threshold: z.number(),
+  thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: z.object({ type: z.string().optional().nullable() }),
   state: z.nativeEnum(AlertState).optional(),
@@ -1334,6 +1404,7 @@ export const AlertsPageItemSchema = z.object({
       until: z.string(),
     })
     .optional(),
+  executionErrors: z.array(AlertErrorSchema).optional(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;

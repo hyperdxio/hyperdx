@@ -1,4 +1,5 @@
 import {
+  addDuplicateTileIdIssues,
   AggregateFunctionSchema,
   AlertThresholdType,
   DashboardFilterSchema,
@@ -7,6 +8,7 @@ import {
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
+  validateAlertThresholdMax,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
@@ -468,20 +470,11 @@ export type ExternalDashboardTileWithId = z.infer<
 
 export const externalDashboardTileListSchema = z
   .array(externalDashboardTileSchemaWithOptionalId)
-  .superRefine((tiles, ctx) => {
-    const seen = new Set<string>();
-    for (const tile of tiles) {
-      if (tile.id && seen.has(tile.id)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Duplicate tile ID: ${tile.id}. Omit the ID to generate a unique one.`,
-        });
-      }
-      if (tile.id) {
-        seen.add(tile.id);
-      }
-    }
-  });
+  .superRefine((tiles, ctx) =>
+    addDuplicateTileIdIssues(tiles, ctx, {
+      messageSuffix: '. Omit the ID to generate a unique one.',
+    }),
+  );
 
 // ==============================
 // Alerts
@@ -511,12 +504,14 @@ export const alertSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     threshold: z.number(),
     thresholdType: z.nativeEnum(AlertThresholdType),
+    thresholdMax: z.number().optional(),
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
 
 // ==============================
 // Webhooks

@@ -3,7 +3,7 @@ import { Tile } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 
 import { ObjectId } from '@/models';
-import { IAlert } from '@/models/alert';
+import { IAlert, IAlertError } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
@@ -79,8 +79,20 @@ export interface AlertProvider {
    * Save the given AlertHistory records and update the associated alert's state.
    * Uses Promise.allSettled to handle partial failures gracefully.
    * The alert state is determined from successfully saved histories, or falls back to all histories if all saves fail.
+   * Also replaces the alert's `executionErrors` field with the provided errors from the current execution.
    */
-  updateAlertState(alertId: string, histories: IAlertHistory[]): Promise<void>;
+  updateAlertState(
+    alertId: string,
+    histories: IAlertHistory[],
+    errors: IAlertError[],
+  ): Promise<void>;
+
+  /**
+   * Replace the alert's `executionErrors` field without changing state or creating history.
+   * Use this when an error prevents the normal state/history update from running
+   * (e.g. a ClickHouse query error).
+   */
+  recordAlertErrors(alertId: string, errors: IAlertError[]): Promise<void>;
 
   /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;

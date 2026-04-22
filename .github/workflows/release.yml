@@ -25,6 +25,13 @@ jobs:
           cache: 'yarn'
       - name: Install root dependencies
         run: yarn install
+      # Build @hyperdx/common-utils before changesets publish runs.
+      # @hyperdx/cli's `prepublishOnly` runs `yarn build` (tsup), which bundles
+      # imports from `@hyperdx/common-utils/dist/*`. Without this step those
+      # paths fail to resolve and the npm publish for @hyperdx/cli is skipped
+      # while the GitHub release/tag still succeeds. See HDX-4075.
+      - name: Build common-utils
+        run: make ci-build
       - name: Create Release Pull Request or Publish to npm
         if: always()
         continue-on-error: true

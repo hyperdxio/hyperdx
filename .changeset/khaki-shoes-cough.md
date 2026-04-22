@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: Add alert history + ack to alert editor
+fix: Prevent duplicate tile IDs in dashboard imports

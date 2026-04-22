@@ -1,5 +1,31 @@
 # @hyperdx/api
 
+## 2.24.0
+
+### Minor Changes
+
+- 9781ae63: Add an MCP (Model Context Protocol) server to the HyperDX API, enabling AI assistants (Claude, Cursor, OpenCode, etc.) to query observability data, manage dashboards, and explore data sources directly via standardized tool calls.
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
 ## 2.23.2
 
 ## 2.23.1

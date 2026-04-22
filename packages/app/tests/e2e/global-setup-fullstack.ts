@@ -47,25 +47,59 @@ const MONGO_URI =
   process.env.MONGO_URI || `mongodb://localhost:${MONGO_PORT}/hyperdx-e2e`;
 
 /**
+ * Seeded test data with predictable identifiers so E2E tests can look it up.
+ * Exported so tests can reference the same constants instead of hard-coding.
+ */
+export const SEEDED_ERROR_ALERT = {
+  savedSearchName: 'E2E Errored Alert Search',
+  webhookName: 'E2E Error Webhook',
+  // URL gets appended with a unique suffix inside the seeder to stay idempotent
+  // if the user record already exists (409 path).
+  webhookUrlBase: 'https://example.com/e2e-error-webhook',
+  errorType: 'QUERY_ERROR',
+  errorMessage:
+    'ClickHouse returned 500: DB::Exception: Timeout exceeded: elapsed 30s, maximum: 30s while executing query.',
+};
+
+/**
+ * Run a mongosh script against the e2e MongoDB container by piping the script
+ * through stdin. Using stdin (rather than `--eval "<...>"`) avoids having to
+ * escape quotes in the script body, so callers can pass multi-line JavaScript
+ * with string literals verbatim.
+ *
+ * Throws if the docker-compose file can't be found (meaning we're not running
+ * in the expected Docker-backed e2e environment).
+ */
+function runMongoshScript(script: string): string {
+  const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
+  if (!fs.existsSync(dockerComposeFile)) {
+    throw new Error(
+      `docker-compose.yml not found at ${dockerComposeFile} — e2e Docker stack unavailable`,
+    );
+  }
+
+  const e2eSlot = process.env.HDX_E2E_SLOT || '0';
+  const e2eProject = `e2e-${e2eSlot}`;
+
+  return execSync(
+    `docker compose -p ${e2eProject} -f "${dockerComposeFile}" exec -T db mongosh --quiet`,
+    {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      input: script,
+    },
+  );
+}
+
+/**
  * Clears the MongoDB database to ensure a clean slate for tests
  */
 function clearDatabase() {
   console.log('Clearing MongoDB database for fresh test run...');
 
   try {
-    const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
-    const e2eSlot = process.env.HDX_E2E_SLOT || '0';
-    const e2eProject = `e2e-${e2eSlot}`;
-    if (fs.existsSync(dockerComposeFile)) {
-      execSync(
-        `docker compose -p ${e2eProject} -f "${dockerComposeFile}" exec -T db mongosh --quiet --eval "use hyperdx-e2e; db.dropDatabase()" 2>&1`,
-        { encoding: 'utf-8', stdio: 'pipe' },
-      );
-      console.log('  ✓ Database cleared successfully (via Docker)');
-      return;
-    }
-
-    throw new Error('Could not connect to MongoDB');
+    runMongoshScript("use('hyperdx-e2e'); db.dropDatabase();");
+    console.log('  ✓ Database cleared successfully (via Docker)');
   } catch (error) {
     console.warn('  ⚠ Warning: Could not clear database');
     console.warn(`  ${error instanceof Error ? error.message : String(error)}`);
@@ -271,6 +305,11 @@ async function globalSetup(_config: FullConfig) {
     await context.storageState({ path: AUTH_FILE });
     console.log(`  Auth state saved to ${AUTH_FILE}`);
 
+    // Seed an alert that has execution errors recorded so tests can exercise
+    // the /alerts error-icon + modal UI without having to run the check-alerts
+    // background job.
+    await seedAlertWithErrors(page, API_URL, sources);
+
     console.log('Full-stack E2E setup complete');
     console.log(
       '  Using local ClickHouse with seeded test data for logs, traces, metrics, and K8s',
@@ -281,6 +320,122 @@ async function globalSetup(_config: FullConfig) {
   } finally {
     await context.close();
     await browser.close();
+  }
+}
+
+/**
+ * Seeds an alert with a recorded execution error. The alert is created via the
+ * API (so all referenced documents — saved search, webhook — exist and the
+ * alerts list endpoint populates correctly), then the `errors` array is
+ * patched in directly via mongosh since it's only ever set by the check-alerts
+ * background job in normal operation.
+ */
+async function seedAlertWithErrors(
+  page: import('@playwright/test').Page,
+  apiUrl: string,
+  sources: Array<{ _id: string; kind: string }>,
+) {
+  console.log('Seeding alert with errors for UI tests');
+
+  const logSource = sources.find(s => s.kind === 'log');
+  if (!logSource) {
+    console.warn('  ⚠ No log source available — skipping alert seed');
+    return;
+  }
+
+  // 1) Saved search for the alert to reference. The router is mounted at
+  // `/saved-search` (see api-app.ts) — not `/savedSearches`.
+  const savedSearchRes = await page.request.post(`${apiUrl}/saved-search`, {
+    data: {
+      name: SEEDED_ERROR_ALERT.savedSearchName,
+      select: '',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      source: logSource._id,
+      tags: [],
+    },
+  });
+  if (!savedSearchRes.ok()) {
+    console.warn(
+      `  ⚠ Could not create saved search (${savedSearchRes.status()}): ${await savedSearchRes.text()}`,
+    );
+    return;
+  }
+  const savedSearch = await savedSearchRes.json();
+
+  // 2) Webhook for the alert's notification channel. Use a timestamped URL so
+  // a stale team (e.g. if clearDatabase silently failed) doesn't collide with
+  // the webhook uniqueness constraint on (team, service, url).
+  const uniqueUrl = `${SEEDED_ERROR_ALERT.webhookUrlBase}-${Date.now()}`;
+  const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
+    data: {
+      name: SEEDED_ERROR_ALERT.webhookName,
+      service: 'generic',
+      url: uniqueUrl,
+      body: JSON.stringify({ text: '{{title}}' }),
+    },
+  });
+  if (!webhookRes.ok()) {
+    console.warn(
+      `  ⚠ Could not create webhook (${webhookRes.status()}): ${await webhookRes.text()}`,
+    );
+    return;
+  }
+  const webhook = (await webhookRes.json()).data;
+
+  // 3) Alert — saved search source, referencing the webhook above.
+  const alertRes = await page.request.post(`${apiUrl}/alerts`, {
+    data: {
+      source: 'saved_search',
+      savedSearchId: savedSearch._id ?? savedSearch.id,
+      channel: { type: 'webhook', webhookId: webhook._id ?? webhook.id },
+      interval: '5m',
+      threshold: 1,
+      thresholdType: 'above',
+      name: 'E2E Errored Alert',
+    },
+  });
+  if (!alertRes.ok()) {
+    console.warn(
+      `  ⚠ Could not create alert (${alertRes.status()}): ${await alertRes.text()}`,
+    );
+    return;
+  }
+  const alert = (await alertRes.json()).data;
+  const alertId: string = alert._id ?? alert.id;
+
+  // 4) Patch the `executionErrors` array directly via mongosh. The
+  // check-alerts job is the only code that writes this field in normal
+  // operation, so we write it here to avoid having to run that job during
+  // setup.
+  const patchScript = `
+use('hyperdx-e2e');
+db.alerts.updateOne(
+  { _id: ObjectId(${JSON.stringify(alertId)}) },
+  {
+    $set: {
+      executionErrors: [
+        {
+          timestamp: new Date(),
+          type: ${JSON.stringify(SEEDED_ERROR_ALERT.errorType)},
+          message: ${JSON.stringify(SEEDED_ERROR_ALERT.errorMessage)}
+        }
+      ],
+      state: 'OK'
+    }
+  }
+);
+`;
+
+  try {
+    runMongoshScript(patchScript);
+    console.log(
+      `  ✓ Seeded alert "${alert.name}" (${alertId}) with a ${SEEDED_ERROR_ALERT.errorType}`,
+    );
+  } catch (error) {
+    console.warn(
+      `  ⚠ Could not patch alert errors: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

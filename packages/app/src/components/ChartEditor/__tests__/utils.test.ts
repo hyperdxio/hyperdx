@@ -6,6 +6,7 @@ import type {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  AlertThresholdType,
   DisplayType,
   MetricsDataType,
   SourceKind,
@@ -1053,6 +1054,148 @@ describe('validateChartForm', () => {
       setError,
     );
     expect(errors.filter(e => e.path === 'series')).toHaveLength(0);
+  });
+
+  // ── Alert thresholdMax validation ───────────────────────────────────
+
+  it('errors when between alert is missing thresholdMax', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      }),
+    );
+  });
+
+  it('errors when not_between alert is missing thresholdMax', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.NOT_BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+      }),
+    );
+  });
+
+  it('errors when thresholdMax is less than threshold', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 5,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
+      }),
+    );
+  });
+
+  it('does not error when thresholdMax equals threshold', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 10,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not error when thresholdMax is greater than threshold for between', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 20,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not validate thresholdMax for non-range threshold types', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not validate thresholdMax when no alert is configured', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: undefined,
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
   });
 
   // ── Multiple validation errors at once ───────────────────────────────
