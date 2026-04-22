@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -59,7 +59,7 @@ function FileSelection({
 
   const [error, setError] = useState<{
     message: string;
-    details?: string;
+    details?: ReactNode;
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
 
@@ -75,18 +75,38 @@ function FileSelection({
     setError(null);
     if (!file) return;
 
+    let data: unknown;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      const parsed = DashboardTemplateSchema.parse(data); // throws if invalid
-      onComplete(parsed);
-    } catch (e: any) {
+      data = JSON.parse(text);
+    } catch (e: unknown) {
+      onComplete(null);
+      setError({
+        message: 'Invalid JSON File',
+        details: e instanceof Error ? e.message : 'Failed to parse JSON',
+      });
+      return;
+    }
+
+    const result = DashboardTemplateSchema.safeParse(data);
+    if (!result.success) {
       onComplete(null);
       setError({
         message: 'Failed to Import Dashboard',
-        details: e?.message ?? 'Failed to parse/validate JSON',
+        details: (
+          <Stack gap={0}>
+            {result.error.issues.map(issue => (
+              <Text key={`${issue.path.join('.')}:${issue.message}`} c="red">
+                {issue.message}
+              </Text>
+            ))}
+          </Stack>
+        ),
       });
+      return;
     }
+
+    onComplete(result.data);
   };
 
   return (
@@ -153,7 +173,7 @@ function FileSelection({
         {error && (
           <div>
             <Text c="red">{error.message}</Text>
-            {error.details && (
+            {error.details != null && (
               <>
                 <Button
                   variant="transparent"
@@ -173,9 +193,7 @@ function FileSelection({
                     {errorDetails ? 'Hide Details' : 'Show Details'}
                   </Group>
                 </Button>
-                <Collapse expanded={errorDetails}>
-                  <Text c="red">{error.details}</Text>
-                </Collapse>
+                <Collapse expanded={errorDetails}>{error.details}</Collapse>
               </>
             )}
           </div>

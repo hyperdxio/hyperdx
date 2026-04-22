@@ -11,8 +11,11 @@ export class DashboardImportPage {
   readonly dashboardNameInput: Locator;
   readonly finishImportButton: Locator;
   readonly fileUploadDropzone: Locator;
+  readonly fileUploadInput: Locator;
   readonly templateNotFoundText: Locator;
   readonly browseAvailableTemplatesLink: Locator;
+  readonly importErrorTitle: Locator;
+  readonly showErrorDetailsButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -25,11 +28,24 @@ export class DashboardImportPage {
     this.fileUploadDropzone = page.getByText('Drag and drop a JSON file here', {
       exact: false,
     });
+    this.fileUploadInput = page.locator('input[type="file"]');
     this.templateNotFoundText = page.getByText(
       "Oops! We couldn't find that template.",
     );
     this.browseAvailableTemplatesLink = page.getByRole('link', {
       name: 'browsing available templates',
+    });
+    this.importErrorTitle = page.getByText('Failed to Import Dashboard');
+    this.showErrorDetailsButton = page.getByRole('button', {
+      name: 'Show Details',
+    });
+  }
+
+  async uploadDashboardFile(content: string, filename = 'dashboard.json') {
+    await this.fileUploadInput.setInputFiles({
+      name: filename,
+      mimeType: 'application/json',
+      buffer: Buffer.from(content),
     });
   }
 
