@@ -28,27 +28,14 @@ import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatDurationMs, formatNumber } from '@/utils';
+import {
+  formatDurationMs,
+  formatDurationMsCompact,
+  formatNumber,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
-
-/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
-function formatDurationMsCompact(ms: number): string {
-  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
-  if (ms === 0) return '0';
-  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
-  if (ms < 1) {
-    const µs = ms * 1000;
-    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
-  }
-  if (ms < 1000) {
-    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
-  }
-  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
-  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
-  return `${+(ms / 3_600_000).toPrecision(2)}h`;
-}
 
 type Mode2DataArray = [number[], number[], number[]];
 
@@ -266,22 +253,6 @@ const opt: uPlot.Options = {
     },
     {
       ...axis,
-      // Dynamic size: measure the widest formatted tick label + padding.
-      // Falls back to 50 when no values are available yet.
-      size(self, values) {
-        if (!values || values.length === 0) return 50;
-        const font = self.axes[1]?.font ?? '12px IBM Plex Mono, monospace';
-        const ctx = self.ctx;
-        ctx.save();
-        ctx.font = font;
-        let maxW = 0;
-        for (const v of values) {
-          const w = ctx.measureText(v).width;
-          if (w > maxW) maxW = w;
-        }
-        ctx.restore();
-        return Math.ceil(maxW) + 16;
-      },
     },
   ],
   series: [
@@ -339,16 +310,6 @@ export type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-/**
- * Extra fields stored on heatmap select items alongside the standard
- * DerivedColumn schema. These aren't part of the Zod schema but are
- * preserved through MongoDB and the form state.
- */
-type HeatmapSelectExtras = {
-  countExpression?: string;
-  heatmapScaleType?: HeatmapScaleType;
-};
-
 /** Build a HeatmapChartConfig from a builder chart config that has heatmap extras on select[0]. */
 export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
   heatmapConfig: HeatmapChartConfig;
@@ -357,7 +318,6 @@ export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
   const firstSelect = Array.isArray(config.select)
     ? config.select[0]
     : undefined;
-  const extras = (firstSelect ?? {}) as HeatmapSelectExtras;
   return {
     heatmapConfig: {
       ...config,
@@ -366,13 +326,13 @@ export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
         {
           aggFn: 'heatmap' as const,
           valueExpression: firstSelect?.valueExpression ?? '',
-          countExpression: extras.countExpression,
+          countExpression: firstSelect?.countExpression,
         },
       ],
       granularity: 'auto',
       numberFormat: config.numberFormat,
     },
-    scaleType: extras.heatmapScaleType === 'linear' ? 'linear' : 'log',
+    scaleType: firstSelect?.heatmapScaleType === 'linear' ? 'linear' : 'log',
   };
 }
 
@@ -948,8 +908,26 @@ function Heatmap({
               opt.axes[0],
               {
                 ...opt.axes[1],
-                values: (u, vals) => {
+                values: (_u: uPlot, vals: number[]) => {
                   return vals.map(tickFormatter);
+                },
+                // Override the static size fn so it measures the actual
+                // formatted labels (from tickFormatter) rather than
+                // whatever raw values uPlot passes in a prior cycle.
+                size(self: uPlot, values: string[]) {
+                  if (!values || values.length === 0) return 50;
+                  const font =
+                    self.axes[1]?.font ?? '12px IBM Plex Mono, monospace';
+                  const ctx = self.ctx;
+                  ctx.save();
+                  ctx.font = font;
+                  let maxW = 0;
+                  for (const v of values) {
+                    const w = ctx.measureText(v).width;
+                    if (w > maxW) maxW = w;
+                  }
+                  ctx.restore();
+                  return Math.ceil(maxW) + 16;
                 },
                 // For log scale, place ticks at powers of 10 (0.01, 0.1, 1,
                 // 10, 100…) so labels are clean round numbers instead of
