@@ -1,0 +1,66 @@
+diff --git a/cjs/components/Popover/Popover.cjs b/cjs/components/Popover/Popover.cjs
+index 0b982e85374d4a176d72d9b7441ffb00acaf54e5..acb736942cce3c8cf2f042e07044cf1da435c372 100644
+--- a/cjs/components/Popover/Popover.cjs
++++ b/cjs/components/Popover/Popover.cjs
+@@ -110,14 +110,24 @@ function Popover(_props) {
+ 			onDismiss?.();
+ 		}
+ 	}, clickOutsideEvents, [targetNode, dropdownNode]);
++	// HDX-4089: Use stable callback identities for `reference` and `floating` so
++	// that the ref passed to Popover.Target's child never changes between
++	// renders. When these callbacks change identity, React 19 invokes them with
++	// `null` (and then again with the node), which triggers `setTargetNode(null)
++	// → setTargetNode(node)` and can cause an infinite re-render loop in
++	// production (#185) when combined with `@mantine/hooks` useMergedRef.
++	const setReferenceRef = (0, react.useRef)(popover.floating.refs.setReference);
++	setReferenceRef.current = popover.floating.refs.setReference;
++	const setFloatingRef = (0, react.useRef)(popover.floating.refs.setFloating);
++	setFloatingRef.current = popover.floating.refs.setFloating;
+ 	const reference = (0, react.useCallback)((node) => {
+ 		setTargetNode(node);
+-		popover.floating.refs.setReference(node);
+-	}, [popover.floating.refs.setReference]);
++		setReferenceRef.current(node);
++	}, []);
+ 	const floating = (0, react.useCallback)((node) => {
+ 		setDropdownNode(node);
+-		popover.floating.refs.setFloating(node);
+-	}, [popover.floating.refs.setFloating]);
++		setFloatingRef.current(node);
++	}, []);
+ 	const onExited = (0, react.useCallback)(() => {
+ 		transitionProps?.onExited?.();
+ 		onExitTransitionEnd?.();
+diff --git a/esm/components/Popover/Popover.mjs b/esm/components/Popover/Popover.mjs
+index b87c44f4299c5196995f93ff12f8f43bb1ef0312..f9a62e1214d8258fe2d5e7d2c6dd39eff6eb4432 100644
+--- a/esm/components/Popover/Popover.mjs
++++ b/esm/components/Popover/Popover.mjs
+@@ -109,14 +109,24 @@ function Popover(_props) {
+ 			onDismiss?.();
+ 		}
+ 	}, clickOutsideEvents, [targetNode, dropdownNode]);
++	// HDX-4089: Use stable callback identities for `reference` and `floating` so
++	// that the ref passed to Popover.Target's child never changes between
++	// renders. When these callbacks change identity, React 19 invokes them with
++	// `null` (and then again with the node), which triggers `setTargetNode(null)
++	// → setTargetNode(node)` and can cause an infinite re-render loop in
++	// production (#185) when combined with `@mantine/hooks` useMergedRef.
++	const setReferenceRef = useRef(popover.floating.refs.setReference);
++	setReferenceRef.current = popover.floating.refs.setReference;
++	const setFloatingRef = useRef(popover.floating.refs.setFloating);
++	setFloatingRef.current = popover.floating.refs.setFloating;
+ 	const reference = useCallback((node) => {
+ 		setTargetNode(node);
+-		popover.floating.refs.setReference(node);
+-	}, [popover.floating.refs.setReference]);
++		setReferenceRef.current(node);
++	}, []);
+ 	const floating = useCallback((node) => {
+ 		setDropdownNode(node);
+-		popover.floating.refs.setFloating(node);
+-	}, [popover.floating.refs.setFloating]);
++		setFloatingRef.current(node);
++	}, []);
+ 	const onExited = useCallback(() => {
+ 		transitionProps?.onExited?.();
+ 		onExitTransitionEnd?.();

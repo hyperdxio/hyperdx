@@ -4368,7 +4368,7 @@ __metadata:
     "@hyperdx/common-utils": "npm:^0.18.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@jedmao/location": "npm:^3.0.0"
-    "@mantine/core": "npm:^9.0.0"
+    "@mantine/core": "patch:@mantine/core@npm%3A9.0.0#~/.yarn/patches/@mantine-core-npm-9.0.0-3c72f03e17.patch"
     "@mantine/dates": "npm:^9.0.0"
     "@mantine/dropzone": "npm:^9.0.0"
     "@mantine/form": "npm:^9.0.0"
@@ -5574,7 +5574,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mantine/core@npm:^9.0.0":
+"@mantine/core@npm:9.0.0":
   version: 9.0.0
   resolution: "@mantine/core@npm:9.0.0"
   dependencies:
@@ -5588,6 +5588,23 @@ __metadata:
     react: ^19.2.0
     react-dom: ^19.2.0
   checksum: 10c0/7310fbb15d03fb8c5ba7941553e4ef33e61f4213d64416b56e0a053316e43b406a4df5bb66368f977c3c42944eb7d764d741e31d2cda9444fd167647e8b159c1
+  languageName: node
+  linkType: hard
+
+"@mantine/core@patch:@mantine/core@npm%3A9.0.0#~/.yarn/patches/@mantine-core-npm-9.0.0-3c72f03e17.patch":
+  version: 9.0.0
+  resolution: "@mantine/core@patch:@mantine/core@npm%3A9.0.0#~/.yarn/patches/@mantine-core-npm-9.0.0-3c72f03e17.patch::version=9.0.0&hash=5c5015"
+  dependencies:
+    "@floating-ui/react": "npm:^0.27.19"
+    clsx: "npm:^2.1.1"
+    react-number-format: "npm:^5.4.5"
+    react-remove-scroll: "npm:^2.7.2"
+    type-fest: "npm:^5.5.0"
+  peerDependencies:
+    "@mantine/hooks": 9.0.0
+    react: ^19.2.0
+    react-dom: ^19.2.0
+  checksum: 10c0/fd5c6b22e52bd1381157239b5dda12af966bcf5d00d30a82a3e9b92dd24bf3e61412fda643faa9009f8e809cc45e0172568c118e8e878e2ba6ae0923f4515498
   languageName: node
   linkType: hard
 

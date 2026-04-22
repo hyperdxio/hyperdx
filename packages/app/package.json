@@ -36,7 +36,7 @@
     "@hyperdx/browser": "^0.22.0",
     "@hyperdx/common-utils": "^0.18.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
-    "@mantine/core": "^9.0.0",
+    "@mantine/core": "patch:@mantine/core@npm%3A9.0.0#~/.yarn/patches/@mantine-core-npm-9.0.0-3c72f03e17.patch",
     "@mantine/dates": "^9.0.0",
     "@mantine/dropzone": "^9.0.0",
     "@mantine/form": "^9.0.0",
