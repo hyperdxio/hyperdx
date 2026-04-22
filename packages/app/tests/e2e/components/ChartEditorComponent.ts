@@ -305,6 +305,76 @@ export class ChartEditorComponent {
     await input.blur();
   }
 
+  /**
+   * Open the Display Settings drawer and wait for it to become visible.
+   */
+  async openDisplaySettings() {
+    await this.page
+      .getByRole('button', { name: 'Display Settings', exact: true })
+      .click();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * Toggle the "Display Group By Columns on Left" checkbox in the open
+   * Display Settings drawer to the given state.
+   */
+  async setGroupByColumnsOnLeft(checked: boolean) {
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    const checkbox = drawer.getByLabel('Display Group By Columns on Left');
+    const isChecked = await checkbox.isChecked();
+    if (isChecked !== checked) {
+      await checkbox.click();
+    }
+  }
+
+  /**
+   * Click Apply in the open Display Settings drawer and wait for it to close.
+   */
+  async applyDisplaySettings() {
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
+    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /**
+   * Click the "Add Series" button to add a new series to the chart.
+   */
+  async addSeries() {
+    await this.page
+      .getByRole('button', { name: 'Add Series', exact: true })
+      .click();
+  }
+
+  /**
+   * Toggle the "As Ratio" switch. Only visible when the chart has exactly
+   * two series.
+   */
+  async toggleAsRatio() {
+    await this.page.getByRole('switch', { name: 'As Ratio' }).click();
+  }
+
+  /**
+   * Set the alias for a series by zero-based index. Useful for giving two
+   * default `count()` series distinct column names in a multi-series table.
+   */
+  async setSeriesAlias(index: number, alias: string) {
+    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+  }
+
+  /**
+   * Read the column header texts from the first <table> in the tile editor
+   * preview panel. Waits for the table to be visible before reading.
+   */
+  async getPreviewTableHeaders(): Promise<string[]> {
+    const modalBody = this.page.locator('.mantine-Modal-body');
+    const table = modalBody.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    const headers = await table.locator('thead tr th').allTextContents();
+    return headers.map(h => h.trim());
+  }
+
   // Getters for assertions
 
   get nameInput() {

@@ -697,6 +697,7 @@ export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.

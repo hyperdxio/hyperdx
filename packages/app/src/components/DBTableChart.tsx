@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
@@ -127,16 +128,36 @@ export default function DBTableChart({
       return [];
     }
 
+    const firstRow = rows.at(0);
+    const allKeys = firstRow ? Object.keys(firstRow) : [];
+
+    // We extract groupBy keys by counting the series columns to avoid parsing
+    // the groupBy string, which may have complex expressions and aliases, making
+    // it difficult to reliably parse out the individual group by keys.
     let groupByKeys: string[] = [];
     if (
       isBuilderChartConfig(queriedConfig) &&
-      queriedConfig.groupBy &&
-      typeof queriedConfig.groupBy === 'string'
+      Array.isArray(queriedConfig.select)
     ) {
-      groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
+      const isRatio = isRatioChartConfig(queriedConfig.select, queriedConfig);
+      const seriesCount = isRatio ? 1 : queriedConfig.select.length;
+      const groupByCount = allKeys.length - seriesCount;
+      groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
     }
 
-    return Object.keys(rows?.[0])
+    // Builder table configs may opt to render Group By columns
+    // to the left of series columns.
+    let orderedKeys = [...allKeys];
+    if (
+      isBuilderChartConfig(queriedConfig) &&
+      queriedConfig.groupByColumnsOnLeft &&
+      Array.isArray(queriedConfig.select)
+    ) {
+      const seriesKeys = allKeys.filter(key => !groupByKeys.includes(key));
+      orderedKeys = [...groupByKeys, ...seriesKeys];
+    }
+
+    return orderedKeys
       .filter(key => !hiddenColumns?.includes(key))
       .map(key => ({
         // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
