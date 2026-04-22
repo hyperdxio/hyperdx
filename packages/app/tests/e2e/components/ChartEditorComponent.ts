@@ -385,6 +385,49 @@ export class ChartEditorComponent {
     await this.rowClickDrawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
+  /**
+   * Add a row of filter templates to the Row Click drawer by clicking
+   * "Add filter" and filling the expression and template inputs for the
+   * newly-added row (placed at position `index`).
+   */
+  async addOnClickFilterTemplate(
+    index: number,
+    expression: string,
+    template: string,
+  ) {
+    await this.rowClickDrawer
+      .getByRole('button', { name: 'Add filter' })
+      .click();
+    await this.rowClickDrawer
+      .getByTestId('onclick-filter-expression-input')
+      .nth(index)
+      .fill(expression);
+    await this.rowClickDrawer
+      .getByTestId('onclick-filter-template-input')
+      .nth(index)
+      .fill(template);
+  }
+
+  /**
+   * Read the current value of the expression input for the filter at
+   * position `index` within the Row Click drawer.
+   */
+  onClickFilterExpressionInput(index: number) {
+    return this.rowClickDrawer
+      .getByTestId('onclick-filter-expression-input')
+      .nth(index);
+  }
+
+  /**
+   * Read the current value of the template input for the filter at
+   * position `index` within the Row Click drawer.
+   */
+  onClickFilterTemplateInput(index: number) {
+    return this.rowClickDrawer
+      .getByTestId('onclick-filter-template-input')
+      .nth(index);
+  }
+
   get rowClickDrawer() {
     return this.page.getByTestId('onclick-drawer');
   }

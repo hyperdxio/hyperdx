@@ -47,6 +47,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
   Breadcrumbs,
@@ -64,6 +65,7 @@ import {
 import { useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
@@ -1088,8 +1090,29 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
-    useDashboardFilters(filters);
+  const {
+    filterValues,
+    setFilterValue,
+    filterQueries,
+    setFilterQueries,
+    ignoredFilterExpressions,
+  } = useDashboardFilters(filters);
+
+  // Warn when the URL has filter values that don't correspond to any declared
+  // dashboard filter — they'd otherwise be silently dropped, and users who
+  // arrive via a shared link, bookmark, or onClick action might not notice.
+  // Only consider URL filters ignored once the dashboard has finished loading
+  // so we don't flash the banner before `dashboard.filters` is available.
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
+  const [dismissedIgnoredFilters, setDismissedIgnoredFilters] =
+    useState<boolean>(false);
+  const shouldShowIgnoredFiltersBanner =
+    dashboardReady &&
+    ignoredFilterExpressions.length > 0 &&
+    !dismissedIgnoredFilters;
 
   const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
@@ -2137,6 +2160,23 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           Run
         </Button>
       </Flex>
+      {shouldShowIgnoredFiltersBanner && (
+        <Alert
+          mt="sm"
+          color="yellow"
+          icon={<IconAlertTriangle size={16} />}
+          title="Some filters could not be applied"
+          data-testid="ignored-url-filters-banner"
+          withCloseButton
+          closeButtonLabel="Dismiss"
+          onClose={() => setDismissedIgnoredFilters(true)}
+        >
+          No dashboard filter(s) found for{' '}
+          {ignoredFilterExpressions.length === 1 ? 'expression' : 'expressions'}{' '}
+          in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with a
+          matching expression to apply these filters.
+        </Alert>
+      )}
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}

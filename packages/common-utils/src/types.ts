@@ -667,6 +667,13 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+export const OnClickFilterTemplateSchema = z.object({
+  kind: z.literal('expressionTemplate'),
+  expression: z.string().min(1, 'Expression is required'),
+  template: z.string().min(1, 'Template is required'),
+});
+export type OnClickFilterTemplate = z.infer<typeof OnClickFilterTemplateSchema>;
+
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: z.string().min(1) }),
   z.object({ mode: z.literal('template'), template: z.string().min(1) }),
@@ -678,6 +685,7 @@ const OnClickSearchSchema = z.object({
   target: OnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).optional(),
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
@@ -686,6 +694,7 @@ export const OnClickDashboardSchema = z.object({
   target: OnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).optional(),
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 

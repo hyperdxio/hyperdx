@@ -513,5 +513,232 @@ test.describe(
         await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
       });
     });
+
+    test('Search mode: filter templates render into the /search URL filters param', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const logSources = await getSources(page, 'log');
+      const logsSource = logSources.find(
+        (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+      );
+      expect(logsSource).toBeDefined();
+      const logsSourceId: string = logsSource.id;
+
+      await test.step('Configure Search-mode row click with a filter template', async () => {
+        await addTableTile(`E2E Search Filter ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Search');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await dashboardPage.chartEditor.addOnClickFilterTemplate(
+          0,
+          'ServiceName',
+          '{{ServiceName}}',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      // ServiceName is the second column in the rendered table (count is col 0).
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify /search URL has the rendered filter template in filters param', async () => {
+        await expect(page).toHaveURL(/\/search\?/, { timeout: 10000 });
+        const url = new URL(page.url());
+        expect(url.searchParams.get('source')).toBe(logsSourceId);
+        const filtersRaw = url.searchParams.get('filters');
+        expect(filtersRaw).not.toBeNull();
+        const filters = JSON.parse(filtersRaw!);
+        expect(filters).toEqual([
+          {
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
+          },
+        ]);
+      });
+
+      await test.step('Verify search page reflects the selected source', async () => {
+        await expect(searchPage.currentSource).toHaveValue(
+          DEFAULT_LOGS_SOURCE_NAME,
+          { timeout: 10000 },
+        );
+      });
+    });
+
+    test('Dashboard mode: filter templates render into the destination dashboard URL filters param', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const targetDashboardName = `E2E Filter Target ${ts}`;
+      let targetDashboardId = '';
+
+      await test.step('Create the target dashboard with a declared filter matching ServiceName', async () => {
+        // beforeEach already created a dashboard; repurpose it as the target.
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          `Filter Target Tile ${ts}`,
+        );
+        targetDashboardId = dashboardPage.getCurrentDashboardId();
+        // Declare a dashboard filter for ServiceName so the ignored-filters
+        // banner does NOT appear after navigation.
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          'Service Filter',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Create source dashboard with Dashboard-mode tile using a filter template', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E Dashboard Filter ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        // Selecting the target dashboard auto-populates a filter row per
+        // declared DashboardFilter (expression filled, template empty).
+        // Just fill the template of the auto-populated ServiceName row.
+        await dashboardPage.chartEditor.selectRowClickTarget(
+          targetDashboardName,
+        );
+        await expect(
+          dashboardPage.chartEditor.onClickFilterExpressionInput(0),
+        ).toHaveValue('ServiceName');
+        await dashboardPage.chartEditor
+          .onClickFilterTemplateInput(0)
+          .fill('{{ServiceName}}');
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify navigated to target dashboard with rendered filter in URL', async () => {
+        await expect(page).toHaveURL(
+          new RegExp(`/dashboards/${targetDashboardId}`),
+          { timeout: 10000 },
+        );
+        const url = new URL(page.url());
+        expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
+        const filtersRaw = url.searchParams.get('filters');
+        expect(filtersRaw).not.toBeNull();
+        const filters = JSON.parse(filtersRaw!);
+        expect(filters).toEqual([
+          {
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
+          },
+        ]);
+      });
+
+      await test.step("Verify target dashboard's heading is visible", async () => {
+        await expect(
+          dashboardPage.getDashboardHeading(targetDashboardName),
+        ).toBeVisible({ timeout: 10000 });
+      });
+
+      await test.step('Verify no Link error notification appeared', async () => {
+        await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
+      });
+
+      await test.step('Verify ignored-filters banner is hidden (filter was declared on target)', async () => {
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
+      });
+    });
+
+    test('Dashboard mode: ignored-filter warning banner is dismissable', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const targetDashboardName = `E2E Orphan Filter Target ${ts}`;
+      let targetDashboardId = '';
+
+      await test.step('Create the target dashboard with NO declared filters', async () => {
+        // beforeEach already created a dashboard; repurpose it as the target.
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          `Orphan Filter Tile ${ts}`,
+        );
+        targetDashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Create source dashboard with Dashboard-mode tile using an undeclared filter expression', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E Orphan Filter Source ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.selectRowClickTarget(
+          targetDashboardName,
+        );
+        // OrphanExpression is not declared as a filter on the target dashboard,
+        // so the warning banner should appear after navigation.
+        await dashboardPage.chartEditor.addOnClickFilterTemplate(
+          0,
+          'OrphanExpression',
+          '{{ServiceName}}',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify navigated to target dashboard with filters param in URL', async () => {
+        await expect(page).toHaveURL(
+          new RegExp(`/dashboards/${targetDashboardId}`),
+          { timeout: 10000 },
+        );
+        const url = new URL(page.url());
+        expect(url.searchParams.get('filters')).not.toBeNull();
+      });
+
+      await test.step('Verify ignored-filters banner is visible and mentions the orphan expression', async () => {
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toBeVisible({
+          timeout: 10000,
+        });
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toContainText(
+          'OrphanExpression',
+        );
+      });
+
+      await test.step('Dismiss the banner and verify it disappears', async () => {
+        await dashboardPage.dismissIgnoredUrlFiltersBanner();
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
+      });
+    });
   },
 );
