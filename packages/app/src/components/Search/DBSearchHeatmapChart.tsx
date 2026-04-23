@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -77,6 +77,22 @@ export function DBSearchHeatmapChart({
     [onAddFilter, setFields],
   );
 
+  // Clear the heatmap selection when the time range changes. The visual
+  // rectangle goes away on its own (uPlot re-initializes with new data),
+  // but without this the xMin/xMax/yMin/yMax URL params would linger and
+  // the delta chart would keep running its comparison query against the
+  // new time range.
+  const fromMs = chartConfig.dateRange[0].getTime();
+  const toMs = chartConfig.dateRange[1].getTime();
+  const prevDateRangeRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${fromMs}-${toMs}`;
+    if (prevDateRangeRef.current != null && prevDateRangeRef.current !== key) {
+      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+    }
+    prevDateRangeRef.current = key;
+  }, [fromMs, toMs, setFields]);
+
   return (
     <Flex
       direction="column"
@@ -147,10 +163,17 @@ export function DBSearchHeatmapChart({
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}
         onSubmit={data => {
+          // Changing value/count/scale changes what the y-axis represents,
+          // so drop any existing selection — a rectangle drawn against the
+          // old axis doesn't map cleanly to the new one.
           setFields({
             value: data.value,
             count: data.count,
             scaleType: data.scaleType,
+            xMin: null,
+            xMax: null,
+            yMin: null,
+            yMax: null,
           });
           settingsHandlers.close();
         }}
