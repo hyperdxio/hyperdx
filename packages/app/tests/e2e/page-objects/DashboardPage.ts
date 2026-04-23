@@ -369,6 +369,18 @@ export class DashboardPage {
     return this.page.locator('.recharts-responsive-container');
   }
 
+  /**
+   * Read the trimmed text of all th cells in the first thead tr of the
+   * given tile's rendered table. Waits for the table to be visible first.
+   */
+  async getTileTableHeaders(tileIndex: number): Promise<string[]> {
+    const tile = this.getTile(tileIndex);
+    const table = tile.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    const headers = await table.locator('thead tr th').allTextContents();
+    return headers.map(h => h.trim());
+  }
+
   /** Open the Edit Filters Modal */
   async openEditFiltersModal() {
     await this.editFiltersButton.click();

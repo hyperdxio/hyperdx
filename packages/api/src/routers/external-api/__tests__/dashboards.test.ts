@@ -2255,6 +2255,7 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          groupByColumnsOnLeft: true,
         },
       };
 
@@ -3091,6 +3092,7 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          groupByColumnsOnLeft: true,
         },
       };
 
