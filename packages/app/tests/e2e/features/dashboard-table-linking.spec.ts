@@ -49,7 +49,7 @@ test.describe(
         await addTableTile(`E2E Table Link ${ts}`);
         await dashboardPage.chartEditor.openRowClickDrawer();
         await dashboardPage.chartEditor.setRowClickMode('Search');
-        await dashboardPage.chartEditor.fillRowClickSourceTemplate(
+        await dashboardPage.chartEditor.fillRowClickTemplate(
           DEFAULT_LOGS_SOURCE_NAME,
         );
         // emptySearchOnClick() defaults whereLanguage to 'sql', but be explicit.
@@ -115,7 +115,7 @@ test.describe(
         await addTableTile(`E2E Bad Source ${ts}`);
         await dashboardPage.chartEditor.openRowClickDrawer();
         await dashboardPage.chartEditor.setRowClickMode('Search');
-        await dashboardPage.chartEditor.fillRowClickSourceTemplate(
+        await dashboardPage.chartEditor.fillRowClickTemplate(
           'Nonexistent Source {{ServiceName}}',
         );
         await dashboardPage.chartEditor.applyRowClickDrawer();
@@ -144,7 +144,7 @@ test.describe(
         await addTableTile(`E2E Bad Column ${ts}`);
         await dashboardPage.chartEditor.openRowClickDrawer();
         await dashboardPage.chartEditor.setRowClickMode('Search');
-        await dashboardPage.chartEditor.fillRowClickSourceTemplate(
+        await dashboardPage.chartEditor.fillRowClickTemplate(
           DEFAULT_LOGS_SOURCE_NAME,
         );
         await dashboardPage.chartEditor.setRowClickWhereLanguage('SQL');
@@ -220,6 +220,293 @@ test.describe(
           DEFAULT_LOGS_SOURCE_NAME,
           { timeout: 10000 },
         );
+      });
+
+      await test.step('Verify no Link error notification appeared', async () => {
+        await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
+      });
+    });
+
+    test('Dashboard mode: valid link navigates to target dashboard with rendered WHERE', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const targetDashboardName = `E2E Target Dashboard ${ts}`;
+      let targetDashboardId = '';
+
+      await test.step('Create the target dashboard (must exist before opening drawer)', async () => {
+        // beforeEach already created a dashboard; replace it with the target.
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(`Target Tile ${ts}`);
+        targetDashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Create source dashboard with a Dashboard-mode table tile', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E Dashboard Link ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          targetDashboardName,
+        );
+        await dashboardPage.chartEditor.setRowClickWhereLanguage('SQL');
+        await dashboardPage.chartEditor.fillRowClickWhereTemplate(
+          "ServiceName = '{{ServiceName}}'",
+          'sql',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      // ServiceName is the second column in the rendered table (count is col 0).
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify navigated to target dashboard with rendered WHERE', async () => {
+        await expect(page).toHaveURL(
+          new RegExp(`/dashboards/${targetDashboardId}`),
+          { timeout: 10000 },
+        );
+        const url = new URL(page.url());
+        expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
+        expect(url.searchParams.get('where')).toBe(
+          `ServiceName = '${serviceName}'`,
+        );
+        expect(url.searchParams.get('whereLanguage')).toBe('sql');
+        const from = Number(url.searchParams.get('from'));
+        const to = Number(url.searchParams.get('to'));
+        expect(from).toBeGreaterThan(0);
+        expect(to).toBeGreaterThan(from);
+        const sixHoursMs = 6 * 60 * 60 * 1000;
+        expect(to - from).toBeGreaterThan(sixHoursMs - 60_000);
+        expect(to - from).toBeLessThan(sixHoursMs + 60_000);
+      });
+
+      await test.step("Verify target dashboard's heading is visible", async () => {
+        await expect(
+          dashboardPage.getDashboardHeading(targetDashboardName),
+        ).toBeVisible({ timeout: 10000 });
+      });
+
+      await test.step('Verify no Link error notification appeared', async () => {
+        await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
+      });
+    });
+
+    test('Dashboard mode: unknown dashboard name shows Link error notification', async () => {
+      const ts = Date.now();
+
+      await test.step('Configure Dashboard-mode row click with unresolvable name', async () => {
+        await addTableTile(`E2E Bad Dashboard ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          'Nonexistent Dashboard {{ServiceName}}',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+
+      await test.step('Click first row and verify Link error appears', async () => {
+        const sourceDashboardId = dashboardPage.getCurrentDashboardId();
+        await dashboardPage.clickFirstTableRow(0);
+        const notification = dashboardPage.getLinkErrorNotification();
+        await expect(notification).toBeVisible({ timeout: 5000 });
+        await expect(notification).toContainText(
+          /Could not find dashboard 'Nonexistent Dashboard /,
+        );
+        // Should still be on the source dashboard.
+        expect(dashboardPage.getCurrentDashboardId()).toBe(sourceDashboardId);
+      });
+    });
+
+    test('Dashboard mode: WHERE template referencing unknown column shows Link error', async () => {
+      const ts = Date.now();
+      const targetDashboardName = `E2E Target Dashboard Column ${ts}`;
+
+      await test.step('Create a valid target dashboard', async () => {
+        // beforeEach already created a dashboard; repurpose it as the target.
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          `Target Tile Col ${ts}`,
+        );
+      });
+
+      await test.step('Create source dashboard with Dashboard-mode tile using bad column WHERE', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E Bad Column Dashboard ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          targetDashboardName,
+        );
+        await dashboardPage.chartEditor.setRowClickWhereLanguage('SQL');
+        await dashboardPage.chartEditor.fillRowClickWhereTemplate(
+          "NonexistentColumn = '{{NonexistentColumn}}'",
+          'sql',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+
+      await test.step('Click first row and verify Link error appears', async () => {
+        const sourceDashboardId = dashboardPage.getCurrentDashboardId();
+        await dashboardPage.clickFirstTableRow(0);
+        const notification = dashboardPage.getLinkErrorNotification();
+        await expect(notification).toBeVisible({ timeout: 5000 });
+        await expect(notification).toContainText(
+          /Row has no column 'NonexistentColumn'/,
+        );
+        expect(dashboardPage.getCurrentDashboardId()).toBe(sourceDashboardId);
+      });
+    });
+
+    test('Search mode (ID): selecting a source from dropdown navigates to /search using that source id', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const logSources = await getSources(page, 'log');
+      const logsSource = logSources.find(
+        (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+      );
+      expect(logsSource).toBeDefined();
+      const logsSourceId: string = logsSource.id;
+
+      await test.step('Configure Search-mode row click by selecting source ID from dropdown', async () => {
+        await addTableTile(`E2E ID Search Link ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Search');
+        await dashboardPage.chartEditor.selectRowClickTarget(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await dashboardPage.chartEditor.setRowClickWhereLanguage('SQL');
+        await dashboardPage.chartEditor.fillRowClickWhereTemplate(
+          "ServiceName = '{{ServiceName}}'",
+          'sql',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify /search URL uses the selected source id and rendered WHERE', async () => {
+        await expect(page).toHaveURL(/\/search\?/, { timeout: 10000 });
+        const url = new URL(page.url());
+        expect(url.searchParams.get('source')).toBe(logsSourceId);
+        expect(url.searchParams.get('whereLanguage')).toBe('sql');
+        expect(url.searchParams.get('isLive')).toBe('false');
+        expect(url.searchParams.get('where')).toBe(
+          `ServiceName = '${serviceName}'`,
+        );
+      });
+
+      await test.step('Verify search page reflects the selected source', async () => {
+        await expect(searchPage.currentSource).toHaveValue(
+          DEFAULT_LOGS_SOURCE_NAME,
+          { timeout: 10000 },
+        );
+      });
+
+      await test.step('Verify no Link error notification appeared', async () => {
+        await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
+      });
+    });
+
+    test('Dashboard mode (ID): selecting a dashboard from dropdown navigates to that dashboard id', async ({
+      page,
+    }) => {
+      const ts = Date.now();
+      const targetDashboardName = `E2E ID Target Dashboard ${ts}`;
+      let targetDashboardId = '';
+
+      await test.step('Create the target dashboard', async () => {
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          `Target Tile ID ${ts}`,
+        );
+        targetDashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Create source dashboard with a Dashboard-mode tile selecting target by ID', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E ID Dashboard Link ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.selectRowClickTarget(
+          targetDashboardName,
+        );
+        await dashboardPage.chartEditor.setRowClickWhereLanguage('SQL');
+        await dashboardPage.chartEditor.fillRowClickWhereTemplate(
+          "ServiceName = '{{ServiceName}}'",
+          'sql',
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify navigated to target dashboard via its id and rendered WHERE', async () => {
+        await expect(page).toHaveURL(
+          new RegExp(`/dashboards/${targetDashboardId}`),
+          { timeout: 10000 },
+        );
+        const url = new URL(page.url());
+        expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
+        expect(url.searchParams.get('where')).toBe(
+          `ServiceName = '${serviceName}'`,
+        );
+        expect(url.searchParams.get('whereLanguage')).toBe('sql');
+        const from = Number(url.searchParams.get('from'));
+        const to = Number(url.searchParams.get('to'));
+        expect(from).toBeGreaterThan(0);
+        expect(to).toBeGreaterThan(from);
+      });
+
+      await test.step("Verify target dashboard's heading is visible", async () => {
+        await expect(
+          dashboardPage.getDashboardHeading(targetDashboardName),
+        ).toBeVisible({ timeout: 10000 });
       });
 
       await test.step('Verify no Link error notification appeared', async () => {

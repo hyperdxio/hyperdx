@@ -996,7 +996,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Query defaults: URL query overrides saved defaults. If switching to a
     // dashboard without defaults, clear query. On first load/reload, keep current state.
-    if (!hasWhereInUrl) {
+    if (hasWhereInUrl) {
+      // Sync form from URL. The form's defaultValues were captured before the
+      // router hydrated, so inputs would otherwise be empty when linking in.
+      setValue('where', where);
+      setValue(
+        'whereLanguage',
+        whereLanguage === 'sql' || whereLanguage === 'lucene'
+          ? whereLanguage
+          : (getStoredLanguage() ?? 'lucene'),
+      );
+    } else {
       if (dashboard.savedQuery) {
         setValue('where', dashboard.savedQuery);
         setWhere(dashboard.savedQuery);
@@ -1034,6 +1044,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setValue,
     setWhere,
     setWhereLanguage,
+    where,
+    whereLanguage,
     setFilterQueries,
   ]);
 

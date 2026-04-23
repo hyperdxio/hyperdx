@@ -668,6 +668,7 @@ export const NumberFormatSchema = z.object({
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string().min(1) }),
   z.object({ mode: z.literal('template'), template: z.string().min(1) }),
 ]);
 export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
@@ -680,8 +681,17 @@ const OnClickSearchSchema = z.object({
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
+export const OnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
+
 export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickSearchSchema,
+  OnClickDashboardSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
@@ -1238,6 +1248,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isSearchableSource(source: TSource): boolean {
+  return isLogSource(source) || isTraceSource(source);
 }
 
 type SourceLikeForSampleWeight = {
