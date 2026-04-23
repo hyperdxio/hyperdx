@@ -49,7 +49,6 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
 
       <OnClickTargetInputControlled
         control={control}
-        data-testid="onclick-source-template-input"
         options={sourceOptions}
         objectType="source"
       />
@@ -90,7 +89,6 @@ function DashboardOnClickFields({ control }: { control: DrawerControl }) {
 
       <OnClickTargetInputControlled
         control={control}
-        data-testid="onclick-dashboard-template-input"
         options={dashboardOptions}
         objectType="dashboard"
       />

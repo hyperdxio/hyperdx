@@ -69,20 +69,20 @@ export function renderOnClickSearch({
       };
     }
 
-    const sourceIds = sourceIdsByName.get(sourceName) ?? [];
-    if (sourceIds.length === 0) {
+    const matchedSourceIds = sourceIdsByName.get(sourceName) ?? [];
+    if (matchedSourceIds.length === 0) {
       return {
         ok: false,
         error: `Could not find source '${sourceName}'`,
       };
     }
-    if (sourceIds.length > 1) {
+    if (matchedSourceIds.length > 1) {
       return {
         ok: false,
         error: `Multiple sources named '${sourceName}' — source names must be unique to use them in a link`,
       };
     }
-    sourceId = sourceIds[0];
+    sourceId = matchedSourceIds[0];
   }
 
   let where = '';
@@ -145,20 +145,20 @@ export function renderOnClickDashboard({
       };
     }
 
-    const dashboardIds = dashboardIdsByName.get(dashboardName) ?? [];
-    if (dashboardIds.length === 0) {
+    const matchedDashboardIds = dashboardIdsByName.get(dashboardName) ?? [];
+    if (matchedDashboardIds.length === 0) {
       return {
         ok: false,
         error: `Could not find dashboard '${dashboardName}'`,
       };
     }
-    if (dashboardIds.length > 1) {
+    if (matchedDashboardIds.length > 1) {
       return {
         ok: false,
         error: `Multiple dashboards named '${dashboardName}' — dashboard names must be unique to use them in a link`,
       };
     }
-    dashboardId = dashboardIds[0];
+    dashboardId = matchedDashboardIds[0];
   }
 
   // Render the dashboard's global WHERE condition, if any
