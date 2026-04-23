@@ -25,7 +25,8 @@ const SHORTCUTS: ShortcutRow[] = [
   { keys: ['Shift', 'Enter'], label: 'Previous find match (find bar open)' },
   {
     keys: ['Esc'],
-    label: 'Close panel, drawer, or find bar; clear histogram bucket selection',
+    label:
+      'Close panel, drawer, or find bar; clear histogram bucket or dashboard tile selection',
   },
   {
     keys: ['←', '→'],
@@ -53,6 +54,11 @@ const SHORTCUTS: ShortcutRow[] = [
     label: 'Toggle chart fullscreen (dashboard) or exit fullscreen view',
   },
   { keys: ['a'], label: 'Toggle chart AI assistant (Charts page)' },
+  {
+    keys: ['Shift', 'click'],
+    label: 'Select dashboard tile (multi-select)',
+  },
+  { keys: ['⌘/Ctrl', 'g'], label: 'Group selected dashboard tiles' },
 ];
 
 export const KeyboardShortcutsModal = ({
