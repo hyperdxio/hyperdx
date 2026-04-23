@@ -867,6 +867,11 @@ function Heatmap({
   // on init (before user hovers), which would show the tooltip on page load.
   const mouseInsideRef = useRef(false);
 
+  // Depend on the boolean, not the onFilter function reference, so the
+  // options useMemo doesn't recompute (and re-initialize uPlot — wiping its
+  // internal u.select drag rectangle) on every parent render.
+  const hasFilter = !!onFilter;
+
   const { ref, width, height } = useElementSize();
 
   const tickFormatter = useCallback(
@@ -980,8 +985,8 @@ function Heatmap({
       cursor: {
         drag: {
           setScale: false,
-          x: !!onFilter,
-          y: !!onFilter,
+          x: hasFilter,
+          y: hasFilter,
           dist: 5,
         },
         show: true,
@@ -1061,7 +1066,7 @@ function Heatmap({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette, onFilter]);
+  }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
 
   return (
     <div
