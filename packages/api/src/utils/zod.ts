@@ -263,6 +263,7 @@ const externalDashboardTableChartConfigSchema = z.object({
   orderBy: z.string().max(10000).optional(),
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =

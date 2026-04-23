@@ -491,6 +491,13 @@ const aggFnExpr = ({
   }
 };
 
+export function isRatioChartConfig(
+  selectList: SelectList,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+): boolean {
+  return chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+}
+
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -520,8 +527,7 @@ async function renderSelectList(
     // ignore
   }
 
-  const isRatio =
-    chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+  const isRatio = isRatioChartConfig(selectList, chartConfig);
 
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
