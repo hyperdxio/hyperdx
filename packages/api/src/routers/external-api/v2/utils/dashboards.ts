@@ -4,6 +4,10 @@ import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
   DisplayType,
+  isLogSource,
+  isOnClickDashboardById,
+  isOnClickSearchById,
+  isTraceSource,
   RawSqlSavedChartConfig,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
@@ -16,7 +20,7 @@ import { z } from 'zod';
 import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
-import { DashboardDocument } from '@/models/dashboard';
+import Dashboard, { DashboardDocument } from '@/models/dashboard';
 import {
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
@@ -46,9 +50,7 @@ export type SeriesTile = ExternalDashboardTileWithId & {
   series: Exclude<ExternalDashboardTileWithId['series'], undefined>;
 };
 
-export function isSeriesTile(
-  tile: ExternalDashboardTileWithId,
-): tile is SeriesTile {
+function isSeriesTile(tile: ExternalDashboardTileWithId): tile is SeriesTile {
   return 'series' in tile && tile.series !== undefined;
 }
 
@@ -144,6 +146,7 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          onClick: config.onClick,
         };
       case DisplayType.Number:
         return {
@@ -241,7 +244,12 @@ const convertToExternalTileChartConfig = (
       };
     case DisplayType.Table:
       return {
-        ...pick(config, ['having', 'numberFormat', 'groupByColumnsOnLeft']),
+        ...pick(config, [
+          'having',
+          'numberFormat',
+          'groupByColumnsOnLeft',
+          'onClick',
+        ]),
         displayType: config.displayType,
         sourceId,
         asRatio:
@@ -383,6 +391,10 @@ export function convertToInternalTileConfig(
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
           numberFormat: externalConfig.numberFormat,
+          onClick:
+            externalConfig.displayType === 'table'
+              ? externalConfig.onClick
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -424,6 +436,7 @@ export function convertToInternalTileConfig(
             'having',
             'orderBy',
             'groupByColumnsOnLeft',
+            'onClick',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),
@@ -498,6 +511,16 @@ export function convertToInternalTileConfig(
 // Shared dashboard validation helpers (used by both the REST router and MCP tools)
 // --------------------------------------------------------------------------------
 
+/**
+ * Extract the tile's onClick config, if the tile uses the new "config" format
+ * and the display type supports onClick (currently only table).
+ */
+function getTileOnClick(tile: ExternalDashboardTileWithId) {
+  if (!isConfigTile(tile)) return undefined;
+  if (!('onClick' in tile.config)) return undefined;
+  return tile.config.onClick;
+}
+
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
 export async function getMissingSources(
   team: string | mongoose.Types.ObjectId,
@@ -518,6 +541,12 @@ export async function getMissingSources(
         sourceIds.add(tile.config.sourceId);
       }
     }
+
+    // Include source IDs referenced by OnClick link-outs (mode=id, type=search)
+    const onClick = getTileOnClick(tile);
+    if (isOnClickSearchById(onClick)) {
+      sourceIds.add(onClick.target.id);
+    }
   }
 
   if (filters?.length) {
@@ -533,6 +562,65 @@ export async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/**
+ * Returns source IDs referenced by onClick search link-outs (mode=id,
+ * type=search) whose source kind is not log or trace. The /search destination
+ * only supports log and trace sources, so linking to a metric/session source
+ * would produce a broken link at click time.
+ *
+ * Sources that don't exist are ignored here — getMissingSources handles that
+ * case separately with a clearer error message.
+ */
+export async function getInvalidOnClickSearchSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const sourceIds = new Set<string>();
+
+  for (const tile of tiles) {
+    const onClick = getTileOnClick(tile);
+    if (isOnClickSearchById(onClick)) {
+      sourceIds.add(onClick.target.id);
+    }
+  }
+
+  if (sourceIds.size === 0) return [];
+
+  const sources = await getSources(team.toString());
+  const validSources = sources.filter(s => isLogSource(s) || isTraceSource(s));
+  const validSourceIds = new Set(validSources.map(s => s._id.toString()));
+  return [...sourceIds].filter(id => !validSourceIds.has(id));
+}
+
+/**
+ * Returns dashboard IDs referenced by tile OnClick link-outs (mode=id,
+ * type=dashboard) that do not exist for the team.
+ */
+export async function getMissingOnClickDashboards(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const dashboardIds = new Set<string>();
+
+  for (const tile of tiles) {
+    const onClick = getTileOnClick(tile);
+    if (isOnClickDashboardById(onClick)) {
+      dashboardIds.add(onClick.target.id);
+    }
+  }
+
+  if (dashboardIds.size === 0) return [];
+
+  const existingDashboards = await Dashboard.find(
+    { team, _id: { $in: [...dashboardIds] } },
+    { _id: 1 },
+  ).lean();
+  const existingDashboardIds = new Set(
+    existingDashboards.map(d => d._id.toString()),
+  );
+  return [...dashboardIds].filter(id => !existingDashboardIds.has(id));
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
