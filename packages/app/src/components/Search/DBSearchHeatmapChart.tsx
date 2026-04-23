@@ -52,12 +52,6 @@ export function DBSearchHeatmapChart({
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const scaleType = (fields.scaleType ?? 'log') as HeatmapScaleType;
-  const setScaleType = useCallback(
-    (v: HeatmapScaleType) => {
-      void setFields({ scaleType: v });
-    },
-    [setFields],
-  );
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
@@ -66,8 +60,9 @@ export function DBSearchHeatmapChart({
     () => ({
       value: fields.value,
       count: fields.count ?? 'count()',
+      scaleType,
     }),
-    [fields.value, fields.count],
+    [fields.value, fields.count, scaleType],
   );
 
   // After applying a filter, clear the heatmap selection so the delta chart
@@ -148,12 +143,11 @@ export function DBSearchHeatmapChart({
         connection={tcFromSource(source)}
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}
-        scaleType={scaleType}
-        onScaleTypeChange={setScaleType}
         onSubmit={data => {
           setFields({
             value: data.value,
             count: data.count,
+            scaleType: data.scaleType,
           });
           settingsHandlers.close();
         }}

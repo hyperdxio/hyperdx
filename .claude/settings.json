@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/alex/projects/worktrees/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME//**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/**)",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/**)",
+      "Bash(yarn tsc *)",
+      "Bash(yarn install *)",
+      "Bash(yarn app:typecheck)",
+      "Bash(make ci-lint *)",
+      "Bash(make ci-unit *)",
+      "Read(//Users/alex/projects/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/packages/app/src/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/packages/app/src/components/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/node_modules/@hyperdx/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/packages/app/src/__tests__/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/packages/app/src/components/ChartEditor/__tests__/**)",
+      "Read(//Users/alex/projects/worktrees/$BASE_NAME/origin-cursor-heatmap-chart-editor-dashboard-5801/packages/app/**)",
+      "Bash(npx eslint *)",
+      "Bash(yarn ci:unit --testPathPattern='__tests__/utils.test')",
+      "Bash(npx jest *)",
+      "Bash(yarn lint:fix)",
+      "Bash(grep -B2 -A6 \"ReactGridLayout$\" packages/app/src/DBDashboardPage.tsx)"
+    ]
+  }
+}

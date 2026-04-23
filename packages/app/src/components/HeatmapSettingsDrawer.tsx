@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
@@ -15,12 +15,12 @@ import {
 } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 export const HeatmapSettingsSchema = z.object({
   value: z.string().trim().min(1),
   count: z.string().trim().optional(),
+  scaleType: z.enum(['log', 'linear']).default('log'),
 });
 
 export type HeatmapSettingsValues = z.infer<typeof HeatmapSettingsSchema>;
@@ -31,8 +31,6 @@ export default function HeatmapSettingsDrawer({
   connection,
   parentRef,
   defaultValues,
-  scaleType,
-  onScaleTypeChange,
   onSubmit,
 }: {
   opened: boolean;
@@ -40,8 +38,6 @@ export default function HeatmapSettingsDrawer({
   connection: TableConnection;
   parentRef?: HTMLElement | null;
   defaultValues: HeatmapSettingsValues;
-  scaleType: HeatmapScaleType;
-  onScaleTypeChange: (v: HeatmapScaleType) => void;
   onSubmit: (v: HeatmapSettingsValues) => void;
 }) {
   const form = useForm({
@@ -58,6 +54,8 @@ export default function HeatmapSettingsDrawer({
     form.reset(defaultValues);
     onClose();
   }, [onClose, form, defaultValues]);
+
+  const scaleType = useWatch({ control: form.control, name: 'scaleType' });
 
   return (
     <Drawer
@@ -77,7 +75,12 @@ export default function HeatmapSettingsDrawer({
             <SegmentedControl
               size="xs"
               value={scaleType}
-              onChange={v => onScaleTypeChange(v as HeatmapScaleType)}
+              onChange={v =>
+                form.setValue(
+                  'scaleType',
+                  v as HeatmapSettingsValues['scaleType'],
+                )
+              }
               data={[
                 { label: 'Log', value: 'log' },
                 { label: 'Linear', value: 'linear' },

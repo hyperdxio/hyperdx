@@ -432,9 +432,9 @@ export default function EditTimeChartForm({
         ];
         setValue('select', heatmapSeries);
         setValue('series', heatmapSeries);
-        setValue('series.0.countExpression' as any, 'count()');
+        setValue('series.0.countExpression', 'count()');
         setValue('numberFormat', {
-          output: 'duration' as any,
+          output: 'duration',
           factor: 0.001,
         });
       }
@@ -469,8 +469,8 @@ export default function EditTimeChartForm({
       ];
       setValue('select', heatmapSeries);
       setValue('series', heatmapSeries);
-      setValue('series.0.countExpression' as any, 'count()');
-      setValue('numberFormat', { output: 'duration' as any, factor: 0.001 });
+      setValue('series.0.countExpression', 'count()');
+      setValue('numberFormat', { output: 'duration', factor: 0.001 });
       onSubmit(true);
     }
   }, [sourceId, displayType, tableSource, setValue, onSubmit]);
@@ -536,18 +536,12 @@ export default function EditTimeChartForm({
   const handleUpdateHeatmapSettings = useCallback(
     (data: HeatmapSettingsValues) => {
       setValue('series.0.valueExpression', data.value);
-      setValue('series.0.countExpression' as any, data.count || 'count()');
+      setValue('series.0.countExpression', data.count || 'count()');
+      setValue('series.0.heatmapScaleType', data.scaleType);
       onSubmit();
       closeHeatmapSettings();
     },
     [setValue, onSubmit, closeHeatmapSettings],
-  );
-
-  const handleHeatmapScaleTypeChange = useCallback(
-    (v: HeatmapScaleType) => {
-      setValue('series.0.heatmapScaleType' as any, v);
-    },
-    [setValue],
   );
 
   const heatmapValueExpression = useWatch({
@@ -556,20 +550,22 @@ export default function EditTimeChartForm({
   });
   const heatmapCountExpression = useWatch({
     control,
-    name: 'series.0.countExpression' as any,
+    name: 'series.0.countExpression',
   });
   const heatmapScaleTypeRaw = useWatch({
     control,
-    name: 'series.0.heatmapScaleType' as any,
+    name: 'series.0.heatmapScaleType',
   });
-  const heatmapScaleType: HeatmapScaleType = heatmapScaleTypeRaw ?? 'log';
+  const heatmapScaleType: HeatmapScaleType =
+    heatmapScaleTypeRaw === 'linear' ? 'linear' : 'log';
 
   const heatmapSettingsDefaults = useMemo(
     () => ({
       value: heatmapValueExpression || '',
       count: heatmapCountExpression || 'count()',
+      scaleType: heatmapScaleType,
     }),
-    [heatmapValueExpression, heatmapCountExpression],
+    [heatmapValueExpression, heatmapCountExpression, heatmapScaleType],
   );
 
   const tableConnection = useMemo(
@@ -782,8 +778,6 @@ export default function EditTimeChartForm({
         connection={tableConnection}
         parentRef={parentRef}
         defaultValues={heatmapSettingsDefaults}
-        scaleType={heatmapScaleType}
-        onScaleTypeChange={handleHeatmapScaleTypeChange}
         onSubmit={handleUpdateHeatmapSettings}
       />
     </div>
