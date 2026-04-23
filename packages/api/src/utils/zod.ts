@@ -1,4 +1,5 @@
 import {
+  addDuplicateTileIdIssues,
   AggregateFunctionSchema,
   AlertThresholdType,
   DashboardFilterSchema,
@@ -262,6 +263,7 @@ const externalDashboardTableChartConfigSchema = z.object({
   orderBy: z.string().max(10000).optional(),
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =
@@ -469,20 +471,11 @@ export type ExternalDashboardTileWithId = z.infer<
 
 export const externalDashboardTileListSchema = z
   .array(externalDashboardTileSchemaWithOptionalId)
-  .superRefine((tiles, ctx) => {
-    const seen = new Set<string>();
-    for (const tile of tiles) {
-      if (tile.id && seen.has(tile.id)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Duplicate tile ID: ${tile.id}. Omit the ID to generate a unique one.`,
-        });
-      }
-      if (tile.id) {
-        seen.add(tile.id);
-      }
-    }
-  });
+  .superRefine((tiles, ctx) =>
+    addDuplicateTileIdIssues(tiles, ctx, {
+      messageSuffix: '. Omit the ID to generate a unique one.',
+    }),
+  );
 
 // ==============================
 // Alerts

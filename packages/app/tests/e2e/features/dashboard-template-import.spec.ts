@@ -85,6 +85,73 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should show a friendly error when the imported file has duplicate tile IDs',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const duplicateId = 'duplicate-tile-id';
+      const dashboardFile = {
+        version: '0.1.0',
+        name: 'Duplicate Tile Dashboard',
+        tiles: [
+          {
+            id: duplicateId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Tile A',
+              source: 'Logs',
+              displayType: 'number',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+          {
+            id: duplicateId,
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Tile B',
+              source: 'Logs',
+              displayType: 'number',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+        ],
+      };
+
+      await test.step('Navigate to the dashboard file import page', async () => {
+        await dashboardImportPage.gotoImport();
+        await expect(dashboardImportPage.fileUploadDropzone).toBeVisible();
+      });
+
+      await test.step('Upload a dashboard file with duplicate tile IDs', async () => {
+        await dashboardImportPage.uploadDashboardFile(
+          JSON.stringify(dashboardFile),
+        );
+      });
+
+      await test.step('Verify the import error is shown and the mapping step is not reached', async () => {
+        await expect(dashboardImportPage.importErrorTitle).toBeVisible();
+        await expect(dashboardImportPage.mappingStepHeading).toBeHidden();
+      });
+
+      await test.step('Expand error details and verify the duplicate tile ID is reported', async () => {
+        await dashboardImportPage.showErrorDetailsButton.click();
+        await expect(
+          page.getByText(`Duplicate tile ID: ${duplicateId}`),
+        ).toBeVisible();
+      });
+    },
+  );
+
+  test(
     'should show error for invalid template name',
     { tag: '@full-stack' },
     async () => {
