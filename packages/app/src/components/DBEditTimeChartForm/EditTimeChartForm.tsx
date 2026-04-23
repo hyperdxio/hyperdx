@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
+import {
+  Controller,
+  useFieldArray,
+  useForm,
+  type UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -97,6 +103,25 @@ type EditTimeChartFormProps = {
   isDashboardForm?: boolean;
   autoRun?: boolean;
 };
+
+/** Populate form state with the standard heatmap series + duration numberFormat. */
+function applyHeatmapDefaults(
+  setValue: UseFormSetValue<ChartEditorFormState>,
+  valueExpression: string,
+) {
+  const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
+    {
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+      valueExpression,
+    },
+  ];
+  setValue('select', heatmapSeries);
+  setValue('series', heatmapSeries);
+  setValue('series.0.countExpression', 'count()');
+  setValue('numberFormat', { output: 'duration', factor: 0.001 });
+}
 
 export default function EditTimeChartForm({
   dashboardId,
@@ -422,21 +447,7 @@ export default function EditTimeChartForm({
           tableSource.durationExpression
             ? getDurationMsExpression(tableSource)
             : (select[0]?.valueExpression ?? '');
-        const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
-          {
-            aggFn: 'count',
-            aggCondition: '',
-            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
-            valueExpression: defaultValue,
-          },
-        ];
-        setValue('select', heatmapSeries);
-        setValue('series', heatmapSeries);
-        setValue('series.0.countExpression', 'count()');
-        setValue('numberFormat', {
-          output: 'duration',
-          factor: 0.001,
-        });
+        applyHeatmapDefaults(setValue, defaultValue);
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
@@ -458,19 +469,7 @@ export default function EditTimeChartForm({
       tableSource?.kind === SourceKind.Trace &&
       tableSource.durationExpression
     ) {
-      const durationExpr = getDurationMsExpression(tableSource);
-      const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
-        {
-          aggFn: 'count',
-          aggCondition: '',
-          aggConditionLanguage: getStoredLanguage() ?? 'lucene',
-          valueExpression: durationExpr,
-        },
-      ];
-      setValue('select', heatmapSeries);
-      setValue('series', heatmapSeries);
-      setValue('series.0.countExpression', 'count()');
-      setValue('numberFormat', { output: 'duration', factor: 0.001 });
+      applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
       onSubmit(true);
     }
   }, [sourceId, displayType, tableSource, setValue, onSubmit]);
