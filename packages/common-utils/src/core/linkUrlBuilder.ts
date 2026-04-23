@@ -31,12 +31,7 @@ function renderOrError(
 }
 
 /**
- * Render an OnClickSearch
- *
- * Returns the rendered pieces; callers in should assemble the final URL
- * with {@link buildSearchLinkRequest} and their existing search URL builder
- * (e.g. ChartUtils.buildEventsSearchUrl) since that needs frontend-only
- * pieces (metric source resolution, etc.).
+ * Render an OnClickSearch to a URL.
  */
 export function renderOnClickSearch({
   onClick,

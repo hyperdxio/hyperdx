@@ -81,8 +81,8 @@ export const clearLinkTemplateCache = () => {
 };
 
 /** Validates a template for Handlebars syntax errors, without checking for missing variables (since the context may not be known). */
-export function validateTemplate(template: string): string {
+export function validateTemplate(template: string) {
   // Note: We don't cache the compiled template here because the compiled template will not be used outside of this validation.
   const compiled = hb.compile(template, { strict: false, noEscape: true });
-  return compiled({}); // Empty context since we're just checking for syntax errors, not missing variables.
+  compiled({}); // Empty context since we're just checking for syntax errors, not missing variables.
 }

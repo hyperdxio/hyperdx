@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Control, Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { validateTemplate } from '@hyperdx/common-utils/dist/core/linkTemplate';
 import { validateOnClickSearch } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
 import { OnClick, OnClickSchema } from '@hyperdx/common-utils/dist/types';
 import {
