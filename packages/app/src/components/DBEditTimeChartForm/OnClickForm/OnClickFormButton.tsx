@@ -10,11 +10,13 @@ import OnClickDrawer from './OnClickDrawer';
 interface OnClickFormButtonProps {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
+  onSubmit?: (suppressErrorNotification?: boolean) => void;
 }
 
 export function OnClickFormButton({
   control,
   setValue,
+  onSubmit,
 }: OnClickFormButtonProps) {
   const [
     onClickDrawerOpened,
@@ -45,6 +47,7 @@ export function OnClickFormButton({
         value={onClickValue}
         onChange={value => {
           setValue('onClick', value, { shouldDirty: true });
+          onSubmit?.();
         }}
         onClose={closeOnClickDrawer}
       />

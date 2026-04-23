@@ -1,12 +1,12 @@
 import type { OnClickSearch } from '../../types';
-import { renderOnClickSearch } from '../linkUrlBuilder';
+import { renderOnClickSearch, validateOnClickSearch } from '../linkUrlBuilder';
 
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00Z'),
   new Date('2026-01-01T01:00:00Z'),
 ];
 
-describe('renderSearchLinkPieces', () => {
+describe('renderOnClickSearch', () => {
   const sourceIdsByName = new Map<string, string>([['Logs', 'src_1']]);
 
   it('resolves source by templated name', () => {
@@ -101,5 +101,85 @@ describe('renderSearchLinkPieces', () => {
     expect(result.ok).toBe(false);
     if (!result.ok)
       expect(result.error).toBe("Row has no column 'MissingColumn'");
+  });
+});
+
+describe('validateOnClickSearch', () => {
+  it('accepts a valid target template with no where template', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
+  });
+
+  it('accepts valid target and where templates', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereTemplate: 'ServiceName = {{ServiceName}}',
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
+  });
+
+  it('accepts templates that reference variables without any runtime context', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Unknown}}' },
+      whereTemplate: '{{a}} and {{b.c}}',
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
+  });
+
+  it('accepts templates using registered helpers', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{default Src "Logs"}}' },
+      whereTemplate: 'id = {{floor n}}',
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
+  });
+
+  it('throws when the target template has invalid syntax', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{#if' },
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).toThrow();
+  });
+
+  it('throws when the where template has invalid syntax', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereTemplate: '{{unclosed',
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).toThrow();
+  });
+
+  it('skips where-template validation when whereTemplate is undefined', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereLanguage: 'sql',
+    };
+    expect(onClick.whereTemplate).toBeUndefined();
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
+  });
+
+  it('skips where-template validation when whereTemplate is an empty string', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereTemplate: '',
+      whereLanguage: 'sql',
+    };
+    expect(() => validateOnClickSearch(onClick)).not.toThrow();
   });
 });

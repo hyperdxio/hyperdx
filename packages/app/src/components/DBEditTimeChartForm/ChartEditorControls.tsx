@@ -262,7 +262,11 @@ export function ChartEditorControls({
             </Group>
             <Group>
               {displayType === DisplayType.Table && (
-                <OnClickFormButton control={control} setValue={setValue} />
+                <OnClickFormButton
+                  control={control}
+                  setValue={setValue}
+                  onSubmit={onSubmit}
+                />
               )}
               <Button
                 onClick={openDisplaySettings}

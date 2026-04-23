@@ -583,6 +583,7 @@ export default function EditTimeChartForm({
             control={control}
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
+            onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}

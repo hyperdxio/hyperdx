@@ -3,6 +3,7 @@ import {
   LinkTemplateError,
   MissingTemplateVariableError,
   renderLinkTemplate,
+  validateTemplate,
 } from './linkTemplate';
 
 export type LinkBuildResult =
@@ -85,4 +86,12 @@ export function renderOnClickSearch({
     to: String(dateRange[1].getTime()),
   });
   return { ok: true, url: `/search?${params.toString()}` };
+}
+
+/** Throws if the given OnClickSearch includes a template with invalid syntax */
+export function validateOnClickSearch(onClick: OnClickSearch) {
+  validateTemplate(onClick.target.template);
+  if (onClick.whereTemplate) {
+    validateTemplate(onClick.whereTemplate);
+  }
 }
