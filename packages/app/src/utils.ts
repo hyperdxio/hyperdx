@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import TimestampNano from 'timestamp-nano';
 import type { MutableRefObject, SetStateAction } from 'react';
+import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   NumericUnit,
@@ -1115,18 +1115,7 @@ export const isElementClickable = (el: HTMLElement): boolean => {
   return el === elementAtPoint || el.contains(elementAtPoint);
 };
 
-/**
- * Parse a nanosecond-precision ISO 8601 timestamp string (as returned by
- * ClickHouse DateTime64(9)) into milliseconds since the Unix epoch, preserving
- * sub-millisecond precision as a fractional millisecond value.
- *
- * `new Date(str).getTime()` silently truncates sub-millisecond digits, which
- * causes alignment errors in the waterfall when two events fall within the same
- * millisecond. TimestampNano's public API gives us:
- *   - toDate().getTime() → integer ms from epoch (truncated)
- *   - getNano() % 1_000_000 → the remaining sub-millisecond nanoseconds (0–999_999)
- * Dividing the remainder by 1_000_000 converts it to a fractional millisecond.
- */
+// Parses nanosecond-precision ISO 8601 to fractional ms since epoch.
 export function parseTimestampToMs(isoString: string): number {
   const ts = TimestampNano.fromString(isoString);
   return ts.toDate().getTime() + (ts.getNano() % 1_000_000) / 1_000_000;

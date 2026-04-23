@@ -12,6 +12,7 @@ import {
   getMetricTableName,
   mapKeyBy,
   orderByStringToSortingState,
+  parseTimestampToMs,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
@@ -1121,5 +1122,33 @@ describe('mapKeyBy', () => {
     const result = mapKeyBy(data, 'id');
     expect(result.size).toBe(1);
     expect(result.get('a')).toBe(data.at(1));
+  });
+});
+
+describe('parseTimestampToMs', () => {
+  it('returns integer ms when there are no sub-millisecond digits', () => {
+    // 2024-01-01T00:00:01.000000000Z → exactly 1 second past epoch start
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000000000Z');
+    expect(result).toBe(new Date('2024-01-01T00:00:01.000Z').getTime());
+  });
+
+  it('preserves sub-millisecond precision as a fractional ms', () => {
+    // .000000500 → 500 ns → 0.5 µs → 0.0005 ms past the whole-ms boundary
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000000500Z');
+    expect(result).toBeCloseTo(base + 0.0005, 6);
+  });
+
+  it('handles max sub-millisecond value (999 µs + 999 ns)', () => {
+    // .000999999 → 999_999 ns sub-ms → 999_999 / 1_000_000 ≈ 0.999999 ms
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000999999Z');
+    expect(result).toBeCloseTo(base + 0.999999, 6);
+  });
+
+  it('produces correct relative ordering for two timestamps within the same millisecond', () => {
+    const earlier = parseTimestampToMs('2024-01-01T00:00:01.000000100Z');
+    const later = parseTimestampToMs('2024-01-01T00:00:01.000000900Z');
+    expect(earlier).toBeLessThan(later);
   });
 });
