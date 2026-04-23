@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
@@ -373,6 +373,7 @@ function HeatmapContainer({
   config,
   enabled = true,
   onFilter,
+  onClearFilter,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -381,6 +382,7 @@ function HeatmapContainer({
   config: HeatmapChartConfig;
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearFilter?: () => void;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
@@ -710,6 +712,7 @@ function HeatmapContainer({
                 }
               : undefined
           }
+          onClearFilter={onClearFilter}
           scaleType={scaleType}
           palette={palette}
         />
@@ -823,31 +826,17 @@ function Heatmap({
   data,
   numberFormat,
   onFilter,
+  onClearFilter,
   scaleType = 'linear',
   palette,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearFilter?: () => void;
   scaleType?: HeatmapScaleType;
   palette: string[];
 }) {
-  const [selectingInfo, setSelectingInfo] = useState<
-    | {
-        // In pixel units
-        top: number;
-        left: number;
-        width: number;
-        height: number;
-        // In data units
-        xMin: number;
-        yMin: number;
-        xMax: number;
-        yMax: number;
-      }
-    | undefined
-  >(undefined);
-
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
         xVal: number;
@@ -871,6 +860,23 @@ function Heatmap({
   // options useMemo doesn't recompute (and re-initialize uPlot — wiping its
   // internal u.select drag rectangle) on every parent render.
   const hasFilter = !!onFilter;
+
+  // Hold onFilter in a ref so the setSelect hook (captured inside the
+  // options useMemo) can always call the latest callback without needing
+  // onFilter in the memo's dep array.
+  const onFilterRef = useRef(onFilter);
+  useEffect(() => {
+    onFilterRef.current = onFilter;
+  }, [onFilter]);
+
+  // Hold the uPlot instance so outside-click can explicitly clear the
+  // persisted u.select rectangle (which is owned by uPlot, not React).
+  const uplotRef = useRef<uPlot | null>(null);
+
+  // Timestamp of the most recent drag-end. Guards the container's onClick
+  // handler from clearing the selection when the synthetic click event
+  // that fires on mouseup-after-drag arrives.
+  const justDraggedAtRef = useRef(0);
 
   const { ref, width, height } = useElementSize();
 
@@ -1038,29 +1044,21 @@ function Heatmap({
                 return;
               }
 
-              // Calculate offset from parent so we can render tooltip
-              // relative to the parent pixels
-              const { offsetLeft, offsetTop } = u.over;
-
               const xMin = u.posToVal(u.select.left, 'x');
               const xMax = u.posToVal(u.select.left + u.select.width, 'x');
-              const yMax = u.posToVal(u.select.top, 'y');
-              const yMin = u.posToVal(u.select.top + u.select.height, 'y');
+              const rawYMax = u.posToVal(u.select.top, 'y');
+              const rawYMin = u.posToVal(u.select.top + u.select.height, 'y');
 
-              // This ensures we set the timeout after all click handlers
-              // to prevent our state from being wiped by onclick handler
-              setTimeout(() => {
-                setSelectingInfo({
-                  top: u.select.top + offsetTop,
-                  left: u.select.left + offsetLeft,
-                  width: u.select.width,
-                  height: u.select.height,
-                  xMin,
-                  xMax,
-                  yMin,
-                  yMax,
-                });
-              }, 20);
+              // y-values are stored in log space for log scale; convert back
+              const yMin = scaleType === 'log' ? Math.exp(rawYMin) : rawYMin;
+              const yMax = scaleType === 'log' ? Math.exp(rawYMax) : rawYMax;
+
+              // Apply the filter immediately on drag end. Record the
+              // timestamp so the synthetic click event that follows the
+              // drag (mouseup fires a click on the container) doesn't
+              // immediately clear the selection we just made.
+              justDraggedAtRef.current = performance.now();
+              onFilterRef.current?.(xMin / 1000, xMax / 1000, yMin, yMax);
             },
           },
         },
@@ -1074,9 +1072,19 @@ function Heatmap({
       className="heatmap-selection-container"
       style={{ width: '100%', height: '100%', position: 'relative' }}
       onClick={() => {
-        if (selectingInfo != null) {
-          setSelectingInfo(undefined);
+        // Chromium fires a click event on mouseup even after a drag.
+        // Ignore it; the drag itself was handled by setSelect.
+        if (performance.now() - justDraggedAtRef.current < 300) {
+          return;
         }
+        if (!hasFilter) return;
+        // Random click on the chart clears the persisted selection and
+        // exits comparison mode.
+        uplotRef.current?.setSelect(
+          { left: 0, top: 0, width: 0, height: 0 },
+          false,
+        );
+        onClearFilter?.();
       }}
       onMouseEnter={() => {
         mouseInsideRef.current = true;
@@ -1091,6 +1099,12 @@ function Heatmap({
         // @ts-expect-error TODO: uPlot types are wrong for mode 2 data
         data={[[], data]}
         resetScales={true}
+        onCreate={chart => {
+          uplotRef.current = chart;
+        }}
+        onDelete={() => {
+          uplotRef.current = null;
+        }}
       />
       {highlightedPoint != null && (
         <>
@@ -1133,7 +1147,7 @@ function Heatmap({
             {onFilter && (
               <>
                 <Text size="10px" pt="4px">
-                  Click & Drag to Select Data
+                  Drag to Compare · Click to Clear
                 </Text>
                 <Divider my="xs" />
               </>
@@ -1153,66 +1167,6 @@ function Heatmap({
             </div>
           </div>
         </>
-      )}
-      {selectingInfo != null && onFilter != null && (
-        <div
-          className="px-2 py-1 fs-8"
-          style={{
-            backdropFilter: 'blur(4px)',
-            backgroundColor: 'var(--mantine-color-body)',
-            border: '1px solid var(--mantine-color-default-border)',
-            borderRadius: 4,
-            position: 'absolute',
-            // Place above the selection; if too close to the top, flip below
-            ...(selectingInfo?.top > 30
-              ? { bottom: height - selectingInfo?.top + 4 }
-              : {
-                  top: selectingInfo?.top + (selectingInfo?.height ?? 0) + 4,
-                }),
-            left: selectingInfo?.left,
-          }}
-          onClick={e => {
-            e.stopPropagation();
-            // y-values are stored in log space for log scale; convert back
-            const yMin =
-              scaleType === 'log'
-                ? Math.exp(selectingInfo.yMin)
-                : selectingInfo.yMin;
-            const yMax =
-              scaleType === 'log'
-                ? Math.exp(selectingInfo.yMax)
-                : selectingInfo.yMax;
-            onFilter?.(
-              selectingInfo.xMin / 1000,
-              selectingInfo.xMax / 1000,
-              yMin,
-              yMax,
-            );
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              const yMin =
-                scaleType === 'log'
-                  ? Math.exp(selectingInfo.yMin)
-                  : selectingInfo.yMin;
-              const yMax =
-                scaleType === 'log'
-                  ? Math.exp(selectingInfo.yMax)
-                  : selectingInfo.yMax;
-              onFilter?.(
-                selectingInfo.xMin / 1000,
-                selectingInfo.xMax / 1000,
-                yMin,
-                yMax,
-              );
-            }
-          }}
-        >
-          Filter by Selection
-        </div>
       )}
     </div>
   );

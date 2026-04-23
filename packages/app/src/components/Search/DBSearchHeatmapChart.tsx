@@ -119,6 +119,9 @@ export function DBSearchHeatmapChart({
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({ xMin, xMax, yMin, yMax });
           }}
+          onClearFilter={() => {
+            setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+          }}
         />
         {/* Gear icon overlaid on chart top-right */}
         <Tooltip label="Display settings">
