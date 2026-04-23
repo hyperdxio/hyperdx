@@ -15,7 +15,7 @@ export function OnClickTargetInputControlled({
   objectType,
 }: {
   control: DrawerControl;
-  options: { label: string; value: string }[];
+  options: { label: string; value: string }[] | undefined;
   objectType: 'source' | 'dashboard';
 }) {
   const optionsWithTemplate = useMemo(() => {
@@ -31,7 +31,7 @@ export function OnClickTargetInputControlled({
       },
       {
         group: objectType === 'dashboard' ? 'Dashboard' : 'Source',
-        items: options,
+        items: options ?? [],
       },
     ];
   }, [options, objectType]);
@@ -51,6 +51,14 @@ export function OnClickTargetInputControlled({
       control={control}
       name="onClick.target"
       render={({ field, fieldState }) => {
+        const selectedId =
+          field.value?.mode === 'id' ? field.value.id : undefined;
+        const targetMissing =
+          options != null &&
+          selectedId != null &&
+          selectedId !== '' &&
+          !options.some(option => option.value === selectedId);
+
         return (
           <>
             <InputLabelWithTooltip label={label} tooltip={labelTooltip} />
@@ -61,6 +69,11 @@ export function OnClickTargetInputControlled({
                 field.value?.mode === 'template'
                   ? TEMPLATE_SELECT_VALUE
                   : field.value?.id
+              }
+              error={
+                targetMissing
+                  ? `The previously selected ${objectType} no longer exists. Choose another ${objectType}.`
+                  : undefined
               }
               onChange={value => {
                 if (value === TEMPLATE_SELECT_VALUE) {

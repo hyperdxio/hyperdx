@@ -50,7 +50,7 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
       <OnClickTargetInputControlled
         control={control}
         data-testid="onclick-source-template-input"
-        options={sourceOptions ?? []}
+        options={sourceOptions}
         objectType="source"
       />
 
@@ -91,7 +91,7 @@ function DashboardOnClickFields({ control }: { control: DrawerControl }) {
       <OnClickTargetInputControlled
         control={control}
         data-testid="onclick-dashboard-template-input"
-        options={dashboardOptions ?? []}
+        options={dashboardOptions}
         objectType="dashboard"
       />
 
@@ -160,6 +160,22 @@ export default function OnClickDrawer({
   useEffect(() => {
     if (opened) reset(appliedDefaults);
   }, [opened, appliedDefaults, reset]);
+
+  const { data: dashboards } = useDashboards();
+  const { data: sources } = useSources();
+  const watchedOnClick = useWatch({ control, name: 'onClick' });
+
+  const isTargetMissing = useMemo(() => {
+    if (!watchedOnClick || watchedOnClick.target.mode !== 'id') return false;
+
+    const validTargetIds =
+      watchedOnClick.type === 'dashboard'
+        ? dashboards?.map(d => d.id)
+        : sources?.filter(isSearchableSource).map(s => s.id);
+
+    if (!validTargetIds) return false;
+    return !validTargetIds.includes(watchedOnClick.target.id);
+  }, [watchedOnClick, dashboards, sources]);
 
   const applyChanges = useCallback(() => {
     handleSubmit(values => {
@@ -235,6 +251,7 @@ export default function OnClickDrawer({
           <Button
             variant="primary"
             onClick={applyChanges}
+            disabled={isTargetMissing}
             data-testid="onclick-apply-button"
           >
             Apply

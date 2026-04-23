@@ -996,28 +996,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Query defaults: URL query overrides saved defaults. If switching to a
     // dashboard without defaults, clear query. On first load/reload, keep current state.
-    if (hasWhereInUrl) {
-      // Sync form from URL. The form's defaultValues were captured before the
-      // router hydrated, so inputs would otherwise be empty when linking in.
-      setValue('where', where);
-      setValue(
-        'whereLanguage',
-        whereLanguage === 'sql' || whereLanguage === 'lucene'
-          ? whereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
-      );
-    } else {
+    if (!hasWhereInUrl) {
       if (dashboard.savedQuery) {
         setValue('where', dashboard.savedQuery);
         setWhere(dashboard.savedQuery);
-        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+        const savedLanguage =
+          dashboard.savedQueryLanguage ?? getStoredLanguage() ?? 'lucene';
         setValue('whereLanguage', savedLanguage);
         setWhereLanguage(savedLanguage);
       } else if (isSwitchingDashboards) {
         setValue('where', '');
         setWhere('');
-        setValue('whereLanguage', 'lucene');
-        setWhereLanguage('lucene');
+        const storedLanguage = getStoredLanguage() ?? 'lucene';
+        setValue('whereLanguage', storedLanguage);
+        setWhereLanguage(storedLanguage);
       }
     }
 
@@ -1044,10 +1036,19 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setValue,
     setWhere,
     setWhereLanguage,
-    where,
-    whereLanguage,
     setFilterQueries,
   ]);
+
+  // Sync changes to the URL params into the form
+  useEffect(() => {
+    setValue('where', where);
+    setValue(
+      'whereLanguage',
+      whereLanguage === 'sql' || whereLanguage === 'lucene'
+        ? whereLanguage
+        : (getStoredLanguage() ?? 'lucene'),
+    );
+  }, [setValue, where, whereLanguage]);
 
   const handleSaveQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
