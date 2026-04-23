@@ -1107,12 +1107,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     !!dashboard?.id &&
     router.isReady &&
     (isLocalDashboard || !isFetchingDashboard);
-  const [dismissedIgnoredFilters, setDismissedIgnoredFilters] =
+
+  // Latched on dashboard load only — not on every URL change — so the banner
+  // doesn't flash while navigating between dashboards. Known bug - when navigating
+  // to the current dashboard with new and invalid filters in the URL, the banner
+  // will not show up.
+  const [shouldShowIgnoredFiltersBanner, setShouldShowIgnoredFiltersBanner] =
     useState<boolean>(false);
-  const shouldShowIgnoredFiltersBanner =
-    dashboardReady &&
-    ignoredFilterExpressions.length > 0 &&
-    !dismissedIgnoredFilters;
+  useEffect(() => {
+    if (!dashboardReady) return;
+    setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.id, dashboardReady]);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
@@ -2169,7 +2175,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           data-testid="ignored-url-filters-banner"
           withCloseButton
           closeButtonLabel="Dismiss"
-          onClose={() => setDismissedIgnoredFilters(true)}
+          onClose={() => setShouldShowIgnoredFiltersBanner(false)}
         >
           No dashboard filter(s) found for{' '}
           {ignoredFilterExpressions.length === 1 ? 'expression' : 'expressions'}{' '}
