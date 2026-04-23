@@ -18,6 +18,7 @@ import {
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { FormatTime } from '@/useFormatTime';
 
+import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
 export type ChartConfigDisplaySettings = Pick<
@@ -26,7 +27,9 @@ export type ChartConfigDisplaySettings = Pick<
   | 'alignDateRangeToGranularity'
   | 'fillNulls'
   | 'compareToPreviousPeriod'
->;
+> & {
+  groupByColumnsOnLeft?: boolean;
+};
 
 interface ChartDisplaySettingsDrawerProps {
   opened: boolean;
@@ -35,6 +38,8 @@ interface ChartDisplaySettingsDrawerProps {
    *  Used as the default when no explicit numberFormat is set. */
   defaultNumberFormat?: NumberFormat;
   displayType: DisplayType;
+  /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
+  configType?: 'sql' | 'builder';
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
@@ -53,6 +58,7 @@ function applyDefaultSettings(
         : settings.alignDateRangeToGranularity,
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+    groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
   };
 }
 
@@ -60,6 +66,7 @@ export default function ChartDisplaySettingsDrawer({
   settings,
   opened,
   displayType,
+  configType,
   defaultNumberFormat,
   onChange,
   onClose,
@@ -70,7 +77,7 @@ export default function ChartDisplaySettingsDrawer({
     [settings, defaultNumberFormat],
   );
 
-  const { control, handleSubmit, register, reset, setValue } =
+  const { control, handleSubmit, reset, setValue } =
     useForm<ChartConfigDisplaySettings>({
       defaultValues: appliedDefaults,
     });
@@ -99,6 +106,11 @@ export default function ChartDisplaySettingsDrawer({
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
 
+  // Group By column ordering only applies to builder table charts; raw SQL
+  // configs let the user author whatever column order they want directly.
+  const showGroupByColumnsOnLeft =
+    displayType === DisplayType.Table && configType !== 'sql';
+
   return (
     <Drawer
       title="Display Settings"
@@ -109,10 +121,11 @@ export default function ChartDisplaySettingsDrawer({
       <Stack>
         {isTimeChart && (
           <>
-            <Checkbox
+            <CheckBoxControlled
+              control={control}
+              name="alignDateRangeToGranularity"
               size="xs"
               label="Show Complete Intervals"
-              {...register('alignDateRangeToGranularity')}
             />
             <Box>
               <Checkbox
@@ -124,7 +137,9 @@ export default function ChartDisplaySettingsDrawer({
                 }}
               />
             </Box>
-            <Checkbox
+            <CheckBoxControlled
+              control={control}
+              name="compareToPreviousPeriod"
               size="xs"
               label="Compare to Previous Period"
               description={
@@ -137,7 +152,18 @@ export default function ChartDisplaySettingsDrawer({
                   </>
                 )
               }
-              {...register('compareToPreviousPeriod')}
+            />
+            <Divider />
+          </>
+        )}
+
+        {showGroupByColumnsOnLeft && (
+          <>
+            <CheckBoxControlled
+              control={control}
+              name="groupByColumnsOnLeft"
+              size="xs"
+              label="Display Group By Columns on Left"
             />
             <Divider />
           </>

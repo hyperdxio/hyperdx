@@ -5,9 +5,11 @@
 ## TypeScript
 
 - Avoid `any` - use proper typing
+- Avoid `as` casts, use `satisfies` or type inference whenever possible
 - Use Zod schemas for runtime validation
 - Define clear interfaces for data structures
 - Implement proper error boundaries
+- Define and import reusable named types instead of repeating verbose types
 
 ## Code Organization
 
@@ -19,6 +21,7 @@
 ## React Patterns
 
 - Functional components with hooks (not class components)
+- Write small, focused components
 - Extract reusable logic into custom hooks
 - Define TypeScript interfaces for props
 - Use proper keys for lists, memoization for expensive computations
@@ -26,6 +29,9 @@
 ## Mantine UI Components
 
 The project uses Mantine UI with **custom variants** defined in `packages/app/src/theme/mantineTheme.ts`.
+
+- Prefer Mantine components over custom-styled elements
+- Prefer individual Mantine style props (eg. `m='xs'`) over raw styles (eg. `style={{ margin: '4px' }}`)
 
 ### Button & ActionIcon Variants (REQUIRED)
 
@@ -128,8 +134,8 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 - Verify all callers and integrations after changes
 - Refactor to improve clarity or reduce complexity, not just to change
 
-## File Naming
+## File Naming and Organization
 
 - Clear, descriptive names following package conventions
 - Avoid "temp", "refactored", "improved" in permanent filenames
-
+- Put related components in a single directory

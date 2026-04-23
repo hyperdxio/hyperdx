@@ -591,6 +591,13 @@ async function getSourceConnectionMismatches(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         groupByColumnsOnLeft:
+ *           type: boolean
+ *           description: >
+ *             When true, render Group By columns to the left of series columns
+ *             in the table. Defaults to false (Group By columns on the right).
+ *           default: false
+ *           example: false
  *
  *     NumberBuilderChartConfig:
  *       type: object

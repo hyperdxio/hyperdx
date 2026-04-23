@@ -184,6 +184,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     numberFormat,
+    groupByColumnsOnLeft,
   ] = useWatch({
     control,
     name: [
@@ -191,6 +192,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'numberFormat',
+      'groupByColumnsOnLeft',
     ],
   });
 
@@ -209,12 +211,14 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      groupByColumnsOnLeft,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      groupByColumnsOnLeft,
     ],
   );
 
@@ -457,11 +461,13 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      groupByColumnsOnLeft,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       onSubmit();
     },
     [setValue, onSubmit],
@@ -583,6 +589,7 @@ export default function EditTimeChartForm({
             control={control}
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
+            onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}
@@ -661,6 +668,7 @@ export default function EditTimeChartForm({
         defaultNumberFormat={autoDetectedNumberFormat}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
+        configType={configType}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
       />
