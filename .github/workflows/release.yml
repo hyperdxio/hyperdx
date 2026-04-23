@@ -7,6 +7,7 @@ permissions:
   packages: write
   pull-requests: write
   actions: read
+  id-token: write
 jobs:
   check_changesets:
     name: Check Changesets
@@ -23,6 +24,10 @@ jobs:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
+          # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
+          # that conflicts with npm OIDC trusted publishing
+      - name: Configure npm registry
+        run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
         run: yarn install
       # Build @hyperdx/common-utils before changesets publish runs.
@@ -45,7 +50,7 @@ jobs:
         env:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
@@ -477,45 +482,78 @@ jobs:
           yarn compile:linux
           yarn compile:macos
           yarn compile:macos-x64
+      - name: Build release notes
+        if: steps.check_cli_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.cli_version.outputs.version }}"
+          CHANGELOG="packages/cli/CHANGELOG.md"
+
+          # Extract the section for this version from CHANGELOG.md
+          # Grab everything between "## $VERSION" and the next "## " heading
+          NOTES=""
+          if [ -f "$CHANGELOG" ]; then
+            NOTES=$(awk -v ver="## ${VERSION}" '
+              $0 == ver { found=1; next }
+              found && /^## / { exit }
+              found { print }
+            ' "$CHANGELOG")
+          fi
+
+          # Write the combined release body
+          {
+            echo "## @hyperdx/cli v${VERSION}"
+            echo ""
+            if [ -n "$NOTES" ]; then
+              echo "$NOTES"
+              echo ""
+              echo "---"
+              echo ""
+            fi
+            cat <<'INSTALL'
+          ### Installation
+
+          **npm (recommended):**
+          ```bash
+          npm install -g @hyperdx/cli
+          ```
+
+          **Or run directly with npx:**
+          ```bash
+          npx @hyperdx/cli tui -s <your-hyperdx-api-url>
+          ```
+
+          **Manual download (standalone binary, no Node.js required):**
+          ```bash
+          # macOS Apple Silicon
+          INSTALL
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-arm64 -o hdx"
+            echo "# macOS Intel"
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-x64 -o hdx"
+            echo "# Linux x64"
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-linux-x64 -o hdx"
+            cat <<'USAGE'
+
+          chmod +x hdx && sudo mv hdx /usr/local/bin/
+          ```
+
+          ### Usage
+
+          ```bash
+          hdx auth login -s <your-hyperdx-api-url>
+          hdx tui
+          ```
+          USAGE
+          } > /tmp/cli-release-notes.md
+
+          echo "--- Generated release notes ---"
+          cat /tmp/cli-release-notes.md
       - name: Create GitHub Release
         if: steps.check_cli_release.outputs.exists == 'false'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           tag_name: cli-v${{ steps.cli_version.outputs.version }}
           name: '@hyperdx/cli v${{ steps.cli_version.outputs.version }}'
-          body: |
-            ## @hyperdx/cli v${{ steps.cli_version.outputs.version }}
-
-            ### Installation
-
-            **npm (recommended):**
-            ```bash
-            npm install -g @hyperdx/cli
-            ```
-
-            **Or run directly with npx:**
-            ```bash
-            npx @hyperdx/cli tui -s <your-hyperdx-api-url>
-            ```
-
-            **Manual download (standalone binary, no Node.js required):**
-            ```bash
-            # macOS Apple Silicon
-            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-darwin-arm64 -o hdx
-            # macOS Intel
-            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-darwin-x64 -o hdx
-            # Linux x64
-            curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${{ steps.cli_version.outputs.version }}/hdx-linux-x64 -o hdx
-
-            chmod +x hdx && sudo mv hdx /usr/local/bin/
-            ```
-
-            ### Usage
-
-            ```bash
-            hdx auth login -s <your-hyperdx-api-url>
-            hdx tui
-            ```
+          body_path: /tmp/cli-release-notes.md
           draft: false
           prerelease: false
           files: |
