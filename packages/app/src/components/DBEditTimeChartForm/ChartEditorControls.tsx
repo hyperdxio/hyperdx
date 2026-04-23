@@ -28,6 +28,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import { IS_LOCAL_MODE } from '@/config';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
+import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
@@ -276,13 +277,22 @@ export function ChartEditorControls({
                   </Button>
                 )}
             </Group>
-            <Button
-              onClick={openDisplaySettings}
-              size="compact-sm"
-              variant="secondary"
-            >
-              Display Settings
-            </Button>
+            <Group>
+              {displayType === DisplayType.Table && (
+                <OnClickFormButton
+                  control={control}
+                  setValue={setValue}
+                  onSubmit={onSubmit}
+                />
+              )}
+              <Button
+                onClick={openDisplaySettings}
+                size="compact-sm"
+                variant="secondary"
+              >
+                Display Settings
+              </Button>
+            </Group>
           </Flex>
         </>
       ) : (

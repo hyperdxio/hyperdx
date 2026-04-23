@@ -28,7 +28,7 @@ import { ChartEditorFormState } from './types';
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
+    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
@@ -45,6 +45,10 @@ function normalizeChartConfig<
       config.displayType === DisplayType.Table ? config.having : undefined,
     orderBy:
       config.displayType === DisplayType.Table ? config.orderBy : undefined,
+    onClick:
+      config.onClick && config.displayType === DisplayType.Table
+        ? config.onClick
+        : undefined,
   };
 }
 
@@ -78,6 +82,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alert',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -121,6 +126,7 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
