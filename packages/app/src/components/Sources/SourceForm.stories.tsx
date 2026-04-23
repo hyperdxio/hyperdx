@@ -1,6 +1,6 @@
-import { delay, http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Box, Card, Text } from '@mantine/core';
+import { Card } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { TableSourceForm } from './SourceForm';

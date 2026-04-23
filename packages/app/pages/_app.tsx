@@ -162,7 +162,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           console.warn('No API key found to enable OTEL exporter');
         }
       })
-      .catch(err => {
+      .catch(() => {
         // ignore
       });
   }, []);

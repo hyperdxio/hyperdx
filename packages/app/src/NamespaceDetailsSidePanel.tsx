@@ -60,7 +60,7 @@ const NamespaceDetails = ({
   const where = `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
+  const { data } = useQueriedChartConfig(
     convertV1ChartConfigToV2(
       {
         series: [

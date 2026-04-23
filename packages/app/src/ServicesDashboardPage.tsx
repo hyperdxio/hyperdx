@@ -1453,7 +1453,7 @@ function ServicesDashboardPage() {
   const effectiveWhereLanguage =
     appliedConfigWithoutFilters?.whereLanguage ?? getStoredLanguage() ?? 'sql';
 
-  const { control, setValue, handleSubmit } = useForm({
+  const { control, handleSubmit } = useForm({
     defaultValues: {
       where: '',
       whereLanguage: effectiveWhereLanguage as 'sql' | 'lucene',
