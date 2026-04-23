@@ -381,7 +381,7 @@ const program = new Command();
 program
   .name('hdx')
   .description('HyperDX CLI — search and tail events from the terminal')
-  .version('0.1.0')
+  .version(process.env.npm_package_version ?? '0.0.0')
   .enablePositionalOptions();
 
 // ---- Interactive mode (default) ------------------------------------
