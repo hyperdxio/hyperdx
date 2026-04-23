@@ -7,6 +7,7 @@ permissions:
   packages: write
   pull-requests: write
   actions: read
+  id-token: write
 jobs:
   check_changesets:
     name: Check Changesets
@@ -23,6 +24,10 @@ jobs:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
+          # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
+          # that conflicts with npm OIDC trusted publishing
+      - name: Configure npm registry
+        run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
         run: yarn install
       # Build @hyperdx/common-utils before changesets publish runs.
@@ -45,7 +50,7 @@ jobs:
         env:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
