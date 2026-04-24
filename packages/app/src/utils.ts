@@ -1115,7 +1115,6 @@ export const isElementClickable = (el: HTMLElement): boolean => {
   return el === elementAtPoint || el.contains(elementAtPoint);
 };
 
-// Parses an ISO 8601 string to fractional ms since epoch (~244 ns Float64 floor).
 export function parseTimestampToMs(isoString: string): number {
   const ts = TimestampNano.fromString(isoString);
   return ts.toDate().getTime() + (ts.getNano() % 1_000_000) / 1_000_000;

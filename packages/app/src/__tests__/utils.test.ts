@@ -1137,6 +1137,12 @@ describe('parseTimestampToMs', () => {
     expect(result).toBeCloseTo(base + 0.5, 4);
   });
 
+  it('preserves whole-millisecond component when sub-ms digits are also present', () => {
+    const base = new Date('2024-01-01T00:00:01.500Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.500500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
   it('handles max sub-millisecond value (999 µs + 999 ns)', () => {
     const base = new Date('2024-01-01T00:00:01.000Z').getTime();
     const result = parseTimestampToMs('2024-01-01T00:00:01.000999999Z');
