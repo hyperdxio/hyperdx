@@ -2314,6 +2314,112 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('SAVED_SEARCH alert - logs rendered ClickHouse SQL on trigger (HDX-4112)', async () => {
+      // Verifies that when an alert fires, trySendNotification logs the exact
+      // rendered SQL (post-parameter substitution) along with the evaluation
+      // window, source, alertId, savedSearchId, and triggering value. This
+      // gives operators a way to reproduce the query that produced the
+      // triggering metric, which is otherwise lost in the existing
+      // "Triggering ... alarm!" log line.
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Boom',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Boom',
+        },
+      ]);
+
+      const logger = (await import('@/utils/logger')).default;
+      const infoSpy = jest.spyOn(logger, 'info');
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const triggerLogCall = infoSpy.mock.calls.find(
+        ([, msg]) =>
+          typeof msg === 'string' &&
+          msg.startsWith('Alert notification dispatch'),
+      );
+      expect(triggerLogCall).toBeDefined();
+      const [logFields, logMessage] = triggerLogCall!;
+      expect(logMessage).toBe(
+        'Alert notification dispatch — rendered ClickHouse SQL',
+      );
+      expect(logFields).toMatchObject({
+        alertId: details.alert.id,
+        savedSearchId: savedSearch.id,
+        alertSource: AlertSource.SAVED_SEARCH,
+        state: 'ALERT',
+        totalCount: 2,
+        windowSizeInMins: 5,
+        sourceId: source.id,
+        sourceFrom: { databaseName: 'default', tableName: 'otel_logs' },
+      });
+      const renderedSqls = (logFields as { renderedSqls: string[] })
+        .renderedSqls;
+      expect(Array.isArray(renderedSqls)).toBe(true);
+      expect(renderedSqls.length).toBeGreaterThan(0);
+      const sql = renderedSqls[0];
+      // The rendered SQL should reference the source table and be fully
+      // expanded (no remaining `{name:Type}` parameter placeholders).
+      expect(sql).toContain('default');
+      expect(sql).toContain('otel_logs');
+      expect(sql).not.toMatch(/\{[^}]+:\w+\}/);
+      // The window timestamps from the alert evaluation should appear inlined
+      // in the rendered SQL (post-parameter substitution).
+      expect(sql).toContain('2023-11-16');
+
+      infoSpy.mockRestore();
+    });
+
     it('TILE alert (events) - slack webhook', async () => {
       const {
         team,

@@ -5,6 +5,7 @@ import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import {
   chSqlToAliasMap,
+  parameterizedQueryToSql,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
@@ -13,7 +14,11 @@ import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  renderChartConfig,
+  setChartSelectsAlias,
+  splitChartConfigs,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
@@ -916,6 +921,32 @@ export const processAlert = async (
       `Received alert metric [${alert.source} source]`,
     );
 
+    // Pre-render the exact SQL string(s) the alert evaluator sent to ClickHouse,
+    // so we can log them when a notification is dispatched (HDX-4112). This
+    // mirrors the behavior of ClickhouseClient.queryChartConfig: builder
+    // configs are passed through setChartSelectsAlias, then both builder and
+    // raw-sql configs go through splitChartConfigs (metric configs may produce
+    // multiple SQL strings). Failures here must not affect alert delivery.
+    let renderedAlertSqls: string[] = [];
+    try {
+      const renderInputConfig = isBuilderChartConfig(optimizedChartConfig)
+        ? setChartSelectsAlias(optimizedChartConfig)
+        : optimizedChartConfig;
+      const renderedQueries = await Promise.all(
+        splitChartConfigs(renderInputConfig).map(c =>
+          renderChartConfig(c, metadata, source?.querySettings),
+        ),
+      );
+      renderedAlertSqls = renderedQueries.map(q =>
+        parameterizedQueryToSql({ sql: q.sql, params: q.params }),
+      );
+    } catch (e) {
+      logger.warn(
+        { alertId: alert.id, error: serializeError(e) },
+        'Failed to render alert SQL for trigger logging',
+      );
+    }
+
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
 
@@ -934,6 +965,21 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // Identifiers for the source of the alert evaluation, used in trigger logs
+    // so the rendered SQL can be correlated back to the originating object.
+    const savedSearchIdForLog =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? details.savedSearch.id
+        : undefined;
+    const tileIdForLog =
+      details.taskType === AlertTaskType.TILE ? alert.tileId : undefined;
+    const dashboardIdForLog =
+      details.taskType === AlertTaskType.TILE
+        ? details.dashboard?.id
+        : undefined;
+    const sourceIdForLog = source?.id;
+    const sourceFromForLog = source?.from ?? undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -946,6 +992,34 @@ export const processAlert = async (
       group: string;
       startTime?: Date;
     }) => {
+      // Log the exact rendered SQL (with parameters substituted) sent to
+      // ClickHouse for this alert evaluation, alongside the evaluation window,
+      // source/table, and the metric value that triggered the notification.
+      // This is emitted from inside trySendNotification (HDX-4112) so it only
+      // fires on actual notification attempts and can be correlated with the
+      // companion "Triggering ... alarm!" log line via alertId/TraceId.
+      logger.info(
+        {
+          alertId: alert.id,
+          savedSearchId: savedSearchIdForLog,
+          tileId: tileIdForLog,
+          dashboardId: dashboardIdForLog,
+          sourceId: sourceIdForLog,
+          sourceFrom: sourceFromForLog,
+          alertSource: alert.source,
+          group,
+          state,
+          totalCount,
+          windowStart: startTime,
+          windowEnd: fns.addMinutes(startTime, windowSizeInMins),
+          checkStartTime: dateRange[0],
+          checkEndTime: dateRange[1],
+          windowSizeInMins,
+          renderedSqls: renderedAlertSqls,
+        },
+        'Alert notification dispatch — rendered ClickHouse SQL',
+      );
+
       logger.info(
         { alertId: alert.id, group, totalCount },
         state === AlertState.ALERT
