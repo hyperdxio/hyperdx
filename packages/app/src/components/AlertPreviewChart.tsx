@@ -1,10 +1,11 @@
 import React from 'react';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
   AlertThresholdType,
+  DisplayType,
   Filter,
-  getSampleWeightExpression,
   isLogSource,
   isTraceSource,
   SearchCondition,
@@ -31,6 +32,18 @@ type AlertPreviewChartProps = {
   thresholdMax?: number;
   select?: string | null;
 };
+
+// Default SELECT for alert preview when no caller-provided SELECT is set.
+// Mirrors what the scheduled alert task uses so the preview and the alert
+// evaluate the same shape of query.
+const DEFAULT_ALERT_SELECT = [
+  {
+    aggFn: 'count' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'sql' as const,
+    valueExpression: '',
+  },
+];
 
 export const AlertPreviewChart = ({
   source,
@@ -60,6 +73,22 @@ export const AlertPreviewChart = ({
   });
   const aliasWith = aliasMapToWithClauses(aliasMap);
 
+  // Delegate to the shared builder so this preview sees the same filters /
+  // sample weights / implicit columns as the scheduled alert task and the
+  // main app search page. The preview chart is rendered as a time series
+  // (DBTimeChart) so it overrides displayType to Line and supplies a count()
+  // default SELECT.
+  const chartConfig = buildSearchChartConfig(source, {
+    where,
+    whereLanguage,
+    filters,
+    groupBy,
+    displayType: DisplayType.Line,
+    dateRange: intervalToDateRange(interval),
+    granularity: intervalToGranularity(interval),
+    defaultSelect: DEFAULT_ALERT_SELECT,
+  });
+
   return (
     <Paper w="100%" h={200}>
       <DBTimeChart
@@ -73,29 +102,8 @@ export const AlertPreviewChart = ({
           thresholdType,
         })}
         config={{
-          where: where || '',
-          whereLanguage: whereLanguage || undefined,
-          dateRange: intervalToDateRange(interval),
-          granularity: intervalToGranularity(interval),
-          filters: filters || undefined,
-          implicitColumnExpression:
-            isLogSource(source) || isTraceSource(source)
-              ? source.implicitColumnExpression
-              : undefined,
-          sampleWeightExpression: getSampleWeightExpression(source),
-          groupBy,
+          ...chartConfig,
           with: aliasWith,
-          select: [
-            {
-              aggFn: 'count' as const,
-              aggCondition: '',
-              aggConditionLanguage: 'sql',
-              valueExpression: '',
-            },
-          ],
-          timestampValueExpression: source.timestampValueExpression,
-          from: source.from,
-          connection: source.connection,
         }}
       />
     </Paper>

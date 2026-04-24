@@ -14,6 +14,7 @@ import {
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
@@ -35,6 +36,7 @@ import {
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
@@ -512,32 +514,31 @@ const getChartConfigFromAlert = (
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const { source } = details;
     const savedSearch = details.savedSearch;
-    return {
-      connection,
+    // Delegate to the shared builder (in @hyperdx/common-utils) so the alert
+    // task, the alert preview chart, and the main app search page all
+    // assemble saved-search chart configs identically. This fixes HDX-4111,
+    // where the alert task omitted `source.tableFilterExpression` while the
+    // app applied it — producing false-positive alerts whose count did not
+    // reconcile with the rows visible in the app for the same saved search.
+    return buildSearchChartConfig(source as TSource, {
+      where: savedSearch.where,
+      whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters?.map(f => ({ ...f })),
+      groupBy: alert.groupBy,
       displayType: DisplayType.Line,
+      connection,
       dateRange,
       dateRangeStartInclusive: true,
       dateRangeEndInclusive: false,
-      from: source.from,
       granularity: `${windowSizeInMins} minute`,
-      select: [
+      defaultSelect: [
         {
           aggFn: 'count',
           aggCondition: '',
           valueExpression: '',
         },
       ],
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      filters: savedSearch.filters?.map(f => ({ ...f })),
-      groupBy: alert.groupBy,
-      implicitColumnExpression:
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-    };
+    });
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 
