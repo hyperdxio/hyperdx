@@ -29,6 +29,32 @@ import {
 export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
 
 /**
+ * Default SELECT used by alert evaluators when no caller-supplied SELECT
+ * is provided: a single `count()` aggregate.
+ *
+ * Shared between the scheduled alert task (`checkAlerts/index.ts`) and the
+ * alert preview chart (`AlertPreviewChart.tsx`) so the two paths produce
+ * byte-identical SELECT shapes. The `as const` annotations are required
+ * so TypeScript infers literal types (`'count'`, `'sql'`) that satisfy the
+ * strict branch of `RootValueExpressionSchema` (which requires
+ * `aggConditionLanguage` whenever `aggFn` is set).
+ *
+ * Today every field except `aggFn` is empty / no-op — but pinning the
+ * shape now prevents the alert task and the preview from drifting if
+ * someone later adds, e.g., a non-empty `aggCondition` to one site without
+ * also adding `aggConditionLanguage` (which would silently render under
+ * `lucene` vs `sql` in different code paths inside `renderChartConfig`).
+ */
+export const ALERT_COUNT_DEFAULT_SELECT: SelectList = [
+  {
+    aggFn: 'count' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'sql' as const,
+    valueExpression: '',
+  },
+];
+
+/**
  * Saved-search-shaped inputs for assembling a chart config.
  *
  * Fields are primitives (not a persisted SavedSearch) so this can also be

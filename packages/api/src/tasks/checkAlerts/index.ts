@@ -14,7 +14,10 @@ import {
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
@@ -531,13 +534,7 @@ const getChartConfigFromAlert = (
       dateRangeStartInclusive: true,
       dateRangeEndInclusive: false,
       granularity: `${windowSizeInMins} minute`,
-      defaultSelect: [
-        {
-          aggFn: 'count',
-          aggCondition: '',
-          valueExpression: '',
-        },
-      ],
+      defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
     });
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;

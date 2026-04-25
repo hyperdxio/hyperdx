@@ -1,5 +1,8 @@
 import React from 'react';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
@@ -33,18 +36,6 @@ type AlertPreviewChartProps = {
   thresholdMax?: number;
   select?: string | null;
 };
-
-// Default SELECT for alert preview when no caller-provided SELECT is set.
-// Mirrors what the scheduled alert task uses so the preview and the alert
-// evaluate the same shape of query.
-const DEFAULT_ALERT_SELECT = [
-  {
-    aggFn: 'count' as const,
-    aggCondition: '',
-    aggConditionLanguage: 'sql' as const,
-    valueExpression: '',
-  },
-];
 
 export const AlertPreviewChart = ({
   source,
@@ -92,7 +83,7 @@ export const AlertPreviewChart = ({
     displayType: DisplayType.Line,
     dateRange: intervalToDateRange(interval),
     granularity: intervalToGranularity(interval),
-    defaultSelect: DEFAULT_ALERT_SELECT,
+    defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
   }) as ChartConfigWithDateRange;
 
   return (

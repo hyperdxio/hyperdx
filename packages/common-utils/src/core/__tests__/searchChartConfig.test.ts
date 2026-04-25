@@ -1,5 +1,8 @@
 import { DisplayType, Filter, SourceKind, TSource } from '../../types';
-import { buildSearchChartConfig } from '../searchChartConfig';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '../searchChartConfig';
 
 // Factory helpers keep tests focused on the behavior under test rather than
 // the full source shape. We cast to TSource because most per-kind fields are
@@ -324,6 +327,32 @@ describe('buildSearchChartConfig', () => {
         condition: "ServiceName NOT IN ('hidden')",
       });
       expect(config.filters?.[1]).toEqual(userFilter);
+    });
+  });
+
+  // Locks in the exact shape of the shared count() default SELECT used by
+  // both the alert task and the alert preview chart. Drift here would mean
+  // the two paths render queries differently — the original symptom of
+  // HDX-4111.
+  describe('ALERT_COUNT_DEFAULT_SELECT', () => {
+    it('exports a single count() aggregate with all required fields', () => {
+      expect(ALERT_COUNT_DEFAULT_SELECT).toEqual([
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          aggConditionLanguage: 'sql',
+          valueExpression: '',
+        },
+      ]);
+    });
+
+    it('flows through buildSearchChartConfig as the resolved SELECT when no caller select is provided', () => {
+      const config = buildSearchChartConfig(makeLogSource(), {
+        where: '',
+        defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
+      });
+
+      expect(config.select).toEqual(ALERT_COUNT_DEFAULT_SELECT);
     });
   });
 });
