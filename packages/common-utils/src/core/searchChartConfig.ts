@@ -1,6 +1,6 @@
 import {
   BuilderChartConfig,
-  BuilderChartConfigWithOptDateRange,
+  DateRange,
   DisplayType,
   Filter,
   isLogSource,
@@ -13,6 +13,20 @@ import {
   SQLInterval,
   TSource,
 } from '@/types';
+
+/**
+ * Return type for `buildSearchChartConfig`.
+ *
+ * The full `BuilderChartConfig` (with required `timestampValueExpression`,
+ * which we always set from the source) plus optional date-range knobs that
+ * are present iff the caller passed them.
+ *
+ * This is intentionally narrower than `BuilderChartConfigWithOptDateRange`
+ * (which makes `timestampValueExpression` optional). The narrower type lets
+ * downstream consumers spread the result into a `BuilderChartConfigWithDateRange`
+ * after adding `dateRange` without TS rejecting the timestamp field.
+ */
+export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
 
 /**
  * Saved-search-shaped inputs for assembling a chart config.
@@ -96,7 +110,7 @@ function resolveSelect(
 export function buildSearchChartConfig(
   source: TSource,
   input: SearchChartConfigInput,
-): BuilderChartConfigWithOptDateRange {
+): SearchChartConfig {
   // Prepend the Log source's `tableFilterExpression` as a SQL filter when set,
   // so the alert query and the app search see the same row set.
   // Log sources are the only kind that carries `tableFilterExpression` today.
@@ -112,7 +126,7 @@ export function buildSearchChartConfig(
       ? source.implicitColumnExpression
       : undefined;
 
-  const config: BuilderChartConfigWithOptDateRange = {
+  const config: SearchChartConfig = {
     connection: input.connection ?? source.connection,
     displayType: input.displayType ?? DisplayType.Search,
     source: source.id,

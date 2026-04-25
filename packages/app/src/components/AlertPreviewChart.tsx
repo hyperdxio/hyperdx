@@ -4,6 +4,7 @@ import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
   AlertThresholdType,
+  ChartConfigWithDateRange,
   DisplayType,
   Filter,
   isLogSource,
@@ -78,6 +79,11 @@ export const AlertPreviewChart = ({
   // main app search page. The preview chart is rendered as a time series
   // (DBTimeChart) so it overrides displayType to Line and supplies a count()
   // default SELECT.
+  //
+  // Cast to ChartConfigWithDateRange because `dateRange` is always set in
+  // this code path (we pass `intervalToDateRange(interval)` below). The
+  // builder's return type widens `dateRange` to optional to support callers
+  // that omit it, so we narrow here at the consumption point.
   const chartConfig = buildSearchChartConfig(source, {
     where,
     whereLanguage,
@@ -87,7 +93,7 @@ export const AlertPreviewChart = ({
     dateRange: intervalToDateRange(interval),
     granularity: intervalToGranularity(interval),
     defaultSelect: DEFAULT_ALERT_SELECT,
-  });
+  }) as ChartConfigWithDateRange;
 
   return (
     <Paper w="100%" h={200}>

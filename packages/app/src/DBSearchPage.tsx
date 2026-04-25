@@ -1314,13 +1314,15 @@ export function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = useMemo(
-    () =>
-      splitAndTrimWithBracket(
-        dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '',
-      ),
-    [dbSqlRowTableConfig?.select, defaultSearchConfig.select],
-  );
+  const displayedColumns = useMemo(() => {
+    // `select` is typed as `string | DerivedColumn[]` upstream, but in the
+    // search page we always supply a string. Guard for type safety.
+    const rawSelect =
+      dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '';
+    return splitAndTrimWithBracket(
+      typeof rawSelect === 'string' ? rawSelect : '',
+    );
+  }, [dbSqlRowTableConfig?.select, defaultSearchConfig.select]);
 
   const toggleColumn = useCallback(
     (column: string) => {

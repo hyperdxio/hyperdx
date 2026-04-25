@@ -30,7 +30,7 @@ import AlertHistory from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
-import { ISource, Source } from '@/models/source';
+import { ISource, LogSource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
@@ -2332,7 +2332,11 @@ describe('checkAlerts', () => {
 
       // Configure the source to hide the 'excluded' service, matching the
       // semantics of a Log source whose UI view filters it out.
-      await Source.updateOne(
+      // `tableFilterExpression` is declared on the Log discriminator schema
+      // (not the base Source schema), so we must update through `LogSource`
+      // — `Source.updateOne` would silently drop the field under Mongoose's
+      // default strict mode.
+      await LogSource.updateOne(
         { _id: source._id },
         { $set: { tableFilterExpression: "ServiceName != 'excluded'" } },
       );
