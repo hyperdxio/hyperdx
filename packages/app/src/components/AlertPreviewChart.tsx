@@ -71,6 +71,15 @@ export const AlertPreviewChart = ({
   // (DBTimeChart) so it overrides displayType to Line and supplies a count()
   // default SELECT.
   //
+  // Note: the `select` prop on this component is intentionally NOT forwarded
+  // to `buildSearchChartConfig`. The preview always renders the alert's
+  // count-over-time threshold view, which uses `ALERT_COUNT_DEFAULT_SELECT`.
+  // The `select` prop is only used above (for `useAliasMapFromChartConfig`)
+  // so the alias-WITH clauses match the saved search's display select even
+  // though the chart itself plots count(). This mirrors what the scheduled
+  // alert task does — both evaluate the same count() shape regardless of
+  // the saved search's display columns.
+  //
   // Cast to ChartConfigWithDateRange because `dateRange` is always set in
   // this code path (we pass `intervalToDateRange(interval)` below). The
   // builder's return type widens `dateRange` to optional to support callers
