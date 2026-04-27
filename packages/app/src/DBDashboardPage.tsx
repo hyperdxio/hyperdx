@@ -1098,20 +1098,21 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ignoredFilterExpressions,
   } = useDashboardFilters(filters);
 
-  // Warn when the URL has filter values that don't correspond to any declared
-  // dashboard filter — they'd otherwise be silently dropped, and users who
-  // arrive via a shared link, bookmark, or onClick action might not notice.
-  // Only consider URL filters ignored once the dashboard has finished loading
-  // so we don't flash the banner before `dashboard.filters` is available.
   const dashboardReady =
     !!dashboard?.id &&
     router.isReady &&
     (isLocalDashboard || !isFetchingDashboard);
 
+  // Warn when the URL has filter values that don't correspond to any declared
+  // dashboard filter — they'd otherwise be silently dropped, and users who
+  // arrive via a shared link, bookmark, or onClick action might not notice.
+  // Only consider URL filters ignored once the dashboard has finished loading
+  // so we don't flash the banner before `dashboard.filters` is available.
+  //
   // Latched on dashboard load only — not on every URL change — so the banner
-  // doesn't flash while navigating between dashboards. Known bug - when navigating
-  // to the current dashboard with new and invalid filters in the URL, the banner
-  // will not show up.
+  // doesn't flash while navigating between dashboards due to nuqs state changing
+  // before the next router state. Known limitation - when navigating to the current
+  // dashboard with new and invalid filters in the URL, the banner will not show up.
   const [shouldShowIgnoredFiltersBanner, setShouldShowIgnoredFiltersBanner] =
     useState<boolean>(false);
   useEffect(() => {

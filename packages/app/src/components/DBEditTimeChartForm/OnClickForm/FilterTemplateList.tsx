@@ -37,7 +37,6 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
               control={control}
               name={`onClick.filters.${i}.expression` as const}
               placeholder="Expression"
-              value={filter.expression}
               style={{ flex: 1 }}
               data-testid="onclick-filter-expression-input"
             />
@@ -45,7 +44,6 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
               control={control}
               name={`onClick.filters.${i}.template` as const}
               placeholder="Template (e.g. {{ServiceName}})"
-              value={filter.template}
               style={{ flex: 1 }}
               data-testid="onclick-filter-template-input"
             />

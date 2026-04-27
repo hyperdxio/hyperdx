@@ -1,6 +1,6 @@
 import { filtersToQuery } from '@/filters';
 
-describe('searchFilters', () => {
+describe('filters', () => {
   describe('filtersToQuery', () => {
     it('should return empty string when no filters', () => {
       const filters = {};
