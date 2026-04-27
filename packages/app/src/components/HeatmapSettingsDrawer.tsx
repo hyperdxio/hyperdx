@@ -75,12 +75,11 @@ export default function HeatmapSettingsDrawer({
             <SegmentedControl
               size="xs"
               value={scaleType}
-              onChange={v =>
-                form.setValue(
-                  'scaleType',
-                  v as HeatmapSettingsValues['scaleType'],
-                )
-              }
+              onChange={v => {
+                if (v === 'log' || v === 'linear') {
+                  form.setValue('scaleType', v);
+                }
+              }}
               data={[
                 { label: 'Log', value: 'log' },
                 { label: 'Linear', value: 'linear' },

@@ -429,9 +429,23 @@ export default function EditTimeChartForm({
       if (displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
         setValue('series', []);
-      }
-
-      if (displayType !== DisplayType.Search && !Array.isArray(select)) {
+      } else if (displayType === DisplayType.Heatmap) {
+        // Two entry paths into Heatmap:
+        //   - From Search/RawSQL: select is a string; clear `where` too
+        //   - From another builder tab: select is already an array
+        const fallbackValue = Array.isArray(select)
+          ? (select[0]?.valueExpression ?? '')
+          : '';
+        const defaultValue =
+          tableSource?.kind === SourceKind.Trace &&
+          tableSource.durationExpression
+            ? getDurationMsExpression(tableSource)
+            : fallbackValue;
+        if (typeof select === 'string') {
+          setValue('where', '');
+        }
+        applyHeatmapDefaults(setValue, defaultValue);
+      } else if (!Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
@@ -443,15 +457,6 @@ export default function EditTimeChartForm({
         setValue('where', '');
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
-      }
-
-      if (displayType === DisplayType.Heatmap && Array.isArray(select)) {
-        const defaultValue =
-          tableSource?.kind === SourceKind.Trace &&
-          tableSource.durationExpression
-            ? getDurationMsExpression(tableSource)
-            : (select[0]?.valueExpression ?? '');
-        applyHeatmapDefaults(setValue, defaultValue);
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
@@ -557,12 +562,11 @@ export default function EditTimeChartForm({
     control,
     name: 'series.0.countExpression',
   });
-  const heatmapScaleTypeRaw = useWatch({
-    control,
-    name: 'series.0.heatmapScaleType',
-  });
   const heatmapScaleType: HeatmapScaleType =
-    heatmapScaleTypeRaw === 'linear' ? 'linear' : 'log';
+    useWatch({
+      control,
+      name: 'series.0.heatmapScaleType',
+    }) ?? 'log';
 
   const heatmapSettingsDefaults = useMemo(
     () => ({

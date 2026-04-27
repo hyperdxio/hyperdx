@@ -332,7 +332,7 @@ export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
       granularity: 'auto',
       numberFormat: config.numberFormat,
     },
-    scaleType: firstSelect?.heatmapScaleType === 'linear' ? 'linear' : 'log',
+    scaleType: firstSelect?.heatmapScaleType ?? 'log',
   };
 }
 
@@ -378,6 +378,7 @@ function HeatmapContainer({
   toolbarPrefix,
   toolbarSuffix,
   scaleType = 'log',
+  showLegend = false,
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
@@ -387,6 +388,7 @@ function HeatmapContainer({
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   scaleType?: HeatmapScaleType;
+  showLegend?: boolean;
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -616,7 +618,13 @@ function HeatmapContainer({
   }
 
   const toolbarItemsMemo = useMemo(() => {
-    const allToolbarItems = [];
+    const allToolbarItems: React.ReactNode[] = [];
+
+    if (showLegend) {
+      allToolbarItems.push(
+        <ColorLegend key="heatmap-legend" colors={palette} />,
+      );
+    }
 
     if (toolbarPrefix && toolbarPrefix.length > 0) {
       allToolbarItems.push(...toolbarPrefix);
@@ -627,7 +635,7 @@ function HeatmapContainer({
     }
 
     return allToolbarItems;
-  }, [toolbarPrefix, toolbarSuffix]);
+  }, [showLegend, palette, toolbarPrefix, toolbarSuffix]);
 
   const _error = error || minMaxError;
 

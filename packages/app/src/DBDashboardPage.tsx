@@ -221,6 +221,7 @@ function HeatmapTile({
         toolbarPrefix={toolbar}
         config={heatmapConfig}
         scaleType={scaleType}
+        showLegend
       />
       {clickPos != null && eventDeltasUrl != null && (
         <>

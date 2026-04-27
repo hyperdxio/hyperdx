@@ -3,7 +3,6 @@ import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
-  DisplayType,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -27,6 +26,7 @@ import DBHeatmapChart, {
   darkPalette,
   type HeatmapScaleType,
   lightPalette,
+  toHeatmapChartConfig,
 } from '../DBHeatmapChart';
 
 export function DBSearchHeatmapChart({
@@ -111,25 +111,25 @@ export function DBSearchHeatmapChart({
         }}
       >
         <DBHeatmapChart
-          config={{
-            ...chartConfig,
-            select: [
-              {
-                aggFn: 'heatmap',
-                valueExpression: fields.value,
-                countExpression: fields.count || undefined,
-              },
-            ],
-            granularity: 'auto',
-            displayType: DisplayType.Heatmap,
-            numberFormat:
-              fields.value === getDurationMsExpression(source)
-                ? ({
-                    output: 'duration',
-                    factor: 0.001,
-                  } satisfies NumberFormat)
-                : undefined,
-          }}
+          config={
+            toHeatmapChartConfig({
+              ...chartConfig,
+              select: [
+                {
+                  valueExpression: fields.value,
+                  countExpression: fields.count || undefined,
+                  heatmapScaleType: scaleType,
+                },
+              ],
+              numberFormat:
+                fields.value === getDurationMsExpression(source)
+                  ? ({
+                      output: 'duration',
+                      factor: 0.001,
+                    } satisfies NumberFormat)
+                  : undefined,
+            }).heatmapConfig
+          }
           enabled={isReady}
           scaleType={scaleType}
           onFilter={(xMin, xMax, yMin, yMax) => {

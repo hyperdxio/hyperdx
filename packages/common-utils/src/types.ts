@@ -139,7 +139,7 @@ export const DerivedColumnSchema = z.intersection(
     metricNameSql: z.string().optional(),
     // Heatmap-specific fields (optional, only used when displayType is Heatmap)
     countExpression: z.string().optional(),
-    heatmapScaleType: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
