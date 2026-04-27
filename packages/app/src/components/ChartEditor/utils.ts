@@ -1,5 +1,6 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
+import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -8,8 +9,10 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
+  getSampleWeightExpression,
   isLogSource,
   isMetricSource,
+  isRangeThresholdType,
   isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
@@ -25,7 +28,7 @@ import { ChartEditorFormState } from './types';
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
+    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
@@ -42,6 +45,10 @@ function normalizeChartConfig<
       config.displayType === DisplayType.Table ? config.having : undefined,
     orderBy:
       config.displayType === DisplayType.Table ? config.orderBy : undefined,
+    onClick:
+      config.onClick && config.displayType === DisplayType.Table
+        ? config.onClick
+        : undefined,
   };
 }
 
@@ -76,6 +83,8 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alert',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -119,10 +128,18 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
+      from: source?.from,
+      implicitColumnExpression:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.implicitColumnExpression
+          : undefined,
+      metricTables:
+        source && isMetricSource(source) ? source.metricTables : undefined,
     };
 
     return { ...rawSqlConfig, dateRange };
@@ -144,6 +161,7 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
+      sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
       select: isSelectEmpty
@@ -198,7 +216,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     form.displayType !== DisplayType.Markdown &&
-    !form.source
+    (!form.source || !source)
   ) {
     errors.push({ path: `source`, message: 'Source is required' });
   }
@@ -207,6 +225,7 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
+    source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {
@@ -236,6 +255,41 @@ export const validateChartForm = (
         });
       }
     });
+  }
+
+  // Validate raw SQL alert has required time filters and interval parameters
+  if (isRawSqlChart && form.alert) {
+    const config = {
+      configType: 'sql',
+      sqlTemplate: form.sqlTemplate ?? '',
+      connection: form.connection ?? '',
+      from: source?.from,
+      displayType: form.displayType,
+    } satisfies RawSqlChartConfig;
+    const { errors: alertErrors } = validateRawSqlForAlert(config);
+    if (alertErrors.length > 0) {
+      errors.push({
+        path: `sqlTemplate`,
+        message: alertErrors.join('. '),
+      });
+    }
+  }
+
+  // Validate thresholdMax for range threshold types (between / not between)
+  if (form.alert && isRangeThresholdType(form.alert.thresholdType)) {
+    if (form.alert.thresholdMax == null) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      });
+    } else if (form.alert.thresholdMax < form.alert.threshold) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
+      });
+    }
   }
 
   // Validate number, pie, and bar charts only have one series

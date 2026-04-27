@@ -1,18 +1,13 @@
-.sliderThumb {
-  background-color: var(--color-slider-thumb);
-  border-color: var(--color-slider-thumb-border);
-}
-
 .sliderMark {
-  width: 6px;
-  height: 6px;
+  width: 6px !important;
+  height: 6px !important;
+  margin-top: 1px;
   border-radius: 100%;
-  transform: translateX(1px) translateY(1px);
-  border-color: var(--color-slider-dot);
-  background-color: var(--color-slider-dot);
+  border-color: var(--color-slider-dot) !important;
+  background-color: var(--color-slider-dot) !important;
 
   &[data-filled] {
-    border-color: var(--color-slider-dot-active);
-    background-color: var(--color-slider-dot-active);
+    border-color: var(--color-slider-dot-active) !important;
+    background-color: var(--color-slider-dot-active) !important;
   }
 }

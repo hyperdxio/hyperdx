@@ -8,9 +8,9 @@ const USE_DEV = process.env.E2E_USE_DEV === 'true';
 const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
 
 // Port configuration (set by scripts/test-e2e.sh via HDX_E2E_* env vars)
-const API_PORT = process.env.HDX_E2E_API_PORT || '19000';
-const APP_PORT = process.env.HDX_E2E_APP_PORT || '48081';
-const APP_LOCAL_PORT = process.env.HDX_E2E_APP_LOCAL_PORT || '48001';
+const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
+const APP_PORT = process.env.HDX_E2E_APP_PORT || '21300';
+const APP_LOCAL_PORT = process.env.HDX_E2E_APP_LOCAL_PORT || '21200';
 
 // Timeout configuration constants (in milliseconds)
 const TEST_TIMEOUT_MS = 60 * 1000; // 60 seconds per test
@@ -90,8 +90,8 @@ export default defineConfig({
         {
           // Full UI: Alerts + Dashboards. Not local mode; Alerts enabled;
           command: USE_DEV
-            ? `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} next dev --webpack`
-            : `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} yarn build && SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} yarn start`,
+            ? `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e next dev --webpack`
+            : `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e yarn build && SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e yarn start`,
           port: parseInt(APP_PORT, 10),
           reuseExistingServer: !process.env.CI,
           timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
@@ -102,8 +102,8 @@ export default defineConfig({
     : {
         // Local mode: Frontend only
         command: USE_DEV
-          ? `NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} next dev --webpack`
-          : `NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} yarn start`,
+          ? `NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} NEXT_DIST_DIR=.next-e2e next dev --webpack`
+          : `NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_DIST_DIR=.next-e2e yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} NEXT_DIST_DIR=.next-e2e yarn start`,
         port: parseInt(APP_LOCAL_PORT, 10),
         reuseExistingServer: !process.env.CI,
         timeout: APP_SERVER_STARTUP_TIMEOUT_MS,

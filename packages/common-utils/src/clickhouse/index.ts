@@ -94,6 +94,8 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.Dynamic;
   } else if (dataType.startsWith('LowCardinality')) {
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
+  } else if (dataType.startsWith('Nullable(')) {
+    return convertCHDataTypeToJSType(dataType.slice(9, -1));
   }
 
   return null;
@@ -478,6 +480,10 @@ export abstract class BaseClickhouseClient {
       );
     }
     return this.client;
+  }
+
+  async close(): Promise<void> {
+    await this.client?.close();
   }
 
   protected logDebugQuery(

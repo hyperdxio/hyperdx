@@ -19,7 +19,7 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
+import { useResolvedNumberFormat, useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -81,10 +81,12 @@ export default function DBNumberChart({
         )
       : error;
 
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
+
   const value = valueColumn
     ? data?.data?.[0]?.[valueColumn.name]
     : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
-  const formattedValue = formatNumber(value as number, config.numberFormat);
+  const formattedValue = formatNumber(value as number, resolvedNumberFormat);
 
   const { data: source } = useSource({
     id: config.source,

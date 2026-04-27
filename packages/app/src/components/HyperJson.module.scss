@@ -14,10 +14,10 @@
   }
 }
 
-.withLineWrap {
+.withPreWrap {
   .valueContainer {
     .string {
-      white-space: pre;
+      white-space: pre-wrap;
     }
   }
 }
@@ -198,7 +198,8 @@
 
 .string {
   color: var(--color-json-string);
-  word-break: break-all;
+  white-space: pre;
+  overflow-wrap: break-word;
 
   &::before,
   &::after {

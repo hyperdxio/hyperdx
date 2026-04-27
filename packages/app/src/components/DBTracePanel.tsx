@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -28,6 +28,7 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const eventRowWhereParser = parseAsJsonEncoded<{
@@ -48,6 +49,7 @@ export default function DBTracePanel({
   focusDate,
   parentSourceId,
   initialRowHighlightHint,
+  emptyState,
   'data-testid': dataTestId,
 }: {
   parentSourceId?: string | null;
@@ -63,13 +65,18 @@ export default function DBTracePanel({
     spanId: string;
     body: string;
   };
+  emptyState?: ReactNode;
   'data-testid'?: string;
 }) {
-  const { control } = useForm({
+  const { control, setValue } = useForm({
     defaultValues: {
       source: childSourceId,
     },
   });
+
+  useEffect(() => {
+    setValue('source', childSourceId ?? null);
+  }, [childSourceId, setValue]);
 
   const sourceId = useWatch({ control, name: 'source' });
 
@@ -143,6 +150,10 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={childSourceData} variant="text" />;
+  }, [childSourceData]);
+
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
     <div data-testid={dataTestId}>
@@ -171,7 +182,12 @@ export default function DBTracePanel({
               ? 'Trace Source'
               : 'Correlated Log Source'}
           </Text>
-          <SourceSelectControlled control={control} name="source" size="xs" />
+          <SourceSelectControlled
+            control={control}
+            name="source"
+            size="xs"
+            sourceSchemaPreview={sourceSchemaPreview}
+          />
         </Group>
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
@@ -229,6 +245,7 @@ export default function DBTracePanel({
           highlightedRowWhere={eventRowWhere?.id}
           onClick={setEventRowWhere}
           initialRowHighlightHint={initialRowHighlightHint}
+          emptyState={emptyState}
         />
       )}
       {traceSourceData != null && eventRowWhere != null && (

@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
@@ -6,6 +6,7 @@ import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
   formatAttributeClause,
+  formatDurationMs,
   formatNumber,
   getAllMetricTables,
   getMetricTableName,
@@ -357,6 +358,68 @@ describe('formatNumber', () => {
     });
   });
 
+  describe('duration format', () => {
+    it('formats seconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(30.41, format)).toBe('30.41s');
+      expect(formatNumber(0.045, format)).toBe('45ms');
+      expect(formatNumber(3661, format)).toBe('1.02h');
+    });
+
+    it('formats milliseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.001,
+      };
+      expect(formatNumber(30410, format)).toBe('30.41s');
+      expect(formatNumber(45, format)).toBe('45ms');
+    });
+
+    it('formats nanoseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.000000001,
+      };
+      expect(formatNumber(30410000000, format)).toBe('30.41s');
+      expect(formatNumber(45000000, format)).toBe('45ms');
+      expect(formatNumber(500, format)).toBe('0.5µs');
+    });
+
+    it('handles zero value', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0, format)).toBe('0ms');
+    });
+
+    it('defaults factor to 1 (seconds) when not specified', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+      };
+      expect(formatNumber(1.5, format)).toBe('1.5s');
+    });
+
+    it('formats sub-millisecond values as microseconds', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0.0003, format)).toBe('300µs');
+    });
+
+    it('formats large values as hours', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(7200, format)).toBe('2h');
+    });
+  });
+
   describe('unit handling', () => {
     it('appends unit to formatted number', () => {
       const format: NumberFormat = {
@@ -377,6 +440,209 @@ describe('formatNumber', () => {
     });
   });
 
+  describe('numericUnit with data output (byte)', () => {
+    it('formats with fixed unit suffix', () => {
+      expect(
+        formatNumber(500, {
+          output: 'byte',
+          numericUnit: NumericUnit.Kibibytes,
+        }),
+      ).toBe('500 KiB');
+      expect(
+        formatNumber(500, {
+          output: 'byte',
+          numericUnit: NumericUnit.Megabytes,
+          mantissa: 1,
+        }),
+      ).toBe('500.0 MB');
+    });
+
+    it('auto-scales IEC bytes', () => {
+      expect(
+        formatNumber(0, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('0 B');
+      expect(
+        formatNumber(1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('1 KiB');
+      expect(
+        formatNumber(1048576, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+          mantissa: 2,
+        }),
+      ).toBe('1.00 MiB');
+    });
+
+    it('auto-scales SI bytes', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+        }),
+      ).toBe('1 KB');
+      expect(
+        formatNumber(1000000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+        }),
+      ).toBe('1 MB');
+    });
+
+    it('auto-scales IEC bits', () => {
+      expect(
+        formatNumber(1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BitsIEC,
+        }),
+      ).toBe('1 Kibit');
+    });
+
+    it('auto-scales SI bits', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BitsSI,
+        }),
+      ).toBe('1 Kbit');
+    });
+
+    it('handles negative values in auto-scale', () => {
+      expect(
+        formatNumber(-1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('-1 KiB');
+      expect(
+        formatNumber(-1500000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+          mantissa: 2,
+        }),
+      ).toBe('-1.50 MB');
+    });
+
+    it('falls back to numbro for byte output without numericUnit', () => {
+      // Without numericUnit, the legacy numbro byte formatting is used
+      expect(formatNumber(1024, { output: 'byte', decimalBytes: false })).toBe(
+        '1 KB',
+      );
+    });
+  });
+
+  describe('numericUnit with data_rate output', () => {
+    it('formats fixed data rate units', () => {
+      expect(
+        formatNumber(42, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.PacketsSec,
+        }),
+      ).toBe('42 pkt/s');
+      expect(
+        formatNumber(100, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.KilobytesSec,
+          mantissa: 1,
+        }),
+      ).toBe('100.0 KB/s');
+    });
+
+    it('auto-scales data rate (IEC bytes/s)', () => {
+      expect(
+        formatNumber(1024, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BytesSecIEC,
+        }),
+      ).toBe('1 KiB/s');
+    });
+
+    it('auto-scales data rate (SI bits/s)', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BitsSecSI,
+        }),
+      ).toBe('1 Kbit/s');
+    });
+
+    it('falls back to plain toFixed for data_rate without numericUnit', () => {
+      expect(formatNumber(1234.567, { output: 'data_rate', mantissa: 2 })).toBe(
+        '1234.57',
+      );
+    });
+
+    it('handles string-type numeric values', () => {
+      expect(
+        formatNumber('500', {
+          output: 'byte',
+          numericUnit: NumericUnit.Kibibytes,
+        }),
+      ).toBe('500 KiB');
+
+      expect(
+        formatNumber('1024', {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BytesSecIEC,
+        }),
+      ).toBe('1 KiB/s');
+    });
+  });
+
+  describe('numericUnit with throughput output', () => {
+    it('formats fixed throughput units', () => {
+      expect(
+        formatNumber(100, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Rps,
+        }),
+      ).toBe('100 rps');
+      expect(
+        formatNumber(50, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Iops,
+        }),
+      ).toBe('50 iops');
+      expect(
+        formatNumber(200, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Opm,
+          mantissa: 1,
+        }),
+      ).toBe('200.0 opm');
+    });
+
+    it('falls back to plain toFixed for throughput without numericUnit', () => {
+      expect(formatNumber(9999, { output: 'throughput' })).toBe('9999');
+    });
+  });
+
+  describe('numericUnit ignored for non-data outputs', () => {
+    it('ignores numericUnit for number output', () => {
+      // numericUnit is only checked for byte/data_rate/throughput
+      expect(
+        formatNumber(1024, {
+          output: 'number',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('1024');
+    });
+
+    it('ignores numericUnit for percent output', () => {
+      expect(
+        formatNumber(0.5, {
+          output: 'percent',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('50%');
+    });
+  });
+
   describe('NaN handling', () => {
     it('returns "N/A" for NaN without options', () => {
       expect(formatNumber(NaN)).toBe('N/A');
@@ -384,14 +650,55 @@ describe('formatNumber', () => {
     });
 
     it('returns a string unchanged if a number cannot be parsed from it', () => {
-      // @ts-expect-error not passing a number
       expect(formatNumber('not a number')).toBe('not a number');
 
       expect(
-        // @ts-expect-error not passing a number
         formatNumber('not a number', { output: 'number', mantissa: 2 }),
       ).toBe('not a number');
     });
+  });
+});
+
+describe('formatDurationMs', () => {
+  it('formats zero', () => {
+    expect(formatDurationMs(0)).toBe('0ms');
+  });
+
+  it('formats microseconds', () => {
+    expect(formatDurationMs(0.5)).toBe('500µs');
+    expect(formatDurationMs(0.003)).toBe('3µs');
+    expect(formatDurationMs(0.01)).toBe('10µs');
+  });
+
+  it('formats milliseconds', () => {
+    expect(formatDurationMs(1)).toBe('1ms');
+    expect(formatDurationMs(45)).toBe('45ms');
+    expect(formatDurationMs(999)).toBe('999ms');
+    expect(formatDurationMs(5.5)).toBe('5.5ms');
+  });
+
+  it('formats seconds', () => {
+    expect(formatDurationMs(1000)).toBe('1s');
+    expect(formatDurationMs(1500)).toBe('1.5s');
+    expect(formatDurationMs(30410)).toBe('30.41s');
+  });
+
+  it('formats minutes', () => {
+    expect(formatDurationMs(60000)).toBe('1min');
+    expect(formatDurationMs(90000)).toBe('1.5min');
+  });
+
+  it('formats hours', () => {
+    expect(formatDurationMs(3600000)).toBe('1h');
+    expect(formatDurationMs(7200000)).toBe('2h');
+  });
+
+  it('handles negative values', () => {
+    expect(formatDurationMs(-1500)).toBe('-1.5s');
+  });
+
+  it('handles sub-microsecond precision', () => {
+    expect(formatDurationMs(0.0005)).toBe('0.5µs');
   });
 });
 

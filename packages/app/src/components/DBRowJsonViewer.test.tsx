@@ -227,6 +227,7 @@ describe('DBRowJsonViewer', () => {
         buildJSONExtractQuery(
           ['SpanAttributes', 'count'],
           ['SpanAttributes'],
+          [],
           'JSONExtractFloat',
         ),
       ).toBe("JSONExtractFloat(SpanAttributes, 'count')");
@@ -237,6 +238,7 @@ describe('DBRowJsonViewer', () => {
         buildJSONExtractQuery(
           ['LogAttributes', 'enabled'],
           ['LogAttributes'],
+          [],
           'JSONExtractBool',
         ),
       ).toBe("JSONExtractBool(LogAttributes, 'enabled')");
@@ -246,6 +248,34 @@ describe('DBRowJsonViewer', () => {
       expect(
         buildJSONExtractQuery(['LogAttributes', '0', 'id'], ['LogAttributes']),
       ).toBe("JSONExtractString(LogAttributes, '0', 'id')");
+    });
+
+    it('uses full column path for Map column with parsed JSON value', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'config', 'host'],
+          ['LogAttributes', 'config'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes['config'], 'host')");
+    });
+
+    it('uses full column path for deeply nested Map column with parsed JSON', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'config', 'database', 'host'],
+          ['LogAttributes', 'config'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes['config'], 'database', 'host')");
+    });
+
+    it('uses JSON dot notation for JSON column with parsed JSON value', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'config', 'host'],
+          ['LogAttributes', 'config'],
+          ['LogAttributes'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes.`config`, 'host')");
     });
   });
 });

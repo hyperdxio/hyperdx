@@ -94,7 +94,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         await dashboardsListPage.goto();
         await dashboardsListPage.createNewDashboard();
         // Dashboard uses Controller + SQL/SearchInputV2 directly (no where-language-switch wrapper)
-        await page.getByRole('textbox', { name: 'Query language' }).click();
+        await page.getByRole('combobox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'SQL', exact: true }).click();
         // Wait for dropdown to close so the WHERE input is not covered
         await page
@@ -123,7 +123,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         await dashboardsListPage.goto();
         await dashboardsListPage.createNewDashboard();
         // Dashboard has no where-language-switch wrapper; use Query language textbox directly
-        await page.getByRole('textbox', { name: 'Query language' }).click();
+        await page.getByRole('combobox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'Lucene', exact: true }).click();
         // Wait for dropdown to close so the search input is not covered
         await page

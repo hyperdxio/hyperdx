@@ -23,6 +23,7 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -53,6 +54,9 @@ export class SearchPage {
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
+    this.savedSearchNameTitle = page.locator(
+      '[data-testid="saved-search-name"]',
+    );
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -61,7 +65,7 @@ export class SearchPage {
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
     const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
       name: 'Query language',
     });
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
@@ -112,6 +116,7 @@ export class SearchPage {
    */
   async performSearch(query: string) {
     await this.searchInput.fill(query);
+    await this.page.keyboard.press('Escape');
     await this.searchButton.click();
     await this.page.waitForLoadState('networkidle');
     // Wait for new results to populate
@@ -184,6 +189,18 @@ export class SearchPage {
       : this.saveSearchButton;
     await button.scrollIntoViewIfNeeded();
     await button.click();
+  }
+
+  /**
+   * Click "Save as New Search" from the action bar menu on an existing saved search.
+   * Opens the save search modal in "create" mode for duplicating the current search.
+   */
+  async clickSaveAsNew() {
+    // Click the action bar menu trigger (three dots icon next to the saved search name)
+    await this.page.getByTestId('search-page-action-bar').click();
+    await this.page
+      .getByRole('menuitem', { name: 'Save as New Search' })
+      .click();
   }
 
   /**

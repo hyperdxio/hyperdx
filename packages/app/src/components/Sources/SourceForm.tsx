@@ -679,7 +679,9 @@ function MaterializedViewFormSection({
                 {...field}
                 value={field.value ? new Date(field.value) : undefined}
                 onChange={dateStr =>
-                  field.onChange(dateStr ? dateStr.toISOString() : null)
+                  field.onChange(
+                    dateStr ? new Date(dateStr).toISOString() : null,
+                  )
                 }
                 clearable
                 highlightToday
@@ -1543,6 +1545,21 @@ function TraceTableModelForm(props: TableModelProps) {
           control={control}
           name="eventAttributesExpression"
           placeholder="SpanAttributes"
+        />
+      </FormRow>
+      <FormRow
+        label={'Sample Rate Expression'}
+        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation -- exact values may differ slightly. Leave empty if spans are not sampled."
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="sampleRateExpression"
+          placeholder="SampleRate"
         />
       </FormRow>
       <FormRow

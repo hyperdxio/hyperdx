@@ -14,8 +14,28 @@ export const HDX_SERVICE_NAME =
   process.env.NEXT_PUBLIC_OTEL_SERVICE_NAME ?? 'hdx-oss-dev-app';
 export const HDX_EXPORTER_ENABLED =
   (process.env.HDX_EXPORTER_ENABLED ?? 'true') === 'true';
+
+export function parseResourceAttributes(raw: string): Record<string, string> {
+  return raw
+    .split(',')
+    .filter(Boolean)
+    .reduce(
+      (acc, pair) => {
+        const idx = pair.indexOf('=');
+        if (idx > 0) {
+          acc[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(
+            pair.slice(idx + 1),
+          );
+        }
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+}
+
 export const HDX_COLLECTOR_URL =
   process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
   'http://localhost:4318';
 export const IS_DEV = NODE_ENV === 'development';
 
@@ -35,3 +55,5 @@ export const IS_K8S_DASHBOARD_ENABLED = true;
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
+export const IS_DASHBOARD_LINKING_ENABLED =
+  process.env.NEXT_PUBLIC_IS_DASHBOARD_LINKING_ENABLED === 'true';

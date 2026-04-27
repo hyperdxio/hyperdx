@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces
     \`Links.TraceState\` Array(String) CODEC(ZSTD(1)),
     \`Links.Attributes\` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
     \`__hdx_materialized_rum.sessionId\` String MATERIALIZED ResourceAttributes['rum.sessionId'] CODEC(ZSTD(1)),
+    \`SampleRate\` UInt64 MATERIALIZED greatest(toUInt64OrZero(SpanAttributes['SampleRate']), 1) CODEC(T64, ZSTD(1)),
     INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
     INDEX idx_rum_session_id __hdx_materialized_rum.sessionId TYPE bloom_filter(0.001) GRANULARITY 1,
     INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,

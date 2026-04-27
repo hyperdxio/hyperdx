@@ -1,4 +1,3 @@
-import { ChSql } from './clickhouse';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -23,7 +22,14 @@ const getIntervalSeconds = (config: RawSqlChartConfig & Partial<DateRange>) => {
   return convertGranularityToSeconds(effectiveGranularity);
 };
 
-export const QUERY_PARAMS: Record<string, QueryParamDefinition> = {
+export enum RawSqlQueryParam {
+  startDateMilliseconds = 'startDateMilliseconds',
+  endDateMilliseconds = 'endDateMilliseconds',
+  intervalSeconds = 'intervalSeconds',
+  intervalMilliseconds = 'intervalMilliseconds',
+}
+
+export const QUERY_PARAMS: Record<RawSqlQueryParam, QueryParamDefinition> = {
   startDateMilliseconds: {
     name: 'startDateMilliseconds',
     type: 'Int64',
@@ -95,7 +101,7 @@ const TIME_CHART_EXAMPLE_SQL = `SELECT
   toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} second) AS ts, -- (Timestamp column)
   ServiceName,                                                                     -- (Group name column)
   count()                                                                          -- (Series value column)
-FROM otel_logs
+FROM $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
   AND $__filters

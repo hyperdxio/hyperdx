@@ -8,6 +8,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
+  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
   TSessionSource,
@@ -34,6 +35,7 @@ import {
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
 import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
@@ -188,6 +190,7 @@ function useSessionChartConfigs({
       where,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
+      ...pickSampleWeightExpressionProps(traceSource),
       connection: traceSource.connection,
       orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {
@@ -265,6 +268,8 @@ export default function SessionSubpanel({
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
 }) {
+  const contextZIndex = useZIndex();
+
   const [rowId, setRowId] = useState<string | undefined>(undefined);
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
@@ -464,15 +469,18 @@ export default function SessionSubpanel({
     <div className={styles.wrapper}>
       {rowId != null && traceSource && (
         <Portal>
-          <DBRowSidePanel
-            source={traceSource}
-            rowId={rowId}
-            aliasWith={aliasWith}
-            onClose={() => {
-              setDrawerOpen(false);
-              setRowId(undefined);
-            }}
-          />
+          <ZIndexContext.Provider value={contextZIndex}>
+            <DBRowSidePanel
+              source={traceSource}
+              rowId={rowId}
+              aliasWith={aliasWith}
+              isNestedPanel
+              onClose={() => {
+                setDrawerOpen(false);
+                setRowId(undefined);
+              }}
+            />
+          </ZIndexContext.Provider>
         </Portal>
       )}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>

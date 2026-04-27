@@ -26,11 +26,18 @@ MongoDB (configuration/metadata)
 
 ```bash
 yarn setup          # Install dependencies
-yarn dev            # Start full stack (Docker + local services)
+yarn dev            # Start full stack with worktree-isolated ports
 ```
 
-The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
+
+**This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
+`make dev-e2e` all use slot-based port isolation so multiple worktrees can run
+dev servers, integration tests, and E2E tests simultaneously without conflicts.
+A dev portal at http://localhost:9900 auto-starts and shows all running stacks.
+See [`agent_docs/development.md`](agent_docs/development.md) for the full
+multi-worktree setup, port allocation tables, and available commands.
 
 ## Working on the Codebase (HOW)
 
@@ -43,8 +50,10 @@ directory:
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
 
-**Tools handle formatting and linting automatically** via pre-commit hooks.
-Focus on implementation; don't manually format code.
+**After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
+and lint issues across all packages. Pre-commit hooks handle this when
+committing, but if you finish edits without committing, run `yarn lint:fix`
+before stopping.
 
 ## Key Principles
 
@@ -128,6 +137,27 @@ make dev-e2e-clean                               # Remove test artifacts
 - **Database patterns**: MongoDB for metadata with Mongoose, ClickHouse for
   telemetry queries
 
+## PR Hygiene for Agent-Generated Code
+
+When using agentic tools to generate PRs, follow these practices to keep reviews
+efficient and accurate:
+
+1. **Scope PRs to a single logical change**, even if the agent can produce more
+   in one session. Smaller, focused PRs move through the review pipeline faster
+   and are easier to classify accurately.
+
+2. **Write the PR description to explain intent (the "why"), not just what
+   changed.** Reviewers need to understand the goal to catch cases where the
+   agent solved the wrong problem or made a plausible-but-wrong trade-off.
+
+3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
+   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
+   apply appropriate scrutiny and lets reviewers calibrate their attention.
+
+4. **Write or update tests alongside the implementation**, not after. Configure
+   your agent to produce tests before writing implementation code. See the
+   Testing section below for the commands to use.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:
@@ -175,6 +205,49 @@ formatting checks pass. Fix any issues before creating the commit.
    side to keep, or whether a change can be safely discarded, stop and ask for
    manual intervention rather than guessing. A wrong guess silently breaks
    things; asking is always cheaper than debugging later.
+
+## Cursor Cloud specific instructions
+
+### Docker requirement
+
+Docker must be installed and running before starting the dev stack or running
+integration/E2E tests. The VM update script handles `yarn install` and
+`yarn build:common-utils`, but Docker daemon startup is a prerequisite that must
+already be available.
+
+### Starting the dev stack
+
+`yarn dev` uses `sh -c` to source `scripts/dev-env.sh`, which contains
+bash-specific syntax (`BASH_SOURCE`). On systems where `/bin/sh` is `dash`
+(e.g. Ubuntu), this fails with "Bad substitution". Work around it by running
+with bash directly:
+
+```bash
+bash -c 'export PATH="/workspace/node_modules/.bin:$PATH" && source ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p "$HDX_DEV_PROJECT" -f docker-compose.dev.yml up -d && yarn app:dev'
+```
+
+Port isolation assigns a slot based on the worktree directory name. In the
+default `/workspace` directory, the slot is **76**, so services are at:
+
+- **App**: http://localhost:30276
+- **API**: http://localhost:30176
+- **ClickHouse**: http://localhost:30576
+- **MongoDB**: localhost:30476
+
+### Key commands reference
+
+See `AGENTS.md` above and `agent_docs/development.md` for the full command
+reference. Quick summary:
+
+- `make ci-lint` — lint + TypeScript type check
+- `make ci-unit` — unit tests (all packages)
+- `make dev-int FILE=<name>` — integration tests (spins up Docker services)
+- `make dev-e2e FILE=<name>` — E2E tests (Playwright)
+
+### First-time registration
+
+When the dev stack starts fresh (empty MongoDB), the app shows a registration
+page. Create any account to get started — no external auth provider is needed.
 
 ---
 

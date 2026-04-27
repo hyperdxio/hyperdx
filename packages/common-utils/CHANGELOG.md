@@ -1,5 +1,55 @@
 # @hyperdx/common-utils
 
+## 0.18.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- e2fc25da: feat: Add custom table onClick behavior
+- 7665fbe1: refactor: Unify section/group into single Group with collapsible/bordered options
+
+## 0.18.0
+
+### Minor Changes
+
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+
+### Patch Changes
+
+- 418f70c5: Add Drain log template mining library (ported from browser-drain)
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- cc714f90: fix: Skip rendering empty SQL dashboard filter
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+
+## 0.17.1
+
+### Patch Changes
+
+- 24767c58: fix: Ensure correct bounds for date-based timestampValueExpr
+
+## 0.17.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 518bda7d: feat: Add dashboard template gallery
+- 4e54d850: fix: show Map sub-fields in facet panel for non-LowCardinality value types
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 48a8d32b: fix: Fixed bug preventing clicking into rows with nullable date types (and other misc type) columns.
+- a55b151e: fix: render clickhouse keywords properly in codemirror
+- 308da30b: feat: Add $\_\_sourceTable macro
+- e5c7fdf9: feat: Add saved searches listing page
+
 ## 0.16.2
 
 ### Patch Changes

@@ -329,6 +329,25 @@ describe('processRowToWhereClause', () => {
     );
   });
 
+  it('should handle null value on Date column', () => {
+    const columnMap = new Map([
+      [
+        'event_created',
+        {
+          name: 'event_created',
+          type: "Nullable(DateTime64(3, 'UTC'))",
+          valueExpr: 'event_created',
+          jsType: JSDataType.Date,
+        },
+      ],
+    ]);
+
+    const row = { event_created: null };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe('isNull(event_created)');
+  });
+
   it('should handle null value in default block', () => {
     const columnMap = new Map([
       [

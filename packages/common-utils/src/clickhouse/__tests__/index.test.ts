@@ -1,6 +1,18 @@
-import { extractColumnReferencesFromKey } from '..';
+import {
+  convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
+  JSDataType,
+} from '..';
 
 describe('extractColumnReferencesFromKey', () => {
+  // Suppress expected console.error from parse failures in edge-case tests
+  beforeAll(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   it('should extract column references from simple column names', () => {
     expect(extractColumnReferencesFromKey('col1, col2, col3')).toEqual([
       'col1',
@@ -35,5 +47,41 @@ describe('extractColumnReferencesFromKey', () => {
       'arrayCol[1]',
       'col2',
     ]);
+  });
+});
+
+describe('convertCHDataTypeToJSType', () => {
+  it('should handle Nullable(DateTime64) as Date', () => {
+    expect(convertCHDataTypeToJSType("Nullable(DateTime64(3, 'UTC'))")).toBe(
+      JSDataType.Date,
+    );
+  });
+
+  it('should handle Nullable(Int32) as Number', () => {
+    expect(convertCHDataTypeToJSType('Nullable(Int32)')).toBe(
+      JSDataType.Number,
+    );
+  });
+
+  it('should handle Nullable(String) as String', () => {
+    expect(convertCHDataTypeToJSType('Nullable(String)')).toBe(
+      JSDataType.String,
+    );
+  });
+
+  it('should handle LowCardinality(Nullable(String)) as String', () => {
+    expect(convertCHDataTypeToJSType('LowCardinality(Nullable(String))')).toBe(
+      JSDataType.String,
+    );
+  });
+
+  it('should handle DateTime64 as Date', () => {
+    expect(convertCHDataTypeToJSType("DateTime64(3, 'UTC')")).toBe(
+      JSDataType.Date,
+    );
+  });
+
+  it('should handle Nullable(Bool) as Bool', () => {
+    expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
   });
 });

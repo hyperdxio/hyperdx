@@ -22,6 +22,7 @@ const makeTheme = ({
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
+  defaultRadius: 'sm',
   fontFamily,
   focusClassName: focusClasses.focusRing,
   primaryColor: 'green',
@@ -126,8 +127,13 @@ const makeTheme = ({
           '--slider-color': 'var(--color-slider-bar)',
         },
       }),
+      styles: {
+        thumb: {
+          backgroundColor: 'var(--color-slider-thumb)',
+          borderColor: 'var(--color-slider-thumb-border)',
+        },
+      },
       classNames: {
-        thumb: componentClasses.sliderThumb,
         mark: componentClasses.sliderMark,
       },
     }),
@@ -308,6 +314,9 @@ const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      styles: {
+        tabLabel: { textAlign: 'left' },
+      },
     }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {

@@ -91,7 +91,7 @@ export function RawSqlChartInstructions({
             SQL Chart Instructions
           </Text>
         </Group>
-        <Collapse in={helpOpened}>
+        <Collapse expanded={helpOpened}>
           <Stack gap={6} pl="xs" pt="md">
             {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
@@ -107,6 +107,12 @@ export function RawSqlChartInstructions({
                   />
                 </List.Item>
               ))}
+              <List.Item>
+                <ParamSnippet
+                  value={`$__sourceTable([metricType])`}
+                  description="Resolves to selected source table (Source must be selected)"
+                />
+              </List.Item>
               <List.Item>
                 <ParamSnippet
                   value={`$__filters`}

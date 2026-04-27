@@ -39,8 +39,10 @@ import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanati
 import { useSource } from '@/source';
 import { omit } from '@/utils';
 import {
+  DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
   generateTimeWindowsDescending,
+  ONE_MIN_WINDOW,
   TimeWindow,
 } from '@/utils/searchWindows';
 
@@ -78,6 +80,7 @@ type TData = {
 type QueryMeta = {
   queryClient: QueryClient;
   hasPreviousQueries: boolean;
+  windowDurationsSeconds: number[];
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
@@ -87,12 +90,17 @@ type QueryMeta = {
 function getTimeWindowFromPageParam(
   config: ChartConfigWithOptTimestamp,
   pageParam: TPageParam,
+  windowDurationsSeconds: number[],
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
   const windows =
     isBuilderChartConfig(config) && isFirstOrderByAscending(config.orderBy)
-      ? generateTimeWindowsAscending(startDate, endDate)
-      : generateTimeWindowsDescending(startDate, endDate);
+      ? generateTimeWindowsAscending(startDate, endDate, windowDurationsSeconds)
+      : generateTimeWindowsDescending(
+          startDate,
+          endDate,
+          windowDurationsSeconds,
+        );
   const window = windows[pageParam.windowIndex];
   if (window == null) {
     throw new Error('Invalid time window for page param');
@@ -105,6 +113,7 @@ function getNextPageParam(
   lastPage: TQueryFnData | null,
   allPages: TQueryFnData[],
   config: ChartConfigWithOptTimestamp,
+  windowDurationsSeconds: number[],
 ): TPageParam | undefined {
   // Pagination is not supported for raw SQL tables since they may not be ordered at all.
   if (lastPage == null || isRawSqlChartConfig(config)) {
@@ -113,8 +122,8 @@ function getNextPageParam(
 
   const [startDate, endDate] = config.dateRange;
   const windows = isFirstOrderByAscending(config.orderBy)
-    ? generateTimeWindowsAscending(startDate, endDate)
-    : generateTimeWindowsDescending(startDate, endDate);
+    ? generateTimeWindowsAscending(startDate, endDate, windowDurationsSeconds)
+    : generateTimeWindowsDescending(startDate, endDate, windowDurationsSeconds);
   const currentWindow = lastPage.window;
 
   // Calculate total results from all pages in current window
@@ -158,8 +167,14 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
-    meta as QueryMeta;
+  const {
+    queryClient,
+    windowDurationsSeconds,
+    metadata,
+    hasPreviousQueries,
+    optimizedConfig,
+    source,
+  } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -177,7 +192,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const shouldUseWindowing =
     isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const timeWindow = shouldUseWindowing
-    ? getTimeWindowFromPageParam(config, pageParam)
+    ? getTimeWindowFromPageParam(config, pageParam, windowDurationsSeconds)
     : {
         startTime: config.dateRange[0],
         endTime: config.dateRange[1],
@@ -423,10 +438,12 @@ export default function useOffsetPaginatedQuery(
     isLive,
     enabled = true,
     queryKeyPrefix = '',
+    enableSmallFirstWindow,
   }: {
     isLive?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
+    enableSmallFirstWindow?: boolean;
   } = {},
 ) {
   const { data: meData, isLoading: isLoadingMe } = api.useMe();
@@ -439,6 +456,11 @@ export default function useOffsetPaginatedQuery(
   // TODO: Check that the time ranges overlap
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
+
+  const windowDurationsSeconds = DEFAULT_TIME_WINDOWS_SECONDS.slice();
+  if (enableSmallFirstWindow) {
+    windowDurationsSeconds.unshift(ONE_MIN_WINDOW);
+  }
 
   const builderConfig = isBuilderChartConfig(config) ? config : undefined;
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
@@ -475,12 +497,18 @@ export default function useOffsetPaginatedQuery(
       enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
-      return getNextPageParam(lastPage, allPages, config);
+      return getNextPageParam(
+        lastPage,
+        allPages,
+        config,
+        windowDurationsSeconds,
+      );
     },
     staleTime: Infinity, // TODO: Pick a correct time
     meta: {
       queryClient,
       hasPreviousQueries,
+      windowDurationsSeconds,
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,

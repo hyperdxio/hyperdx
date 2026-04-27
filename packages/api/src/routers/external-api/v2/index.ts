@@ -6,17 +6,13 @@ import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
 import sourcesRouter from '@/routers/external-api/v2/sources';
 import webhooksRouter from '@/routers/external-api/v2/webhooks';
-import rateLimiter from '@/utils/rateLimiter';
+import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
 const router = express.Router();
 
-const rateLimiterKeyGenerator = (req: express.Request): string => {
-  return req.headers.authorization ?? req.ip ?? 'unknown';
-};
-
 const defaultRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 100, // Limit each IP to 100 requests per `window`
+  max: 100, // Limit each API key to 100 requests per `window`
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   keyGenerator: rateLimiterKeyGenerator,

@@ -24,7 +24,7 @@ export class ServicesDashboardPage {
   async searchLucene(query: string) {
     const languageSelect = this.page
       .getByTestId('where-language-switch')
-      .getByRole('textbox', { name: 'Query language' });
+      .getByRole('combobox', { name: 'Query language' });
     await languageSelect.click();
     await this.page
       .getByRole('option', { name: 'Lucene', exact: true })

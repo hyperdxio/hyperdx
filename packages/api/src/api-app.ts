@@ -5,12 +5,15 @@ import session from 'express-session';
 import onHeaders from 'on-headers';
 
 import * as config from './config';
+import mcpRouter from './mcp/app';
 import { isUserAuthenticated } from './middleware/auth';
 import defaultCors from './middleware/cors';
 import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
 import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
+import favoritesRouter from './routers/api/favorites';
+import pinnedFiltersRouter from './routers/api/pinnedFilters';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
@@ -21,6 +24,11 @@ import passport from './utils/passport';
 const app: express.Application = express();
 
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
+  // Use a slot-specific cookie name in dev so multiple worktrees on localhost
+  // don't overwrite each other's session cookies.
+  ...(config.IS_DEV && process.env.HDX_DEV_SLOT
+    ? { name: `connect.sid.${process.env.HDX_DEV_SLOT}` }
+    : {}),
   resave: false,
   saveUninitialized: false,
   secret: config.EXPRESS_SESSION_SECRET,
@@ -73,7 +81,7 @@ app.use(defaultCors);
 // ---------------------------------------------------------------------
 // ----------------------- Background Jobs -----------------------------
 // ---------------------------------------------------------------------
-if (config.USAGE_STATS_ENABLED) {
+if (config.USAGE_STATS_ENABLED && !config.IS_CI) {
   usageStats();
 }
 // ---------------------------------------------------------------------
@@ -83,6 +91,9 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // PUBLIC ROUTES
 app.use('/', routers.rootRouter);
+
+// SELF-AUTHENTICATED ROUTES (validated via access key, not session middleware)
+app.use('/mcp', mcpRouter);
 
 // PRIVATE ROUTES
 app.use('/ai', isUserAuthenticated, routers.aiRouter);
@@ -94,6 +105,8 @@ app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
+app.use('/favorites', isUserAuthenticated, favoritesRouter);
+app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 

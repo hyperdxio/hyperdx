@@ -58,10 +58,15 @@ const env = {
   ...process.env,
   ...(!useLocal && { E2E_FULLSTACK: 'true' }),
   ...(useDev && { E2E_USE_DEV: 'true' }),
+  // Feature flags that should always be enabled during E2E runs. NEXT_PUBLIC_*
+  // vars are baked into the build, so they must be present in env at `next
+  // build` time — not just in .env.development (which isn't loaded in prod
+  // builds).
+  NEXT_PUBLIC_IS_DASHBOARD_LINKING_ENABLED: 'true',
 };
 
 // Port configuration from HDX_E2E_* env vars (set by scripts/test-e2e.sh)
-const chPort = env.HDX_E2E_CH_PORT || '18123';
+const chPort = env.HDX_E2E_CH_PORT || '20500';
 
 // Ensure CLICKHOUSE_HOST is set for seed-clickhouse.ts (used by both modes)
 env.CLICKHOUSE_HOST = `http://localhost:${chPort}`;

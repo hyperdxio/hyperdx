@@ -163,6 +163,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     parentSpanIdExpression: String,
     spanNameExpression: String,
     spanKindExpression: String,
+    sampleRateExpression: String,
     logSourceId: String,
     sessionSourceId: String,
     metricSourceId: String,

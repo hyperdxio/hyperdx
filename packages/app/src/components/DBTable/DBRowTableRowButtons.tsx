@@ -35,8 +35,8 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       const parsedRow = Object.entries(cleanRow).reduce(
         (acc, [key, value]) => {
           if (
-            (typeof value === 'string' && value.startsWith('{')) ||
-            value.startsWith('[')
+            typeof value === 'string' &&
+            (value.startsWith('{') || value.startsWith('['))
           ) {
             try {
               acc[key] = JSON.parse(value);

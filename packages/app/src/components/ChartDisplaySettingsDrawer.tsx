@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -18,6 +19,7 @@ import {
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { FormatTime } from '@/useFormatTime';
 
+import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
 export const DEFAULT_MAX_GROUPS = 10;
@@ -30,32 +32,38 @@ export type ChartConfigDisplaySettings = Pick<
   | 'compareToPreviousPeriod'
 > & {
   limit?: { limit?: number };
+  groupByColumnsOnLeft?: boolean;
 };
 
 interface ChartDisplaySettingsDrawerProps {
   opened: boolean;
   settings: ChartConfigDisplaySettings;
+  /** Auto-detected number format (e.g. duration for trace sources).
+   *  Used as the default when no explicit numberFormat is set. */
+  defaultNumberFormat?: NumberFormat;
   displayType: DisplayType;
-  isRawSql?: boolean;
+  /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
+  configType?: 'sql' | 'builder';
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
 }
 
-function applyDefaultSettings({
-  numberFormat,
-  alignDateRangeToGranularity,
-  compareToPreviousPeriod,
-  fillNulls,
-  limit,
-}: ChartConfigDisplaySettings): ChartConfigDisplaySettings {
+function applyDefaultSettings(
+  settings: ChartConfigDisplaySettings,
+  fallbackNumberFormat?: NumberFormat,
+): ChartConfigDisplaySettings {
   return {
-    numberFormat: numberFormat ?? DEFAULT_NUMBER_FORMAT,
+    numberFormat:
+      settings.numberFormat ?? fallbackNumberFormat ?? DEFAULT_NUMBER_FORMAT,
     alignDateRangeToGranularity:
-      alignDateRangeToGranularity == null ? true : alignDateRangeToGranularity,
-    fillNulls: fillNulls ?? 0,
-    compareToPreviousPeriod: compareToPreviousPeriod ?? false,
-    limit: limit ?? { limit: DEFAULT_MAX_GROUPS },
+      settings.alignDateRangeToGranularity == null
+        ? true
+        : settings.alignDateRangeToGranularity,
+    fillNulls: settings.fillNulls ?? 0,
+    compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+    limit: settings.limit ?? { limit: DEFAULT_MAX_GROUPS },
+    groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
   };
 }
 
@@ -63,23 +71,33 @@ export default function ChartDisplaySettingsDrawer({
   settings,
   opened,
   displayType,
-  isRawSql,
+  configType,
+  defaultNumberFormat,
   onChange,
   onClose,
   previousDateRange,
 }: ChartDisplaySettingsDrawerProps) {
-  const { control, handleSubmit, register, reset, setValue } =
+  const appliedDefaults = useMemo(
+    () => applyDefaultSettings(settings, defaultNumberFormat),
+    [settings, defaultNumberFormat],
+  );
+
+  const { control, handleSubmit, reset, setValue } =
     useForm<ChartConfigDisplaySettings>({
-      defaultValues: applyDefaultSettings(settings),
+      defaultValues: appliedDefaults,
     });
+
+  useEffect(() => {
+    reset(appliedDefaults);
+  }, [appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
 
   const handleClose = useCallback(() => {
-    reset(applyDefaultSettings(settings)); // Reset to default values, without saving
+    reset(appliedDefaults);
     onClose();
-  }, [onClose, reset, settings]);
+  }, [onClose, reset, appliedDefaults]);
 
   const applyChanges = useCallback(() => {
     handleSubmit(onChange)();
@@ -87,12 +105,17 @@ export default function ChartDisplaySettingsDrawer({
   }, [onChange, handleSubmit, onClose]);
 
   const resetToDefaults = useCallback(() => {
-    reset(applyDefaultSettings({}));
-  }, [reset]);
+    reset(applyDefaultSettings({}, defaultNumberFormat));
+  }, [reset, defaultNumberFormat]);
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
-  const isBarChart = displayType === DisplayType.Bar && !isRawSql;
+  const isBarChart = displayType === DisplayType.Bar && configType !== 'sql';
+
+  // Group By column ordering only applies to builder table charts; raw SQL
+  // configs let the user author whatever column order they want directly.
+  const showGroupByColumnsOnLeft =
+    displayType === DisplayType.Table && configType !== 'sql';
 
   return (
     <Drawer
@@ -104,10 +127,11 @@ export default function ChartDisplaySettingsDrawer({
       <Stack>
         {isTimeChart && (
           <>
-            <Checkbox
+            <CheckBoxControlled
+              control={control}
+              name="alignDateRangeToGranularity"
               size="xs"
               label="Show Complete Intervals"
-              {...register('alignDateRangeToGranularity')}
             />
             <Box>
               <Checkbox
@@ -119,7 +143,9 @@ export default function ChartDisplaySettingsDrawer({
                 }}
               />
             </Box>
-            <Checkbox
+            <CheckBoxControlled
+              control={control}
+              name="compareToPreviousPeriod"
               size="xs"
               label="Compare to Previous Period"
               description={
@@ -132,7 +158,6 @@ export default function ChartDisplaySettingsDrawer({
                   </>
                 )
               }
-              {...register('compareToPreviousPeriod')}
             />
             <Divider />
           </>
@@ -163,7 +188,20 @@ export default function ChartDisplaySettingsDrawer({
             <Divider />
           </>
         )}
-        <NumberFormatForm control={control} />
+
+        {showGroupByColumnsOnLeft && (
+          <>
+            <CheckBoxControlled
+              control={control}
+              name="groupByColumnsOnLeft"
+              size="xs"
+              label="Display Group By Columns on Left"
+            />
+            <Divider />
+          </>
+        )}
+
+        <NumberFormatForm control={control} setValue={setValue} />
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>

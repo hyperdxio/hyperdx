@@ -4,6 +4,7 @@ import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
@@ -280,6 +281,7 @@ const buildChartConfigFromRequest = async (
     ],
     where: '',
     timestampValueExpression: source.timestampValueExpression,
+    ...pickSampleWeightExpressionProps(source),
     dateRange: [new Date(params.startTime), new Date(params.endTime)] as [
       Date,
       Date,

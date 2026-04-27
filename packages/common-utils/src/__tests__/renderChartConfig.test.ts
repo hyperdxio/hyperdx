@@ -16,6 +16,15 @@ import {
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
+  // Suppress expected console.warn noise from missing columns / optimization fallbacks
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     const columns = [
       { name: 'timestamp', type: 'DateTime' },
@@ -1293,6 +1302,52 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         expected: `(toStartOfHour(timestamp) >= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toStartOfHour(timestamp) <= toStartOfHour(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
       },
+      {
+        description: 'stays inclusive with date-type column',
+        timestampValueExpression: 'date',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for date-type column in multi-column timestampValueExpression',
+        timestampValueExpression: 'date, timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description: 'stays inclusive for toDate column',
+        timestampValueExpression: 'toDate(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for toDate column in multi-column timestampValueExpression',
+        timestampValueExpression: 'toDate(timestamp), timestamp',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
     ];
 
     beforeEach(() => {
@@ -1338,6 +1393,36 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+
+    it('stays inclusive for date-type column with non-subquery with clauses', async () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-02-12 03:53:38Z'),
+        new Date('2025-02-12 04:08:38Z'),
+      ];
+
+      const actual = await timeFilterExpr({
+        timestampValueExpression: 'date',
+        dateRangeEndInclusive: false,
+        dateRangeStartInclusive: false,
+        dateRange,
+        connectionId: 'test-connection',
+        databaseName: 'default',
+        tableName: 'target_table',
+        metadata: mockMetadata,
+        with: [
+          {
+            name: 'service',
+            sql: { sql: 'ServiceName', params: {} },
+            isSubquery: false,
+          },
+        ],
+      });
+
+      const actualSql = parameterizedQueryToSql(actual);
+      expect(actualSql).toBe(
+        `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+      );
+    });
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
@@ -1891,6 +1976,47 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('renders sql filters raw when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [
+            { type: 'sql', condition: 'duration > 100' },
+            { type: 'sql_ast', operator: '=', left: 'status', right: "'ok'" },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE ((duration > 100) AND (status = 'ok'))",
+      );
+    });
+
+    it('skips empty sql filters when source has no tableName (metric source)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: '' },
+          filters: [{ type: 'sql', condition: '' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
     it('skips filters without source metadata (no from)', async () => {
       const result = await renderChartConfig(
         {
@@ -1909,6 +2035,376 @@ describe('renderChartConfig', () => {
       expect(result.sql).toBe(
         'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
       );
+    });
+  });
+
+  describe('sample-weighted aggregations', () => {
+    const baseSampledConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+      },
+      select: [],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      sampleWeightExpression: 'SampleRate',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+
+    it('should rewrite count() to sum(greatest(...))', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        'greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toContain('sum(');
+      expect(actual).not.toContain('count()');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite countIf to sumIf(greatest(...), cond)', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: "StatusCode = 'Error'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        'sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).not.toContain('countIf');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite avg to weighted average', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        '* greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toContain(
+        '/ nullIf(sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL), 0)',
+      );
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite sum to weighted sum', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'sum',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        '* greatest(toUInt64OrZero(toString(SampleRate)), 1)',
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite quantile to quantileTDigestWeighted', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'quantile',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            level: 0.99,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('quantileTDigestWeighted(0.99)');
+      expect(actual).toContain(
+        'toUInt32(greatest(toUInt64OrZero(toString(SampleRate)), 1))',
+      );
+      expect(actual).not.toContain('quantile(0.99)');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should leave min/max unchanged with sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'min',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+          {
+            aggFn: 'max',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('min(');
+      expect(actual).toContain('max(');
+      expect(actual).not.toContain('SampleRate');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should leave count_distinct unchanged with sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count_distinct',
+            valueExpression: 'TraceId',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('count(DISTINCT');
+      expect(actual).not.toContain('SampleRate');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle complex sampleWeightExpression like SpanAttributes map access', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        sampleWeightExpression: "SpanAttributes['SampleRate']",
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "greatest(toUInt64OrZero(toString(SpanAttributes['SampleRate'])), 1)",
+      );
+      expect(actual).toContain('sum(');
+      expect(actual).not.toContain('count()');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite avg with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sumIf(');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite sum with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'sum',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sumIf(');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should rewrite quantile with where condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'quantile',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+            level: 0.95,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('quantileTDigestWeightedIf(0.95)');
+      expect(actual).toContain("ServiceName = 'api'");
+      expect(actual).not.toContain('quantile(0.95)');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle mixed weighted and passthrough aggregations', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            alias: 'weighted_count',
+          },
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            alias: 'weighted_avg',
+          },
+          {
+            aggFn: 'min',
+            valueExpression: 'Duration',
+            aggCondition: '',
+            alias: 'min_duration',
+          },
+          {
+            aggFn: 'count_distinct',
+            valueExpression: 'TraceId',
+            aggCondition: '',
+            alias: 'unique_traces',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('sum(');
+      expect(actual).toContain('min(');
+      expect(actual).toContain('count(DISTINCT');
+      expect(actual).not.toContain('count()');
+      expect(actual).not.toContain('avg(');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not rewrite aggregations without sampleWeightExpression', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseSampledConfig,
+        sampleWeightExpression: undefined,
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('count()');
+      expect(actual).not.toContain('SampleRate');
     });
   });
 });

@@ -92,6 +92,23 @@
       "traceIdExpression": "TraceId",
       "spanIdExpression": "SpanId",
       "implicitColumnExpression": "Body"
+    },
+    {
+      "id": "E2E K8s Logs No Metrics",
+      "kind": "log",
+      "name": "E2E K8s Logs No Metrics",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "e2e_otel_logs" },
+      "timestampValueExpression": "TimestampTime",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
     }
   ]
 }

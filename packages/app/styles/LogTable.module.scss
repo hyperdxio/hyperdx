@@ -224,7 +224,7 @@ $button-height: 18px;
 
 .fieldText.wrapped {
   word-break: break-word;
-  white-space: normal;
+  white-space: pre-wrap;
   display: flex;
 }
 

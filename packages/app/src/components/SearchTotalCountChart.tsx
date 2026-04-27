@@ -46,6 +46,7 @@ export function useSearchTotalCount(
     data: totalCountData,
     isLoading,
     isError,
+    error,
   } = useQueriedChartConfig(queriedConfig, {
     queryKey: [
       queryKeyPrefix,
@@ -78,6 +79,7 @@ export function useSearchTotalCount(
     totalCount,
     isLoading,
     isError,
+    error,
     isTotalCountComplete,
   };
 }

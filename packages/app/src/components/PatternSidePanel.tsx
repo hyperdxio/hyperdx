@@ -3,6 +3,8 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
+// Easter egg: April Fools 2026 — see aiSummarize/ for details.
+import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
@@ -134,6 +136,10 @@ export default function PatternSidePanel({
             <Stack>
               <Card p="md">
                 <Text size="sm">{pattern.pattern}</Text>
+                <AISummarizePatternButton
+                  pattern={pattern}
+                  serviceNameExpression={serviceNameExpression}
+                />
               </Card>
               <Card p="md">
                 <Card.Section p="md" py="xs">

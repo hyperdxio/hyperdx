@@ -373,8 +373,8 @@ export const ERROR_RATE_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
 };
 
 export const K8S_CPU_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
-  output: 'percent',
-  mantissa: 0,
+  output: 'number',
+  mantissa: 2,
 };
 
 export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {

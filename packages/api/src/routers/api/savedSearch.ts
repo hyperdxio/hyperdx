@@ -1,4 +1,7 @@
-import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  SavedSearchListApiResponse,
+  SavedSearchSchema,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
@@ -16,7 +19,9 @@ import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
-router.get('/', async (req, res, next) => {
+type SavedSearchListExpRes = express.Response<SavedSearchListApiResponse[]>;
+
+router.get('/', async (req, res: SavedSearchListExpRes, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
 
@@ -37,9 +42,13 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      const { teamId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getNonNullUserWithTeam(req);
 
-      const savedSearch = await createSavedSearch(teamId.toString(), req.body);
+      const savedSearch = await createSavedSearch(
+        teamId.toString(),
+        req.body,
+        userId?.toString(),
+      );
 
       return res.json(savedSearch);
     } catch (e) {
@@ -60,7 +69,7 @@ router.patch(
   }),
   async (req, res, next) => {
     try {
-      const { teamId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getNonNullUserWithTeam(req);
 
       const savedSearch = await getSavedSearch(
         teamId.toString(),
@@ -82,6 +91,7 @@ router.patch(
           source: savedSearch.source.toString(),
           ...updates,
         },
+        userId?.toString(),
       );
 
       if (!updatedSavedSearch) {

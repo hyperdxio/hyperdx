@@ -237,4 +237,73 @@ test.describe('Dashboards Listing Page', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test(
+    'should show alert icon on dashboard card when tile has alert configured',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Alert Icon Dashboard ${ts}`;
+      const tileName = `E2E Alert Tile ${ts}`;
+      const webhookName = `E2E Webhook Alert Icon ${ts}`;
+      const webhookUrl = `https://example.com/alert-icon-${ts}`;
+
+      await test.step('Create a new saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+      });
+
+      await test.step('Rename the dashboard', async () => {
+        await dashboardPage.editDashboardName(dashboardName);
+      });
+
+      await test.step('Add a tile with a chart', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.runQuery();
+      });
+
+      await test.step('Configure an alert on the tile', async () => {
+        await expect(dashboardPage.chartEditor.alertButton).toBeVisible();
+        await dashboardPage.chartEditor.clickAddAlert();
+        await expect(
+          dashboardPage.chartEditor.addNewWebhookButton,
+        ).toBeVisible();
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Verify alert icon in grid view', async () => {
+        await dashboardsListPage.goto();
+        await expect(
+          dashboardsListPage.getDashboardCard(dashboardName),
+        ).toBeVisible();
+        await expect(
+          dashboardsListPage.getAlertStatusIcon(dashboardName),
+        ).toBeVisible();
+      });
+
+      await test.step('Verify alert icon in list view', async () => {
+        await dashboardsListPage.switchToListView();
+        await expect(
+          dashboardsListPage.getDashboardRow(dashboardName),
+        ).toBeVisible();
+        await expect(
+          dashboardsListPage.getAlertStatusIconInRow(dashboardName),
+        ).toBeVisible();
+      });
+    },
+  );
 });

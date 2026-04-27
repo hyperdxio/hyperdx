@@ -20,9 +20,12 @@ export class FilterComponent {
     );
     await locator.hover();
 
+    // The action buttons live in a CSS-hover-revealed overlay (display:none → flex).
+    // Use dispatchEvent so we don't depend on the hover state still being active
+    // at the moment Playwright attempts the click.
     const button = locator.getByTestId(testId);
-    await button.waitFor({ state: 'visible' });
-    await button.click();
+    await button.waitFor({ state: 'attached' });
+    await button.dispatchEvent('click');
   }
 
   /**
@@ -42,57 +45,71 @@ export class FilterComponent {
   }
 
   /**
-   * Open/expand a filter group
+   * Open/expand a filter group (toggles — may close if already open)
    */
   async openFilterGroup(filterName: string) {
     await this.getFilterGroup(filterName).click();
   }
 
   /**
-   * Get checkbox for a specific filter value
+   * Get checkbox for a specific filter value within a column
+   * @param columnName - e.g., 'ServiceName', 'SeverityText'
    * @param valueName - e.g., 'info', 'error', 'debug'
    */
-  getFilterCheckbox(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-${valueName}`);
+  getFilterCheckbox(columnName: string, valueName: string) {
+    return this.page.getByTestId(`filter-checkbox-${columnName}-${valueName}`);
   }
 
   /**
-   * Get checkbox input element
+   * Get checkbox input element within a column
    */
-  getFilterCheckboxInput(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-input-${valueName}`);
+  getFilterCheckboxInput(columnName: string, valueName: string) {
+    return this.page.getByTestId(
+      `filter-checkbox-${columnName}-${valueName}-input`,
+    );
   }
 
   /**
    * Apply/select a filter value
    */
-  async applyFilter(valueName: string) {
-    const checkbox = this.getFilterCheckbox(valueName);
+  async applyFilter(columnName: string, valueName: string) {
+    const checkbox = this.getFilterCheckbox(columnName, valueName);
     await checkbox.click();
   }
 
   /**
    * Exclude a filter value (invert the filter)
    */
-  async excludeFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-exclude-${valueName}`);
+  async excludeFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-exclude`,
+    );
   }
 
   /**
-   * Pin a filter value to persist it
+   * Pin a filter value personally (localStorage).
+   * Opens the PinShareMenu dropdown and clicks "Pin for me".
    */
-  async pinFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-pin-${valueName}`);
+  async pinFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-pin`,
+    );
+    // PinShareMenu opens a dropdown — click "Pin for me"
+    await this.page
+      .getByRole('menuitem', { name: 'Pin for me' })
+      .click({ timeout: 10000 });
   }
 
   /**
    * Clear/unselect a filter
    */
-  async clearFilter(valueName: string) {
-    const input = this.getFilterCheckboxInput(valueName);
-    const checkbox = this.getFilterCheckbox(valueName);
+  async clearFilter(columnName: string, valueName: string) {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
+    const checkbox = this.getFilterCheckbox(columnName, valueName);
     await checkbox.click();
     await input.click();
   }
@@ -160,8 +177,11 @@ export class FilterComponent {
   /**
    * Check if filter checkbox is indeterminate (excluded state)
    */
-  async isFilterExcluded(valueName: string): Promise<boolean> {
-    const input = this.getFilterCheckboxInput(valueName);
+  async isFilterExcluded(
+    columnName: string,
+    valueName: string,
+  ): Promise<boolean> {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
     const indeterminate = await input.getAttribute('data-indeterminate');
     return indeterminate === 'true';
   }
@@ -170,7 +190,9 @@ export class FilterComponent {
    * Get all filter values for a specific filter group
    */
   getFilterValues(filterGroupName: string) {
-    return this.page.getByTestId(`filter-checkbox-${filterGroupName}`);
+    return this.page.getByTestId(
+      new RegExp(`^filter-checkbox-${filterGroupName}-`),
+    );
   }
 
   /**
@@ -223,7 +245,9 @@ export class FilterComponent {
     // Wait for initial facet options to load
     const group = this.getFilterGroup(filterGroupName);
     await group
-      .locator('[data-testid^="filter-checkbox-input-"]')
+      .locator(
+        `[data-testid^="filter-checkbox-${filterGroupName}-"][data-testid$="-input"]`,
+      )
       .first()
       .waitFor({ state: 'visible', timeout: 10000 });
 
@@ -232,7 +256,7 @@ export class FilterComponent {
     const visible: string[] = [];
     for (const value of candidates) {
       if (visible.length >= count) break;
-      const input = this.getFilterCheckboxInput(value);
+      const input = this.getFilterCheckboxInput(filterGroupName, value);
       if (await input.isVisible()) visible.push(value);
     }
     if (visible.length < count) {
@@ -241,5 +265,68 @@ export class FilterComponent {
       );
     }
     return visible;
+  }
+
+  // ---- Shared Filters ----
+
+  /**
+   * Get the shared filters section container
+   */
+  getSharedFiltersSection() {
+    return this.page.getByTestId('shared-filters-section');
+  }
+
+  /**
+   * Check if the shared filters section is visible
+   */
+  async isSharedFiltersSectionVisible(): Promise<boolean> {
+    return this.getSharedFiltersSection()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  /**
+   * Pin a field (group-level pin, not a value pin).
+   * Opens the PinShareMenu on the filter group header and clicks "Pin for me".
+   */
+  async pinField(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    // The pin button is the PinShareMenu trigger inside the filter group header
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
+    await pinButton.click();
+    // Click "Pin for me" in the dropdown menu
+    await this.page.getByRole('menuitem', { name: 'Pin for me' }).click();
+  }
+
+  /**
+   * Share a field with the team via the PinShareMenu dropdown.
+   */
+  async shareFieldWithTeam(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
+    await pinButton.click();
+    await this.page.getByRole('menuitem', { name: 'Share with team' }).click();
+  }
+
+  /**
+   * Unshare a field from the team via the PinShareMenu dropdown.
+   * Looks in the Shared Filters section since shared fields are moved there.
+   */
+  async unshareField(filterName: string) {
+    // Shared fields live in the Shared Filters section, not the regular list
+    const sharedSection = this.getSharedFiltersSection();
+    const group = sharedSection.getByTestId(
+      `shared-filter-group-${filterName}`,
+    );
+    await group.hover();
+    const pinButton = group
+      .locator('button[aria-label="Unpin"], button[aria-label="Pin"]')
+      .first();
+    await pinButton.click();
+    await this.page
+      .getByRole('menuitem', { name: 'Remove from Shared' })
+      .click();
   }
 }

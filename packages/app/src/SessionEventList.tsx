@@ -62,6 +62,7 @@ const EventRow = React.forwardRef(
     return (
       <div
         data-index={dataIndex}
+        data-testid={`session-event-row-${dataIndex}`}
         ref={ref}
         className={cx(styles.eventRow, {
           [styles.eventRowError]: event.isError,

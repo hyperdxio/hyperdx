@@ -14,16 +14,16 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
 
-    # E2E port configuration (slot 0 defaults)
+    # E2E port configuration (slot 0 defaults — must match scripts/test-e2e.sh)
     env:
       HDX_E2E_SLOT: '0'
-      HDX_E2E_OPAMP_PORT: '14320'
-      HDX_E2E_CH_PORT: '18123'
-      HDX_E2E_CH_NATIVE_PORT: '18223'
-      HDX_E2E_API_PORT: '19000'
-      HDX_E2E_MONGO_PORT: '39999'
-      HDX_E2E_APP_LOCAL_PORT: '48001'
-      HDX_E2E_APP_PORT: '48081'
+      HDX_E2E_OPAMP_PORT: '20320'
+      HDX_E2E_CH_PORT: '20500'
+      HDX_E2E_CH_NATIVE_PORT: '20600'
+      HDX_E2E_API_PORT: '21000'
+      HDX_E2E_MONGO_PORT: '21100'
+      HDX_E2E_APP_LOCAL_PORT: '21200'
+      HDX_E2E_APP_PORT: '21300'
 
     steps:
       - name: Checkout
@@ -47,6 +47,19 @@ jobs:
 
       - name: Start E2E Docker Compose
         run: |
+          # Pre-pull images with retries to handle transient Docker Hub timeouts
+          for attempt in 1 2 3; do
+            if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml pull; then
+              echo "Docker images pulled successfully on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to pull Docker images after 3 attempts"
+              exit 1
+            fi
+            echo "Docker pull failed (attempt $attempt/3), retrying in 10s..."
+            sleep 10
+          done
           docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml up -d
           echo "Waiting for MongoDB..."
           for i in $(seq 1 30); do

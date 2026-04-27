@@ -54,6 +54,11 @@ export function processRowToWhereClause(
         );
       }
 
+      // Handle nullish values for all types uniformly
+      if (value == null) {
+        return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
+      }
+
       switch (jsType) {
         case JSDataType.Date:
           return SqlString.format(`?=parseDateTime64BestEffort(?, 9)`, [
@@ -100,10 +105,6 @@ export function processRowToWhereClause(
           );
 
         default:
-          // Handle nullish values
-          if (value == null) {
-            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
-          }
           // Handle the case when string is too long
           if (value.length > MAX_STRING_LENGTH) {
             return SqlString.format(

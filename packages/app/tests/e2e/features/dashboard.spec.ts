@@ -3,6 +3,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { DashboardsListPage } from '../page-objects/DashboardsListPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
@@ -380,9 +381,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
-      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Remove Alert',
-      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();
@@ -787,6 +785,118 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test(
+    'should deselect and hide the Custom aggregation function when switching to a metric source',
+    { tag: '@full-stack' },
+    async () => {
+      await test.step('Navigate to dashboard and open new tile editor', async () => {
+        await dashboardPage.openNewTileEditor();
+      });
+
+      await test.step('Select the "Custom" aggregation function', async () => {
+        await dashboardPage.chartEditor.selectAggFn('Custom');
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Custom');
+      });
+
+      await test.step('Switch the source to a metric source', async () => {
+        await dashboardPage.chartEditor.selectSource(
+          DEFAULT_METRICS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Verify the aggregation function was automatically changed away from "Custom"', async () => {
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Count of Events');
+      });
+
+      await test.step('Verify the "Custom" option is NOT available in the aggregation dropdown', async () => {
+        const isCustomAvailable =
+          await dashboardPage.chartEditor.isAggFnOptionAvailable('Custom');
+        expect(isCustomAvailable).toBe(false);
+      });
+    },
+  );
+
+  test('should show error message and allow editing when tile source is missing', async ({
+    page,
+  }) => {
+    const apiUrl = getApiUrl();
+    const DELETABLE_SOURCE_NAME = `E2E Deletable Source ${Date.now()}`;
+
+    // Get an existing log source to copy its connection
+    const logSources = await getSources(page, 'log');
+    const { connection, from } = logSources[0];
+
+    // Create a dedicated source for this test via the API
+    const createResponse = await page.request.post(`${apiUrl}/sources`, {
+      data: {
+        kind: 'log',
+        name: DELETABLE_SOURCE_NAME,
+        connection,
+        from,
+        timestampValueExpression: 'TimestampTime',
+        defaultTableSelectExpression:
+          'Timestamp, ServiceName, SeverityText, Body',
+        serviceNameExpression: 'ServiceName',
+        implicitColumnExpression: 'Body',
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const createdSource = await createResponse.json();
+
+    await test.step('Create dashboard with tile using the deletable source', async () => {
+      await dashboardPage.goto();
+      await dashboardPage.createNewDashboard();
+
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.setChartName('Missing Source Tile');
+      await dashboardPage.chartEditor.selectSource(DELETABLE_SOURCE_NAME);
+      await dashboardPage.chartEditor.runQuery();
+      await dashboardPage.saveTile();
+
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Delete the source and reload the dashboard', async () => {
+      const dashboardUrl = page.url();
+
+      const deleteResponse = await page.request.delete(
+        `${apiUrl}/sources/${createdSource.id}`,
+      );
+      expect(deleteResponse.ok()).toBeTruthy();
+
+      await page.goto(dashboardUrl);
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Verify tile shows error message for missing source', async () => {
+      const tile = dashboardPage.getTiles().first();
+      await expect(tile).toContainText(
+        'The data source for this tile no longer exists',
+      );
+    });
+
+    await test.step('Verify tile can be edited when source is missing', async () => {
+      await dashboardPage.hoverOverTile(0);
+
+      const editButton = dashboardPage.getTileButton('edit');
+      await expect(editButton).toBeVisible();
+      await editButton.click();
+
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible({
+        timeout: 5000,
+      });
+    });
+  });
+
+  test(
     'should clear saved query when WHERE input is cleared and saved',
     {},
     async () => {
@@ -856,6 +966,176 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Verify search input is empty (saved query was removed)
         const searchInput = dashboardPage.searchInput;
         await expect(searchInput).toHaveValue('');
+      });
+    },
+  );
+
+  test.describe(
+    'Table chart - Display Group By Columns on Left',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('should move multiple group-by columns to the left when enabled', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Multi ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with two group-by columns', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy(
+            'ServiceName, SeverityText',
+          );
+        });
+
+        await test.step('Default order: series column first, group-by columns after', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+
+          const svcIdx = defaultHeaders.indexOf('ServiceName');
+          const sevIdx = defaultHeaders.indexOf('SeverityText');
+          expect(svcIdx).toBeGreaterThan(-1);
+          expect(sevIdx).toBeGreaterThan(-1);
+          const seriesIdx = defaultHeaders.findIndex(
+            h => h !== 'ServiceName' && h !== 'SeverityText',
+          );
+          expect(seriesIdx).toBeGreaterThan(-1);
+          expect(seriesIdx).toBeLessThan(svcIdx);
+          expect(seriesIdx).toBeLessThan(sevIdx);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(defaultHeaders.length);
+          expect(headersAfter[0]).toBe('ServiceName');
+          expect(headersAfter[1]).toBe('SeverityText');
+          expect(['ServiceName', 'SeverityText']).not.toContain(
+            headersAfter[headersAfter.length - 1],
+          );
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move a single group-by column to the left when multiple series are present', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS MultiSeries ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with one group-by and two series', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          // Distinct aliases so the two count() series render as two columns
+          // instead of colliding into one.
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'SeriesOne');
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'SeriesTwo');
+        });
+
+        await test.step('Default order: series columns first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders).toEqual([
+            'SeriesOne',
+            'SeriesTwo',
+            'ServiceName',
+          ]);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter).toEqual([
+            'ServiceName',
+            'SeriesOne',
+            'SeriesTwo',
+          ]);
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move the group-by column to the left for ratio series return type', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Ratio ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with ratio series and one group-by', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.toggleAsRatio();
+        });
+
+        await test.step('Default order: single ratio column first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders.length).toBe(2);
+          expect(defaultHeaders[defaultHeaders.length - 1]).toBe('ServiceName');
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(2);
+          expect(headersAfter[0]).toBe('ServiceName');
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
       });
     },
   );

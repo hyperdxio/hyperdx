@@ -1,5 +1,77 @@
 # @hyperdx/api
 
+## 2.24.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- Updated dependencies [b73f6fcc]
+- Updated dependencies [4c23e10a]
+- Updated dependencies [e2fc25da]
+- Updated dependencies [7665fbe1]
+  - @hyperdx/common-utils@0.18.1
+
+## 2.24.0
+
+### Minor Changes
+
+- 9781ae63: Add an MCP (Model Context Protocol) server to the HyperDX API, enabling AI assistants (Claude, Cursor, OpenCode, etc.) to query observability data, manage dashboards, and explore data sources directly via standardized tool calls.
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
+## 2.23.2
+
+## 2.23.1
+
+### Patch Changes
+
+- f8d2edde: feat: Show created/updated metadata for saved searches and dashboards
+- Updated dependencies [24767c58]
+  - @hyperdx/common-utils@0.17.1
+
+## 2.23.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 59b1f46f: fix: Show alerts on a tile only when dashboard matches
+- Updated dependencies [518bda7d]
+- Updated dependencies [4e54d850]
+- Updated dependencies [53ba1e39]
+- Updated dependencies [b7581db8]
+- Updated dependencies [48a8d32b]
+- Updated dependencies [a15122b3]
+- Updated dependencies [a55b151e]
+- Updated dependencies [308da30b]
+- Updated dependencies [e5c7fdf9]
+- Updated dependencies [941d0450]
+  - @hyperdx/common-utils@0.17.0
+
 ## 2.22.1
 
 ### Patch Changes

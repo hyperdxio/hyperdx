@@ -4,6 +4,7 @@ import { parseAsString, useQueryState } from 'nuqs';
 import {
   DisplayType,
   type Filter,
+  pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Text } from '@mantine/core';
@@ -101,7 +102,7 @@ export default function ServiceDashboardEndpointSidePanel({
             onClose={onClose}
           />
           <DrawerBody>
-            <Grid grow={false} w="100%" maw="100%" overflow="hidden">
+            <Grid grow={false} w="100%" maw="100%">
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   {source && expressions && (
@@ -116,6 +117,7 @@ export default function ServiceDashboardEndpointSidePanel({
                           'connection',
                           'from',
                         ]),
+                        ...pickSampleWeightExpressionProps(source),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
@@ -159,6 +161,7 @@ export default function ServiceDashboardEndpointSidePanel({
                           'connection',
                           'from',
                         ]),
+                        ...pickSampleWeightExpressionProps(source),
                         where: '',
                         whereLanguage: 'sql',
                         select: [

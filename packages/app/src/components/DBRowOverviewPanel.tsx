@@ -195,6 +195,7 @@ export function RowOverviewPanel({
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             severityText={firstRow?.__hdx_severity_text}
+            rowData={firstRow}
           />
         </Box>
       )}

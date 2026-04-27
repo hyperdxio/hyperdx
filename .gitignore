@@ -41,6 +41,7 @@ specs/
 
 # Next.js build output
 packages/app/.next
+packages/app/.next-e2e
 packages/app/.pnp
 packages/app/.pnp.js
 packages/app/.vercel

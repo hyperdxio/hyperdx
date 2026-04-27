@@ -1,4 +1,6 @@
-const DEFAULT_TIME_WINDOWS_SECONDS = [
+export const ONE_MIN_WINDOW = 1 * 60;
+export const DEFAULT_TIME_WINDOWS_SECONDS = [
+  15 * 60, // 15m
   6 * 60 * 60, // 6h
   6 * 60 * 60, // 6h
   12 * 60 * 60, // 12h

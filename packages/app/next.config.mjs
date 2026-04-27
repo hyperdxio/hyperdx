@@ -20,6 +20,9 @@ configureRuntimeEnv();
 const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
 
 const nextConfig = {
+  // Allow overriding the build/dev output directory to avoid lock conflicts
+  // when running dev and E2E simultaneously (e.g. NEXT_DIST_DIR=.next-e2e)
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   reactCompiler: true,
   basePath: basePath,
   env: {
