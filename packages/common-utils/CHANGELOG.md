@@ -1,5 +1,14 @@
 # @hyperdx/common-utils
 
+## 0.18.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- e2fc25da: feat: Add custom table onClick behavior
+- 7665fbe1: refactor: Unify section/group into single Group with collapsible/bordered options
+
 ## 0.18.0
 
 ### Minor Changes

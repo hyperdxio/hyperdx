@@ -4329,7 +4329,7 @@ __metadata:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.18.0"
+    "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -4416,8 +4416,8 @@ __metadata:
     "@eslint-react/eslint-plugin": "npm:^3.0.0"
     "@eslint/compat": "npm:^2.0.0"
     "@hookform/resolvers": "npm:^3.9.0"
-    "@hyperdx/browser": "npm:^0.22.0"
-    "@hyperdx/common-utils": "npm:^0.18.0"
+    "@hyperdx/browser": "npm:^0.22.1"
+    "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@jedmao/location": "npm:^3.0.0"
     "@mantine/core": "npm:^9.0.0"
@@ -4531,13 +4531,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/browser@npm:^0.22.0":
-  version: 0.22.0
-  resolution: "@hyperdx/browser@npm:0.22.0"
+"@hyperdx/browser@npm:^0.22.1":
+  version: 0.22.1
+  resolution: "@hyperdx/browser@npm:0.22.1"
   dependencies:
-    "@hyperdx/otel-web": "npm:0.16.3"
+    "@hyperdx/otel-web": "npm:0.16.4"
     "@hyperdx/otel-web-session-recorder": "npm:0.16.2"
-  checksum: 10c0/b1ee76797344f305033802abb2a755cdcfcd1f7ea2beb58d5bb4deb192b850772b4f7cbdb0903967fbf3ab2bb95e3e700280e61606e306edfd24011cdb93490a
+  checksum: 10c0/60a53e056e41fa74061c8d4d6e1a083b8daeb8ac5995d57c44146fd7e2adc16cf3e070514ce31439fc8f317018e2e773eee34af435c247d84467509f149dde86
   languageName: node
   linkType: hard
 
@@ -4547,7 +4547,7 @@ __metadata:
   dependencies:
     "@clickhouse/client": "npm:^1.12.1"
     "@clickhouse/client-common": "npm:^1.12.1"
-    "@hyperdx/common-utils": "npm:^0.18.0"
+    "@hyperdx/common-utils": "npm:^0.18.1"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/react": "npm:^19.0.0"
     "@types/sqlstring": "npm:^2.3.2"
@@ -4569,7 +4569,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/common-utils@npm:^0.18.0, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.18.1, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -4712,9 +4712,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/otel-web@npm:0.16.3":
-  version: 0.16.3
-  resolution: "@hyperdx/otel-web@npm:0.16.3"
+"@hyperdx/otel-web@npm:0.16.4":
+  version: 0.16.4
+  resolution: "@hyperdx/otel-web@npm:0.16.4"
   dependencies:
     "@babel/runtime": "npm:^7.21.0"
     "@hyperdx/instrumentation-exception": "npm:^0.1.0"
@@ -4731,10 +4731,10 @@ __metadata:
     "@opentelemetry/sdk-trace-web": "npm:~1.24.1"
     "@opentelemetry/semantic-conventions": "npm:^1.24.1"
     json-stringify-safe: "npm:^5.0.1"
-    lodash: "npm:^4.17.21"
+    lodash: "npm:^4.17.23"
     shimmer: "npm:^1.2.1"
     web-vitals: "npm:^3.3.2"
-  checksum: 10c0/29cc6fd0d2d2037e251846672eba0529f7a28301f45009586b99fe9e2d9235059574f1de0ed209a4cab69a9942eef42cbd1e9bc00bb29d676b9f12f33c1d29c7
+  checksum: 10c0/fe549fec7e4955254a973c9dd2834968b39958984a8d619f18216c71a95484e28b593a2e264819bd22fc3922f75ff6960779b6d02e51fd7e42a9a6926f892141
   languageName: node
   linkType: hard
 

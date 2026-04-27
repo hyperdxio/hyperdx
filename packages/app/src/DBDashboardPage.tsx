@@ -1347,14 +1347,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       if (dashboard.savedQuery) {
         setValue('where', dashboard.savedQuery);
         setWhere(dashboard.savedQuery);
-        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+        const savedLanguage =
+          dashboard.savedQueryLanguage ?? getStoredLanguage() ?? 'lucene';
         setValue('whereLanguage', savedLanguage);
         setWhereLanguage(savedLanguage);
       } else if (isSwitchingDashboards) {
         setValue('where', '');
         setWhere('');
-        setValue('whereLanguage', 'lucene');
-        setWhereLanguage('lucene');
+        const storedLanguage = getStoredLanguage() ?? 'lucene';
+        setValue('whereLanguage', storedLanguage);
+        setWhereLanguage(storedLanguage);
       }
     }
 
@@ -1383,6 +1385,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setWhereLanguage,
     setFilterQueries,
   ]);
+
+  // Sync changes to the URL params into the form
+  useEffect(() => {
+    setValue('where', where);
+    setValue(
+      'whereLanguage',
+      whereLanguage === 'sql' || whereLanguage === 'lucene'
+        ? whereLanguage
+        : (getStoredLanguage() ?? 'lucene'),
+    );
+  }, [setValue, where, whereLanguage]);
 
   const handleSaveQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;

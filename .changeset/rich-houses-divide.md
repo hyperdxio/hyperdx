@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: Add custom table onClick behavior
+feat: Add more dashboard onClick linking options
