@@ -895,6 +895,77 @@ describe('validateChartForm', () => {
     expect(errors.filter(e => e.path === 'series')).toHaveLength(0);
   });
 
+  it('errors when Bar chart has no groupBy', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Bar,
+        source: 'source-log',
+        series: [seriesItem],
+        groupBy: undefined,
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'groupBy',
+        message: 'Group By is required for bar charts',
+      }),
+    );
+  });
+
+  it('errors when Bar chart has an empty groupBy array', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Bar,
+        source: 'source-log',
+        series: [seriesItem],
+        groupBy: [] as any,
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'groupBy',
+        message: 'Group By is required for bar charts',
+      }),
+    );
+  });
+
+  it('returns no errors for Bar chart with a valid groupBy', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Bar,
+        source: 'source-log',
+        series: [seriesItem],
+        groupBy: 'ServiceName',
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'groupBy')).toHaveLength(0);
+  });
+
+  it('does not require groupBy for raw SQL Bar charts', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Bar,
+        sqlTemplate: 'SELECT 1',
+        connection: 'conn-1',
+        groupBy: undefined,
+      }),
+      undefined,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'groupBy')).toHaveLength(0);
+  });
+
   it('does not apply single-series limit for raw SQL Number charts', () => {
     const setError = jest.fn();
     const errors = validateChartForm(

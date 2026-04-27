@@ -277,6 +277,11 @@ const externalDashboardPieRawSqlChartConfigSchema =
     displayType: z.literal('pie'),
   });
 
+const externalDashboardCategoricalBarRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('bar'),
+  });
+
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
   sourceId: objectIdSchema,
@@ -286,6 +291,14 @@ const externalDashboardNumberChartConfigSchema = z.object({
 
 const externalDashboardPieChartConfigSchema = z.object({
   displayType: z.literal('pie'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
+const externalDashboardCategoricalBarChartConfigSchema = z.object({
+  displayType: z.literal('bar'),
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
@@ -313,6 +326,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardCategoricalBarChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ],
@@ -330,6 +344,7 @@ const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableRawSqlChartConfigSchema,
     externalDashboardNumberRawSqlChartConfigSchema,
     externalDashboardPieRawSqlChartConfigSchema,
+    externalDashboardCategoricalBarRawSqlChartConfigSchema,
   ],
 );
 

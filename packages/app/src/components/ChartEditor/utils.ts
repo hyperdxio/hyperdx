@@ -257,7 +257,8 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     form.displayType === DisplayType.Bar &&
-    !form.groupBy
+    (!form.groupBy ||
+      (Array.isArray(form.groupBy) && form.groupBy.length === 0))
   ) {
     errors.push({
       path: `groupBy`,

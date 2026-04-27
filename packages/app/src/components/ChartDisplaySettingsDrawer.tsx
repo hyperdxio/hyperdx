@@ -20,6 +20,8 @@ import { FormatTime } from '@/useFormatTime';
 
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
+export const DEFAULT_MAX_GROUPS = 10;
+
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
   | 'numberFormat'
@@ -27,13 +29,14 @@ export type ChartConfigDisplaySettings = Pick<
   | 'fillNulls'
   | 'compareToPreviousPeriod'
 > & {
-  maxNumberOfGroups?: number;
+  limit?: { limit?: number };
 };
 
 interface ChartDisplaySettingsDrawerProps {
   opened: boolean;
   settings: ChartConfigDisplaySettings;
   displayType: DisplayType;
+  isRawSql?: boolean;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
@@ -44,7 +47,7 @@ function applyDefaultSettings({
   alignDateRangeToGranularity,
   compareToPreviousPeriod,
   fillNulls,
-  maxNumberOfGroups,
+  limit,
 }: ChartConfigDisplaySettings): ChartConfigDisplaySettings {
   return {
     numberFormat: numberFormat ?? DEFAULT_NUMBER_FORMAT,
@@ -52,7 +55,7 @@ function applyDefaultSettings({
       alignDateRangeToGranularity == null ? true : alignDateRangeToGranularity,
     fillNulls: fillNulls ?? 0,
     compareToPreviousPeriod: compareToPreviousPeriod ?? false,
-    maxNumberOfGroups: maxNumberOfGroups ?? 10,
+    limit: limit ?? { limit: DEFAULT_MAX_GROUPS },
   };
 }
 
@@ -60,6 +63,7 @@ export default function ChartDisplaySettingsDrawer({
   settings,
   opened,
   displayType,
+  isRawSql,
   onChange,
   onClose,
   previousDateRange,
@@ -88,7 +92,7 @@ export default function ChartDisplaySettingsDrawer({
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
-  const isBarChart = displayType === DisplayType.Bar;
+  const isBarChart = displayType === DisplayType.Bar && !isRawSql;
 
   return (
     <Drawer
@@ -139,16 +143,18 @@ export default function ChartDisplaySettingsDrawer({
             <Box>
               <Controller
                 control={control}
-                name="maxNumberOfGroups"
+                name="limit"
                 render={({ field }) => (
                   <NumberInput
                     size="xs"
                     label="Max Number of Groups"
                     min={1}
                     max={1000}
-                    value={field.value ?? 10}
+                    value={field.value?.limit ?? DEFAULT_MAX_GROUPS}
                     onChange={v =>
-                      field.onChange(typeof v === 'number' ? v : 10)
+                      field.onChange({
+                        limit: typeof v === 'number' ? v : DEFAULT_MAX_GROUPS,
+                      })
                     }
                   />
                 )}

@@ -692,7 +692,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
-      maxNumberOfGroups: limit?.limit ?? 10,
+      limit,
     }),
     [
       alignDateRangeToGranularity,
@@ -1058,14 +1058,14 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
-      maxNumberOfGroups,
+      limit,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       if (displayType === DisplayType.Bar) {
-        setValue('limit', { limit: maxNumberOfGroups ?? 10 });
+        setValue('limit', limit);
       }
       onSubmit();
     },
@@ -1770,6 +1770,7 @@ export default function EditTimeChartForm({
         settings={displaySettings}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
+        isRawSql={isRawSqlInput}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
       />

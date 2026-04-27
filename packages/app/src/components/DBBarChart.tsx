@@ -41,7 +41,11 @@ const BarChartTooltip = memo(
     numberFormat,
   }: {
     active?: boolean;
-    payload?: { name: string; value: number; payload: { color: string } }[];
+    payload?: {
+      name: string;
+      value: number;
+      payload: { color: string; label: string };
+    }[];
     numberFormat?: NumberFormat;
   }) => {
     if (!active || !payload?.length) return null;
@@ -50,7 +54,7 @@ const BarChartTooltip = memo(
       <ChartTooltipContainer>
         <ChartTooltipItem
           color={entry.payload.color}
-          name={entry.name}
+          name={entry.payload.label}
           value={entry.value}
           numberFormat={numberFormat}
           indicator="square"
@@ -59,6 +63,8 @@ const BarChartTooltip = memo(
     );
   },
 );
+
+BarChartTooltip.displayName = 'BarChartTooltip';
 
 const BarXAxisTick = ({
   x,
@@ -213,12 +219,12 @@ export const DBBarChart = ({
               data={barChartData}
               margin={{ top: 8, right: 16, left: 8, bottom: 60 }}
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
-              <XAxis
-                dataKey="label"
-                tick={<BarXAxisTick />}
-                interval={0}
+              <CartesianGrid
+                strokeDasharray="3 3"
+                vertical={false}
+                stroke="#333"
               />
+              <XAxis dataKey="label" tick={<BarXAxisTick />} interval={0} />
               <YAxis
                 tickFormatter={v =>
                   config.numberFormat
@@ -229,9 +235,7 @@ export const DBBarChart = ({
                 width={60}
               />
               <Tooltip
-                content={
-                  <BarChartTooltip numberFormat={config.numberFormat} />
-                }
+                content={<BarChartTooltip numberFormat={config.numberFormat} />}
               />
               <Bar dataKey="value" name="value" radius={[2, 2, 0, 0]}>
                 {barChartData.map(entry => (
