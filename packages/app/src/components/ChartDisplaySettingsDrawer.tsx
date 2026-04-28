@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -12,6 +12,7 @@ import {
   Divider,
   Drawer,
   Group,
+  NumberInput,
   Stack,
 } from '@mantine/core';
 
@@ -21,6 +22,8 @@ import { FormatTime } from '@/useFormatTime';
 import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
+export const DEFAULT_MAX_GROUPS = 10;
+
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
   | 'numberFormat'
@@ -28,6 +31,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'fillNulls'
   | 'compareToPreviousPeriod'
 > & {
+  limit?: { limit?: number };
   groupByColumnsOnLeft?: boolean;
 };
 
@@ -58,6 +62,7 @@ function applyDefaultSettings(
         : settings.alignDateRangeToGranularity,
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+    limit: settings.limit ?? { limit: DEFAULT_MAX_GROUPS },
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
   };
 }
@@ -105,6 +110,7 @@ export default function ChartDisplaySettingsDrawer({
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+  const isBarChart = displayType === DisplayType.Bar && configType !== 'sql';
 
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.
@@ -153,6 +159,32 @@ export default function ChartDisplaySettingsDrawer({
                 )
               }
             />
+            <Divider />
+          </>
+        )}
+
+        {isBarChart && (
+          <>
+            <Box>
+              <Controller
+                control={control}
+                name="limit"
+                render={({ field }) => (
+                  <NumberInput
+                    size="xs"
+                    label="Max Number of Groups"
+                    min={1}
+                    max={1000}
+                    value={field.value?.limit ?? DEFAULT_MAX_GROUPS}
+                    onChange={v =>
+                      field.onChange({
+                        limit: typeof v === 'number' ? v : DEFAULT_MAX_GROUPS,
+                      })
+                    }
+                  />
+                )}
+              />
+            </Box>
             <Divider />
           </>
         )}

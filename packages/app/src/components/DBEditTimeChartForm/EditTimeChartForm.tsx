@@ -185,6 +185,7 @@ export default function EditTimeChartForm({
     compareToPreviousPeriod,
     numberFormat,
     groupByColumnsOnLeft,
+    limit,
   ] = useWatch({
     control,
     name: [
@@ -193,6 +194,7 @@ export default function EditTimeChartForm({
       'compareToPreviousPeriod',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'limit',
     ],
   });
 
@@ -212,6 +214,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       numberFormat,
       groupByColumnsOnLeft,
+      limit,
     }),
     [
       alignDateRangeToGranularity,
@@ -219,6 +222,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       numberFormat,
       groupByColumnsOnLeft,
+      limit,
     ],
   );
 
@@ -462,15 +466,19 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       groupByColumnsOnLeft,
+      limit,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      if (displayType === DisplayType.Bar) {
+        setValue('limit', limit);
+      }
       onSubmit();
     },
-    [setValue, onSubmit],
+    [setValue, onSubmit, displayType],
   );
 
   const tableConnection = useMemo(

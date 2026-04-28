@@ -73,6 +73,7 @@ export function getDefaultTileSize(displayType?: DisplayType): {
   switch (displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
+    case DisplayType.Bar:
       return { w: 12, h: 10 };
 
     case DisplayType.Table:

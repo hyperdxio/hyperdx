@@ -76,6 +76,10 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
     QUERY_PARAMS.intervalSeconds,
     QUERY_PARAMS.intervalMilliseconds,
   ],
+  [DisplayType.Bar]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
   [DisplayType.Table]: [
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
@@ -110,6 +114,7 @@ export const DATE_RANGE_WHERE_EXAMPLE_SQL = `WHERE TimestampTime >= fromUnixTime
 export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Line]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
+  [DisplayType.Bar]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Number]: DATE_RANGE_WHERE_EXAMPLE_SQL,

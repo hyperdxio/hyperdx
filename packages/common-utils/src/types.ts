@@ -17,6 +17,7 @@ export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
 export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
+  Bar = 'bar',
   Table = 'table',
   Pie = 'pie',
   Number = 'number',
