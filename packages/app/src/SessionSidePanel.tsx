@@ -23,13 +23,9 @@ export default function SessionSidePanel({
   sessionId,
   session,
   dateRange,
-  where,
   whereLanguage,
   onLanguageChange,
   onClose,
-  onPropertyAddClick,
-  generateSearchUrl,
-  generateChartUrl,
   zIndex = 100,
 }: {
   traceSource: TTraceSource;
@@ -41,13 +37,6 @@ export default function SessionSidePanel({
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
   onClose: () => void;
-  onPropertyAddClick?: (name: string, value: string) => void;
-  generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
-  generateChartUrl: (config: {
-    aggFn: string;
-    field: string;
-    groupBy: string[];
-  }) => string;
   zIndex?: number;
 }) {
   // Keep track of sub-drawers so we can disable closing this root drawer
@@ -146,11 +135,7 @@ export default function SessionSidePanel({
               start={dateRange[0]}
               end={dateRange[1]}
               rumSessionId={sessionId}
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              generateChartUrl={generateChartUrl}
               setDrawerOpen={setSubDrawerOpen}
-              where={where}
               whereLanguage={whereLanguage}
               onLanguageChange={onLanguageChange}
             />

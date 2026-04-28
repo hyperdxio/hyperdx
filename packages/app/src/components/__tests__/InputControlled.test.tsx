@@ -1,6 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { InputControlled, PasswordInputControlled } from '../InputControlled';
 
@@ -33,7 +33,7 @@ describe('InputControlled', () => {
   });
 
   it('handles input changes', async () => {
-    const { container } = renderWithMantine(
+    renderWithMantine(
       <TestForm>
         <InputControlled
           name="testInput"
@@ -70,7 +70,7 @@ describe('PasswordInputControlled', () => {
   });
 
   it('handles password input changes', async () => {
-    const { container } = renderWithMantine(
+    renderWithMantine(
       <TestForm>
         <PasswordInputControlled
           name="testPassword"

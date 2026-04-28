@@ -41,14 +41,14 @@ function heatmapPaths(opts: {
 }) {
   const { disp } = opts;
 
-  return (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+  return (u: uPlot, seriesIdx: number, _idx0: number, _idx1: number) => {
     uPlot.orient(
       u,
       seriesIdx,
       (
-        series,
-        dataX,
-        dataY,
+        _series,
+        _dataX,
+        _dataY,
         scaleX,
         scaleY,
         valToPosX,
@@ -57,10 +57,10 @@ function heatmapPaths(opts: {
         yOff,
         xDim,
         yDim,
-        moveTo,
-        lineTo,
+        _moveTo,
+        _lineTo,
         rect,
-        arc,
+        _arc,
       ) => {
         // mode 2 data format is not supported in types properly
         const d = u.data[seriesIdx] as unknown as Mode2DataArray;
@@ -75,7 +75,7 @@ function heatmapPaths(opts: {
 
         const fillPalette = disp.fill.lookup ?? [...new Set(fills)];
 
-        const fillPaths = fillPalette.map(color => new Path2D());
+        const fillPaths = fillPalette.map(() => new Path2D());
 
         // fillPalette.forEach(fill => {
         // 	fillPaths.set(fill, new Path2D());
@@ -692,13 +692,9 @@ export default dynamic(() => Promise.resolve(HeatmapContainer), {
 
 function highlightDataPlugin({
   proximity,
-  yFormatter,
-  xFormatter,
   onPointHighlight,
 }: {
   proximity: number;
-  yFormatter: (value: number) => string;
-  xFormatter: (value: number) => string;
   onPointHighlight: (point: {
     // data point values
     xVal: number;
@@ -944,10 +940,6 @@ function Heatmap({
         // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
         highlightDataPlugin({
           proximity: 20,
-          yFormatter: tickFormatter,
-          xFormatter: s => {
-            return `${new Date(s).toLocaleString()}`;
-          },
           onPointHighlight: ({
             xVal,
             yVal,

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { omit } from 'lodash';
 import ms from 'ms';
 import type {
   ClickHouseSettings,
@@ -37,7 +38,6 @@ import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { omit } from '@/utils';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,

@@ -110,7 +110,7 @@ describe('SearchWhereInput', () => {
 
       // Check for placeholder text in the CodeMirror editor
       // Note: CodeMirror may render placeholder differently
-      const sqlPlaceholder = screen.queryByText(/SQL WHERE clause/i);
+      screen.queryByText(/SQL WHERE clause/i);
       // If placeholder is not directly visible, the component should still render
       expect(screen.getByText('WHERE')).toBeInTheDocument();
     });

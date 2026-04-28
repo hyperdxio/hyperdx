@@ -110,12 +110,7 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import {
-  getEventBody,
-  getFirstTimestampValueExpression,
-  useSource,
-  useSources,
-} from '@/source';
+import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
@@ -145,7 +140,6 @@ import {
   parseAsSortingStateString,
   parseAsStringEncoded,
 } from './utils/queryParsers';
-import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { EditablePageName } from './EditablePageName';
@@ -888,33 +882,25 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const {
-    control,
-    setValue,
-    reset,
-    handleSubmit,
-    getValues,
-    formState,
-    setError,
-    resetField,
-  } = useForm<SearchConfigFromSchema>({
-    values: {
-      select: searchedConfig.select || '',
-      where: searchedConfig.where || '',
-      whereLanguage:
-        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      source:
-        searchedConfig.source ||
-        (savedSearchId || directTraceId ? '' : defaultSourceId),
-      filters: searchedConfig.filters ?? [],
-      orderBy: searchedConfig.orderBy ?? '',
-    },
-    resetOptions: {
-      keepDirtyValues: true,
-      keepErrors: true,
-    },
-    resolver: zodResolver(SearchConfigSchema),
-  });
+  const { control, setValue, reset, handleSubmit, formState } =
+    useForm<SearchConfigFromSchema>({
+      values: {
+        select: searchedConfig.select || '',
+        where: searchedConfig.where || '',
+        whereLanguage:
+          searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+        source:
+          searchedConfig.source ||
+          (savedSearchId || directTraceId ? '' : defaultSourceId),
+        filters: searchedConfig.filters ?? [],
+        orderBy: searchedConfig.orderBy ?? '',
+      },
+      resetOptions: {
+        keepDirtyValues: true,
+        keepErrors: true,
+      },
+      resolver: zodResolver(SearchConfigSchema),
+    });
 
   const inputSource = useWatch({ name: 'source', control });
 
@@ -1307,8 +1293,6 @@ export function DBSearchPage() {
   useEffect(() => {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
-
-  const { data: me } = api.useMe();
 
   // Callback to handle when rows are expanded - kick user out of live tail
   const onExpandedRowsChange = useCallback(

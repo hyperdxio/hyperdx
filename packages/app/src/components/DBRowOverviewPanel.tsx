@@ -148,7 +148,7 @@ export function RowOverviewPanel({
     let parsedStacktrace = stacktrace ?? '[]';
     try {
       parsedStacktrace = JSON.parse(stacktrace);
-    } catch (e) {
+    } catch {
       // do nothing
     }
 
