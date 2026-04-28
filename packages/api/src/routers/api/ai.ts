@@ -14,9 +14,17 @@ import {
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { createRateLimiter } from '@/middleware/rateLimit';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
+
+import {
+  buildSystemPrompt,
+  redactSecrets,
+  summarizeBodySchema,
+  wrapContent,
+} from './aiSummarize';
 
 const router = express.Router();
 
@@ -108,6 +116,70 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
         );
 
         return res.json(chartConfig);
+      } catch (err) {
+        if (err instanceof APICallError) {
+          throw new Api500Error(
+            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
+          );
+        }
+        throw err;
+      }
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /ai/summarize — generate a natural-language summary of a log, trace,
+// pattern, alert, or future subject kind using the configured LLM.
+//
+// Prompts are registered per-kind in ./aiSummarize.ts. User content is
+// redacted of obvious secrets and wrapped in <data>...</data> tags to mark
+// it as data (not instructions) to the model. Rate-limited per user.
+// ---------------------------------------------------------------------------
+
+const summarizeRateLimit = createRateLimiter({
+  windowMs: 60_000, // 1 minute
+  max: 30,
+  name: 'ai/summarize',
+});
+
+router.post(
+  '/summarize',
+  summarizeRateLimit,
+  validateRequest({ body: summarizeBodySchema }),
+  async (req, res, next) => {
+    try {
+      const model = getAIModel();
+      const { kind, content, tone, messages } = req.body;
+
+      const systemPrompt = buildSystemPrompt(kind, tone);
+      const wrappedPrompt = wrapContent(redactSecrets(content));
+
+      try {
+        const result = await generateText({
+          model,
+          system: systemPrompt,
+          experimental_telemetry: { isEnabled: true },
+          ...(messages && messages.length > 0
+            ? {
+                // Conversation mode: prior turns + latest user content
+                messages: [
+                  ...messages.map(m => ({
+                    role: m.role,
+                    content: redactSecrets(m.content),
+                  })),
+                  { role: 'user' as const, content: wrappedPrompt },
+                ],
+              }
+            : {
+                // Single-shot mode
+                prompt: wrappedPrompt,
+              }),
+        });
+
+        return res.json({ summary: result.text });
       } catch (err) {
         if (err instanceof APICallError) {
           throw new Api500Error(

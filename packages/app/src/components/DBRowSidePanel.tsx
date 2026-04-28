@@ -329,6 +329,10 @@ const DBRowSidePanel = ({
           rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
+          traceId={traceId}
+          traceSourceId={traceSourceId}
+          dateRange={oneHourRange}
+          focusDate={focusDate}
         />
       </Box>
       {/* <SidePanelHeader

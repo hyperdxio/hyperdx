@@ -20,6 +20,7 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^ky-universal$': '<rootDir>/src/__mocks__/ky-universal.ts',
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
+    '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.tsx',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
 };

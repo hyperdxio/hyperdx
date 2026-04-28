@@ -17,3 +17,47 @@ export function useChartAssistant() {
       }).json<AILineTableResponse>(),
   });
 }
+
+// Kinds supported by POST /ai/summarize. Add new subjects here AND register a
+// matching prompt in the API (packages/api/src/routers/api/ai.ts).
+export type SummarizeKind = 'event' | 'pattern' | 'alert';
+
+export type AISummarizeTone =
+  | 'default'
+  | 'noir'
+  | 'attenborough'
+  | 'shakespeare';
+
+// Optional conversation history for future follow-up-question flows.
+// Not wired to any UI today, but the shape is fixed so the server API does
+// not need to change when we add it.
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+type SummarizeInput = {
+  kind: SummarizeKind;
+  content: string;
+  tone?: AISummarizeTone;
+  messages?: ConversationMessage[];
+};
+
+type SummarizeResponse = {
+  summary: string;
+};
+
+export function useAISummarize() {
+  return useMutation<SummarizeResponse, Error, SummarizeInput>({
+    mutationFn: async ({ kind, content, tone, messages }: SummarizeInput) =>
+      hdxServer('ai/summarize', {
+        method: 'POST',
+        json: {
+          kind,
+          content,
+          ...(tone && tone !== 'default' && { tone }),
+          ...(messages && messages.length > 0 && { messages }),
+        },
+      }).json<SummarizeResponse>(),
+  });
+}

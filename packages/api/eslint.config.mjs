@@ -19,6 +19,7 @@ export default [
       'src/coverage/**',
       'migrations/**',
       'migrate-mongo-config.ts',
+      'scripts/**',
       '**/*.config.js',
       '**/*.config.mjs',
       'jest.config.js',

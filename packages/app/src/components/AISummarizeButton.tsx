@@ -1,79 +1,59 @@
-// Easter egg: April Fools 2026 — see aiSummarize/ for details.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo } from 'react';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
-  dismissEasterEgg,
+  EVENT_SUBJECT,
+  EventSubjectInput,
   generateSummary,
-  isEasterEggVisible,
   RowData,
-  Theme,
+  useAISummarizeState,
 } from './aiSummarize';
+
+// Re-exported for tests that still import this symbol
+export { formatEventContent } from './aiSummarize/eventSubject';
 
 export default function AISummarizeButton({
   rowData,
   severityText,
+  traceId,
+  traceSourceId,
+  dateRange,
+  focusDate,
 }: {
   rowData?: RowData;
   severityText?: string;
+  traceId?: string;
+  traceSourceId?: string | null;
+  dateRange?: [Date, Date];
+  focusDate?: Date;
 }) {
-  const [result, setResult] = useState<{
-    text: string;
-    theme: Theme;
-  } | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const input = useMemo<EventSubjectInput>(
+    () => ({ rowData: rowData ?? {}, severityText }),
+    [rowData, severityText],
+  );
 
-  // Clean up pending timer on unmount.
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+  const state = useAISummarizeState<EventSubjectInput>({
+    subject: EVENT_SUBJECT,
+    input,
+    easterEggFallback: () => generateSummary(rowData ?? {}, severityText),
+    traceContext: { traceId, traceSourceId, dateRange, focusDate },
+  });
 
-  const handleClick = useCallback(() => {
-    if (result) {
-      setIsOpen(prev => !prev);
-      return;
-    }
-    setIsGenerating(true);
-    setIsOpen(true);
-    timerRef.current = setTimeout(() => {
-      setResult(generateSummary(rowData ?? {}, severityText));
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1800);
-  }, [rowData, severityText, result]);
-
-  const handleRegenerate = useCallback(() => {
-    setIsGenerating(true);
-    timerRef.current = setTimeout(() => {
-      setResult(generateSummary(rowData ?? {}, severityText));
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1200);
-  }, [rowData, severityText]);
-
-  const handleDismiss = useCallback(() => {
-    dismissEasterEgg();
-    setIsOpen(false);
-    // Let Collapse animate closed before unmounting.
-    setTimeout(() => setDismissed(true), 300);
-  }, []);
-
-  if (dismissed || !isEasterEggVisible()) return null;
+  if (!state.visible) return null;
 
   return (
     <AISummaryPanel
-      isOpen={isOpen}
-      isGenerating={isGenerating}
-      result={result}
-      onToggle={handleClick}
-      onRegenerate={handleRegenerate}
-      onDismiss={handleDismiss}
-      analyzingLabel="Analyzing event data..."
+      isOpen={state.isOpen}
+      isGenerating={state.isGenerating}
+      result={state.result}
+      onToggle={state.onToggle}
+      onRegenerate={state.onRegenerate}
+      onDismiss={state.onDismiss}
+      analyzingLabel={EVENT_SUBJECT.analyzingLabel}
+      isRealAI={state.isRealAI}
+      error={state.error}
+      tone={state.tone}
+      onToneChange={state.onToneChange}
     />
   );
 }

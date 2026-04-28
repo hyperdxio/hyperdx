@@ -13,6 +13,43 @@ import { renderMs } from '../TimelineChart/utils';
 const ALWAYS_ON_END = new Date('2026-04-07T00:00:00').getTime();
 const HARD_OFF = new Date('2026-05-01T00:00:00').getTime();
 const DISMISS_KEY = 'hdx-ai-summarize-dismissed';
+const TONE_KEY = 'hdx-ai-summarize-tone';
+
+export type AISummarizeTone =
+  | 'default'
+  | 'noir'
+  | 'attenborough'
+  | 'shakespeare';
+
+export const TONE_OPTIONS: { value: AISummarizeTone; label: string }[] = [
+  { value: 'default', label: 'Default' },
+  { value: 'noir', label: 'Detective Noir' },
+  { value: 'attenborough', label: 'Nature Documentary' },
+  { value: 'shakespeare', label: 'Shakespearean Drama' },
+];
+
+export function isSmartMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('smart') === 'true';
+}
+
+export function getSavedTone(): AISummarizeTone {
+  try {
+    const v = window.localStorage.getItem(TONE_KEY);
+    if (v && TONE_OPTIONS.some(o => o.value === v)) return v as AISummarizeTone;
+  } catch {
+    // ignore
+  }
+  return 'default';
+}
+
+export function saveTone(tone: AISummarizeTone): void {
+  try {
+    window.localStorage.setItem(TONE_KEY, tone);
+  } catch {
+    // ignore
+  }
+}
 
 // eslint-disable-next-line no-restricted-syntax -- one-time module-level check
 const NOW_MS = new Date().getTime();

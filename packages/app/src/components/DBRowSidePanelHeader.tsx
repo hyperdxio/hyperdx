@@ -134,6 +134,10 @@ export default function DBRowSidePanelHeader({
   rowData,
   breadcrumbPath,
   onBreadcrumbClick,
+  traceId,
+  traceSourceId,
+  dateRange,
+  focusDate,
 }: {
   date: Date;
   mainContent?: string;
@@ -143,6 +147,10 @@ export default function DBRowSidePanelHeader({
   rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  traceId?: string;
+  traceSourceId?: string | null;
+  dateRange?: [Date, Date];
+  focusDate?: Date;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { generateSearchUrl } = useContext(RowSidePanelContext);
@@ -281,7 +289,14 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
-      <AISummarizeButton rowData={rowData} severityText={severityText} />
+      <AISummarizeButton
+        rowData={rowData}
+        severityText={severityText}
+        traceId={traceId}
+        traceSourceId={traceSourceId}
+        dateRange={dateRange}
+        focusDate={focusDate}
+      />
       <Box mt="xs">
         <DBHighlightedAttributesList attributes={attributesWithDefault} />
       </Box>

@@ -1,5 +1,4 @@
-// Easter egg: April Fools 2026 — see aiSummarize/ for details.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo } from 'react';
 
 import {
   Pattern,
@@ -9,17 +8,16 @@ import {
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
 import {
-  dismissEasterEgg,
   generatePatternSummary,
-  isEasterEggVisible,
+  PATTERN_SUBJECT,
+  PatternSubjectInput,
   RowData,
-  Theme,
+  useAISummarizeState,
 } from './aiSummarize';
 
-/**
- * Build a synthetic RowData from the first sample event so the summary
- * generators can extract OTel facts (service, severity, body, etc.).
- */
+// Re-exported for tests that still import this symbol
+export { formatPatternContent } from './aiSummarize/patternSubject';
+
 function buildRowDataFromSample(
   pattern: Pattern,
   serviceNameExpression: string,
@@ -31,7 +29,6 @@ function buildRowDataFromSample(
       __hdx_body: sample[PATTERN_COLUMN_ALIAS],
       ServiceName: sample[serviceNameExpression],
       __hdx_severity_text: sample[SEVERITY_TEXT_COLUMN_ALIAS],
-      // Pass through any other fields the sample may have (attributes, etc.)
       ...sample,
     },
     severityText: sample[SEVERITY_TEXT_COLUMN_ALIAS],
@@ -45,96 +42,43 @@ export default function AISummarizePatternButton({
   pattern: Pattern;
   serviceNameExpression: string;
 }) {
-  const [result, setResult] = useState<{
-    text: string;
-    theme: Theme;
-  } | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const input = useMemo<PatternSubjectInput>(
+    () => ({ pattern, serviceNameExpression }),
+    [pattern, serviceNameExpression],
+  );
 
-  // Clean up pending timer on unmount.
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  // Reset when pattern changes.
-  useEffect(() => {
-    setResult(null);
-    setIsOpen(false);
-    setIsGenerating(false);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, [pattern]);
-
-  const handleClick = useCallback(() => {
-    if (result) {
-      setIsOpen(prev => !prev);
-      return;
-    }
-    setIsGenerating(true);
-    setIsOpen(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
-    timerRef.current = setTimeout(() => {
-      setResult(
-        generatePatternSummary(
-          pattern.pattern,
-          pattern.count,
-          rowData,
-          severityText,
-        ),
+  const state = useAISummarizeState<PatternSubjectInput>({
+    subject: PATTERN_SUBJECT,
+    input,
+    easterEggFallback: () => {
+      const { rowData, severityText } = buildRowDataFromSample(
+        pattern,
+        serviceNameExpression,
       );
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1800);
-  }, [pattern, serviceNameExpression, result]);
-
-  const handleRegenerate = useCallback(() => {
-    setIsGenerating(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
-    timerRef.current = setTimeout(() => {
-      setResult(
-        generatePatternSummary(
-          pattern.pattern,
-          pattern.count,
-          rowData,
-          severityText,
-        ),
+      return generatePatternSummary(
+        pattern.pattern,
+        pattern.count,
+        rowData,
+        severityText,
       );
-      setIsGenerating(false);
-      timerRef.current = null;
-    }, 1200);
-  }, [pattern, serviceNameExpression]);
+    },
+  });
 
-  const handleDismiss = useCallback(() => {
-    dismissEasterEgg();
-    setIsOpen(false);
-    // Let Collapse animate closed before unmounting.
-    setTimeout(() => setDismissed(true), 300);
-  }, []);
-
-  if (dismissed || !isEasterEggVisible()) return null;
+  if (!state.visible) return null;
 
   return (
     <AISummaryPanel
-      isOpen={isOpen}
-      isGenerating={isGenerating}
-      result={result}
-      onToggle={handleClick}
-      onRegenerate={handleRegenerate}
-      onDismiss={handleDismiss}
-      analyzingLabel="Analyzing pattern data..."
+      isOpen={state.isOpen}
+      isGenerating={state.isGenerating}
+      result={state.result}
+      onToggle={state.onToggle}
+      onRegenerate={state.onRegenerate}
+      onDismiss={state.onDismiss}
+      analyzingLabel={PATTERN_SUBJECT.analyzingLabel}
+      isRealAI={state.isRealAI}
+      error={state.error}
+      tone={state.tone}
+      onToneChange={state.onToneChange}
     />
   );
 }
