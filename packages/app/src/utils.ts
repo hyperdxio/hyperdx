@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
+import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   NumericUnit,
@@ -1101,3 +1102,8 @@ export const isElementClickable = (el: HTMLElement): boolean => {
   // or if the element at point is a descendant of the element passed in
   return el === elementAtPoint || el.contains(elementAtPoint);
 };
+
+export function parseTimestampToMs(isoString: string): number {
+  const ts = TimestampNano.fromString(isoString);
+  return ts.toDate().getTime() + (ts.getNano() % 1_000_000) / 1_000_000;
+}
