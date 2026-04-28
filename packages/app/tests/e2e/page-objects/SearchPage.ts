@@ -317,6 +317,13 @@ export class SearchPage {
     return this.sqlTab;
   }
 
+  /**
+   * Get the SQL mode editor container
+   */
+  get sqlEditor() {
+    return this.page.getByTestId('search-input-sql');
+  }
+
   get sourceDropdown() {
     return this.sourceSelector;
   }

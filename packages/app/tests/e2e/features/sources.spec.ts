@@ -102,13 +102,44 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await searchPage.goto();
   });
 
-  test('should show source actions in dropdown', async () => {
-    // Open source selector dropdown
+  test('should list available sources in the dropdown', async () => {
     await searchPage.sourceDropdown.click();
 
-    // Verify action items are visible in the dropdown
+    await expect(
+      searchPage.sourceOptions.filter({
+        hasText: DEFAULT_LOGS_SOURCE_NAME,
+      }),
+    ).toBeVisible();
+    await expect(
+      searchPage.sourceOptions.filter({
+        hasText: DEFAULT_TRACES_SOURCE_NAME,
+      }),
+    ).toBeVisible();
+  });
+
+  test('should show source actions in dropdown', async () => {
+    await searchPage.sourceDropdown.click();
+
     await expect(searchPage.createNewSourceItem).toBeVisible();
     await expect(searchPage.editSourcesItem).toBeVisible();
+  });
+
+  test('should switch between different source types and see results', async () => {
+    // Logs source is selected by default after goto(), verify rows exist
+    await expect(searchPage.table.getRows().first()).toBeVisible();
+
+    // Switch to traces source
+    await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+    await searchPage.table.waitForRowsToPopulate();
+
+    // Verify traces table also has rows
+    await expect(searchPage.table.getRows().first()).toBeVisible();
+  });
+
+  test('should navigate to team page when editing sources', async () => {
+    await searchPage.openEditSourceModal();
+
+    await expect(searchPage.page).toHaveURL(/\/team/, { timeout: 10000 });
   });
 
   test(

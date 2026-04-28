@@ -40,7 +40,7 @@ export class SidePanelComponent {
    * Usage in spec: await expect(sidePanel.getTab('overview')).toBeVisible()
    */
   getTab(tabName: string) {
-    return this.page.getByTestId(`tab-${tabName}`);
+    return this.tabsContainer.getByTestId(`tab-${tabName}`);
   }
 
   /**
@@ -69,6 +69,14 @@ export class SidePanelComponent {
     await this.page
       .getByTestId('side-panel-close')
       .click({ timeout: this.defaultTimeout });
+  }
+
+  /**
+   * Get a tab panel (content area) by name
+   * Usage: await expect(sidePanel.getTabPanel('overview')).toBeVisible()
+   */
+  getTabPanel(tabName: string) {
+    return this.page.getByTestId(`side-panel-tab-${tabName}`);
   }
 
   /**
