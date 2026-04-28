@@ -1,4 +1,11 @@
-import type { OnClick, OnClickDashboard, OnClickSearch } from '../types';
+import { FilterState, filtersToQuery } from '../filters';
+import type {
+  Filter,
+  OnClick,
+  OnClickDashboard,
+  OnClickFilterTemplate,
+  OnClickSearch,
+} from '../types';
 import {
   LinkTemplateError,
   MissingTemplateVariableError,
@@ -28,6 +35,37 @@ function renderOrError(
       error: message,
     };
   }
+}
+
+/**
+ * Render the filter entries into `{expression} IN (v1, v2, ...)` SQL
+ * conditions. Entries that share the same `filter` expression are merged
+ * into a single IN clause so the destination sees all requested values.
+ * Expressions appear in the URL in order of first occurrence; values within
+ * a group retain their input order.
+ */
+function renderFilterTemplates(
+  templates: OnClickFilterTemplate[] | undefined,
+  row: Record<string, unknown>,
+): { ok: true; filters: Filter[] } | { ok: false; error: string } {
+  if (!templates || templates.length === 0) return { ok: true, filters: [] };
+
+  const state: FilterState = {};
+  for (const template of templates) {
+    const rendered = renderOrError(template.template, row);
+    if (!rendered.ok) return rendered;
+
+    if (state[template.expression]) {
+      state[template.expression].included.add(rendered.value);
+    } else {
+      state[template.expression] = {
+        included: new Set([rendered.value]),
+        excluded: new Set(),
+      };
+    }
+  }
+
+  return { ok: true, filters: filtersToQuery(state) };
 }
 
 /**
@@ -100,6 +138,14 @@ export function renderOnClickSearch({
     from: String(dateRange[0].getTime()),
     to: String(dateRange[1].getTime()),
   });
+
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set('filters', JSON.stringify(filterRenderResult.filters));
+  }
+
   return { ok: true, url: `/search?${params.toString()}` };
 }
 
@@ -176,6 +222,13 @@ export function renderOnClickDashboard({
     to: String(dateRange[1].getTime()),
   });
 
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set('filters', JSON.stringify(filterRenderResult.filters));
+  }
+
   return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
 }
 
@@ -184,6 +237,15 @@ export function validateOnClickTemplate(onClick: OnClick) {
   if (onClick.target.mode === 'template') {
     validateTemplate(onClick.target.template);
   }
+
+  if (onClick.filters) {
+    for (const filter of onClick.filters) {
+      if (filter.kind === 'expressionTemplate') {
+        validateTemplate(filter.template);
+      }
+    }
+  }
+
   if (onClick.whereTemplate) {
     validateTemplate(onClick.whereTemplate);
   }

@@ -1,9 +1,9 @@
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, MultiSelect } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
 
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
-import { FilterState } from './searchFilters';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;

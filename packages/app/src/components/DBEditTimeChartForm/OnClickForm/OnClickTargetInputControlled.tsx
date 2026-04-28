@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Controller } from 'react-hook-form';
+import { OnClickTarget } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { TextInputControlled } from '@/components/InputControlled';
@@ -13,10 +14,12 @@ export function OnClickTargetInputControlled({
   control,
   options,
   objectType,
+  onTargetChange,
 }: {
   control: DrawerControl;
   options: { label: string; value: string }[] | undefined;
   objectType: 'source' | 'dashboard';
+  onTargetChange?: (target: OnClickTarget) => void;
 }) {
   const optionsWithTemplate = useMemo(() => {
     return [
@@ -76,11 +79,12 @@ export function OnClickTargetInputControlled({
                   : undefined
               }
               onChange={value => {
-                if (value === TEMPLATE_SELECT_VALUE) {
-                  field.onChange({ mode: 'template', template: '' });
-                } else {
-                  field.onChange({ mode: 'id', id: value ?? '' });
-                }
+                const newTarget: OnClickTarget =
+                  value === TEMPLATE_SELECT_VALUE
+                    ? { mode: 'template', template: '' }
+                    : { mode: 'id', id: value ?? '' };
+                field.onChange(newTarget);
+                onTargetChange?.(newTarget);
               }}
             />
             {field.value?.mode === 'template' && (
