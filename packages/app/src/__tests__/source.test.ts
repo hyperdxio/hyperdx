@@ -1,3 +1,5 @@
+import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SourceKind,
   TLogSource,
@@ -9,6 +11,7 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  inferTableSourceConfig,
   useSources,
 } from '../source';
 
@@ -256,5 +259,88 @@ describe('useSources validation notifications', () => {
         autoClose: false,
       }),
     );
+  });
+});
+
+describe('inferTableSourceConfig', () => {
+  const col = (name: string, type = 'String'): ColumnMeta => ({
+    name,
+    type,
+    codec_expression: '',
+    comment: '',
+    default_expression: '',
+    default_type: '',
+    ttl_expression: '',
+  });
+
+  const OTEL_LOG_COLUMNS = [
+    col('Timestamp', "DateTime64(9, 'UTC')"),
+    col('TimestampTime', 'DateTime'),
+    col('Body'),
+    col('SeverityText'),
+    col('TraceId'),
+    col('SpanId'),
+    col('ServiceName'),
+    col('LogAttributes', 'Map(String, String)'),
+    col('ResourceAttributes', 'Map(String, String)'),
+  ];
+
+  const baseArgs = {
+    databaseName: 'default',
+    tableName: 'otel_logs',
+    connectionId: 'test-conn',
+  };
+
+  function mockMetadata(columns: ColumnMeta[]): Metadata {
+    return {
+      getColumns: jest.fn().mockResolvedValue(columns),
+      getTableMetadata: jest.fn().mockResolvedValue({
+        primary_key: 'ServiceName, TimestampTime',
+      }),
+    } as unknown as Metadata;
+  }
+
+  it('should set uniqueRowIdExpression when __hdx_id column exists on otel log table', async () => {
+    const columns = [...OTEL_LOG_COLUMNS, col('__hdx_id', 'UInt16')];
+    const result = await inferTableSourceConfig({
+      ...baseArgs,
+      kind: SourceKind.Log,
+      metadata: mockMetadata(columns),
+    });
+    expect(result).toHaveProperty('uniqueRowIdExpression', '__hdx_id');
+  });
+
+  it('should not set uniqueRowIdExpression when __hdx_id column is missing', async () => {
+    const result = await inferTableSourceConfig({
+      ...baseArgs,
+      kind: SourceKind.Log,
+      metadata: mockMetadata(OTEL_LOG_COLUMNS),
+    });
+    expect(result).not.toHaveProperty('uniqueRowIdExpression');
+  });
+
+  it('should not set uniqueRowIdExpression for trace sources even if __hdx_id exists', async () => {
+    const OTEL_TRACE_COLUMNS = [
+      col('Timestamp', "DateTime64(9, 'UTC')"),
+      col('SpanName'),
+      col('Duration', 'UInt64'),
+      col('SpanKind'),
+      col('TraceId'),
+      col('SpanId'),
+      col('ParentSpanId'),
+      col('ServiceName'),
+      col('SpanAttributes', 'Map(String, String)'),
+      col('ResourceAttributes', 'Map(String, String)'),
+      col('StatusCode'),
+      col('StatusMessage'),
+      col('__hdx_id', 'UInt16'),
+    ];
+    const result = await inferTableSourceConfig({
+      ...baseArgs,
+      tableName: 'otel_traces',
+      kind: SourceKind.Trace,
+      metadata: mockMetadata(OTEL_TRACE_COLUMNS),
+    });
+    expect(result).not.toHaveProperty('uniqueRowIdExpression');
   });
 });

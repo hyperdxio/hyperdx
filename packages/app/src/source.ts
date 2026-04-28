@@ -348,6 +348,12 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
+  // Column name used to disambiguate log rows with identical visible column values.
+  // This is a MATERIALIZED column (random UInt16) added to otel_logs to ensure
+  // the WHERE clause generated for row detail queries uniquely identifies a row.
+  const HDX_ID_COLUMN = '__hdx_id';
+  const hasHdxIdColumn = columns.some(c => c.name === HDX_ID_COLUMN);
+
   return {
     ...baseConfig,
     ...(isOtelLogSchema
@@ -365,6 +371,7 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...(hasHdxIdColumn ? { uniqueRowIdExpression: HDX_ID_COLUMN } : {}),
         }
       : {}),
     ...(isOtelSpanSchema
