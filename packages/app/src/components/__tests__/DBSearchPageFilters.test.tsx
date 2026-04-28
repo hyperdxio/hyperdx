@@ -1,5 +1,5 @@
-import { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { UseQueryResult } from '@tanstack/react-query';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useGetValuesDistribution } from '@/hooks/useMetadata';
@@ -389,8 +389,10 @@ describe('FilterGroup', () => {
     onClearClick: jest.fn(),
     onOnlyClick: jest.fn(),
     onExcludeClick: jest.fn(),
-    onPinClick: jest.fn(),
-    isPinned: jest.fn(),
+    valuePins: {
+      onPinClick: jest.fn(),
+      isPinned: jest.fn().mockReturnValue(false),
+    },
     onLoadMore: jest.fn(),
     loadMoreLoading: false,
     hasLoadedMore: false,

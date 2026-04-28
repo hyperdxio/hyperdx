@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`renderChartConfig Aggregate Merge Functions should generate SQL for an aggregate merge function 1`] = `"SELECT avgMerge(Duration),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;
 
@@ -57,10 +57,10 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
         SELECT
             \`__hdx_time_bucket\`,
             group,
-            sum(delta) AS \\"Value\\"
+            sum(delta) AS "Value"
         FROM source
         GROUP BY group, \`__hdx_time_bucket\`
-    ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) SELECT \`__hdx_time_bucket\`, group, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries count should generate a count query without grouping but time bucketing 1`] = `
@@ -88,10 +88,10 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
         SELECT
             \`__hdx_time_bucket\`,
             
-            sum(delta) AS \\"Value\\"
+            sum(delta) AS "Value"
         FROM source
         GROUP BY \`__hdx_time_bucket\`
-    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries count should generate a count query without grouping or time bucketing 1`] = `
@@ -119,10 +119,10 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
         SELECT
             \`__hdx_time_bucket\`,
             
-            sum(delta) AS \\"Value\\"
+            sum(delta) AS "Value"
         FROM source
         GROUP BY \`__hdx_time_bucket\`
-    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries quantile should generate a query with grouping and time bucketing 1`] = `
@@ -203,10 +203,10 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS \\"Value\\"
+            END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, group, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries quantile should generate a query without grouping but time bucketing 1`] = `
@@ -287,10 +287,10 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS \\"Value\\"
+            END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries quantile should generate a query without grouping or time bucketing 1`] = `
@@ -371,10 +371,10 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS \\"Value\\"
+            END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig k8s semantic convention migrations should generate SQL with metricNameSql for container.cpu.utilization histogram metric 1`] = `
@@ -455,10 +455,10 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS \\"Value\\"
+            END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig k8s semantic convention migrations should generate SQL with metricNameSql for histogram metric with groupBy 1`] = `
@@ -539,10 +539,10 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS \\"Value\\"
+            END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, group, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig k8s semantic convention migrations should generate SQL with metricNameSql for k8s.node.cpu.utilization sum metric 1`] = `
@@ -588,7 +588,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
             ORDER BY AttributesHash, \`__hdx_time_bucket2\`
           ) SELECT max(
       toFloat64OrDefault(toString(Rate))
-    ) AS \\"Value\\",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) AS "Value",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig k8s semantic convention migrations should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric 1`] = `
@@ -660,9 +660,9 @@ exports[`renderChartConfig k8s semantic convention migrations should handle metr
 exports[`renderChartConfig sample-weighted aggregations should handle complex sampleWeightExpression like SpanAttributes map access 1`] = `"SELECT sum(greatest(toUInt64OrZero(toString(SpanAttributes['SampleRate'])), 1)) FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1739318400000) AND Timestamp <= fromUnixTimestamp64Milli(1739491200000)) SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;
 
 exports[`renderChartConfig sample-weighted aggregations should handle mixed weighted and passthrough aggregations 1`] = `
-"SELECT sum(greatest(toUInt64OrZero(toString(SampleRate)), 1)) AS \\"weighted_count\\",sumIf(toFloat64OrDefault(toString(Duration)) * greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL) / nullIf(sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL), 0) AS \\"weighted_avg\\",min(
+"SELECT sum(greatest(toUInt64OrZero(toString(SampleRate)), 1)) AS "weighted_count",sumIf(toFloat64OrDefault(toString(Duration)) * greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL) / nullIf(sumIf(greatest(toUInt64OrZero(toString(SampleRate)), 1), toFloat64OrDefault(toString(Duration)) IS NOT NULL), 0) AS "weighted_avg",min(
           toFloat64OrDefault(toString(Duration))
-        ) AS \\"min_duration\\",count(DISTINCT TraceId) AS \\"unique_traces\\" FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1739318400000) AND Timestamp <= fromUnixTimestamp64Milli(1739491200000)) SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+        ) AS "min_duration",count(DISTINCT TraceId) AS "unique_traces" FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1739318400000) AND Timestamp <= fromUnixTimestamp64Milli(1739491200000)) SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig sample-weighted aggregations should leave count_distinct unchanged with sampleWeightExpression 1`] = `"SELECT count(DISTINCT TraceId) FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1739318400000) AND Timestamp <= fromUnixTimestamp64Milli(1739491200000)) SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;
@@ -798,7 +798,7 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
             ORDER BY AttributesHash, \`__hdx_time_bucket2\`
           ) SELECT avg(
       toFloat64OrDefault(toString(Rate))
-    ) AS \\"Value\\",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) AS "Value",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig should not generate invalid SQL when primary key wraps toStartOfInterval 1`] = `"SELECT timestamp, cluster_id, service_id FROM default.http_request_logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000)) LIMIT 200 OFFSET 0 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;

@@ -144,7 +144,6 @@ export function getMetricOptions(
 }
 
 export function MetricNameSelect({
-  dateRange,
   metricType,
   metricName,
   setMetricType,
@@ -156,7 +155,6 @@ export function MetricNameSelect({
   onFocus,
   'data-testid': dataTestId,
 }: {
-  dateRange?: DateRange['dateRange'];
   metricType: MetricsDataType;
   metricName: string | undefined | null;
   setMetricType: (metricType: MetricsDataType) => void;

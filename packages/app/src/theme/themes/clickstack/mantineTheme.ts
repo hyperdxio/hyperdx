@@ -285,7 +285,7 @@ const makeTheme = ({
       },
     }),
     SegmentedControl: SegmentedControl.extend({
-      styles: (_theme, props) => ({
+      styles: () => ({
         root: {
           background: 'var(--color-bg-field)',
         },

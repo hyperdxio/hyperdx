@@ -27,6 +27,8 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertErrorType,
+  AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -42,7 +44,7 @@ import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
-import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -136,18 +138,73 @@ export async function computeAliasWithClauses(
   return aliasMapToWithClauses(aliasMap);
 }
 
+export class InvalidAlertError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAlertError';
+  }
+}
+
+// For security, we do not surface raw error messages for webhook or unknown
+// failures — they may leak URLs, response bodies, or other sensitive detail
+// from upstream systems. QUERY_ERROR and INVALID_ALERT messages are authored
+// by us (ClickHouse errors or our own validation) and are safe to display.
+const HARDCODED_ALERT_ERROR_MESSAGES: Partial<Record<AlertErrorType, string>> =
+  {
+    [AlertErrorType.WEBHOOK_ERROR]:
+      'Failed to send webhook notification. Check the webhook configuration and destination.',
+    [AlertErrorType.UNKNOWN]:
+      'An unknown error occurred while processing the alert.',
+  };
+
+const makeAlertError = (
+  type: AlertErrorType,
+  message: string,
+): IAlertError => ({
+  timestamp: new Date(),
+  type,
+  message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
+});
+
+const getErrorMessage = (e: unknown): string => {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  return String(e);
+};
+
 export const doesExceedThreshold = (
-  thresholdType: AlertThresholdType,
-  threshold: number,
+  {
+    threshold,
+    thresholdType,
+    thresholdMax,
+  }: Pick<IAlert, 'thresholdType' | 'threshold' | 'thresholdMax'>,
   value: number,
 ) => {
-  const isThresholdTypeAbove = thresholdType === AlertThresholdType.ABOVE;
-  if (isThresholdTypeAbove && value >= threshold) {
-    return true;
-  } else if (!isThresholdTypeAbove && value < threshold) {
-    return true;
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return value >= threshold;
+    case AlertThresholdType.BELOW:
+      return value < threshold;
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return value > threshold;
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return value <= threshold;
+    case AlertThresholdType.EQUAL:
+      return value === threshold;
+    case AlertThresholdType.NOT_EQUAL:
+      return value !== threshold;
+    case AlertThresholdType.BETWEEN:
+    case AlertThresholdType.NOT_BETWEEN:
+      if (thresholdMax == null) {
+        throw new InvalidAlertError(
+          `thresholdMax is required for threshold type "${thresholdType}"`,
+        );
+      }
+      return thresholdType === AlertThresholdType.BETWEEN
+        ? value >= threshold && value <= thresholdMax
+        : value < threshold || value > thresholdMax;
   }
-  return false;
 };
 
 const normalizeScheduleOffsetMinutes = ({
@@ -310,6 +367,7 @@ const fireChannelEvent = async ({
       silenced: alert.silenced,
       source: alert.source,
       threshold: alert.threshold,
+      thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
     },
@@ -643,6 +701,9 @@ const parseAlertData = (
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
+      // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
+      // Parse them as integers to ensure correct threshold comparison.
+      // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
       value = isString(v) ? parseInt(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push(`${k}:${v}`);
@@ -662,6 +723,9 @@ export const processAlert = async (
 ) => {
   const { alert, previousMap } = details;
   const source = 'source' in details ? details.source : undefined;
+  // Errors collected during this execution. Webhook errors accumulate here; query
+  // and validation errors are recorded via recordAlertErrors before returning.
+  const executionErrors: IAlertError[] = [];
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -816,13 +880,29 @@ export const processAlert = async (
       ? { readonly: '2' }
       : {};
 
-    // Query for alert data
-    const checksData = await clickhouseClient.queryChartConfig({
-      config: optimizedChartConfig,
-      metadata,
-      opts: { clickhouse_settings: clickHouseSettings },
-      querySettings: source?.querySettings,
-    });
+    // Query for alert data. If the query fails, record the error and exit
+    // without touching alert state or creating an AlertHistory.
+    let checksData;
+    try {
+      checksData = await clickhouseClient.queryChartConfig({
+        config: optimizedChartConfig,
+        metadata,
+        opts: { clickhouse_settings: clickHouseSettings },
+        querySettings: source?.querySettings,
+      });
+    } catch (e) {
+      logger.error(
+        {
+          alertId: alert.id,
+          error: serializeError(e),
+        },
+        'Alert query failed, skipping state/history update',
+      );
+      await alertProvider.recordAlertErrors(alert.id, [
+        makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e)),
+      ]);
+      return;
+    }
 
     logger.info(
       {
@@ -901,6 +981,9 @@ export const processAlert = async (
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
         );
+        executionErrors.push(
+          makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(e)),
+        );
       }
     };
 
@@ -945,7 +1028,7 @@ export const processAlert = async (
           : 0;
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
-      if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
+      if (doesExceedThreshold(alert, value)) {
         history.state = AlertState.ALERT;
         history.counts += 1;
         await trySendNotification({
@@ -961,7 +1044,11 @@ export const processAlert = async (
       await sendNotificationIfResolved(previous, history, '');
 
       const historyRecords = Array.from(histories.values());
-      await alertProvider.updateAlertState(alert.id, historyRecords);
+      await alertProvider.updateAlertState(
+        alert.id,
+        historyRecords,
+        executionErrors,
+      );
       return;
     }
 
@@ -998,11 +1085,7 @@ export const processAlert = async (
           'No data returned from ClickHouse for time bucket',
         );
 
-        const zeroValueIsAlert = doesExceedThreshold(
-          alert.thresholdType,
-          alert.threshold,
-          0,
-        );
+        const zeroValueIsAlert = doesExceedThreshold(alert, 0);
 
         const hasAlertsInPreviousMap = previousMap
           .values()
@@ -1043,7 +1126,7 @@ export const processAlert = async (
         const groupKey = hasGroupBy ? extraFields.join(', ') : '';
         const history = getOrCreateHistory(groupKey);
 
-        if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
+        if (doesExceedThreshold(alert, value)) {
           history.state = AlertState.ALERT;
           await trySendNotification({
             state: AlertState.ALERT,
@@ -1071,7 +1154,7 @@ export const processAlert = async (
         if (
           previousHistory.state === AlertState.ALERT &&
           !histories.has(groupKey) &&
-          !doesExceedThreshold(alert.thresholdType, alert.threshold, 0)
+          !doesExceedThreshold(alert, 0)
         ) {
           logger.info(
             {
@@ -1100,7 +1183,11 @@ export const processAlert = async (
 
     // Save all history records and update alert state
     const historyRecords = Array.from(histories.values());
-    await alertProvider.updateAlertState(alert.id, historyRecords);
+    await alertProvider.updateAlertState(
+      alert.id,
+      historyRecords,
+      executionErrors,
+    );
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
@@ -1111,6 +1198,25 @@ export const processAlert = async (
       },
       'Failed to process alert',
     );
+    // Record error without touching state/history.
+    const message = getErrorMessage(e);
+    const type =
+      e instanceof InvalidAlertError
+        ? AlertErrorType.INVALID_ALERT
+        : AlertErrorType.UNKNOWN;
+    try {
+      await alertProvider.recordAlertErrors(alert.id, [
+        makeAlertError(type, message),
+      ]);
+    } catch (recordErr) {
+      logger.error(
+        {
+          alertId: alert.id,
+          error: serializeError(recordErr),
+        },
+        'Failed to persist alert execution error',
+      );
+    }
   }
 };
 

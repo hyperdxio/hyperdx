@@ -11,6 +11,10 @@ import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { Command } from 'commander';
 import chalk from 'chalk';
+import {
+  TemplateMiner,
+  TemplateMinerConfig,
+} from '@hyperdx/common-utils/dist/drain';
 
 import App from '@/App';
 import { ApiClient } from '@/api/client';
@@ -377,7 +381,7 @@ const program = new Command();
 program
   .name('hdx')
   .description('HyperDX CLI — search and tail events from the terminal')
-  .version('0.1.0')
+  .version(process.env.npm_package_version ?? '0.0.0')
   .enablePositionalOptions();
 
 // ---- Interactive mode (default) ------------------------------------
@@ -664,6 +668,66 @@ Examples:
     }
   });
 
+// ---- Connections ---------------------------------------------------
+
+program
+  .command('connections')
+  .description('List ClickHouse connections (id, name, host)')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+About:
+  Lists ClickHouse connections configured for the authenticated team.
+  Each connection is a named set of credentials that one or more
+  sources point at (via the 'connection' field on a source).
+
+  Use 'hdx sources --json' to see which connection each source uses.
+
+JSON output schema (--json):
+  Array of objects, each with:
+    id    - Connection ID (matches source.connection)
+    name  - Human-readable connection name
+    host  - ClickHouse host URL
+
+Examples:
+  $ hdx connections
+  $ hdx connections --json
+  $ hdx connections --json | jq '.[] | select(.name=="Default")'
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+
+    const connections = await client.getConnections();
+    if (connections.length === 0) {
+      if (opts.json) {
+        process.stdout.write('[]\n');
+      } else {
+        process.stdout.write('No connections found.\n');
+      }
+      return;
+    }
+
+    if (opts.json) {
+      const output = connections.map(c => ({
+        id: c.id,
+        name: c.name,
+        host: c.host,
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    // Human-readable: one line per connection
+    for (const c of connections) {
+      process.stdout.write(
+        `${chalk.bold.cyan(c.name)}  ${chalk.dim(c.host)}  ${chalk.dim(`[${c.id}]`)}\n`,
+      );
+    }
+  });
+
 // ---- Dashboards ----------------------------------------------------
 
 program
@@ -784,62 +848,177 @@ Examples:
 
 program
   .command('query')
-  .description('Run a raw SQL query against a ClickHouse source')
-  .requiredOption('--source <nameOrId>', 'Source name or ID')
+  .description(
+    'Run raw SQL against a ClickHouse connection (add --patterns to cluster result into Drain log patterns)',
+  )
+  .requiredOption(
+    '--connection-id <id>',
+    "Connection ID (from 'hdx connections --json')",
+  )
   .requiredOption('--sql <query>', 'SQL query to execute')
   .option('-a, --app-url <url>', 'HyperDX app URL')
-  .option('--format <format>', 'ClickHouse output format', 'JSON')
+  .option('--format <format>', 'ClickHouse output format', 'JSONEachRow')
+  .option(
+    '--patterns',
+    'Mine Drain log patterns from the query result instead of emitting rows',
+  )
+  .option(
+    '--body-column <name>',
+    'Column whose string value is clustered when --patterns is set (default: whole row JSON)',
+  )
   .addHelpText(
     'after',
     `
 About:
   Execute a raw ClickHouse SQL query through the HyperDX proxy, using
-  the connection credentials associated with a source. This is useful
-  for ad-hoc exploration, debugging, and agent-driven queries.
+  a configured ClickHouse connection. Designed for ad-hoc exploration,
+  debugging, and agent-driven queries.
 
-  The --source flag accepts either the source name (case-insensitive)
-  or the source ID (from 'hdx sources --json').
+  The --connection-id flag takes a connection ID. Use 'hdx connections
+  --json' to discover available connection IDs. Use 'hdx sources --json'
+  to see which connection each source uses (the 'connection' field).
 
   The query is sent as-is to ClickHouse — you are responsible for
-  writing valid SQL. Use 'hdx sources' to discover table names and
-  column schemas.
+  writing valid SQL. Output is written to stdout. Use --format to
+  control the ClickHouse response format (JSONEachRow, JSON,
+  TabSeparated, CSV, etc.). The default is JSONEachRow (one JSON
+  object per line) — streamable and easy to consume from agents and
+  shell pipelines (e.g. \`jq -c\`).
 
-  Output is written to stdout. Use --format to control the ClickHouse
-  response format (JSON, JSONEachRow, TabSeparated, CSV, etc.).
+Pattern mining (--patterns):
+  Cluster the result's text into log patterns using the Drain
+  algorithm, then emit one JSON object per pattern (sorted by count
+  desc). Useful for summarizing a large result set into a small
+  number of templated lines.
+
+  Drain runs in-process over whatever rows the SQL returns, so the
+  result quality depends on the rows you give it:
+
+    --body-column <name>
+      When set, only that column's string value is clustered. Useful
+      when you SELECT * but only want to mine over (e.g.) Body or
+      SpanName. If <name> isn't in the result, the command exits 1
+      and lists available columns on stderr.
+
+      When omitted, the whole row is JSON-serialized and clustered as
+      a single string. This works for any SELECT shape without column
+      guessing, but produces noisier templates than clustering a
+      single text column.
+
+  Sampling tip:
+    For very large tables, prefer sampling over a tight LIMIT to
+    avoid biasing toward a single time slice. Append \`ORDER BY rand()\`
+    to your SQL, e.g.:
+
+      --sql "SELECT Body FROM default.otel_logs
+             WHERE Timestamp > now() - INTERVAL 1 HOUR
+             ORDER BY rand() LIMIT 10000"
+
+    Be aware: \`ORDER BY rand()\` forces ClickHouse to scan and sort
+    all rows matched by the WHERE clause before applying LIMIT, which
+    can be expensive on large tables. Always pair it with a selective
+    WHERE (time range, service, severity, etc.) to bound the scan.
+
+  Output forces JSON internally regardless of --format. Each line is:
+    {"pattern":"<template>","count":<n>,"sample":"<first sample>"}
+
+Exit codes:
+  0  Success. Stdout contains the result (empty stdout means zero rows).
+  1  Failure. Stderr contains the error.
 
 Examples:
-  $ hdx query --source "Logs" --sql "SELECT count() FROM default.otel_logs"
-  $ hdx query --source "Traces" --sql "SELECT * FROM default.otel_traces LIMIT 5"
-  $ hdx query --source "Logs" --sql "SELECT Body FROM default.otel_logs LIMIT 3" --format JSONEachRow
+  $ CONN=$(hdx connections --json | jq -r '.[0].id')
+  $ hdx query --connection-id "$CONN" --sql "SELECT count() FROM default.otel_logs"
+  $ hdx query --connection-id "$CONN" --sql "SELECT * FROM default.otel_traces LIMIT 5"
+  $ hdx query --connection-id "$CONN" --patterns \\
+      --sql "SELECT Body FROM default.otel_logs LIMIT 10000" --body-column Body
 `,
   )
   .action(async opts => {
     const client = await ensureSession(opts.appUrl);
-
-    const sources = await client.getSources();
-    const source = sources.find(
-      s =>
-        s.name.toLowerCase() === opts.source.toLowerCase() ||
-        s.id === opts.source ||
-        s._id === opts.source,
-    );
-
-    if (!source) {
-      _origError(chalk.red(`Source "${opts.source}" not found.\n`));
-      _origError('Available sources:');
-      for (const s of sources) {
-        _origError(`  - ${s.name} (${s.kind}) [${s.id}]`);
-      }
-      process.exit(1);
-    }
-
     const chClient = client.createClickHouseClient();
 
     try {
+      if (opts.patterns) {
+        // Pattern mining forces JSON internally so we can iterate named rows.
+        if (
+          opts.format &&
+          opts.format !== 'JSON' &&
+          opts.format !== 'JSONEachRow'
+        ) {
+          _origError(
+            chalk.dim('--patterns: ignoring --format, using JSON internally\n'),
+          );
+        }
+        const resultSet = await chClient.query({
+          query: opts.sql,
+          format: 'JSON',
+          connectionId: opts.connectionId,
+        });
+        const json = (await resultSet.json()) as {
+          data?: Array<Record<string, unknown>>;
+        };
+        const rows = json.data ?? [];
+        if (rows.length === 0) {
+          return; // exit 0, empty stdout
+        }
+
+        // If --body-column was provided, validate it exists in the result.
+        if (opts.bodyColumn) {
+          const cols = Object.keys(rows[0]);
+          if (!cols.includes(opts.bodyColumn)) {
+            _origError(
+              chalk.red(
+                `--body-column '${opts.bodyColumn}' not found in result. ` +
+                  `Available columns: ${cols.join(', ')}\n`,
+              ),
+            );
+            process.exit(1);
+          }
+        }
+
+        const flatten = (s: string): string =>
+          s
+            .replace(/\n/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        const miner = new TemplateMiner(new TemplateMinerConfig());
+        const groups = new Map<number, { count: number; sample: string }>();
+        for (const row of rows) {
+          const raw = opts.bodyColumn
+            ? row[opts.bodyColumn]
+            : JSON.stringify(row);
+          const text = raw != null ? flatten(String(raw)) : '';
+          const { clusterId } = miner.addLogMessage(text);
+          const existing = groups.get(clusterId);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            groups.set(clusterId, { count: 1, sample: text });
+          }
+        }
+
+        const out: Array<{ pattern: string; count: number; sample: string }> =
+          [];
+        for (const [, g] of groups) {
+          const tpl =
+            miner.match(g.sample, 'fallback')?.getTemplate() ?? g.sample;
+          out.push({ pattern: tpl, count: g.count, sample: g.sample });
+        }
+        out.sort((a, b) => b.count - a.count);
+
+        for (const p of out) {
+          process.stdout.write(JSON.stringify(p) + '\n');
+        }
+        return;
+      }
+
+      // Default: raw SQL → stdout in the requested format.
       const resultSet = await chClient.query({
         query: opts.sql,
         format: opts.format,
-        connectionId: source.connection,
+        connectionId: opts.connectionId,
       });
       const text = await resultSet.text();
       process.stdout.write(text);
@@ -849,6 +1028,28 @@ Examples:
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // On error, check whether the connection ID was even valid —
+      // gives agents a clear signal of which class of failure occurred.
+      try {
+        const connections = await client.getConnections();
+        const known = connections.some(
+          c => c.id === opts.connectionId || c._id === opts.connectionId,
+        );
+        if (!known) {
+          _origError(
+            chalk.red(`Connection "${opts.connectionId}" not found.\n`),
+          );
+          _origError('Available connections:');
+          for (const c of connections) {
+            _origError(`  - ${c.name} [${c.id}]`);
+          }
+          process.exit(1);
+        }
+      } catch {
+        // Couldn't list connections — fall through to the generic error.
+      }
+
       _origError(chalk.red(`Query failed: ${msg}\n`));
       process.exit(1);
     }

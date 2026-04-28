@@ -14,18 +14,6 @@ import { SortingState } from '@tanstack/react-table';
 
 import { MetricsDataType, NumberFormat } from './types';
 
-export function omit<T extends object, K extends keyof T>(
-  obj: T,
-  paths: K[],
-): Omit<T, K> {
-  return {
-    ...paths.reduce(
-      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
-      obj as object,
-    ),
-  } as Omit<T, K>;
-}
-
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
   // Initialize state with undefined width/height so server and client renders match
@@ -60,7 +48,7 @@ export const isValidUrl = (input: string) => {
   try {
     new URL(input);
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 };
@@ -85,7 +73,7 @@ export const getShortUrl = (url: string) => {
     }
 
     return shortUrl;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -257,7 +245,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   return [storedValue, setValue] as const;
 }
 
-export function useQueryHistory<T>(type: string | undefined) {
+export function useQueryHistory(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
   const setQueryHistory = useCallback(
@@ -964,7 +952,7 @@ const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 

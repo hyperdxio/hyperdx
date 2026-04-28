@@ -3,7 +3,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -146,8 +145,7 @@ export default function DBRowSidePanelHeader({
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
-  const { onPropertyAddClick, generateSearchUrl } =
-    useContext(RowSidePanelContext);
+  const { generateSearchUrl } = useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
   const mainContentDisplayed = React.useMemo(

@@ -482,6 +482,10 @@ export abstract class BaseClickhouseClient {
     return this.client;
   }
 
+  async close(): Promise<void> {
+    await this.client?.close();
+  }
+
   protected logDebugQuery(
     query: string,
     query_params: Record<string, any> = {},
