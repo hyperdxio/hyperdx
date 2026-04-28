@@ -88,30 +88,22 @@ export type SearchChartConfigInput = {
 /**
  * Resolve the SELECT list, preferring caller-provided `select`, then the
  * caller's `defaultSelect`, then the source's `defaultTableSelectExpression`
- * (for Log / Trace sources).
+ * (for Log / Trace sources), falling back to an empty string.
  *
- * Treats an empty string as "no select" so we fall through to the defaults
- * — matches the app's historical behavior.
+ * Both `string` and `DerivedColumn[]` SELECT shapes have a `.length` property,
+ * so a single non-empty check covers "skip empty `''` strings and skip empty
+ * `[]` arrays" symmetrically — matching the app's historical behavior.
  */
 function resolveSelect(
   source: TSource,
   select: SelectList | null | undefined,
   defaultSelect: BuilderChartConfig['select'] | undefined,
 ): BuilderChartConfig['select'] {
-  if (select != null) {
-    if (typeof select === 'string') {
-      if (select.length > 0) return select;
-    } else if (select.length > 0) {
-      return select;
-    }
-  }
-  if (defaultSelect != null) {
-    if (typeof defaultSelect === 'string') {
-      if (defaultSelect.length > 0) return defaultSelect;
-    } else if (defaultSelect.length > 0) {
-      return defaultSelect;
-    }
-  }
+  const isNonEmpty = (v: SelectList | null | undefined): v is SelectList =>
+    v != null && v.length > 0;
+
+  if (isNonEmpty(select)) return select;
+  if (isNonEmpty(defaultSelect)) return defaultSelect;
   if (isLogSource(source) || isTraceSource(source)) {
     return source.defaultTableSelectExpression ?? '';
   }
