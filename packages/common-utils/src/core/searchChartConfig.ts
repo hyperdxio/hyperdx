@@ -132,6 +132,13 @@ export function buildSearchChartConfig(
   // Prepend the Log source's `tableFilterExpression` as a SQL filter when set,
   // so the alert query and the app search see the same row set.
   // Log sources are the only kind that carries `tableFilterExpression` today.
+  //
+  // NOTE: `tableFilterExpression` is deprecated. It's an application-side SQL
+  // predicate (not a ClickHouse row policy), so it can't enforce real tenant
+  // isolation — anyone with direct SELECT access to the table bypasses it.
+  // For hard isolation, configure a ClickHouse ROW POLICY at the DB level
+  // instead. Existing values are still honored here for backward
+  // compatibility; new sources should not set the field.
   const tableFilter: Filter[] =
     isLogSource(source) && source.tableFilterExpression != null
       ? [{ type: 'sql', condition: source.tableFilterExpression }]
