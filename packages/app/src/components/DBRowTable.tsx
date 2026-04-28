@@ -4,7 +4,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import cx from 'classnames';
@@ -335,15 +334,11 @@ export const RawLogTable = memo(
     isLoading,
     rows,
     generateRowId,
-    onInstructionsClick,
-    // onPropertySearchClick,
     onRowDetailsClick,
     onScroll,
     onSettingsClick,
-    onShowPatternsClick,
     wrapLines = false,
     columnNameMap,
-    showServiceColumn = true,
     dedupRows,
     isError,
     error,
@@ -367,24 +362,17 @@ export const RawLogTable = memo(
     wrapLines?: boolean;
     displayedColumns: string[];
     onSettingsClick?: () => void;
-    onInstructionsClick?: () => void;
     rows: Record<string, any>[];
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
     onRowDetailsClick: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => RowWhereResult;
-    // onPropertySearchClick: (
-    //   name: string,
-    //   value: string | number | boolean,
-    // ) => void;
     hasNextPage?: boolean;
     highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
     isLive?: boolean;
-    onShowPatternsClick?: () => void;
     tableId?: string;
     columnNameMap?: Record<string, string>;
-    showServiceColumn?: boolean;
     dedupRows?: boolean;
     columnTypeMap: Map<string, { _type: JSDataType | null }>;
 
@@ -1140,7 +1128,7 @@ export const RawLogTable = memo(
                               [styles.isWrapped]: wrapLinesEnabled,
                               [styles.isTruncated]: !wrapLinesEnabled,
                             })}
-                            onClick={e => {
+                            onClick={() => {
                               _onRowExpandClick(row.original);
                             }}
                             aria-label="View details for log entry"
