@@ -25,7 +25,11 @@ export function OnClickFormButton({
 
   const onClickValue = useWatch({ control, name: 'onClick' });
   const onClickTypeLabel =
-    onClickValue?.type === 'search' ? 'Search' : 'Default';
+    onClickValue?.type === 'search'
+      ? 'Search'
+      : onClickValue?.type === 'dashboard'
+        ? 'Dashboard'
+        : 'Default';
 
   // TODO: Remove once feature flag is permanently enabled
   if (!IS_DASHBOARD_LINKING_ENABLED) {

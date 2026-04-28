@@ -55,9 +55,6 @@ function SessionCard({
   numEvents,
   onClick,
   sessionId,
-  teamId,
-  teamName,
-  userName,
 }: {
   email: string;
   maxTime: Date;
@@ -66,9 +63,6 @@ function SessionCard({
   numEvents: number;
   onClick: () => void;
   sessionId: string;
-  teamId: string;
-  teamName: string;
-  userName: string;
 }) {
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
   const durationStr = new Date(maxTime.getTime() - minTime.getTime())
@@ -176,10 +170,7 @@ function SessionCardList({
               minTimestamp,
               sessionCount,
               sessionId,
-              teamId,
-              teamName,
               userEmail,
-              userName,
             } = row;
             return (
               <div
@@ -198,9 +189,6 @@ function SessionCardList({
                   <SessionCard
                     sessionId={sessionId}
                     email={userEmail}
-                    userName={userName}
-                    teamName={teamName}
-                    teamId={teamId}
                     numEvents={Number(sessionCount)}
                     numErrors={Number(errorCount)}
                     maxTime={new Date(maxTimestamp)}
@@ -300,33 +288,6 @@ export default function SessionsPage() {
     }
   }, [sourceId, appliedConfig.sessionSource, onSubmit]);
 
-  // FIXME: fix the url
-  const generateSearchUrl = useCallback(
-    (newQuery?: string, newTimeRange?: [Date, Date]) => {
-      const qparams = new URLSearchParams({
-        q: '',
-      });
-      return `/search?${qparams.toString()}`;
-    },
-    [],
-  );
-
-  // FIXME: fix the url
-  const generateChartUrl = useCallback(
-    ({ aggFn, field, where, groupBy }: any) => {
-      return `/chart?series=${encodeURIComponent(
-        JSON.stringify({
-          type: 'time',
-          aggFn,
-          field,
-          where,
-          groupBy,
-        }),
-      )}`;
-    },
-    [],
-  );
-
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
     {
       sid: withDefault(StringParam, undefined),
@@ -407,15 +368,6 @@ export default function SessionsPage() {
             onClose={() => {
               setSelectedSession(undefined);
             }}
-            generateSearchUrl={generateSearchUrl}
-            generateChartUrl={({ aggFn, field, groupBy }) =>
-              generateChartUrl({
-                aggFn,
-                field,
-                groupBy,
-                where: `rum_session_id:"${selectedSession.id}"`,
-              })
-            }
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}
             onLanguageChange={lang =>

@@ -61,7 +61,7 @@ function AIAssistant({
     'ai-assistant-alert-dismissed',
     false,
   );
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, handleSubmit } = useForm<{
     text: string;
     source: string;
   }>({

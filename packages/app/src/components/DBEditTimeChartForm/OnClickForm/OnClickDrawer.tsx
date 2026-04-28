@@ -1,75 +1,102 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Control, Controller, useForm, useWatch } from 'react-hook-form';
-import { z } from 'zod';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { validateOnClickSearch } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
-import { OnClick, OnClickSchema } from '@hyperdx/common-utils/dist/types';
+import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
+import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
   Divider,
   Drawer,
   Group,
-  InputLabel,
   SegmentedControl,
   Stack,
   Text,
-  Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconHelpCircle } from '@tabler/icons-react';
 
-import { TextInputControlled } from '@/components/InputControlled';
+import { InputLabelWithTooltip } from '@/components/InputLabelWithTooltip';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import { useDashboards } from '@/dashboard';
+import { useSources } from '@/source';
 
-import { emptySearchOnClick } from './utils';
-
-const DrawerSchema = z.object({ onClick: OnClickSchema.nullish() });
-
-type DrawerFormValues = z.infer<typeof DrawerSchema>;
-type DrawerControl = Control<DrawerFormValues>;
+import { OnClickTargetInputControlled } from './OnClickTargetInputControlled';
+import {
+  DrawerControl,
+  DrawerFormValues,
+  DrawerSchema,
+  emptyDashboardOnClick,
+  emptySearchOnClick,
+} from './utils';
 
 const TEMPLATE_HELP_TEXT = `Templates can reference column values from the clicked row using {{columnName}}.`;
 
-function InputLabelWithTooltip({
-  text,
-  tooltip,
-}: {
-  text: string;
-  tooltip: string;
-}) {
-  return (
-    <Group gap="xs" align="center" mb={4}>
-      <InputLabel mb={0}>{text}</InputLabel>
-      <Tooltip label={tooltip}>
-        <IconHelpCircle size={16} className="cursor-pointer" />
-      </Tooltip>
-    </Group>
-  );
-}
-
 function SearchOnClickFields({ control }: { control: DrawerControl }) {
+  const { data: sources } = useSources();
+
+  const sourceOptions = useMemo(() => {
+    return sources?.filter(isSearchableSource).map(source => ({
+      label: source.name,
+      value: source.id,
+    }));
+  }, [sources]);
+
   return (
     <Stack gap="xs">
       <Text size="xs" c="dimmed">
         {TEMPLATE_HELP_TEXT}
       </Text>
-      <TextInputControlled
-        name="onClick.target.template"
+
+      <OnClickTargetInputControlled
         control={control}
-        label={
-          <InputLabelWithTooltip
-            text="Source"
-            tooltip="Handlebars template that is matched by name against available Log and Trace sources"
-          />
-        }
-        placeholder="e.g. Logs or Logs-{{Environment}}"
-        data-testid="onclick-source-template-input"
+        options={sourceOptions}
+        objectType="source"
       />
+
       <Box>
         <InputLabelWithTooltip
-          text="WHERE"
+          label="WHERE"
           tooltip="Handlebars template that determines the WHERE condition passed to the search page"
+        />
+        <SearchWhereInput
+          control={control}
+          name="onClick.whereTemplate"
+          languageName="onClick.whereLanguage"
+          allowMultiline
+          showLabel={false}
+          sqlPlaceholder="ServiceName = '{{ServiceName}}'"
+          lucenePlaceholder="ServiceName:{{ServiceName}}"
+        />
+      </Box>
+    </Stack>
+  );
+}
+
+function DashboardOnClickFields({ control }: { control: DrawerControl }) {
+  const { data: dashboards } = useDashboards();
+  const dashboardOptions = useMemo(() => {
+    return dashboards?.map(dashboard => ({
+      label: dashboard.name,
+      value: dashboard.id,
+    }));
+  }, [dashboards]);
+
+  return (
+    <Stack gap="xs">
+      <Text size="xs" c="dimmed">
+        {TEMPLATE_HELP_TEXT}
+      </Text>
+
+      <OnClickTargetInputControlled
+        control={control}
+        options={dashboardOptions}
+        objectType="dashboard"
+      />
+
+      <Box>
+        <InputLabelWithTooltip
+          label="WHERE"
+          tooltip="Handlebars template that determines the global WHERE condition passed to the dashboard"
         />
         <SearchWhereInput
           control={control}
@@ -90,6 +117,8 @@ function ModeFields({ control }: { control: DrawerControl }) {
 
   if (onClick?.type === 'search') {
     return <SearchOnClickFields control={control} />;
+  } else if (onClick?.type === 'dashboard') {
+    return <DashboardOnClickFields control={control} />;
   }
 
   return (
@@ -130,11 +159,27 @@ export default function OnClickDrawer({
     if (opened) reset(appliedDefaults);
   }, [opened, appliedDefaults, reset]);
 
+  const { data: dashboards } = useDashboards();
+  const { data: sources } = useSources();
+  const watchedOnClick = useWatch({ control, name: 'onClick' });
+
+  const isTargetMissing = useMemo(() => {
+    if (!watchedOnClick || watchedOnClick.target.mode !== 'id') return false;
+
+    const validTargetIds =
+      watchedOnClick.type === 'dashboard'
+        ? dashboards?.map(d => d.id)
+        : sources?.filter(isSearchableSource).map(s => s.id);
+
+    if (!validTargetIds) return false;
+    return !validTargetIds.includes(watchedOnClick.target.id);
+  }, [watchedOnClick, dashboards, sources]);
+
   const applyChanges = useCallback(() => {
     handleSubmit(values => {
       try {
-        if (values.onClick?.type === 'search') {
-          validateOnClickSearch(values.onClick);
+        if (values.onClick) {
+          validateOnClickTemplate(values.onClick);
         }
       } catch (err) {
         notifications.show({
@@ -177,11 +222,16 @@ export default function OnClickDrawer({
               data={[
                 { label: 'Default', value: 'default' },
                 { label: 'Search', value: 'search' },
+                { label: 'Dashboard', value: 'dashboard' },
               ]}
               value={onClickValue?.type ?? 'default'}
               onChange={value => {
                 const formValue =
-                  value === 'search' ? emptySearchOnClick() : null;
+                  value === 'search'
+                    ? emptySearchOnClick()
+                    : value === 'dashboard'
+                      ? emptyDashboardOnClick()
+                      : null;
                 setValue('onClick', formValue);
               }}
               fullWidth
@@ -199,6 +249,7 @@ export default function OnClickDrawer({
           <Button
             variant="primary"
             onClick={applyChanges}
+            disabled={isTargetMissing}
             data-testid="onclick-apply-button"
           >
             Apply
