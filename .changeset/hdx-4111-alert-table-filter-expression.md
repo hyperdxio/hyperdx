@@ -4,19 +4,17 @@
 '@hyperdx/app': minor
 ---
 
-fix(alerts): apply `source.tableFilterExpression` in the scheduled alert task
-so saved-search alert counts reconcile with what users see in the app search
-page
+refactor(alerts/search): consolidate the saved-search → chart-config builder
+into a single shared helper, `buildSearchChartConfig`, in
+`@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+sample-weight expressions, SELECT precedence, and the `count()` default
+SELECT shape are applied identically by construction.
 
-The alert task's saved-search evaluator previously built its chart config
-inline and omitted `source.tableFilterExpression`, while the app search page
-prepended it as a SQL filter. When a Log source had that expression set, the
-alert task counted rows the app was hiding, producing false-positive alerts
-whose count did not match the app's results (HDX-4111).
-
-Consolidate the saved-search → chart config assembly into a single shared
-helper, `buildSearchChartConfig`, in `@hyperdx/common-utils`
-(`core/searchChartConfig.ts`). The app search page, the alert preview chart,
-and the scheduled alert task's `SAVED_SEARCH` branch now all route through
-that helper, so `tableFilterExpression` (and the other "source × saved
-search" fields) are applied identically across all three paths.
+Behavior fixes that fall out of consolidation:
+- The alert task and the alert preview now apply `source.tableFilterExpression`
+  on Log sources, matching what the search page already did.
+- A latent bug in the search-page builder is fixed: a non-null `filters`
+  array no longer silently drops the `tableFilterExpression` SQL filter via
+  spread-overwrite.
