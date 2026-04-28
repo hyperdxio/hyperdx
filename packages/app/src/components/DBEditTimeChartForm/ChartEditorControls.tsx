@@ -30,6 +30,7 @@ import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
+import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
 
 type ChartEditorControlsProps = {
@@ -57,6 +58,7 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
+  openHeatmapSettings: () => void;
 };
 
 export function ChartEditorControls({
@@ -84,6 +86,7 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
+  openHeatmapSettings,
 }: ChartEditorControlsProps) {
   return (
     <>
@@ -97,6 +100,11 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
+            allowedSourceKinds={
+              displayType === DisplayType.Heatmap
+                ? [SourceKind.Trace]
+                : undefined
+            }
             sourceSchemaPreview={
               <SourceSchemaPreview source={tableSource} variant="text" />
             }
@@ -105,6 +113,7 @@ export function ChartEditorControls({
         <Group>
           {tableSource &&
             activeTab !== 'search' &&
+            activeTab !== 'heatmap' &&
             chartConfigForExplanations &&
             isBuilderChartConfig(chartConfigForExplanations) && (
               <MVOptimizationIndicator
@@ -114,7 +123,15 @@ export function ChartEditorControls({
             )}
         </Group>
       </Flex>
-      {displayType !== DisplayType.Search && Array.isArray(select) ? (
+      {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
+        <HeatmapSeriesEditor
+          control={control}
+          setValue={setValue}
+          tableSource={tableSource}
+          onSubmit={onSubmit}
+          onOpenDisplaySettings={openHeatmapSettings}
+        />
+      ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (
             <ChartSeriesEditor
@@ -209,7 +226,8 @@ export function ChartEditorControls({
           <Flex mt={4} align="center" justify="space-between">
             <Group gap="xs">
               {displayType !== DisplayType.Number &&
-                displayType !== DisplayType.Pie && (
+                displayType !== DisplayType.Pie &&
+                displayType !== DisplayType.Heatmap && (
                   <Button
                     variant="subtle"
                     size="sm"
