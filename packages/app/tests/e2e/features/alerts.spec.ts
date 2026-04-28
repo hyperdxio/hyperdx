@@ -1,3 +1,6 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
+import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SearchPage } from '../page-objects/SearchPage';
@@ -246,4 +249,240 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       });
     },
   );
+
+  test(
+    'should create an alert from a raw SQL Number dashboard tile and verify on the alerts page',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const tileName = `E2E Raw SQL Number Alert ${ts}`;
+      const webhookName = `E2E Webhook Number ${ts}`;
+      const webhookUrl = `https://example.com/number-${ts}`;
+
+      const sqlQuery = `SELECT count() AS cnt
+        FROM $__sourceTable
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+      `;
+
+      await test.step('Create a new dashboard', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a raw SQL Number tile to the dashboard', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(sqlQuery);
+        await dashboardPage.chartEditor.runQuery(false);
+      });
+
+      await test.step('Enable and configure an alert on the raw SQL Number tile', async () => {
+        await expect(dashboardPage.chartEditor.alertButton).toBeVisible();
+        await dashboardPage.chartEditor.clickAddAlert();
+        await expect(
+          dashboardPage.chartEditor.addNewWebhookButton,
+        ).toBeVisible();
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+      });
+
+      await test.step('Save the tile with the alert configured', async () => {
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Verify the alert is visible on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await expect(
+          alertsPage.pageContainer
+            .getByRole('link')
+            .filter({ hasText: tileName }),
+        ).toBeVisible({ timeout: 10000 });
+      });
+    },
+  );
+
+  test(
+    'should create a between-threshold alert from a saved search and verify on the alerts page',
+    { tag: '@full-stack' },
+    async () => {
+      const ts = Date.now();
+      const savedSearchName = `E2E Between Alert Search ${ts}`;
+      const webhookName = `E2E Webhook SS Between ${ts}`;
+      const webhookUrl = `https://example.com/ss-between-${ts}`;
+
+      await test.step('Create a saved search', async () => {
+        await searchPage.goto();
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          savedSearchName,
+        );
+      });
+
+      await test.step('Open the alerts modal from the saved search page', async () => {
+        await expect(searchPage.alertsButton).toBeVisible();
+        await searchPage.openAlertsModal();
+        await expect(searchPage.alertModal.addNewWebhookButton).toBeVisible();
+      });
+
+      await test.step('Select the Between (≤ x ≤) threshold type', async () => {
+        await searchPage.alertModal.selectThresholdType('between');
+        await expect(searchPage.alertModal.thresholdMaxInput).toBeVisible();
+      });
+
+      await test.step('Set threshold to 1 and thresholdMax to 5', async () => {
+        await searchPage.alertModal.setThreshold(1);
+        await searchPage.alertModal.setThresholdMax(5);
+      });
+
+      await test.step('Create a new incoming webhook for the alert channel', async () => {
+        await searchPage.alertModal.addWebhookAndWait(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+      });
+
+      await test.step('Explicitly select the webhook (auto-select is unreliable)', async () => {
+        await searchPage.alertModal.selectWebhook(webhookName);
+      });
+
+      await test.step('Create the alert', async () => {
+        await searchPage.alertModal.createAlert();
+      });
+
+      await test.step('Verify the alert is visible on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await expect(
+          alertsPage.pageContainer
+            .getByRole('link')
+            .filter({ hasText: savedSearchName }),
+        ).toBeVisible({ timeout: 10000 });
+      });
+    },
+  );
+
+  test(
+    'should create a between-threshold alert from a dashboard tile and verify on the alerts page',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const tileName = `E2E Between Alert Tile ${ts}`;
+      const webhookName = `E2E Webhook Tile Between ${ts}`;
+      const webhookUrl = `https://example.com/tile-between-${ts}`;
+
+      await test.step('Create a new dashboard', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a tile to the dashboard', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.runQuery();
+      });
+
+      await test.step('Enable alert and select the Between (≤ x ≤) threshold type', async () => {
+        await expect(dashboardPage.chartEditor.alertButton).toBeVisible();
+        await dashboardPage.chartEditor.clickAddAlert();
+        await expect(
+          dashboardPage.chartEditor.addNewWebhookButton,
+        ).toBeVisible();
+        await dashboardPage.chartEditor.selectTileAlertThresholdType('between');
+      });
+
+      await test.step('Set alert.threshold to 1 and alert.thresholdMax to 5', async () => {
+        await dashboardPage.chartEditor.setTileAlertThreshold(1);
+        await dashboardPage.chartEditor.setTileAlertThresholdMax(5);
+      });
+
+      await test.step('Create a new incoming webhook for the alert channel', async () => {
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+      });
+
+      await test.step('Explicitly select the webhook (auto-select is unreliable)', async () => {
+        await dashboardPage.chartEditor.selectWebhook(webhookName);
+      });
+
+      await test.step('Save the tile with the alert configured', async () => {
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Verify the alert is visible on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await expect(
+          alertsPage.pageContainer
+            .getByRole('link')
+            .filter({ hasText: tileName }),
+        ).toBeVisible({ timeout: 10000 });
+      });
+    },
+  );
 });
+
+test.describe(
+  'Alert Execution Errors',
+  { tag: ['@alerts', '@full-stack'] },
+  () => {
+    let alertsPage: AlertsPage;
+
+    test.beforeEach(async ({ page }) => {
+      alertsPage = new AlertsPage(page);
+      await alertsPage.goto();
+      await expect(alertsPage.pageContainer).toBeVisible();
+    });
+
+    test('shows alert errors with the correct type and message', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      const errorIcon = alertsPage.getErrorIconForAlertCard(seededCard);
+      await expect(errorIcon).toBeVisible();
+
+      // Modal is hidden before the click
+      await expect(alertsPage.errorModal).toBeHidden();
+
+      await alertsPage.openErrorModalForAlertCard(seededCard);
+      await expect(alertsPage.errorModal).toBeVisible();
+
+      // QUERY_ERROR renders with the "Query Error" type label in the modal
+      await expect(
+        alertsPage.errorModal.getByText(/Query Error/),
+      ).toBeVisible();
+
+      // The <code> block contains the full seeded error message (not truncated)
+      await expect(alertsPage.errorModalMessage).toContainText(
+        SEEDED_ERROR_ALERT.errorMessage,
+      );
+    });
+  },
+);

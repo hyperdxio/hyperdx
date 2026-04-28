@@ -22,8 +22,13 @@ type NestedFilterGroupProps = {
   onExcludeClick: (key: string, value: string | boolean) => void;
   onPinClick: (key: string, value: string | boolean) => void;
   isPinned: (key: string, value: string | boolean) => boolean;
+  onSharedPinClick?: (key: string, value: string | boolean) => void;
+  isSharedPinned?: (key: string, value: string | boolean) => boolean;
   onFieldPinClick?: (key: string) => void;
   isFieldPinned?: (key: string) => boolean;
+  onToggleSharedFieldPin?: (key: string) => void;
+  isSharedFieldPinned?: (key: string) => boolean;
+  showFilterCounts?: boolean;
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onLoadMore: (key: string) => void;
@@ -48,8 +53,13 @@ export const NestedFilterGroup = ({
   onExcludeClick,
   onPinClick,
   isPinned,
+  onSharedPinClick,
+  isSharedPinned,
   onFieldPinClick,
   isFieldPinned,
+  onToggleSharedFieldPin,
+  isSharedFieldPinned,
+  showFilterCounts,
   onColumnToggle,
   displayedColumns,
   onLoadMore,
@@ -121,7 +131,7 @@ export const NestedFilterGroup = ({
                 color="gray"
               >
                 <Group gap="xs" wrap="nowrap" flex="1">
-                  <Text size="xs" fw="500">
+                  <Text size="xs" fw="500" truncate="end">
                     {name}
                   </Text>
                   <Text size="xs" c="dimmed">
@@ -134,8 +144,11 @@ export const NestedFilterGroup = ({
           <Accordion.Panel
             data-testid="nested-filter-group-panel"
             classNames={{
-              content: 'pl-3 pt-1 pb-0',
+              content: 'px-0 pb-0',
             }}
+            pt={1}
+            pb={0}
+            pl="xs"
           >
             {isExpanded && (
               <div className={classes.filterGroupPanel}>
@@ -206,12 +219,27 @@ export const NestedFilterGroup = ({
                               onExcludeClick={value =>
                                 onExcludeClick(child.key, value)
                               }
-                              onPinClick={value => onPinClick(child.key, value)}
-                              isPinned={value => isPinned(child.key, value)}
-                              onFieldPinClick={() =>
-                                onFieldPinClick?.(child.key)
-                              }
-                              isFieldPinned={isFieldPinned?.(child.key)}
+                              valuePins={{
+                                onPinClick: value =>
+                                  onPinClick(child.key, value),
+                                isPinned: value => isPinned(child.key, value),
+                                onSharedPinClick: onSharedPinClick
+                                  ? value => onSharedPinClick(child.key, value)
+                                  : undefined,
+                                isSharedPinned: isSharedPinned
+                                  ? value => isSharedPinned(child.key, value)
+                                  : undefined,
+                              }}
+                              fieldPins={{
+                                onFieldPinClick: () =>
+                                  onFieldPinClick?.(child.key),
+                                isFieldPinned: isFieldPinned?.(child.key),
+                                onToggleSharedFieldPin: () =>
+                                  onToggleSharedFieldPin?.(child.key),
+                                isSharedFieldPinned: isSharedFieldPinned?.(
+                                  child.key,
+                                ),
+                              }}
                               onColumnToggle={
                                 onColumnToggle
                                   ? () => onColumnToggle(child.key)
@@ -225,6 +253,7 @@ export const NestedFilterGroup = ({
                                 loadMoreLoading[child.key] || false
                               }
                               hasLoadedMore={hasLoadedMore[child.key] || false}
+                              showFilterCounts={showFilterCounts}
                               isDefaultExpanded={childHasSelections}
                               chartConfig={chartConfig}
                               isLive={isLive}

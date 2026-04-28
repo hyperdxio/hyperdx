@@ -1021,7 +1021,9 @@ export function displayTypeSupportsRawSqlAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
   );
 }
 
@@ -1054,13 +1056,19 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
     }
 
     const sql = replaceMacros(chartConfig);
-    const hasInterval =
-      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
-      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
-    if (!hasInterval) {
-      errors.push(
-        `SQL used for alerts must include an interval parameter or macro.`,
-      );
+
+    // Interval params are only required for time-series display types (Line, StackedBar).
+    // Number charts don't use interval bucketing.
+    if (isTimeSeriesDisplayType(chartConfig.displayType)) {
+      const hasInterval =
+        sql.includes(
+          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
+        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
+      if (!hasInterval) {
+        errors.push(
+          `SQL used for alerts must include an interval parameter or macro.`,
+        );
+      }
     }
 
     const hasTimeFilter =
@@ -1078,3 +1086,11 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
     return { errors, warnings };
   }
 }
+
+export const isTimeSeriesDisplayType = (
+  displayType: DisplayType | undefined,
+): boolean => {
+  return (
+    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+  );
+};

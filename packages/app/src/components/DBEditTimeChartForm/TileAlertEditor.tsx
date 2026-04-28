@@ -5,7 +5,12 @@ import {
   useWatch,
 } from 'react-hook-form';
 import {
+  AlertThresholdType,
+  isRangeThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Collapse,
@@ -21,10 +26,14 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconHelpCircle,
+  IconInfoCircleFilled,
   IconTrash,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { AlertChannelForm } from '@/components/Alerts';
+import { AckAlert } from '@/components/alerts/AckAlert';
+import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { optionsToSelectData } from '@/utils';
@@ -55,6 +64,9 @@ export function TileAlertEditor({
   const [opened, { toggle }] = useDisclosure(true);
 
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
+  const alertThreshold = useWatch({ control, name: 'alert.threshold' });
+  const alertThresholdMax = useWatch({ control, name: 'alert.thresholdMax' });
   const alertScheduleOffsetMinutes = useWatch({
     control,
     name: 'alert.scheduleOffsetMinutes',
@@ -66,11 +78,14 @@ export function TileAlertEditor({
     ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
     : undefined;
 
+  const { data: alertData } = api.useAlert(alert.id);
+  const alertItem = alertData?.data;
+
   return (
     <Paper data-testid="alert-details">
-      <Group justify="space-between" px="sm" pt="sm" pb={opened ? 0 : 'sm'}>
+      <Group justify="space-between" px="sm" pt="sm" pb="sm">
         <UnstyledButton onClick={toggle}>
-          <Group gap="xs" mb="xs">
+          <Group gap="xs">
             <IconChevronDown
               size={14}
               style={{
@@ -109,17 +124,21 @@ export function TileAlertEditor({
             </Group>
           </Group>
         </UnstyledButton>
-        <Tooltip label="Remove alert">
-          <ActionIcon
-            variant="danger"
-            color="red"
-            size="sm"
-            onClick={onRemove}
-            data-testid="remove-alert-button"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
-        </Tooltip>
+        <Group gap="xs">
+          {alertItem && <AlertHistoryCardList alert={alertItem} />}
+          {alertItem && <AckAlert alert={alertItem} />}
+          <Tooltip label="Remove alert">
+            <ActionIcon
+              variant="danger"
+              color="red"
+              size="sm"
+              onClick={onRemove}
+              data-testid="remove-alert-button"
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
       <Collapse expanded={opened}>
         <Box px="sm" pb="sm">
@@ -135,6 +154,15 @@ export function TileAlertEditor({
                   data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
                   size="xs"
                   {...field}
+                  onChange={e => {
+                    field.onChange(e);
+                    if (
+                      isRangeThresholdType(e.currentTarget.value) &&
+                      alertThresholdMax == null
+                    ) {
+                      setValue('alert.thresholdMax', (alertThreshold ?? 0) + 1);
+                    }
+                  }}
                 />
               )}
             />
@@ -145,6 +173,25 @@ export function TileAlertEditor({
                 <NumberInput size="xs" w={80} {...field} />
               )}
             />
+            {isRangeThresholdType(alertThresholdType as AlertThresholdType) && (
+              <>
+                <Text size="sm" opacity={0.7}>
+                  and
+                </Text>
+                <Controller
+                  control={control}
+                  name="alert.thresholdMax"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      size="xs"
+                      w={80}
+                      {...field}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </>
+            )}
             over
             <Controller
               control={control}
@@ -198,6 +245,18 @@ export function TileAlertEditor({
             type={alertChannelType}
             namePrefix="alert."
           />
+          {(alertThresholdType === AlertThresholdType.EQUAL ||
+            alertThresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <Alert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+              mt="md"
+            >
+              Note: Floating-point query results are not rounded during equality
+              comparison.
+            </Alert>
+          )}
         </Box>
       </Collapse>
     </Paper>

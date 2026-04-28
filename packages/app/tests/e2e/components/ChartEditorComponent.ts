@@ -147,17 +147,13 @@ export class ChartEditorComponent {
   }
 
   async selectWebhook(webhookName: string) {
-    // Click to open dropdown
-    await this.webhookSelector.click();
-
-    // Type to filter
-    await this.webhookSelector.fill(webhookName);
-
-    // Use getByRole for more reliable selection
-    const sourceOption = this.page.getByRole('option', { name: webhookName });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
+    if ((await this.webhookSelector.inputValue()) === webhookName) {
+      return;
     }
+    await this.webhookSelector.click();
+    await this.page
+      .getByRole('option', { name: webhookName })
+      .click({ timeout: 5000 });
   }
 
   /**
@@ -265,6 +261,202 @@ export class ChartEditorComponent {
     await this.selectSource(sourceName);
     if (groupBy) await this.setGroupBy(groupBy);
     await this.save();
+  }
+
+  /**
+   * Select a threshold type in the tile alert editor.
+   * Pass the option value (e.g. 'between', 'above', 'below').
+   * Scoped to [data-testid="alert-details"].
+   */
+  async selectTileAlertThresholdType(value: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .locator('select')
+      .first()
+      .selectOption(value);
+  }
+
+  /**
+   * Set the lower threshold value in the tile alert editor.
+   * Mantine v9 NumberInput renders as <input inputmode="decimal"> (not type="number"),
+   * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
+   */
+  async setTileAlertThreshold(value: number) {
+    const input = this.page
+      .getByTestId('alert-details')
+      .locator('input[inputmode="decimal"]')
+      .first();
+    await input.fill(String(value));
+    await input.blur();
+  }
+
+  /**
+   * Set the upper threshold (thresholdMax) in the tile alert editor.
+   * Only visible after selecting a range threshold type (e.g. 'between').
+   * Mantine v9 NumberInput renders as <input inputmode="decimal"> (not type="number"),
+   * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
+   */
+  async setTileAlertThresholdMax(value: number) {
+    const input = this.page
+      .getByTestId('alert-details')
+      .locator('input[inputmode="decimal"]')
+      .nth(1);
+    await input.fill(String(value));
+    await input.blur();
+  }
+
+  // ---- Row Click Action drawer helpers ----
+
+  /**
+   * Open the "Row Click Action" drawer. Only available on Table tiles.
+   */
+  async openRowClickDrawer() {
+    await this.page.getByTestId('onclick-drawer-trigger').click();
+    await this.rowClickDrawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * Switch the Row Click Action mode (SegmentedControl).
+   */
+  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard') {
+    await this.page
+      .getByTestId('onclick-mode-segmented')
+      .getByText(mode, { exact: true })
+      .click();
+  }
+
+  /**
+   * Select a target (source/dashboard or "Template") from the Row Click
+   * Action drawer's Select dropdown. Pass the exact option label — for
+   * example "Template", "E2E Logs", or a specific dashboard name.
+   */
+  async selectRowClickTarget(label: string) {
+    await this.page.getByTestId('onclick-target-select').click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
+  /**
+   * Fill the Template text input in the drawer. Call selectRowClickTarget('Template')
+   * first to make the template input visible (this is the default state after
+   * switching to Search or Dashboard mode, but calling it explicitly is safe).
+   */
+  async fillRowClickTemplate(template: string) {
+    await this.page.getByTestId('onclick-template-input').fill(template);
+  }
+
+  /**
+   * Select SQL or Lucene on the WHERE template's language select inside the drawer.
+   */
+  async setRowClickWhereLanguage(language: 'SQL' | 'Lucene') {
+    const select = this.rowClickDrawer
+      .getByTestId('where-language-switch')
+      .getByLabel('Query language');
+    await select.click();
+    await this.page
+      .getByRole('option', { name: language, exact: true })
+      .click();
+  }
+
+  /**
+   * Fill the WHERE template input in the drawer. Handles both SQL (CodeMirror)
+   * and Lucene (textarea) variants of SearchWhereInput.
+   */
+  async fillRowClickWhereTemplate(
+    template: string,
+    language: 'sql' | 'lucene',
+  ) {
+    if (language === 'sql') {
+      const editor = this.rowClickDrawer
+        .locator('.cm-editor .cm-content')
+        .first();
+      await editor.click();
+      await this.page.keyboard.type(template);
+    } else {
+      const textarea = this.rowClickDrawer.locator('textarea').first();
+      await textarea.fill(template);
+    }
+  }
+
+  /**
+   * Click the drawer's Apply button and wait for the drawer to close.
+   */
+  async applyRowClickDrawer() {
+    await this.page.getByTestId('onclick-apply-button').click();
+    await this.rowClickDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  get rowClickDrawer() {
+    return this.page.getByTestId('onclick-drawer');
+  }
+
+  /**
+   * Click Apply in the open Display Settings drawer and wait for it to close.
+   */
+  async applyDisplaySettings() {
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
+    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /**
+   * Open the Display Settings drawer and wait for it to become visible.
+   */
+  async openDisplaySettings() {
+    await this.page
+      .getByRole('button', { name: 'Display Settings', exact: true })
+      .click();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * Toggle the "Display Group By Columns on Left" checkbox in the open
+   * Display Settings drawer to the given state.
+   */
+  async setGroupByColumnsOnLeft(checked: boolean) {
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    const checkbox = drawer.getByLabel('Display Group By Columns on Left');
+    const isChecked = await checkbox.isChecked();
+    if (isChecked !== checked) {
+      await checkbox.click();
+    }
+  }
+
+  /**
+   * Click the "Add Series" button to add a new series to the chart.
+   */
+  async addSeries() {
+    await this.page
+      .getByRole('button', { name: 'Add Series', exact: true })
+      .click();
+  }
+
+  /**
+   * Toggle the "As Ratio" switch. Only visible when the chart has exactly
+   * two series.
+   */
+  async toggleAsRatio() {
+    await this.page.getByRole('switch', { name: 'As Ratio' }).click();
+  }
+
+  /**
+   * Set the alias for a series by zero-based index. Useful for giving two
+   * default `count()` series distinct column names in a multi-series table.
+   */
+  async setSeriesAlias(index: number, alias: string) {
+    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+  }
+
+  /**
+   * Read the column header texts from the first <table> in the tile editor
+   * preview panel. Waits for the table to be visible before reading.
+   */
+  async getPreviewTableHeaders(): Promise<string[]> {
+    const modalBody = this.page.locator('.mantine-Modal-body');
+    const table = modalBody.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    const headers = await table.locator('thead tr th').allTextContents();
+    return headers.map(h => h.trim());
   }
 
   // Getters for assertions

@@ -7,6 +7,16 @@ import {
   SearchQueryBuilder,
 } from '@/queryParser';
 
+// Suppress expected console.error/warn noise from mocked setting fetches
+// and parse failures in edge-case tests
+beforeAll(() => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterAll(() => {
+  jest.restoreAllMocks();
+});
+
 describe('CustomSchemaSQLSerializerV2 - json', () => {
   const metadata = getMetadata(
     new ClickhouseClient({ host: 'http://localhost:8123' }),

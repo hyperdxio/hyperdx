@@ -3,8 +3,8 @@
 Custom-built OpenTelemetry Collector for HyperDX, compiled via
 [OCB (OpenTelemetry Collector Builder)](https://github.com/open-telemetry/opentelemetry-collector/tree/main/cmd/builder).
 This replaces the pre-built `otel/opentelemetry-collector-contrib` image with a
-binary that includes only the components HyperDX needs, plus any custom
-receivers/processors added in this package.
+binary that includes the components HyperDX needs plus commonly-used core and
+contrib components, and any custom receivers/processors added in this package.
 
 ## Architecture
 
@@ -50,26 +50,44 @@ builds.
 
 ## Included components
 
-All components referenced in config files and the OpAMP controller:
+Components used by HyperDX internally are marked with their config references.
+Components marked "user configs" are included so users can reference them in
+custom OTel configurations without rebuilding the collector.
 
 ### Receivers
 
-| Component       | Module  | Used in                                           |
-| --------------- | ------- | ------------------------------------------------- |
-| `nop`           | core    | OpAMP controller                                  |
-| `otlp`          | core    | standalone configs, OpAMP controller, smoke tests |
-| `fluentforward` | contrib | standalone configs, OpAMP controller, smoke tests |
-| `hostmetrics`   | contrib | custom.config.yaml                                |
-| `prometheus`    | contrib | OpAMP controller, smoke tests                     |
+| Component        | Module  | Used in                                           |
+| ---------------- | ------- | ------------------------------------------------- |
+| `nop`            | core    | OpAMP controller                                  |
+| `otlp`           | core    | standalone configs, OpAMP controller, smoke tests |
+| `dockerstats`    | contrib | user configs                                      |
+| `filelog`        | contrib | user configs                                      |
+| `fluentforward`  | contrib | standalone configs, OpAMP controller, smoke tests |
+| `hostmetrics`    | contrib | custom.config.yaml                                |
+| `k8scluster`     | contrib | user configs                                      |
+| `kubeletstats`   | contrib | user configs                                      |
+| `prometheus`     | contrib | OpAMP controller, smoke tests                     |
 
 ### Processors
 
-| Component           | Module  | Used in                                           |
-| ------------------- | ------- | ------------------------------------------------- |
-| `batch`             | core    | config.yaml, standalone configs, OpAMP controller |
-| `memory_limiter`    | core    | config.yaml, standalone configs, OpAMP controller |
-| `resourcedetection` | contrib | config.yaml                                       |
-| `transform`         | contrib | config.yaml, standalone configs, OpAMP controller |
+| Component              | Module  | Used in                                           |
+| ---------------------- | ------- | ------------------------------------------------- |
+| `batch`                | core    | config.yaml, standalone configs, OpAMP controller |
+| `memory_limiter`       | core    | config.yaml, standalone configs, OpAMP controller |
+| `attributes`           | contrib | user configs                                      |
+| `cumulativetodelta`    | contrib | user configs                                      |
+| `filter`               | contrib | user configs                                      |
+| `groupbyattrs`         | contrib | user configs                                      |
+| `k8sattributes`        | contrib | user configs                                      |
+| `logdedup`             | contrib | user configs                                      |
+| `metricstransform`     | contrib | user configs                                      |
+| `probabilisticsampler` | contrib | user configs                                      |
+| `redaction`            | contrib | user configs                                      |
+| `resourcedetection`    | contrib | config.yaml                                       |
+| `resource`             | contrib | user configs                                      |
+| `span`                 | contrib | user configs                                      |
+| `tailsampling`         | contrib | user configs                                      |
+| `transform`            | contrib | config.yaml, standalone configs, OpAMP controller |
 
 ### Exporters
 
@@ -92,7 +110,10 @@ All components referenced in config files and the OpAMP controller:
 
 | Component         | Module  | Used in                                  |
 | ----------------- | ------- | ---------------------------------------- |
+| `memorylimiter`   | core    | user configs                             |
+| `zpages`          | core    | user configs                             |
 | `bearertokenauth` | contrib | standalone-auth config, OpAMP controller |
+| `file_storage`    | contrib | OpAMP controller (sending queue storage) |
 | `health_check`    | contrib | config.yaml, standalone-auth config      |
 | `opamp`           | contrib | used by OpAMP supervisor                 |
 | `pprof`           | contrib | included for debugging/profiling         |

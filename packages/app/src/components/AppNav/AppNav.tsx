@@ -3,11 +3,7 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import {
-  AlertState,
-  SavedSearchListApiResponse,
-} from '@hyperdx/common-utils/dist/types';
+import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
@@ -232,9 +228,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => {
       const alerts = dashboard.tiles
-        .map(t =>
-          isBuilderSavedChartConfig(t.config) ? t.config.alert : undefined,
-        )
+        .map(t => t.config.alert)
         .filter(a => a != null);
       return (
         <Link

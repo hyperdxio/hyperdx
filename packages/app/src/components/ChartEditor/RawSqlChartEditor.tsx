@@ -30,6 +30,7 @@ import { getAllMetricTables, usePrevious } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
+import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import SourceSchemaPreview from '../SourceSchemaPreview';
 import { SourceSelectControlled } from '../SourceSelect';
 
@@ -43,6 +44,7 @@ export default function RawSqlChartEditor({
   control,
   setValue,
   onOpenDisplaySettings,
+  onSubmit,
   isDashboardForm,
   alert,
   dashboardId,
@@ -50,6 +52,7 @@ export default function RawSqlChartEditor({
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   onOpenDisplaySettings: () => void;
+  onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
   dashboardId?: string;
@@ -166,6 +169,11 @@ export default function RawSqlChartEditor({
       });
   }, [sources, connection]);
 
+  const alertTooltip =
+    displayType === DisplayType.Number
+      ? 'The threshold will be evaluated against the last numeric column in the first query result'
+      : 'The threshold will be evaluated against the last numeric column in each query result';
+
   return (
     <Stack gap="xs">
       <Group align="center" gap={0} justify="space-between">
@@ -217,13 +225,23 @@ export default function RawSqlChartEditor({
                 Add Alert
               </Button>
             )}
-          <Button
-            onClick={onOpenDisplaySettings}
-            size="compact-sm"
-            variant="secondary"
-          >
-            Display Settings
-          </Button>
+
+          <Group>
+            {displayType === DisplayType.Table && (
+              <OnClickFormButton
+                control={control}
+                setValue={setValue}
+                onSubmit={onSubmit}
+              />
+            )}
+            <Button
+              onClick={onOpenDisplaySettings}
+              size="compact-sm"
+              variant="secondary"
+            >
+              Display Settings
+            </Button>
+          </Group>
         </Group>
       </Group>
       <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
@@ -247,7 +265,7 @@ export default function RawSqlChartEditor({
           onRemove={() => setValue('alert', undefined)}
           error={alertErrorMessage}
           warning={alertWarningMessage}
-          tooltip="The threshold will be evaluated against the last numeric column in the query result"
+          tooltip={alertTooltip}
         />
       )}
     </Stack>

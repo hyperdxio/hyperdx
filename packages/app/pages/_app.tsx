@@ -155,12 +155,14 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             service: _jsonData.serviceName,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
+            tracesUrl: _jsonData.collectorTracesUrl,
+            logsUrl: _jsonData.collectorLogsUrl,
           });
         } else {
           console.warn('No API key found to enable OTEL exporter');
         }
       })
-      .catch(err => {
+      .catch(() => {
         // ignore
       });
   }, []);

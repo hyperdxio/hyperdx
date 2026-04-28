@@ -9,7 +9,7 @@
       "x": 0,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Heap Used",
         "source": "Metrics",
@@ -39,7 +39,7 @@
       "x": 6,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "CPU Utilization",
         "source": "Metrics",
@@ -67,7 +67,7 @@
       "x": 12,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Thread Count",
         "source": "Metrics",
@@ -96,7 +96,7 @@
       "x": 18,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "CPU Count",
         "source": "Metrics",
@@ -123,7 +123,7 @@
     {
       "id": "6363a5",
       "x": 0,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -172,7 +172,7 @@
     {
       "id": "5abddd",
       "x": 12,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -203,7 +203,7 @@
     {
       "id": "c4abeb",
       "x": 0,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -234,7 +234,7 @@
     {
       "id": "26aa01",
       "x": 12,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -265,7 +265,7 @@
     {
       "id": "ea6e2d",
       "x": 0,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -293,7 +293,7 @@
     {
       "id": "bf01ef",
       "x": 12,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -317,7 +317,7 @@
     {
       "id": "f90a9e",
       "x": 0,
-      "y": 24,
+      "y": 25,
       "w": 12,
       "h": 7,
       "config": {
@@ -342,7 +342,7 @@
     {
       "id": "17f41d",
       "x": 12,
-      "y": 24,
+      "y": 25,
       "w": 12,
       "h": 7,
       "config": {
@@ -380,8 +380,8 @@
       "expression": "ServiceName",
       "source": "Metrics",
       "sourceMetricType": "sum",
-      "where": "ResourceAttributes['telemetry.sdk.language'] = 'java'",
-      "whereLanguage": "sql"
+      "where": "ResourceAttributes.telemetry.sdk.language:\"java\"",
+      "whereLanguage": "lucene"
     }
   ]
 }

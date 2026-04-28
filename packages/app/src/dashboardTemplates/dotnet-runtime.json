@@ -9,7 +9,7 @@
       "x": 0,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "GC Heap Size",
         "source": "Metrics",
@@ -37,7 +37,7 @@
       "x": 6,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "Exceptions",
         "source": "Metrics",
@@ -66,7 +66,7 @@
       "x": 12,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "GC Pause (s)",
         "source": "Metrics",
@@ -95,7 +95,7 @@
       "x": 18,
       "y": 0,
       "w": 6,
-      "h": 3,
+      "h": 4,
       "config": {
         "name": "ThreadPool Items",
         "source": "Metrics",
@@ -122,7 +122,7 @@
     {
       "id": "98e92c",
       "x": 0,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -147,7 +147,7 @@
     {
       "id": "f6c44a",
       "x": 12,
-      "y": 3,
+      "y": 4,
       "w": 12,
       "h": 7,
       "config": {
@@ -176,7 +176,7 @@
     {
       "id": "e54085",
       "x": 0,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -205,7 +205,7 @@
     {
       "id": "34979f",
       "x": 12,
-      "y": 10,
+      "y": 11,
       "w": 12,
       "h": 7,
       "config": {
@@ -234,7 +234,7 @@
     {
       "id": "6649b7",
       "x": 0,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -258,7 +258,7 @@
     {
       "id": "3a8add",
       "x": 12,
-      "y": 17,
+      "y": 18,
       "w": 12,
       "h": 7,
       "config": {
@@ -286,7 +286,7 @@
     {
       "id": "fdfdc8",
       "x": 0,
-      "y": 24,
+      "y": 25,
       "w": 12,
       "h": 7,
       "config": {
@@ -310,7 +310,7 @@
     {
       "id": "ebe6dc",
       "x": 12,
-      "y": 24,
+      "y": 25,
       "w": 12,
       "h": 7,
       "config": {
@@ -348,8 +348,8 @@
       "expression": "ServiceName",
       "source": "Metrics",
       "sourceMetricType": "sum",
-      "where": "ResourceAttributes['telemetry.sdk.language'] = 'dotnet'",
-      "whereLanguage": "sql"
+      "where": "ResourceAttributes.telemetry.sdk.language:\"dotnet\"",
+      "whereLanguage": "lucene"
     }
   ]
 }

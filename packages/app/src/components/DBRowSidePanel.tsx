@@ -537,7 +537,6 @@ const DBRowSidePanel = ({
               data-testid="side-panel-tab-infrastructure"
               source={source}
               rowData={normalizedRow}
-              rowId={rowId}
             />
           </Box>
         </ErrorBoundary>
@@ -564,8 +563,6 @@ export default function DBRowSidePanelErrorBoundary({
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
-
-  const { isChildModalOpen } = useContext(RowSidePanelContext);
 
   const [_, setQueryTab] = useQueryState(
     'tab',

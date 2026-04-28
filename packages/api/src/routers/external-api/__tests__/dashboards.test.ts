@@ -2255,6 +2255,7 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          groupByColumnsOnLeft: true,
         },
       };
 
@@ -3091,6 +3092,7 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          groupByColumnsOnLeft: true,
         },
       };
 
@@ -3455,7 +3457,7 @@ describe('External API v2 Dashboards - new format', () => {
               h: 3,
               config: {
                 configType: 'sql',
-                displayType: 'number',
+                displayType: 'table',
                 connectionId: connection._id.toString(),
                 sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
               },

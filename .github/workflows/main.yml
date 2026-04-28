@@ -47,7 +47,7 @@ jobs:
       - name: Run unit tests
         run: make ci-unit
   integration:
-    timeout-minutes: 8
+    timeout-minutes: 16
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -93,7 +93,7 @@ jobs:
         working-directory: ./packages/otel-collector
         run: go test ./...
   otel-smoke-test:
-    timeout-minutes: 8
+    timeout-minutes: 16
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

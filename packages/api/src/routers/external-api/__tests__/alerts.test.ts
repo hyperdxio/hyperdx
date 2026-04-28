@@ -1,3 +1,4 @@
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -6,6 +7,7 @@ import {
   getLoggedInAgent,
   getServer,
   RAW_SQL_ALERT_TEMPLATE,
+  RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '../../../fixtures';
 import { AlertSource, AlertThresholdType } from '../../../models/alert';
 import Alert from '../../../models/alert';
@@ -752,9 +754,39 @@ describe('External API Alerts', () => {
         expect(res.body.data.tileId).toBe(tileId);
       });
 
-      it('should reject creating an alert on a raw SQL number tile', async () => {
+      it('should allow creating an alert on a raw SQL number tile', async () => {
         const webhook = await createTestWebhook();
-        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile();
+        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile({
+          displayType: 'number',
+          sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+        });
+
+        const alertInput = {
+          dashboardId: dashboard._id.toString(),
+          tileId,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        const res = await authRequest('post', ALERTS_BASE_URL)
+          .send(alertInput)
+          .expect(200);
+        expect(res.body.data.dashboardId).toBe(dashboard._id.toString());
+        expect(res.body.data.tileId).toBe(tileId);
+      });
+
+      it('should reject creating an alert on a raw SQL table tile', async () => {
+        const webhook = await createTestWebhook();
+        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile({
+          displayType: 'table',
+          sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        });
 
         const alertInput = {
           dashboardId: dashboard._id.toString(),
@@ -795,10 +827,13 @@ describe('External API Alerts', () => {
         await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
       });
 
-      it('should reject updating an alert to reference a raw SQL number tile', async () => {
+      it('should reject updating an alert to reference a raw SQL table tile', async () => {
         const { alert, webhook } = await createTestAlert();
         const { dashboard: rawSqlDashboard, tileId: rawSqlTileId } =
-          await createTestDashboardWithRawSqlTile();
+          await createTestDashboardWithRawSqlTile({
+            displayType: 'table',
+            sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+          });
 
         const updatePayload = {
           threshold: 200,
@@ -931,6 +966,197 @@ describe('External API Alerts', () => {
     });
   });
 
+  describe('BETWEEN and NOT_BETWEEN threshold types', () => {
+    it('should create an alert with BETWEEN threshold type', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 50,
+          thresholdMax: 200,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const alert = response.body.data;
+      expect(alert.threshold).toBe(50);
+      expect(alert.thresholdMax).toBe(200);
+      expect(alert.thresholdType).toBe(AlertThresholdType.BETWEEN);
+    });
+
+    it('should create an alert with NOT_BETWEEN threshold type', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 10,
+          thresholdMax: 90,
+          interval: '5m',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.NOT_BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const alert = response.body.data;
+      expect(alert.threshold).toBe(10);
+      expect(alert.thresholdMax).toBe(90);
+      expect(alert.thresholdType).toBe(AlertThresholdType.NOT_BETWEEN);
+    });
+
+    it('should reject BETWEEN without thresholdMax', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should reject BETWEEN when thresholdMax < threshold', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          thresholdMax: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should allow thresholdMax equal to threshold for BETWEEN', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          thresholdMax: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      expect(response.body.data.threshold).toBe(100);
+      expect(response.body.data.thresholdMax).toBe(100);
+    });
+
+    it('should update an alert to use BETWEEN threshold type', async () => {
+      const { alert, dashboard, webhook } = await createTestAlert();
+
+      const updateResponse = await authRequest(
+        'put',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      )
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 20,
+          thresholdMax: 80,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const updatedAlert = updateResponse.body.data;
+      expect(updatedAlert.threshold).toBe(20);
+      expect(updatedAlert.thresholdMax).toBe(80);
+      expect(updatedAlert.thresholdType).toBe(AlertThresholdType.BETWEEN);
+    });
+
+    it('should retrieve a BETWEEN alert with thresholdMax', async () => {
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const createResponse = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 10,
+          thresholdMax: 50,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${createResponse.body.data.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.threshold).toBe(10);
+      expect(getResponse.body.data.thresholdMax).toBe(50);
+      expect(getResponse.body.data.thresholdType).toBe(
+        AlertThresholdType.BETWEEN,
+      );
+    });
+  });
+
   describe('Authentication', () => {
     it('should require authentication', async () => {
       // Create an unauthenticated agent
@@ -940,6 +1166,69 @@ describe('External API Alerts', () => {
       await unauthenticatedAgent
         .get(`${ALERTS_BASE_URL}/${testId}`)
         .expect(401);
+    });
+  });
+
+  describe('Errors field', () => {
+    it('returns recorded execution errors on GET by id', async () => {
+      const { alert } = await createTestAlert();
+
+      const errorTimestamp = new Date('2026-04-17T12:00:00.000Z');
+      await Alert.updateOne(
+        { _id: alert.id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: errorTimestamp,
+                type: AlertErrorType.QUERY_ERROR,
+                message: 'ClickHouse returned 500',
+              },
+            ],
+          },
+        },
+      );
+
+      const res = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+      expect(res.body.data.executionErrors).toHaveLength(1);
+      expect(res.body.data.executionErrors[0].type).toBe(
+        AlertErrorType.QUERY_ERROR,
+      );
+      expect(res.body.data.executionErrors[0].message).toBe(
+        'ClickHouse returned 500',
+      );
+      expect(res.body.data.executionErrors[0].timestamp).toBe(
+        errorTimestamp.toISOString(),
+      );
+    });
+
+    it('returns recorded execution errors on the list endpoint', async () => {
+      const { alert } = await createTestAlert();
+
+      await Alert.updateOne(
+        { _id: alert.id },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: new Date('2026-04-17T12:00:00.000Z'),
+                type: AlertErrorType.WEBHOOK_ERROR,
+                message: 'webhook delivery failed',
+              },
+            ],
+          },
+        },
+      );
+
+      const res = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const match = res.body.data.find((a: any) => a.id === alert.id);
+      expect(match).toBeDefined();
+      expect(match.executionErrors).toHaveLength(1);
+      expect(match.executionErrors[0].type).toBe(AlertErrorType.WEBHOOK_ERROR);
+      expect(match.executionErrors[0].message).toBe('webhook delivery failed');
     });
   });
 });

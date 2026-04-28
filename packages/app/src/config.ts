@@ -37,6 +37,15 @@ export const HDX_COLLECTOR_URL =
   process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT ??
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
   'http://localhost:4318';
+export const HDX_TRACES_COLLECTOR_URL =
+  process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+export const HDX_METRICS_COLLECTOR_URL =
+  process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+export const HDX_LOGS_COLLECTOR_URL =
+  process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??
+  process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
 export const IS_DEV = NODE_ENV === 'development';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
@@ -55,3 +64,5 @@ export const IS_K8S_DASHBOARD_ENABLED = true;
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
+export const IS_DASHBOARD_LINKING_ENABLED =
+  process.env.NEXT_PUBLIC_IS_DASHBOARD_LINKING_ENABLED === 'true';

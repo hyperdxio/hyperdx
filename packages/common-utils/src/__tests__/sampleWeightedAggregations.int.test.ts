@@ -144,6 +144,7 @@ describe('sample-weighted aggregations (integration)', () => {
     await client.command({
       query: `DROP TABLE IF EXISTS ${DB}.${MAIN_TABLE}`,
     });
+    await hdxClient.close();
     await client.close();
   });
 

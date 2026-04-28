@@ -34,7 +34,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Evaluation interval.
  *     AlertThresholdType:
  *       type: string
- *       enum: [above, below]
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal, between, not_between]
  *       description: Threshold comparison direction.
  *     AlertSource:
  *       type: string
@@ -48,6 +48,31 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       type: string
  *       enum: [webhook]
  *       description: Channel type.
+ *     AlertErrorType:
+ *       type: string
+ *       enum: [QUERY_ERROR, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       description: Category of error recorded during alert execution.
+ *     AlertExecutionError:
+ *       type: object
+ *       description: An error recorded during a recent alert execution.
+ *       required:
+ *         - timestamp
+ *         - type
+ *         - message
+ *       properties:
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *           description: When the error occurred.
+ *           example: "2026-04-17T12:00:00.000Z"
+ *         type:
+ *           $ref: '#/components/schemas/AlertErrorType'
+ *           description: Category of the error.
+ *           example: "QUERY_ERROR"
+ *         message:
+ *           type: string
+ *           description: Human-readable error message.
+ *           example: "Query timed out after 30s"
  *     AlertSilenced:
  *       type: object
  *       description: Silencing metadata.
@@ -95,7 +120,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
- *           description: Tile ID for tile-based alerts. Must be a builder-type line/bar/number tile or a SQL-type line/bar tile.
+ *           description: Tile ID for tile-based alerts. Must be a line, stacked bar, or number type tile.
  *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
  *         savedSearchId:
@@ -110,8 +135,13 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "ServiceName"
  *         threshold:
  *           type: number
- *           description: Threshold value for triggering the alert.
+ *           description: Threshold value for triggering the alert. For between and not_between threshold types, this is the lower bound.
  *           example: 100
+ *         thresholdMax:
+ *           type: number
+ *           nullable: true
+ *           description: Upper bound for between and not_between threshold types. Required when thresholdType is between or not_between, must be >= threshold.
+ *           example: 500
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
  *           description: Evaluation interval for the alert.
@@ -171,6 +201,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *               $ref: '#/components/schemas/AlertSilenced'
  *               description: Silencing metadata.
  *               nullable: true
+ *             executionErrors:
+ *               type: array
+ *               nullable: true
+ *               description: Errors recorded during the most recent alert execution, if any.
+ *               items:
+ *                 $ref: '#/components/schemas/AlertExecutionError'
  *             createdAt:
  *               type: string
  *               nullable: true
