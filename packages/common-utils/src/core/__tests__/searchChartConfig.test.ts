@@ -174,7 +174,20 @@ describe('buildSearchChartConfig', () => {
     });
   });
 
+  // Covers every behavioral branch of the internal `resolveSelect` helper
+  // by varying the inputs to `buildSearchChartConfig`. Precedence is:
+  //   caller `select` (non-empty) > caller `defaultSelect` (non-empty) >
+  //   `source.defaultTableSelectExpression` (Log/Trace only) > '' (empty).
+  // "Non-empty" means `length > 0` for both string and array inputs.
   describe('select precedence', () => {
+    // Reused single-row aggregate select-list for array-valued cases.
+    const aggSelectA = [
+      { aggFn: 'count' as const, aggCondition: '', valueExpression: '' },
+    ];
+    const aggSelectB = [
+      { aggFn: 'sum' as const, aggCondition: '', valueExpression: 'x' },
+    ];
+
     it('prefers caller-provided select over all fallbacks', () => {
       const source = makeLogSource({
         defaultTableSelectExpression: 'source-default',
@@ -187,6 +200,20 @@ describe('buildSearchChartConfig', () => {
       });
 
       expect(config.select).toBe('caller-select');
+    });
+
+    it('returns a non-empty array `select` as-is, ahead of defaultSelect', () => {
+      const source = makeLogSource({
+        defaultTableSelectExpression: 'source-default',
+      });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        select: aggSelectA,
+        defaultSelect: aggSelectB,
+      });
+
+      expect(config.select).toEqual(aggSelectA);
     });
 
     it('falls back to defaultSelect when select is empty string', () => {
@@ -203,6 +230,60 @@ describe('buildSearchChartConfig', () => {
       expect(config.select).toBe('caller-default');
     });
 
+    it('falls back to defaultSelect when select is an empty array', () => {
+      const source = makeLogSource({
+        defaultTableSelectExpression: 'source-default',
+      });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        select: [],
+        defaultSelect: 'caller-default',
+      });
+
+      expect(config.select).toBe('caller-default');
+    });
+
+    it('falls back to defaultSelect when select is null', () => {
+      const source = makeLogSource({
+        defaultTableSelectExpression: 'source-default',
+      });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        select: null,
+        defaultSelect: 'caller-default',
+      });
+
+      expect(config.select).toBe('caller-default');
+    });
+
+    it('falls back to source default when defaultSelect is empty string', () => {
+      const source = makeLogSource({
+        defaultTableSelectExpression: 'source-default',
+      });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        defaultSelect: '',
+      });
+
+      expect(config.select).toBe('source-default');
+    });
+
+    it('falls back to source default when defaultSelect is an empty array', () => {
+      const source = makeLogSource({
+        defaultTableSelectExpression: 'source-default',
+      });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        defaultSelect: [],
+      });
+
+      expect(config.select).toBe('source-default');
+    });
+
     it('falls back to source defaultTableSelectExpression when caller fields are missing', () => {
       const source = makeLogSource({
         defaultTableSelectExpression: 'source-default',
@@ -213,18 +294,41 @@ describe('buildSearchChartConfig', () => {
       expect(config.select).toBe('source-default');
     });
 
-    it('supports array-valued SELECT (count aggregate) for alert-style queries', () => {
+    it('supports array-valued defaultSelect (count aggregate) for alert-style queries', () => {
       const source = makeLogSource();
-      const selectList = [
-        { aggFn: 'count' as const, aggCondition: '', valueExpression: '' },
-      ];
 
       const config = buildSearchChartConfig(source, {
         where: '',
-        defaultSelect: selectList,
+        defaultSelect: aggSelectA,
       });
 
-      expect(config.select).toEqual(selectList);
+      expect(config.select).toEqual(aggSelectA);
+    });
+
+    it('returns empty string when Log source has no defaultTableSelectExpression and caller provides nothing', () => {
+      const source = makeLogSource({ defaultTableSelectExpression: undefined });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.select).toBe('');
+    });
+
+    it('uses Trace source defaultTableSelectExpression when set', () => {
+      const source = makeTraceSource({
+        defaultTableSelectExpression: 'trace-default',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.select).toBe('trace-default');
+    });
+
+    it('returns empty string for Metric source with no caller fields (non-Log/Trace branch)', () => {
+      const source = makeMetricSource();
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.select).toBe('');
     });
   });
 
