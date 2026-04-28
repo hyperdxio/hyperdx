@@ -6,7 +6,6 @@ import {
   BuilderChartConfigWithOptTimestamp,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
-  DisplayType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';

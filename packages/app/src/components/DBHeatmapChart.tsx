@@ -28,11 +28,7 @@ import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import {
-  formatDurationMs,
-  formatDurationMsCompact,
-  formatNumber,
-} from '@/utils';
+import { formatDurationMsCompact, formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
