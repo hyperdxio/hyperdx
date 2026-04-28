@@ -113,6 +113,7 @@ export function ChartEditorControls({
         <Group>
           {tableSource &&
             activeTab !== 'search' &&
+            activeTab !== 'heatmap' &&
             chartConfigForExplanations &&
             isBuilderChartConfig(chartConfigForExplanations) && (
               <MVOptimizationIndicator

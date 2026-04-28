@@ -1,14 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptTimestamp,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Text } from '@mantine/core';
+import { Accordion, Divider, Stack, Text } from '@mantine/core';
 import { IconCode, IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -17,6 +19,9 @@ import { getAlertReferenceLines } from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBHeatmapChart, {
+  buildHeatmapBoundsConfig,
+  buildHeatmapBucketConfig,
+  HEATMAP_N_BUCKETS,
   toHeatmapChartConfig,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
@@ -43,6 +48,60 @@ function HeatmapPreview({
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart config={heatmapConfig} scaleType={scaleType} showLegend />
     </div>
+  );
+}
+
+/**
+ * Heatmap renders via two sequential ClickHouse queries — bounds first, then
+ * the bucketed-counts query that uses the resolved min/max.  Show both,
+ * labeled, with placeholder tokens for the bucket-array literals (which only
+ * exist at runtime once the bounds query returns).
+ */
+function HeatmapSQLPreview({
+  config,
+  dateRange,
+}: {
+  config: BuilderChartConfigWithOptTimestamp;
+  dateRange: [Date, Date];
+}) {
+  if (!config.timestampValueExpression) {
+    return null;
+  }
+  const { heatmapConfig, scaleType } = toHeatmapChartConfig(
+    config as BuilderChartConfigWithDateRange,
+  );
+  const granularity = convertDateRangeToGranularityString(dateRange, 245);
+
+  const boundsConfig = buildHeatmapBoundsConfig({
+    config: heatmapConfig,
+    scaleType,
+  });
+
+  const bucketConfig = buildHeatmapBucketConfig({
+    config: heatmapConfig,
+    scaleType,
+    effectiveMin: '{min}',
+    max: '{max}',
+    granularity,
+    nBuckets: HEATMAP_N_BUCKETS,
+  });
+
+  return (
+    <Stack gap="md">
+      <div>
+        <Text size="xs" c="dimmed" mb={4}>
+          1. Bounds query — resolves min/max for bucket boundaries
+        </Text>
+        <ChartSQLPreview config={boundsConfig} enableCopy />
+      </div>
+      <div>
+        <Text size="xs" c="dimmed" mb={4}>
+          2. Heatmap query — runs after bounds resolve; <code>{'{min}'}</code>/
+          <code>{'{max}'}</code> are filled in at runtime
+        </Text>
+        <ChartSQLPreview config={bucketConfig} enableCopy />
+      </div>
+    </Stack>
   );
 }
 
@@ -268,12 +327,20 @@ export function ChartPreviewPanel({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {queryReady && chartConfigForExplanations != null && (
-                  <ChartSQLPreview
-                    config={chartConfigForExplanations}
-                    enableCopy
-                  />
-                )}
+                {queryReady &&
+                  chartConfigForExplanations != null &&
+                  (activeTab === 'heatmap' &&
+                  isBuilderChartConfig(chartConfigForExplanations) ? (
+                    <HeatmapSQLPreview
+                      config={chartConfigForExplanations}
+                      dateRange={dateRange}
+                    />
+                  ) : (
+                    <ChartSQLPreview
+                      config={chartConfigForExplanations}
+                      enableCopy
+                    />
+                  ))}
               </Accordion.Panel>
             </Accordion.Item>
           </Accordion>

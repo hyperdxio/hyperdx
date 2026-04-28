@@ -336,6 +336,170 @@ export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
   };
 }
 
+export const HEATMAP_N_BUCKETS = 80;
+
+/**
+ * Build the bounds (min/max) ChartConfig that runs first.  Result feeds
+ * `effectiveMin`/`max` into `buildHeatmapBucketConfig`.
+ */
+export function buildHeatmapBoundsConfig({
+  config,
+  scaleType,
+}: {
+  config: HeatmapChartConfig;
+  scaleType: HeatmapScaleType;
+}): BuilderChartConfigWithDateRange {
+  const valueExpression = config.select[0].valueExpression;
+  const isAggregateExpression = isAggregateFunction(valueExpression);
+  const qLo = scaleType === 'log' ? 0.01 : 0.001;
+
+  return isAggregateExpression
+    ? {
+        ...config,
+        where: '',
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'quantile' as const,
+            level: qLo,
+            aggCondition: `value_calc >= 0`,
+            aggConditionLanguage: 'sql',
+            valueExpression: 'value_calc',
+            alias: 'min',
+          },
+          {
+            aggFn: 'max' as const,
+            valueExpression: 'value_calc',
+            alias: 'max',
+          },
+        ],
+        with: [
+          {
+            name: 'min_max_calc',
+            chartConfig: {
+              ...config,
+              select: [{ valueExpression, alias: 'value_calc' }],
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'min_max_calc' },
+      }
+    : {
+        ...config,
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'quantile' as const,
+            level: qLo,
+            valueExpression,
+            aggCondition: `${valueExpression} >= 0`,
+            aggConditionLanguage: 'sql',
+            alias: 'min',
+          },
+          {
+            aggFn: 'max' as const,
+            valueExpression,
+            alias: 'max',
+          },
+        ],
+      };
+}
+
+/**
+ * Build the bucketed-counts ChartConfig that runs second.  `effectiveMin`/`max`
+ * are usually numbers (resolved from the bounds query), but accept strings so
+ * callers — like the editor's SQL preview — can pass placeholder tokens
+ * (e.g. `'{min}'`) before the bounds are known.
+ */
+export function buildHeatmapBucketConfig({
+  config,
+  scaleType,
+  effectiveMin,
+  max,
+  granularity,
+  nBuckets,
+}: {
+  config: HeatmapChartConfig;
+  scaleType: HeatmapScaleType;
+  effectiveMin: string | number;
+  max: string | number;
+  granularity: string;
+  nBuckets: number;
+}): BuilderChartConfigWithDateRange {
+  const valueExpression = config.select[0].valueExpression;
+  const countExpression = config.select[0].countExpression ?? 'count()';
+  const isAggregateExpression = isAggregateFunction(valueExpression);
+
+  const bucketExprAgg =
+    scaleType === 'log'
+      ? `widthBucket(log(greatest(toFloat64(value_calc), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      : `widthBucket(value_calc, ${effectiveMin}, ${max}, ${nBuckets})`;
+  const bucketExprDirect =
+    scaleType === 'log'
+      ? `widthBucket(log(greatest(toFloat64(${valueExpression}), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      : `widthBucket(${valueExpression}, ${effectiveMin}, ${max}, ${nBuckets})`;
+
+  return isAggregateExpression
+    ? {
+        ...config,
+        where: '',
+        select: [
+          {
+            valueExpression: 'sum(value_count)',
+            alias: 'count',
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: bucketExprAgg,
+            alias: 'x_bucket',
+          },
+        ],
+        with: [
+          {
+            name: 'bucket_calc',
+            chartConfig: {
+              ...config,
+              select: [
+                { valueExpression, alias: 'value_calc' },
+                {
+                  valueExpression: countExpression,
+                  alias: 'value_count',
+                },
+              ],
+              granularity,
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'bucket_calc' },
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      }
+    : {
+        ...config,
+        select: [
+          {
+            valueExpression: countExpression,
+            alias: 'count',
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: bucketExprDirect,
+            alias: 'x_bucket',
+          },
+        ],
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      };
+}
+
 export function ColorLegend({ colors }: { colors: string[] }) {
   return (
     <Flex
@@ -396,74 +560,14 @@ function HeatmapContainer({
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
 
-  const nBuckets = 80;
-
-  const valueExpression = config.select[0].valueExpression;
-  const countExpression = config.select[0].countExpression ?? 'count()';
-
-  // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
-  const isAggregateExpression = isAggregateFunction(valueExpression);
+  const nBuckets = HEATMAP_N_BUCKETS;
 
   // Use quantile-based lower bound to avoid near-zero outliers stretching
   // the log axis.  For the upper bound, use actual max() so that latency
   // spikes (typically <1% of spans) remain visible — log scale already
   // handles wide ranges naturally.  Future: #1914 adds overflow-bucket
   // indicators for smarter range clamping without hiding spikes.
-  const qLo = scaleType === 'log' ? 0.01 : 0.001;
-  const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
-    ? {
-        ...config,
-        where: '',
-        orderBy: undefined,
-        granularity: undefined,
-        select: [
-          {
-            aggFn: 'quantile' as const,
-            level: qLo,
-            aggCondition: `value_calc >= 0`,
-            aggConditionLanguage: 'sql',
-            valueExpression: 'value_calc',
-            alias: 'min',
-          },
-          {
-            aggFn: 'max' as const,
-            valueExpression: 'value_calc',
-            alias: 'max',
-          },
-        ],
-        with: [
-          {
-            name: 'min_max_calc',
-            chartConfig: {
-              ...config,
-              select: [{ valueExpression, alias: 'value_calc' }],
-              orderBy: undefined,
-            },
-          },
-        ],
-        timestampValueExpression: '__hdx_time_bucket',
-        from: { databaseName: '', tableName: 'min_max_calc' },
-      }
-    : {
-        ...config,
-        orderBy: undefined,
-        granularity: undefined,
-        select: [
-          {
-            aggFn: 'quantile' as const,
-            level: qLo,
-            valueExpression,
-            aggCondition: `${valueExpression} >= 0`,
-            aggConditionLanguage: 'sql',
-            alias: 'min',
-          },
-          {
-            aggFn: 'max' as const,
-            valueExpression,
-            alias: 'max',
-          },
-        ],
-      };
+  const minMaxConfig = buildHeatmapBoundsConfig({ config, scaleType });
 
   const {
     data: minMaxData,
@@ -486,72 +590,14 @@ function HeatmapContainer({
   const effectiveMin =
     scaleType === 'log' ? Math.max(min, max * 1e-4 || 1e-4) : min;
 
-  // For log scale: bucket by log(value) to get log-spaced boundaries
-  // For linear scale: bucket by raw value (original behavior)
-  const bucketExprAgg =
-    scaleType === 'log'
-      ? `widthBucket(log(greatest(toFloat64(value_calc), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
-      : `widthBucket(value_calc, ${effectiveMin}, ${max}, ${nBuckets})`;
-  const bucketExprDirect =
-    scaleType === 'log'
-      ? `widthBucket(log(greatest(toFloat64(${valueExpression}), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
-      : `widthBucket(${valueExpression}, ${effectiveMin}, ${max}, ${nBuckets})`;
-
-  const bucketConfig: BuilderChartConfigWithDateRange = isAggregateExpression
-    ? {
-        ...config,
-        where: '',
-        select: [
-          {
-            valueExpression: 'sum(value_count)',
-            alias: 'count',
-          },
-        ],
-        groupBy: [
-          {
-            valueExpression: bucketExprAgg,
-            alias: 'x_bucket',
-          },
-        ],
-        with: [
-          {
-            name: 'bucket_calc',
-            chartConfig: {
-              ...config,
-              select: [
-                { valueExpression, alias: 'value_calc' },
-                {
-                  valueExpression: countExpression,
-                  alias: 'value_count',
-                },
-              ],
-              granularity,
-              orderBy: undefined,
-            },
-          },
-        ],
-        timestampValueExpression: '__hdx_time_bucket',
-        from: { databaseName: '', tableName: 'bucket_calc' },
-        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
-        granularity,
-      }
-    : {
-        ...config,
-        select: [
-          {
-            valueExpression: countExpression,
-            alias: 'count',
-          },
-        ],
-        groupBy: [
-          {
-            valueExpression: bucketExprDirect,
-            alias: 'x_bucket',
-          },
-        ],
-        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
-        granularity,
-      };
+  const bucketConfig = buildHeatmapBucketConfig({
+    config,
+    scaleType,
+    effectiveMin,
+    max,
+    granularity,
+    nBuckets,
+  });
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
