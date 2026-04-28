@@ -16,12 +16,20 @@ import { renderChartConfig } from '@/core/renderChartConfig';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
+  MetadataMaterializedViews,
   TSource,
 } from '@/types';
-import { SourceKind } from '@/types';
+import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
-import { optimizeGetKeyValuesCalls } from './materializedViews';
-import { getDistributedTableArgs, objectHash } from './utils';
+import {
+  optimizeGetKeyValuesCalls,
+  renderStartOfBucketExpr,
+} from './materializedViews';
+import {
+  getAlignedDateRange,
+  getDistributedTableArgs,
+  objectHash,
+} from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -339,6 +347,8 @@ export class Metadata {
     maxKeys = DEFAULT_MAX_KEYS,
     connectionId,
     metricName,
+    metadataMVs,
+    dateRange,
   }: {
     databaseName: string;
     tableName: string;
@@ -346,16 +356,68 @@ export class Metadata {
     maxKeys?: number;
     connectionId: string;
     metricName?: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
   }) {
+    // Align date range to rollup granularity for consistent cache keys
+    const alignedDateRange =
+      metadataMVs && dateRange
+        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
+        : undefined;
+
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
+      : metadataMVs && alignedDateRange
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
       return cachedKeys;
     }
 
+    // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
+    if (metadataMVs && alignedDateRange) {
+      return this.cache.getOrFetch<string[]>(cacheKey, async () => {
+        const startExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+        );
+        const endExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+        );
+        const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+        const sql = chSql`
+          SELECT Key
+          FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
+          WHERE ColumnIdentifier = ${{ String: column }}
+            ${timeFilter}
+          GROUP BY Key
+          ORDER BY sum(count) DESC
+          LIMIT ${{ Int32: maxKeys }}
+        `;
+
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              max_rows_to_read: '0',
+            },
+          })
+          .then(res => res.json<{ Key: string }>())
+          .then(d => d.data.map(row => row.Key).filter(k => k));
+
+        return keys;
+      });
+    }
+
+    // Original path: scan main table
     const colMeta = await this.getColumn({
       databaseName,
       tableName,
@@ -586,7 +648,9 @@ export class Metadata {
     tableName,
     connectionId,
     metricName,
-  }: TableConnection) {
+    metadataMVs,
+    dateRange,
+  }: TableConnection & { dateRange?: [Date, Date] }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -634,6 +698,8 @@ export class Metadata {
           column: column.name,
           connectionId,
           metricName,
+          metadataMVs,
+          dateRange,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -1132,6 +1198,85 @@ export class Metadata {
     );
   }
 
+  /**
+   * Autocomplete: fetches top values for a specific map key from the KV rollup table.
+   * Only filters by date range — no WHERE conditions. Values ordered by frequency.
+   */
+  async getAllKeyValues({
+    databaseName,
+    tableName,
+    column,
+    key,
+    maxValues = 1000,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    column: string;
+    key: string;
+    maxValues?: number;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange: [Date, Date];
+    signal?: AbortSignal;
+  }): Promise<string[]> {
+    if (!metadataMVs) return [];
+
+    // Align date range to rollup granularity for consistent cache keys
+    const alignedDateRange = getAlignedDateRange(
+      dateRange,
+      metadataMVs.granularity,
+    );
+
+    const startExpr = renderStartOfBucketExpr(
+      metadataMVs.granularity,
+      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+    );
+    const endExpr = renderStartOfBucketExpr(
+      metadataMVs.granularity,
+      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+    );
+    const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues`;
+
+    return this.cache.getOrFetch(cacheKey, async () => {
+      try {
+        const sql = chSql`
+          SELECT Value
+          FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+          WHERE ColumnIdentifier = ${{ String: column }}
+            AND Key = ${{ String: key }}
+            AND Value != ''
+            ${timeFilter}
+          GROUP BY Value
+          ORDER BY sum(count) DESC
+          LIMIT ${{ Int32: maxValues }}
+        `;
+
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              max_rows_to_read: '0',
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<{ Value: string }>())
+          .then(d => d.data.map(r => r.Value));
+      } catch {
+        return [];
+      }
+    });
+  }
+
   async getKeyValues({
     chartConfig,
     keys,
@@ -1323,11 +1468,13 @@ export type Field = {
   jsType: JSDataType | null;
 };
 
+// Describes a table and potentially related views
 export type TableConnection = {
   databaseName: string;
   tableName: string;
   connectionId: string;
   metricName?: string;
+  metadataMVs?: MetadataMaterializedViews;
 };
 
 export type TableConnectionChoice =
@@ -1355,6 +1502,10 @@ export function tcFromSource(source?: TSource): TableConnection {
     databaseName: source?.from?.databaseName ?? '',
     tableName: source?.from?.tableName ?? '',
     connectionId: source?.connection ?? '',
+    metadataMVs:
+      source && (isLogSource(source) || isTraceSource(source))
+        ? source.metadataMaterializedViews
+        : undefined,
   };
 }
 

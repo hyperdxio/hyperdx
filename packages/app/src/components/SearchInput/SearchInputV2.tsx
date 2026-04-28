@@ -44,6 +44,7 @@ export default function SearchInputV2({
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  dateRange,
   'data-testid': dataTestId,
   ...props
 }: {
@@ -56,6 +57,7 @@ export default function SearchInputV2({
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  dateRange?: [Date, Date];
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
@@ -67,12 +69,18 @@ export default function SearchInputV2({
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
-  const autoCompleteOptions = useAutoCompleteOptions(
+  const {
+    options: autoCompleteOptions,
+    isLoadingValues,
+    tokenInfo,
+  } = useAutoCompleteOptions(
     luceneLanguageFormatter,
     value != null ? `${value}` : '',
     {
       tableConnection: tableConnection ? tableConnection : tableConnections,
       additionalSuggestions,
+      dateRange,
+      inputRef: ref,
     },
   );
 
@@ -110,6 +118,8 @@ export default function SearchInputV2({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={autoCompleteOptions}
+      isLoadingValues={isLoadingValues}
+      tokenInfo={tokenInfo}
       size={size}
       zIndex={zIndex}
       language={language}

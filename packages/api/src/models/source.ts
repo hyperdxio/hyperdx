@@ -144,6 +144,14 @@ export const LogSource = Source.discriminator<ILogSource>(
     materializedViews: {
       type: mongoose.Schema.Types.Array,
     },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
+    },
     orderByExpression: String,
   }),
 );
@@ -183,6 +191,14 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),

@@ -1129,6 +1129,16 @@ export type MaterializedViewConfiguration = z.infer<
   typeof MaterializedViewConfigurationSchema
 >;
 
+export const MetadataMaterializedViewsSchema = z.object({
+  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
+  granularity: SQLIntervalSchema,
+});
+
+export type MetadataMaterializedViews = z.infer<
+  typeof MetadataMaterializedViewsSchema
+>;
+
 // Log source form schema
 export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
@@ -1154,6 +1164,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 
@@ -1193,6 +1204,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 
