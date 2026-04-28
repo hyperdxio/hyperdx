@@ -71,11 +71,7 @@ function GranularityPicker({
 }
 
 function GranularityPickerControlledComponent(props: UseControllerProps<any>) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+  const { field } = useController(props);
 
   return <GranularityPicker value={field.value} onChange={field.onChange} />;
 }

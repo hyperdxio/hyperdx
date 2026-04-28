@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { differenceInDays } from 'date-fns';
 import {
   ActionIcon,
   Badge,

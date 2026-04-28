@@ -23,7 +23,7 @@ import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
-import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { WithClause } from '@/hooks/useRowWhere';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -130,14 +130,10 @@ function PodLogs({
   dateRange,
   logSource,
   where,
-  rowId,
-  onRowClick,
 }: {
   dateRange: [Date, Date];
   logSource: TLogSource;
   where: string;
-  rowId: string | null;
-  onRowClick: (rowWhere: RowWhereResult) => void;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
@@ -232,11 +228,7 @@ export default function PodDetailsSidePanel({
   );
 
   const [rowId, setRowId] = React.useState<string | null>(null);
-  const [aliasWith, setAliasWith] = React.useState<WithClause[]>([]);
-  const handleRowClick = React.useCallback((rowWhere: RowWhereResult) => {
-    setRowId(rowWhere.where);
-    setAliasWith(rowWhere.aliasWith);
-  }, []);
+  const [aliasWith] = React.useState<WithClause[]>([]);
   const handleCloseRowSidePanel = React.useCallback(() => {
     setRowId(null);
   }, []);
@@ -459,8 +451,6 @@ export default function PodDetailsSidePanel({
                   logSource={logSource}
                   where={logsWhere}
                   dateRange={dateRange}
-                  rowId={rowId}
-                  onRowClick={handleRowClick}
                 />
               </Grid.Col>
             </Grid>

@@ -63,11 +63,7 @@ function FileSelection({
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
   });
 

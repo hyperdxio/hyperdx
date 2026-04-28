@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { omit } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
@@ -10,7 +11,6 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useResolvedNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { omit } from '@/utils';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';

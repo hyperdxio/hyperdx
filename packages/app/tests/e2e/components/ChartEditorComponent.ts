@@ -318,7 +318,7 @@ export class ChartEditorComponent {
   /**
    * Switch the Row Click Action mode (SegmentedControl).
    */
-  async setRowClickMode(mode: 'Default' | 'Search') {
+  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard') {
     await this.page
       .getByTestId('onclick-mode-segmented')
       .getByText(mode, { exact: true })
@@ -326,10 +326,22 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Fill the "Source (template)" text input in the drawer.
+   * Select a target (source/dashboard or "Template") from the Row Click
+   * Action drawer's Select dropdown. Pass the exact option label — for
+   * example "Template", "E2E Logs", or a specific dashboard name.
    */
-  async fillRowClickSourceTemplate(template: string) {
-    await this.page.getByTestId('onclick-source-template-input').fill(template);
+  async selectRowClickTarget(label: string) {
+    await this.page.getByTestId('onclick-target-select').click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
+  /**
+   * Fill the Template text input in the drawer. Call selectRowClickTarget('Template')
+   * first to make the template input visible (this is the default state after
+   * switching to Search or Dashboard mode, but calling it explicitly is safe).
+   */
+  async fillRowClickTemplate(template: string) {
+    await this.page.getByTestId('onclick-template-input').fill(template);
   }
 
   /**
