@@ -486,16 +486,28 @@ export abstract class BaseClickhouseClient {
     await this.client?.close();
   }
 
+  /**
+   * Render the parameterized query into a copy-pasteable SQL string, falling
+   * back to the raw template if substitution fails. Exposed so callers (e.g.
+   * the alert evaluator) can reuse the exact same rendering pipeline used by
+   * logDebugQuery without re-implementing parameter substitution.
+   */
+  renderDebugSql(
+    query: string,
+    query_params: Record<string, any> = {},
+  ): string {
+    try {
+      return parameterizedQueryToSql({ sql: query, params: query_params });
+    } catch (e) {
+      return query;
+    }
+  }
+
   protected logDebugQuery(
     query: string,
     query_params: Record<string, any> = {},
   ): void {
-    let debugSql = '';
-    try {
-      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
-      debugSql = query;
-    }
+    const debugSql = this.renderDebugSql(query, query_params);
 
     console.debug('--------------------------------------------------------');
 

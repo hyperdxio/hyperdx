@@ -13,7 +13,11 @@ import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  renderChartConfig,
+  setChartSelectsAlias,
+  splitChartConfigs,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
@@ -916,6 +920,33 @@ export const processAlert = async (
       `Received alert metric [${alert.source} source]`,
     );
 
+    // Pre-render the exact SQL string(s) the alert evaluator sent to ClickHouse,
+    // so we can attach them to the trigger log on dispatch (HDX-4112). We
+    // mirror the queryChartConfig pipeline (setChartSelectsAlias for builder
+    // configs, splitChartConfigs, then renderChartConfig per split) and reuse
+    // ClickhouseClient#renderDebugSql so parameter substitution stays in sync
+    // with the existing logDebugQuery output. Failures here must not affect
+    // alert delivery.
+    let renderedAlertSqls: string[] = [];
+    try {
+      const renderInputConfig = isBuilderChartConfig(optimizedChartConfig)
+        ? setChartSelectsAlias(optimizedChartConfig)
+        : optimizedChartConfig;
+      const renderedQueries = await Promise.all(
+        splitChartConfigs(renderInputConfig).map(c =>
+          renderChartConfig(c, metadata, source?.querySettings),
+        ),
+      );
+      renderedAlertSqls = renderedQueries.map(q =>
+        clickhouseClient.renderDebugSql(q.sql, q.params),
+      );
+    } catch (e) {
+      logger.warn(
+        { alertId: alert.id, error: serializeError(e) },
+        'Failed to render alert SQL for trigger logging',
+      );
+    }
+
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
 
@@ -934,6 +965,20 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // Identifiers for the source of the alert evaluation, attached to the
+    // trigger log so the rendered SQL can be correlated back to the
+    // originating object.
+    const savedSearchIdForLog =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? details.savedSearch.id
+        : undefined;
+    const tileIdForLog =
+      details.taskType === AlertTaskType.TILE ? alert.tileId : undefined;
+    const dashboardIdForLog =
+      details.taskType === AlertTaskType.TILE
+        ? details.dashboard?.id
+        : undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -946,8 +991,32 @@ export const processAlert = async (
       group: string;
       startTime?: Date;
     }) => {
+      // Attach the exact rendered SQL (post-parameter substitution) sent to
+      // ClickHouse for this alert evaluation, alongside the evaluation window,
+      // source/table, and the metric value that triggered the notification
+      // (HDX-4112). Emitting this from inside trySendNotification means the
+      // raw SQL is only logged on actual notification attempts, so operators
+      // can paste it back into the HyperDX app / ClickHouse to reproduce the
+      // triggering query.
       logger.info(
-        { alertId: alert.id, group, totalCount },
+        {
+          alertId: alert.id,
+          savedSearchId: savedSearchIdForLog,
+          tileId: tileIdForLog,
+          dashboardId: dashboardIdForLog,
+          sourceId: source?.id,
+          sourceFrom: source?.from,
+          alertSource: alert.source,
+          group,
+          state,
+          totalCount,
+          windowStart: startTime,
+          windowEnd: fns.addMinutes(startTime, windowSizeInMins),
+          checkStartTime: dateRange[0],
+          checkEndTime: dateRange[1],
+          windowSizeInMins,
+          renderedSqls: renderedAlertSqls,
+        },
         state === AlertState.ALERT
           ? `Triggering ${alert.channel.type} alarm!`
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
