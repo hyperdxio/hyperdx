@@ -689,12 +689,6 @@ function useSearchedConfigToChartConfig(
 
   return useMemo(() => {
     if (sourceObj != null) {
-      // Use the shared builder (in @hyperdx/common-utils) so the search page,
-      // the alert preview, and the scheduled alert task all assemble the
-      // chart config identically. In particular, this is the single place
-      // `source.tableFilterExpression` is prepended as a SQL filter — the
-      // divergence that caused HDX-4111 (false-positive alerts where the
-      // task counted rows the app was hiding).
       const resolvedOrderBy =
         orderBy || defaultSearchConfig?.orderBy || defaultOrderBy;
 
