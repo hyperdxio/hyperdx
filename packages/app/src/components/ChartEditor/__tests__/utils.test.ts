@@ -51,6 +51,25 @@ const metricSource: TMetricSource = {
   resourceAttributesExpression: 'ResourceAttributes',
 };
 
+const traceSource: TSource = {
+  id: 'source-trace',
+  name: 'Trace Source',
+  kind: SourceKind.Trace,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'spans' },
+  timestampValueExpression: 'Timestamp',
+  durationExpression: 'Duration',
+  spanIdExpression: 'SpanId',
+  traceIdExpression: 'TraceId',
+  parentSpanIdExpression: 'ParentSpanId',
+  defaultTableSelectExpression: 'SpanName',
+  implicitColumnExpression: 'SpanName',
+  statusCodeExpression: 'StatusCode',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+  durationPrecision: 9,
+};
+
 const seriesItem = {
   aggFn: 'count' as const,
   valueExpression: '*',
@@ -1249,6 +1268,90 @@ describe('validateChartForm', () => {
     expect(setError).toHaveBeenCalledWith(
       'sqlTemplate',
       expect.objectContaining({ type: 'manual' }),
+    );
+  });
+
+  // ── Heatmap-specific validation ───────────────────────────────────────
+
+  it('returns no errors for a valid heatmap chart with trace source', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [
+          {
+            ...seriesItem,
+            valueExpression: 'Duration / 1e6',
+            countExpression: 'count()',
+            heatmapScaleType: 'log',
+          },
+        ],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects heatmap chart with multiple series', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [
+          { ...seriesItem, valueExpression: 'Duration / 1e6' },
+          { ...seriesItem, valueExpression: 'other' },
+        ],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toContainEqual(expect.objectContaining({ path: 'series' }));
+  });
+
+  it('rejects heatmap chart without a value expression', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [{ ...seriesItem, valueExpression: '' }],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ path: 'series.0.valueExpression' }),
+    );
+  });
+});
+
+describe('heatmap round-trip', () => {
+  it('preserves countExpression and heatmapScaleType through form state conversion', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Heatmap,
+      source: 'source-trace',
+      where: '',
+      series: [
+        {
+          ...seriesItem,
+          valueExpression: 'Duration / 1e6',
+          countExpression: 'count()',
+          heatmapScaleType: 'linear',
+        },
+      ],
+    };
+    const saved = convertFormStateToSavedChartConfig(form, traceSource);
+    expect(saved).toBeDefined();
+    const restored = convertSavedChartConfigToFormState(saved!);
+    expect(restored.series[0]).toEqual(
+      expect.objectContaining({
+        valueExpression: 'Duration / 1e6',
+        countExpression: 'count()',
+        heatmapScaleType: 'linear',
+      }),
     );
   });
 });

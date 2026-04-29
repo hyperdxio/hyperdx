@@ -137,6 +137,9 @@ export const DerivedColumnSchema = z.intersection(
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
     metricNameSql: z.string().optional(),
+    // Heatmap-specific fields (optional, only used when displayType is Heatmap)
+    countExpression: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -667,23 +670,51 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string().min(1) }),
+  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+]);
+export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
+
+const OnClickSearchSchema = z.object({
+  type: z.literal('search'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
+
+export const OnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
+
+export const OnClickSchema = z.discriminatedUnion('type', [
+  OnClickSearchSchema,
+  OnClickDashboardSchema,
+]);
+export type OnClick = z.infer<typeof OnClickSchema>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-
 /**
- * Schema describing display settings which are shared between Raw SQL
+ * Schema describing settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
  **/
-const SharedChartDisplaySettingsSchema = z.object({
+const SharedChartSettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
   granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  onClick: OnClickSchema.optional(),
 });
 
-export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   sampleWeightExpression: z.string().optional(),
@@ -697,6 +728,7 @@ export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -742,7 +774,7 @@ const BuilderChartConfigSchema = z.intersection(
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
 
 /** Base schema for Raw SQL chart configs */
-const RawSqlBaseChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+const RawSqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('sql'),
   sqlTemplate: z.string(),
   connection: z.string(),
@@ -865,6 +897,8 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
   containerId: z.string().optional(),
+  // For tiles inside a tab container: which tab this tile belongs to
+  tabId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -876,11 +910,22 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+export const DashboardContainerTabSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+});
+
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
+  // Whether the group can be collapsed (default true)
+  collapsible: z.boolean().optional(),
+  // Whether to show a border around the group (default true)
+  bordered: z.boolean().optional(),
+  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
+  // Tiles reference a specific tab via tabId.
+  tabs: z.array(DashboardContainerTabSchema).optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -1219,6 +1264,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isSearchableSource(source: TSource): boolean {
+  return isLogSource(source) || isTraceSource(source);
 }
 
 type SourceLikeForSampleWeight = {

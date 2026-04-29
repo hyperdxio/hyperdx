@@ -527,16 +527,12 @@ function ClickhousePage() {
     initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
-    // showRelativeInterval: isLive,
   });
-
-  // For future use if Live button is added
-  const [isLive, setIsLive] = useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange,
     onTimeRangeSelect,
-    isLive,
+    isLive: false,
   });
 
   const filters = useMemo(() => {

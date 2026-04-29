@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
+import {
+  Controller,
+  useFieldArray,
+  useForm,
+  type UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -28,6 +34,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
   IconChartPie,
+  IconGrid3x3,
   IconList,
   IconMarkdown,
   IconNumbers,
@@ -50,12 +57,20 @@ import {
   isRawSqlDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
+import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import HeatmapSettingsDrawer, {
+  HeatmapSettingsValues,
+} from '@/components/HeatmapSettingsDrawer';
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import { getTraceDurationNumberFormat, useSource } from '@/source';
+import {
+  getDurationMsExpression,
+  getTraceDurationNumberFormat,
+  useSource,
+} from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 import { ChartActionBar } from './ChartActionBar';
@@ -88,6 +103,25 @@ type EditTimeChartFormProps = {
   isDashboardForm?: boolean;
   autoRun?: boolean;
 };
+
+/** Populate form state with the standard heatmap series + duration numberFormat. */
+function applyHeatmapDefaults(
+  setValue: UseFormSetValue<ChartEditorFormState>,
+  valueExpression: string,
+) {
+  const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
+    {
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+      valueExpression,
+    },
+  ];
+  setValue('select', heatmapSeries);
+  setValue('series', heatmapSeries);
+  setValue('series.0.countExpression', 'count()');
+  setValue('numberFormat', { output: 'duration', factor: 0.001 });
+}
 
 export default function EditTimeChartForm({
   dashboardId,
@@ -184,6 +218,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     numberFormat,
+    groupByColumnsOnLeft,
   ] = useWatch({
     control,
     name: [
@@ -191,6 +226,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'numberFormat',
+      'groupByColumnsOnLeft',
     ],
   });
 
@@ -209,18 +245,25 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      groupByColumnsOnLeft,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
       numberFormat,
+      groupByColumnsOnLeft,
     ],
   );
 
   const [
     displaySettingsOpened,
     { open: openDisplaySettings, close: closeDisplaySettings },
+  ] = useDisclosure(false);
+
+  const [
+    heatmapSettingsOpened,
+    { open: openHeatmapSettings, close: closeHeatmapSettings },
   ] = useDisclosure(false);
 
   // Only update this on submit, otherwise we'll have issues
@@ -365,6 +408,7 @@ export default function EditTimeChartForm({
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
   const prevConfigTypeRef = useRef(configType);
+  const prevSourceIdRef = useRef(sourceId);
 
   useEffect(() => {
     // Emulate the granularity picker auto-searching similar to dashboards
@@ -385,9 +429,23 @@ export default function EditTimeChartForm({
       if (displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
         setValue('series', []);
-      }
-
-      if (displayType !== DisplayType.Search && !Array.isArray(select)) {
+      } else if (displayType === DisplayType.Heatmap) {
+        // Two entry paths into Heatmap:
+        //   - From Search/RawSQL: select is a string; clear `where` too
+        //   - From another builder tab: select is already an array
+        const fallbackValue = Array.isArray(select)
+          ? (select[0]?.valueExpression ?? '')
+          : '';
+        const defaultValue =
+          tableSource?.kind === SourceKind.Trace &&
+          tableSource.durationExpression
+            ? getDurationMsExpression(tableSource)
+            : fallbackValue;
+        if (typeof select === 'string') {
+          setValue('where', '');
+        }
+        applyHeatmapDefaults(setValue, defaultValue);
+      } else if (!Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
@@ -407,7 +465,23 @@ export default function EditTimeChartForm({
         onSubmit(true);
       }
     }
-  }, [displayType, select, setValue, onSubmit, configType]);
+  }, [displayType, select, setValue, onSubmit, configType, tableSource]);
+
+  // Auto-populate heatmap defaults when source changes while in heatmap mode
+  useEffect(() => {
+    const sourceChanged = sourceId !== prevSourceIdRef.current;
+    prevSourceIdRef.current = sourceId;
+
+    if (
+      sourceChanged &&
+      displayType === DisplayType.Heatmap &&
+      tableSource?.kind === SourceKind.Trace &&
+      tableSource.durationExpression
+    ) {
+      applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
+      onSubmit(true);
+    }
+  }, [sourceId, displayType, tableSource, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -457,14 +531,50 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      groupByColumnsOnLeft,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       onSubmit();
     },
     [setValue, onSubmit],
+  );
+
+  const handleUpdateHeatmapSettings = useCallback(
+    (data: HeatmapSettingsValues) => {
+      setValue('series.0.valueExpression', data.value);
+      setValue('series.0.countExpression', data.count || 'count()');
+      setValue('series.0.heatmapScaleType', data.scaleType);
+      onSubmit();
+      closeHeatmapSettings();
+    },
+    [setValue, onSubmit, closeHeatmapSettings],
+  );
+
+  const heatmapValueExpression = useWatch({
+    control,
+    name: 'series.0.valueExpression',
+  });
+  const heatmapCountExpression = useWatch({
+    control,
+    name: 'series.0.countExpression',
+  });
+  const heatmapScaleType: HeatmapScaleType =
+    useWatch({
+      control,
+      name: 'series.0.heatmapScaleType',
+    }) ?? 'log';
+
+  const heatmapSettingsDefaults = useMemo(
+    () => ({
+      value: heatmapValueExpression || '',
+      count: heatmapCountExpression || 'count()',
+      scaleType: heatmapScaleType,
+    }),
+    [heatmapValueExpression, heatmapCountExpression, heatmapScaleType],
   );
 
   const tableConnection = useMemo(
@@ -516,6 +626,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconList size={16} />}
                 >
                   Search
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Heatmap}
+                  leftSection={<IconGrid3x3 size={16} />}
+                >
+                  Heatmap
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
@@ -583,6 +699,7 @@ export default function EditTimeChartForm({
             control={control}
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
+            onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}
@@ -613,6 +730,7 @@ export default function EditTimeChartForm({
             chartConfigForExplanations={chartConfigForExplanations}
             onSubmit={onSubmit}
             openDisplaySettings={openDisplaySettings}
+            openHeatmapSettings={openHeatmapSettings}
           />
         )}
         <ChartActionBar
@@ -661,8 +779,17 @@ export default function EditTimeChartForm({
         defaultNumberFormat={autoDetectedNumberFormat}
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
+        configType={configType}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
+      />
+      <HeatmapSettingsDrawer
+        opened={heatmapSettingsOpened}
+        onClose={closeHeatmapSettings}
+        connection={tableConnection}
+        parentRef={parentRef}
+        defaultValues={heatmapSettingsDefaults}
+        onSubmit={handleUpdateHeatmapSettings}
       />
     </div>
   );

@@ -42,12 +42,7 @@ import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
 import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
 
-const SORT_ORDER = [
-  { value: 'asc' as const, label: 'Ascending' },
-  { value: 'desc' as const, label: 'Descending' },
-];
-
-type SortOrder = (typeof SORT_ORDER)[number]['value'];
+type SortOrder = 'asc' | 'desc';
 
 export const AGG_FNS = [
   { value: 'count' as const, label: 'Count of Events', isAttributable: false },

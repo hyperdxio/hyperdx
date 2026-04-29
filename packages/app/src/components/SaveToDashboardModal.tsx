@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
@@ -46,7 +46,7 @@ export default function SaveToDashboardModal({
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
 
-  const { control, handleSubmit, reset, formState } = useForm<{
+  const { control, handleSubmit, reset } = useForm<{
     dashboardId: string;
     newDashboardName: string;
   }>({
@@ -75,8 +75,8 @@ export default function SaveToDashboardModal({
   ];
 
   const createNewTile = (dashboard: Dashboard): Tile => {
-    const position = calculateNextTilePosition(dashboard.tiles);
     const size = getDefaultTileSize(chartConfig.displayType);
+    const position = calculateNextTilePosition(dashboard.tiles, size.w);
 
     return {
       id: makeId(),
