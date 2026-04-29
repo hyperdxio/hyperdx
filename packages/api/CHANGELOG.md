@@ -1,5 +1,34 @@
 # @hyperdx/api
 
+## 2.25.0
+
+### Minor Changes
+
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+### Patch Changes
+
+- fecbfff7: fix: flatten MCP query tool schema so SDK serializes inputSchema correctly
+- Updated dependencies [24699cde]
+- Updated dependencies [5c6da48c]
+- Updated dependencies [ef571cc0]
+- Updated dependencies [c2a9f96f]
+  - @hyperdx/common-utils@0.19.0
+
 ## 2.24.1
 
 ### Patch Changes

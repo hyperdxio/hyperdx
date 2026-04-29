@@ -1,5 +1,11 @@
 # @hyperdx/cli
 
+## 0.4.1
+
+### Patch Changes
+
+- 253cf5b7: Fix CLI version flag reporting hardcoded 0.1.0 instead of the actual package version
+
 ## 0.4.0
 
 ### Minor Changes
