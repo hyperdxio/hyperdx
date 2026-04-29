@@ -2314,12 +2314,13 @@ describe('checkAlerts', () => {
       );
     });
 
-    // Regression test for HDX-4111: the scheduled alert task was not
-    // applying the Log source's `tableFilterExpression`, while the app
-    // search page was. This caused false-positive alerts where the task
-    // counted rows that the app was hiding. The fix routes both paths
-    // through the shared `buildSearchChartConfig` helper.
-    it('SAVED_SEARCH alert honors source.tableFilterExpression (HDX-4111)', async () => {
+    // The scheduled alert task and the app search page both go through
+    // `buildSearchChartConfig`, which prepends the Log source's
+    // `tableFilterExpression` (when set) as a SQL filter. This regression
+    // test pins that contract for the alert task: rows excluded by
+    // `tableFilterExpression` must not be counted toward the alert
+    // threshold.
+    it('SAVED_SEARCH alert honors source.tableFilterExpression', async () => {
       const {
         team,
         webhook,
@@ -2366,13 +2367,13 @@ describe('checkAlerts', () => {
       const eventMs = new Date('2023-11-16T22:05:00.000Z');
 
       // Insert two log rows in the alert window:
-      //   1. 'excluded' service — matches the saved search `where` but would
-      //      be hidden in the app via `tableFilterExpression`.
-      //   2. 'api' service — matches the saved search `where` and is NOT
-      //      hidden. The threshold uses ABOVE_EXCLUSIVE (strict `>`), so with
-      //      the fix (count = 1) `1 > 1` is false and the alert stays OK.
-      //      Without the fix (count = 2) `2 > 1` would fire, matching the
-      //      reported HDX-4111 regression.
+      //   1. 'excluded' service — matches the saved search `where` but is
+      //      hidden by the source's `tableFilterExpression`.
+      //   2. 'api' service — matches the saved search `where` and passes
+      //      the table filter. Threshold uses ABOVE_EXCLUSIVE (strict `>`),
+      //      so with the filter applied (count = 1) `1 > 1` is false and
+      //      the alert stays OK. If the filter were dropped (count = 2),
+      //      `2 > 1` would fire — the failure mode this test guards.
       await bulkInsertLogs([
         {
           ServiceName: 'excluded',

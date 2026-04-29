@@ -436,8 +436,7 @@ describe('buildSearchChartConfig', () => {
 
   // Locks in the exact shape of the shared count() default SELECT used by
   // both the alert task and the alert preview chart. Drift here would mean
-  // the two paths render queries differently — the original symptom of
-  // HDX-4111.
+  // the two paths render queries differently for the same alert.
   describe('ALERT_COUNT_DEFAULT_SELECT', () => {
     it('exports a single count() aggregate with all required fields', () => {
       expect(ALERT_COUNT_DEFAULT_SELECT).toEqual([

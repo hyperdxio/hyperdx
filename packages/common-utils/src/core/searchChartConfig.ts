@@ -120,10 +120,10 @@ function resolveSelect(
  *   - the alert preview chart in the alert editor (`AlertPreviewChart`)
  *   - the scheduled alert task's SAVED_SEARCH evaluator
  *
- * Keeping this in one place prevents drift like HDX-4111, where the app
- * applied `source.tableFilterExpression` and the alert task did not,
- * producing false-positive alerts whose count did not reconcile with the
- * app's results for the same saved search and window.
+ * Keeping the assembly in one place prevents drift between the three paths
+ * — for example, ensuring `source.tableFilterExpression` (and any future
+ * source-level fields) is applied uniformly, so the alert task and the app
+ * search produce the same row set for the same saved search and window.
  */
 export function buildSearchChartConfig(
   source: TSource,

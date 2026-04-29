@@ -519,10 +519,8 @@ const getChartConfigFromAlert = (
     const savedSearch = details.savedSearch;
     // Delegate to the shared builder (in @hyperdx/common-utils) so the alert
     // task, the alert preview chart, and the main app search page all
-    // assemble saved-search chart configs identically. This fixes HDX-4111,
-    // where the alert task omitted `source.tableFilterExpression` while the
-    // app applied it — producing false-positive alerts whose count did not
-    // reconcile with the rows visible in the app for the same saved search.
+    // assemble saved-search chart configs identically — keeping source-level
+    // fields like `tableFilterExpression` applied uniformly across paths.
     return buildSearchChartConfig(source as TSource, {
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
