@@ -65,8 +65,8 @@ export type SearchChartConfigInput = {
   whereLanguage?: SearchConditionLanguage | null;
   filters?: Filter[] | null;
   /**
-   * SELECT list. If null/undefined/empty, falls back to `defaultSelect`, then
-   * to `source.defaultTableSelectExpression` when the source kind supports it.
+   * SELECT list. If null/undefined/empty, falls back to
+   * `source.defaultTableSelectExpression` when the source kind supports it.
    */
   select?: SelectList | null;
   orderBy?: SortSpecificationList | null;
@@ -80,15 +80,12 @@ export type SearchChartConfigInput = {
   dateRangeStartInclusive?: boolean;
   dateRangeEndInclusive?: boolean;
   granularity?: SQLInterval;
-
-  /** Fallback SELECT when neither `select` nor the source's default is set. */
-  defaultSelect?: BuilderChartConfig['select'];
 };
 
 /**
  * Resolve the SELECT list, preferring caller-provided `select`, then the
- * caller's `defaultSelect`, then the source's `defaultTableSelectExpression`
- * (for Log / Trace sources), falling back to an empty string.
+ * source's `defaultTableSelectExpression` (for Log / Trace sources), falling
+ * back to an empty string.
  *
  * Both `string` and `DerivedColumn[]` SELECT shapes have a `.length` property,
  * so a single non-empty check covers "skip empty `''` strings and skip empty
@@ -97,13 +94,8 @@ export type SearchChartConfigInput = {
 function resolveSelect(
   source: TSource,
   select: SelectList | null | undefined,
-  defaultSelect: BuilderChartConfig['select'] | undefined,
 ): BuilderChartConfig['select'] {
-  const isNonEmpty = (v: SelectList | null | undefined): v is SelectList =>
-    v != null && v.length > 0;
-
-  if (isNonEmpty(select)) return select;
-  if (isNonEmpty(defaultSelect)) return defaultSelect;
+  if (select != null && select.length > 0) return select;
   if (isLogSource(source) || isTraceSource(source)) {
     return source.defaultTableSelectExpression ?? '';
   }
@@ -156,7 +148,7 @@ export function buildSearchChartConfig(
     displayType: input.displayType ?? DisplayType.Search,
     source: source.id,
     from: source.from,
-    select: resolveSelect(source, input.select, input.defaultSelect),
+    select: resolveSelect(source, input.select),
     where: input.where ?? '',
     whereLanguage: input.whereLanguage ?? 'sql',
     timestampValueExpression: source.timestampValueExpression,

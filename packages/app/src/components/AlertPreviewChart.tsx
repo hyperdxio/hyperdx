@@ -67,13 +67,13 @@ export const AlertPreviewChart = ({
 
   // Delegate to the shared builder so this preview sees the same filters,
   // sample weights, and implicit columns as the scheduled alert task and
-  // the app search page. Overrides `displayType` to Line and supplies a
-  // count() default SELECT because the preview always renders the alert's
+  // the app search page. Overrides `displayType` to Line and pins SELECT to
+  // a count() aggregate because the preview always renders the alert's
   // count-over-time threshold view, regardless of the saved search's
   // display columns.
   //
-  // The `select` prop is intentionally NOT forwarded to the builder — it's
-  // only used above (for `useAliasMapFromChartConfig`) so alias-WITH
+  // The `select` prop on this component is intentionally NOT forwarded —
+  // it's only used above (for `useAliasMapFromChartConfig`) so alias-WITH
   // clauses match the saved search's display select.
   //
   // Cast to ChartConfigWithDateRange because the builder widens `dateRange`
@@ -84,10 +84,10 @@ export const AlertPreviewChart = ({
       whereLanguage,
       filters,
       groupBy,
+      select: ALERT_COUNT_DEFAULT_SELECT,
       displayType: DisplayType.Line,
       dateRange: intervalToDateRange(interval),
       granularity: intervalToGranularity(interval),
-      defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
     }) as ChartConfigWithDateRange;
     return { ...chartConfig, with: aliasWith };
   }, [source, where, whereLanguage, filters, groupBy, interval, aliasWith]);

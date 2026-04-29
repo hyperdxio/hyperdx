@@ -525,13 +525,13 @@ const getChartConfigFromAlert = (
       whereLanguage: savedSearch.whereLanguage,
       filters: savedSearch.filters?.map(f => ({ ...f })),
       groupBy: alert.groupBy,
+      select: ALERT_COUNT_DEFAULT_SELECT,
       displayType: DisplayType.Line,
       connection,
       dateRange,
       dateRangeStartInclusive: true,
       dateRangeEndInclusive: false,
       granularity: `${windowSizeInMins} minute`,
-      defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
     });
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
