@@ -1139,4 +1139,175 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test.describe(
+    'Table chart - per-series number formats',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E Per-Series Format ${ts}`;
+
+        await test.step('Configure a Table chart with two series and a group-by', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'CountA');
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'CountB');
+          await dashboardPage.chartEditor.runQuery(false);
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headers).toContain('CountA');
+          expect(headers).toContain('CountB');
+          expect(headers).toContain('ServiceName');
+        });
+
+        let countAIndex = -1;
+        let countBIndex = -1;
+
+        await test.step('Set chart-wide format to Currency and assert both series render with $', async () => {
+          await dashboardPage.chartEditor.setChartWideNumberFormat('Currency');
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          countAIndex = headers.indexOf('CountA');
+          countBIndex = headers.indexOf('CountB');
+          expect(countAIndex).toBeGreaterThan(-1);
+          expect(countBIndex).toBeGreaterThan(-1);
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countAIndex,
+            );
+          const countBCells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countBIndex,
+            );
+
+          expect(countACells.length).toBeGreaterThan(0);
+          expect(countBCells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('$');
+          }
+          for (const cell of countBCells) {
+            expect(cell).toContain('$');
+          }
+        });
+
+        await test.step('Override Series 0 (CountA) to Percentage; per-series wins, other series still inherits chart-wide', async () => {
+          await dashboardPage.chartEditor.setSeriesNumberFormat(
+            0,
+            'Percentage',
+          );
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countAIndex,
+            );
+          const countBCells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countBIndex,
+            );
+
+          expect(countACells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('%');
+          }
+
+          expect(countBCells.length).toBeGreaterThan(0);
+          for (const cell of countBCells) {
+            expect(cell).toContain('$');
+          }
+        });
+
+        // Asserts that all cells of the given tile column contain `substring`.
+        // Polls because saveTile() returns before the dashboard tile finishes
+        // re-rendering with the new chart config, and the table briefly shows
+        // the previously-rendered values.
+        const expectAllTileCellsToContain = async (
+          tileIndex: number,
+          columnIndex: number,
+          substring: string,
+        ) => {
+          await expect
+            .poll(
+              async () => {
+                const cells = await dashboardPage.getTileTableCellTexts(
+                  tileIndex,
+                  columnIndex,
+                );
+                return (
+                  cells.length > 0 && cells.every(c => c.includes(substring))
+                );
+              },
+              { timeout: 10000 },
+            )
+            .toBe(true);
+        };
+
+        await test.step('Save the tile and verify the saved tile retains per-series formatting', async () => {
+          await dashboardPage.saveTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+            timeout: 5000,
+          });
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          const tileCountAIndex = tileHeaders.indexOf('CountA');
+          const tileCountBIndex = tileHeaders.indexOf('CountB');
+          expect(tileCountAIndex).toBeGreaterThan(-1);
+          expect(tileCountBIndex).toBeGreaterThan(-1);
+
+          await expectAllTileCellsToContain(0, tileCountAIndex, '%');
+          await expectAllTileCellsToContain(0, tileCountBIndex, '$');
+        });
+
+        await test.step('Reset Series 0 (CountA) to Inherit; column falls back to chart-wide Currency', async () => {
+          await dashboardPage.editTile(0);
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+
+          await dashboardPage.chartEditor.clearSeriesNumberFormat(0);
+          await dashboardPage.chartEditor.runQuery(false);
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          const updatedCountAIndex = headers.indexOf('CountA');
+          expect(updatedCountAIndex).toBeGreaterThan(-1);
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              updatedCountAIndex,
+            );
+          expect(countACells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('$');
+          }
+
+          await dashboardPage.saveTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+            timeout: 5000,
+          });
+
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          const tileCountAIndex = tileHeaders.indexOf('CountA');
+          await expectAllTileCellsToContain(0, tileCountAIndex, '$');
+        });
+      });
+    },
+  );
 });

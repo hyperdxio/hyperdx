@@ -12,7 +12,16 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Divider, Flex, Group, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  Divider,
+  Flex,
+  Group,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
@@ -35,6 +44,9 @@ import {
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
 import { getMetricTableName } from '@/utils';
+
+import { FORMAT_ICONS } from '../NumberFormat';
+import SeriesNumberFormatDrawer from '../SeriesNumberFormatDrawer';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -172,6 +184,16 @@ export function ChartSeriesEditor({
     [databaseName, tableName, connectionId, metricName, tableSource],
   );
 
+  const seriesNumberFormat = useWatch({
+    control,
+    name: `${namePrefix}numberFormat`,
+  });
+
+  const [
+    isSeriesNumberFormatOpen,
+    { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
+  ] = useDisclosure(false);
+
   return (
     <>
       <Divider
@@ -222,6 +244,17 @@ export function ChartSeriesEditor({
                 Remove Series
               </Button>
             )}
+            <Tooltip label="Edit series display format">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="xs"
+                onClick={openSeriesNumberFormat}
+                aria-label="Edit series display format"
+              >
+                {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
+              </ActionIcon>
+            </Tooltip>
           </Group>
         }
         labelPosition="right"
@@ -375,6 +408,17 @@ export function ChartSeriesEditor({
           onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
         />
       )}
+      <SeriesNumberFormatDrawer
+        opened={isSeriesNumberFormatOpen}
+        numberFormat={seriesNumberFormat}
+        onChange={format => {
+          setValue(`${namePrefix}numberFormat`, format.numberFormat);
+          onSubmit();
+        }}
+        onClose={() => {
+          closeSeriesNumberFormat();
+        }}
+      />
     </>
   );
 }

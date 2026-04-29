@@ -45,6 +45,84 @@ export const MetricTableSchema = z
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 
+export enum NumericUnit {
+  // Data
+  BytesIEC = 'bytes_iec',
+  BytesSI = 'bytes_si',
+  BitsIEC = 'bits_iec',
+  BitsSI = 'bits_si',
+  Kibibytes = 'kibibytes',
+  Kilobytes = 'kilobytes',
+  Mebibytes = 'mebibytes',
+  Megabytes = 'megabytes',
+  Gibibytes = 'gibibytes',
+  Gigabytes = 'gigabytes',
+  Tebibytes = 'tebibytes',
+  Terabytes = 'terabytes',
+  Pebibytes = 'pebibytes',
+  Petabytes = 'petabytes',
+  // Data Rate
+  PacketsSec = 'packets_sec',
+  BytesSecIEC = 'bytes_sec_iec',
+  BytesSecSI = 'bytes_sec_si',
+  BitsSecIEC = 'bits_sec_iec',
+  BitsSecSI = 'bits_sec_si',
+  KibibytesSec = 'kibibytes_sec',
+  KibibitsSec = 'kibibits_sec',
+  KilobytesSec = 'kilobytes_sec',
+  KilobitsSec = 'kilobits_sec',
+  MebibytesSec = 'mebibytes_sec',
+  MebibitsSec = 'mebibits_sec',
+  MegabytesSec = 'megabytes_sec',
+  MegabitsSec = 'megabits_sec',
+  GibibytesSec = 'gibibytes_sec',
+  GibibitsSec = 'gibibits_sec',
+  GigabytesSec = 'gigabytes_sec',
+  GigabitsSec = 'gigabits_sec',
+  TebibytesSec = 'tebibytes_sec',
+  TebibitsSec = 'tebibits_sec',
+  TerabytesSec = 'terabytes_sec',
+  TerabitsSec = 'terabits_sec',
+  PebibytesSec = 'pebibytes_sec',
+  PebibitsSec = 'pebibits_sec',
+  PetabytesSec = 'petabytes_sec',
+  PetabitsSec = 'petabits_sec',
+  // Throughput
+  Cps = 'cps',
+  Ops = 'ops',
+  Rps = 'rps',
+  ReadsSec = 'reads_sec',
+  Wps = 'wps',
+  Iops = 'iops',
+  Cpm = 'cpm',
+  Opm = 'opm',
+  RpmReads = 'rpm_reads',
+  Wpm = 'wpm',
+}
+
+export const NumberFormatSchema = z.object({
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'duration',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.nativeEnum(NumericUnit).optional(),
+  mantissa: z.number().int().optional(),
+  thousandSeparated: z.boolean().optional(),
+  average: z.boolean().optional(),
+  decimalBytes: z.boolean().optional(),
+  factor: z.number().optional(),
+  currencySymbol: z.string().optional(),
+  unit: z.string().optional(),
+});
+
+export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+
 // --------------------------
 //  SQL TYPES
 // --------------------------
@@ -140,6 +218,7 @@ export const DerivedColumnSchema = z.intersection(
     // Heatmap-specific fields (optional, only used when displayType is Heatmap)
     countExpression: z.string().optional(),
     heatmapScaleType: z.enum(['log', 'linear']).optional(),
+    numberFormat: NumberFormatSchema.optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -592,83 +671,6 @@ export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
 // --------------------------
 // DASHBOARDS
 // --------------------------
-export enum NumericUnit {
-  // Data
-  BytesIEC = 'bytes_iec',
-  BytesSI = 'bytes_si',
-  BitsIEC = 'bits_iec',
-  BitsSI = 'bits_si',
-  Kibibytes = 'kibibytes',
-  Kilobytes = 'kilobytes',
-  Mebibytes = 'mebibytes',
-  Megabytes = 'megabytes',
-  Gibibytes = 'gibibytes',
-  Gigabytes = 'gigabytes',
-  Tebibytes = 'tebibytes',
-  Terabytes = 'terabytes',
-  Pebibytes = 'pebibytes',
-  Petabytes = 'petabytes',
-  // Data Rate
-  PacketsSec = 'packets_sec',
-  BytesSecIEC = 'bytes_sec_iec',
-  BytesSecSI = 'bytes_sec_si',
-  BitsSecIEC = 'bits_sec_iec',
-  BitsSecSI = 'bits_sec_si',
-  KibibytesSec = 'kibibytes_sec',
-  KibibitsSec = 'kibibits_sec',
-  KilobytesSec = 'kilobytes_sec',
-  KilobitsSec = 'kilobits_sec',
-  MebibytesSec = 'mebibytes_sec',
-  MebibitsSec = 'mebibits_sec',
-  MegabytesSec = 'megabytes_sec',
-  MegabitsSec = 'megabits_sec',
-  GibibytesSec = 'gibibytes_sec',
-  GibibitsSec = 'gibibits_sec',
-  GigabytesSec = 'gigabytes_sec',
-  GigabitsSec = 'gigabits_sec',
-  TebibytesSec = 'tebibytes_sec',
-  TebibitsSec = 'tebibits_sec',
-  TerabytesSec = 'terabytes_sec',
-  TerabitsSec = 'terabits_sec',
-  PebibytesSec = 'pebibytes_sec',
-  PebibitsSec = 'pebibits_sec',
-  PetabytesSec = 'petabytes_sec',
-  PetabitsSec = 'petabits_sec',
-  // Throughput
-  Cps = 'cps',
-  Ops = 'ops',
-  Rps = 'rps',
-  ReadsSec = 'reads_sec',
-  Wps = 'wps',
-  Iops = 'iops',
-  Cpm = 'cpm',
-  Opm = 'opm',
-  RpmReads = 'rpm_reads',
-  Wpm = 'wpm',
-}
-
-export const NumberFormatSchema = z.object({
-  output: z.enum([
-    'currency',
-    'percent',
-    'byte', // legacy, treated as data/bytes_iec
-    'time',
-    'duration',
-    'number',
-    'data_rate',
-    'throughput',
-  ]),
-  numericUnit: z.nativeEnum(NumericUnit).optional(),
-  mantissa: z.number().int().optional(),
-  thousandSeparated: z.boolean().optional(),
-  average: z.boolean().optional(),
-  decimalBytes: z.boolean().optional(),
-  factor: z.number().optional(),
-  currencySymbol: z.string().optional(),
-  unit: z.string().optional(),
-});
-
-export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: z.string().min(1) }),
