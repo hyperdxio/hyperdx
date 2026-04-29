@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
@@ -63,37 +63,44 @@ export const AlertPreviewChart = ({
     from: source.from,
     whereLanguage: whereLanguage || undefined,
   });
-  const aliasWith = aliasMapToWithClauses(aliasMap);
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
-  // Delegate to the shared builder so this preview sees the same filters /
-  // sample weights / implicit columns as the scheduled alert task and the
-  // main app search page. The preview chart is rendered as a time series
-  // (DBTimeChart) so it overrides displayType to Line and supplies a count()
-  // default SELECT.
+  // Delegate to the shared builder so this preview sees the same filters,
+  // sample weights, and implicit columns as the scheduled alert task and
+  // the app search page. Overrides `displayType` to Line and supplies a
+  // count() default SELECT because the preview always renders the alert's
+  // count-over-time threshold view, regardless of the saved search's
+  // display columns.
   //
-  // Note: the `select` prop on this component is intentionally NOT forwarded
-  // to `buildSearchChartConfig`. The preview always renders the alert's
-  // count-over-time threshold view, which uses `ALERT_COUNT_DEFAULT_SELECT`.
-  // The `select` prop is only used above (for `useAliasMapFromChartConfig`)
-  // so the alias-WITH clauses match the saved search's display select even
-  // though the chart itself plots count(). This mirrors what the scheduled
-  // alert task does — both evaluate the same count() shape regardless of
-  // the saved search's display columns.
+  // The `select` prop is intentionally NOT forwarded to the builder — it's
+  // only used above (for `useAliasMapFromChartConfig`) so alias-WITH
+  // clauses match the saved search's display select.
   //
-  // Cast to ChartConfigWithDateRange because `dateRange` is always set in
-  // this code path (we pass `intervalToDateRange(interval)` below). The
-  // builder's return type widens `dateRange` to optional to support callers
-  // that omit it, so we narrow here at the consumption point.
-  const chartConfig = buildSearchChartConfig(source, {
-    where,
-    whereLanguage,
-    filters,
-    groupBy,
-    displayType: DisplayType.Line,
-    dateRange: intervalToDateRange(interval),
-    granularity: intervalToGranularity(interval),
-    defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
-  }) as ChartConfigWithDateRange;
+  // Cast to ChartConfigWithDateRange because the builder widens `dateRange`
+  // to optional, but it's always set here via `intervalToDateRange`.
+  const config = useMemo<ChartConfigWithDateRange>(() => {
+    const chartConfig = buildSearchChartConfig(source, {
+      where,
+      whereLanguage,
+      filters,
+      groupBy,
+      displayType: DisplayType.Line,
+      dateRange: intervalToDateRange(interval),
+      granularity: intervalToGranularity(interval),
+      defaultSelect: ALERT_COUNT_DEFAULT_SELECT,
+    }) as ChartConfigWithDateRange;
+    return { ...chartConfig, with: aliasWith };
+  }, [source, where, whereLanguage, filters, groupBy, interval, aliasWith]);
+
+  const referenceLines = useMemo(
+    () =>
+      getAlertReferenceLines({
+        threshold,
+        thresholdMax,
+        thresholdType,
+      }),
+    [threshold, thresholdMax, thresholdType],
+  );
 
   return (
     <Paper w="100%" h={200}>
@@ -102,15 +109,8 @@ export const AlertPreviewChart = ({
         showDisplaySwitcher={false}
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
-        referenceLines={getAlertReferenceLines({
-          threshold,
-          thresholdMax,
-          thresholdType,
-        })}
-        config={{
-          ...chartConfig,
-          with: aliasWith,
-        }}
+        referenceLines={referenceLines}
+        config={config}
       />
     </Paper>
   );

@@ -39,7 +39,6 @@ import {
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
   SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
@@ -521,7 +520,7 @@ const getChartConfigFromAlert = (
     // task, the alert preview chart, and the main app search page all
     // assemble saved-search chart configs identically — keeping source-level
     // fields like `tableFilterExpression` applied uniformly across paths.
-    return buildSearchChartConfig(source as TSource, {
+    return buildSearchChartConfig(source, {
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       filters: savedSearch.filters?.map(f => ({ ...f })),
