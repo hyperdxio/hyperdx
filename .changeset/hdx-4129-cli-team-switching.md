@@ -1,5 +1,5 @@
 ---
-'@hyperdx/cli': minor
+'@hyperdx/cli': patch
 ---
 
 feat: support multiple teams and kubectx-style team switching in the CLI
