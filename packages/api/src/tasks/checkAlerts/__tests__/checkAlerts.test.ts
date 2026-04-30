@@ -30,7 +30,7 @@ import AlertHistory from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
-import { ISource, Source } from '@/models/source';
+import { ISource, LogSource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
@@ -2312,6 +2312,110 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    // The scheduled alert task and the app search page both go through
+    // `buildSearchChartConfig`, which prepends the Log source's
+    // `tableFilterExpression` (when set) as a SQL filter. This regression
+    // test pins that contract for the alert task: rows excluded by
+    // `tableFilterExpression` must not be counted toward the alert
+    // threshold.
+    it('SAVED_SEARCH alert honors source.tableFilterExpression', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // Configure the source to hide the 'excluded' service, matching the
+      // semantics of a Log source whose UI view filters it out.
+      // `tableFilterExpression` is declared on the Log discriminator schema
+      // (not the base Source schema), so we must update through `LogSource`
+      // — `Source.updateOne` would silently drop the field under Mongoose's
+      // default strict mode.
+      await LogSource.updateOne(
+        { _id: source._id },
+        { $set: { tableFilterExpression: "ServiceName != 'excluded'" } },
+      );
+      const filteredSource = await Source.findById(source._id);
+
+      const details = await createAlertDetails(
+        team,
+        filteredSource ?? undefined,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE_EXCLUSIVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      // Insert two log rows in the alert window:
+      //   1. 'excluded' service — matches the saved search `where` but is
+      //      hidden by the source's `tableFilterExpression`.
+      //   2. 'api' service — matches the saved search `where` and passes
+      //      the table filter. Threshold uses ABOVE_EXCLUSIVE (strict `>`),
+      //      so with the filter applied (count = 1) `1 > 1` is false and
+      //      the alert stays OK. If the filter were dropped (count = 2),
+      //      `2 > 1` would fire — the failure mode this test guards.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'excluded',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'This row should be hidden by tableFilterExpression',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'This row should pass the filter',
+        },
+      ]);
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Threshold is `> 1`, so with the fix (1 row counted) the alert stays
+      // OK. Without the fix (2 rows counted — including the excluded one),
+      // the alert would transition to ALERT and fire the webhook.
+      const alert = await Alert.findById(details.alert.id);
+      expect(alert!.state).toBe('OK');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('OK');
+      // Exactly one row counted — the 'excluded' row is filtered out.
+      expect(alertHistories[0].lastValues).toEqual([
+        expect.objectContaining({ count: 1 }),
+      ]);
+
+      // No webhook should have fired.
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
     });
 
     it('TILE alert (events) - slack webhook', async () => {

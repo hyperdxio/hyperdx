@@ -1150,6 +1150,15 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
   uniqueRowIdExpression: z.string().optional(),
+  /**
+   * @deprecated Application-side SQL predicate AND'd into every query against
+   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
+   * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
+   *
+   * Existing values are still honored at query time; new sources should not
+   * set it. The Sources settings UI form input is disabled.
+   */
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
