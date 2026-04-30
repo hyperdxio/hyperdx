@@ -641,6 +641,29 @@ export class DashboardPage {
   }
 
   /**
+   * Return the trimmed text of every td at `columnIndex` across all visible
+   * data rows of the given tile's first table. Scopes to `tr[data-index]` so
+   * the row virtualizer's padding rows (which contain a single colSpan td)
+   * are skipped. Waits for at least one data row before reading.
+   */
+  async getTileTableCellTexts(
+    tileIndex: number,
+    columnIndex: number,
+  ): Promise<string[]> {
+    const tile = this.getTile(tileIndex);
+    const table = tile.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    await table
+      .locator('tbody tr[data-index]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+    const cells = await table
+      .locator(`tbody tr[data-index] td:nth-child(${columnIndex + 1})`)
+      .allTextContents();
+    return cells.map(c => c.trim());
+  }
+
+  /**
    * Click the first row's first cell of a table tile. Each cell contains a
    * div[role="link"] that owns the onRowClick handler — click that directly
    * to trigger the configured action.

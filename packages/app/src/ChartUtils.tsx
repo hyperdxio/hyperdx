@@ -454,6 +454,8 @@ export interface LineData {
   currentPeriodKey: string;
   previousPeriodKey: string;
   displayName: string;
+  /** The original result column name this series' values were pulled from. */
+  valueColumnName: string;
   color: string;
   isDashed?: boolean;
 }
@@ -580,6 +582,7 @@ function addResponseToFormattedData({
         currentPeriodKey,
         previousPeriodKey,
         displayName: keyName,
+        valueColumnName: valueColumn.name,
         color,
         isDashed: isPreviousPeriod,
       };

@@ -14,7 +14,7 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { getColorProps } from '@/utils';
 
@@ -74,13 +74,13 @@ export const DBPieChart = ({
     id: config.source,
   });
 
-  const resolvedNumberFormat = useResolvedNumberFormat(config);
-
   const queriedConfig = useMemo(() => {
     return isBuilderChartConfig(config)
       ? convertToPieChartConfig(config)
       : config;
   }, [config]);
+
+  const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig

@@ -444,6 +444,11 @@ async function getSourceConnectionMismatches(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *           example: "delta"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options. When set, takes precedence
+ *             over the chart-level numberFormat for this select item only.
  *
  *     LineBuilderChartConfig:
  *       type: object

@@ -19,7 +19,7 @@ import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useChartNumberFormats, useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -59,8 +59,6 @@ export default function DBTableChart({
   const { data: source } = useSource({
     id: config.source,
   });
-
-  const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const effectiveSort = useMemo(
     () => controlledSort || sort,
@@ -124,6 +122,8 @@ export default function DBTableChart({
     }, [] as string[]);
   }, [config]);
 
+  const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -168,10 +168,10 @@ export default function DBTableChart({
         displayName: key,
         numberFormat: groupByKeys.includes(key)
           ? undefined
-          : resolvedNumberFormat,
+          : (formatByColumn.get(key) ?? queriedConfig.numberFormat),
         sortingFn: getClientSideSortingFn(data?.meta, key),
       }));
-  }, [resolvedNumberFormat, aliasMap, queriedConfig, data, hiddenColumns]);
+  }, [data, queriedConfig, hiddenColumns, aliasMap, formatByColumn]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];

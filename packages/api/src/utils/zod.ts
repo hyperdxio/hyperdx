@@ -177,6 +177,7 @@ const externalDashboardSelectItemSchema = z
     level: externalQuantileLevelSchema.optional(),
     where: z.string().max(10000).optional().default(''),
     whereLanguage: whereLanguageSchema.optional(),
+    numberFormat: NumberFormatSchema.optional(),
 
     // For metrics only
     metricType: z.nativeEnum(MetricsDataType).optional(),
