@@ -1149,7 +1149,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
-        test.setTimeout(60000);
+        test.setTimeout(15000);
         const ts = Date.now();
         const chartName = `E2E Per-Series Format ${ts}`;
 

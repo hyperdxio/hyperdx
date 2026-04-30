@@ -268,74 +268,76 @@ describe('useSingleSeriesNumberFormat', () => {
     mockUseQuery.mockReturnValue({ data: TRACE_SOURCE });
   });
 
-  it('returns config.numberFormat for raw SQL configs', () => {
-    const config = makeRawSqlConfig({ numberFormat: CURRENCY_FORMAT });
+  it.each<{
+    name: string;
+    config: ChartConfigWithOptTimestamp;
+    expected: NumberFormat | undefined;
+  }>([
+    {
+      name: 'returns config.numberFormat for raw SQL configs',
+      config: makeRawSqlConfig({ numberFormat: CURRENCY_FORMAT }),
+      expected: CURRENCY_FORMAT,
+    },
+    {
+      name: 'returns config.numberFormat for builder configs with empty select',
+      config: makeBuilderConfig({
+        select: [],
+        numberFormat: CURRENCY_FORMAT,
+      }),
+      expected: CURRENCY_FORMAT,
+    },
+    {
+      name: "returns the first series' numberFormat when defined",
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'count()', numberFormat: PERCENT_FORMAT }],
+        numberFormat: CURRENCY_FORMAT,
+      }),
+      expected: PERCENT_FORMAT,
+    },
+    {
+      name: 'falls back to config.numberFormat when the first series has no numberFormat',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'count()' }],
+        numberFormat: CURRENCY_FORMAT,
+      }),
+      expected: CURRENCY_FORMAT,
+    },
+    {
+      name: 'prefers config.numberFormat over inferred duration on the first series',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'Duration', aggFn: 'avg' }],
+        numberFormat: CURRENCY_FORMAT,
+      }),
+      expected: CURRENCY_FORMAT,
+    },
+    {
+      name: 'falls back to the inferred duration format from the first series when no explicit format is set',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'Duration', aggFn: 'avg' }],
+      }),
+      expected: DURATION_FORMAT,
+    },
+    {
+      name: 'returns undefined when no format can be resolved',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'count()' }],
+      }),
+      expected: undefined,
+    },
+    {
+      name: 'only inspects the first series — ignores formats and duration in later series',
+      config: makeBuilderConfig({
+        select: [
+          { valueExpression: 'count()' },
+          { valueExpression: 'Duration', aggFn: 'avg' },
+          { valueExpression: 'something', numberFormat: PERCENT_FORMAT },
+        ],
+      }),
+      expected: undefined,
+    },
+  ])('$name', ({ config, expected }) => {
     const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(CURRENCY_FORMAT);
-  });
-
-  it('returns config.numberFormat for builder configs with empty select', () => {
-    const config = makeBuilderConfig({
-      select: [],
-      numberFormat: CURRENCY_FORMAT,
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(CURRENCY_FORMAT);
-  });
-
-  it("returns the first series' numberFormat when defined", () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'count()', numberFormat: PERCENT_FORMAT }],
-      numberFormat: CURRENCY_FORMAT,
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(PERCENT_FORMAT);
-  });
-
-  it('falls back to config.numberFormat when the first series has no numberFormat', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'count()' }],
-      numberFormat: CURRENCY_FORMAT,
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(CURRENCY_FORMAT);
-  });
-
-  it('prefers config.numberFormat over inferred duration on the first series', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'Duration', aggFn: 'avg' }],
-      numberFormat: CURRENCY_FORMAT,
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(CURRENCY_FORMAT);
-  });
-
-  it('falls back to the inferred duration format from the first series when no explicit format is set', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'Duration', aggFn: 'avg' }],
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toEqual(DURATION_FORMAT);
-  });
-
-  it('returns undefined when no format can be resolved', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'count()' }],
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toBeUndefined();
-  });
-
-  it('only inspects the first series — ignores formats and duration in later series', () => {
-    const config = makeBuilderConfig({
-      select: [
-        { valueExpression: 'count()' },
-        { valueExpression: 'Duration', aggFn: 'avg' },
-        { valueExpression: 'something', numberFormat: PERCENT_FORMAT },
-      ],
-    });
-    const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
-    expect(result.current).toBeUndefined();
+    expect(result.current).toEqual(expected);
   });
 });
 
@@ -352,49 +354,54 @@ describe('useChartNumberFormats', () => {
 
   // --- chartFormat resolution ---
 
-  it('uses config.numberFormat as chartFormat when set', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'count()', numberFormat: PERCENT_FORMAT }],
-      numberFormat: CURRENCY_FORMAT,
-    });
+  it.each<{
+    name: string;
+    config: ChartConfigWithOptTimestamp;
+    expected: NumberFormat | undefined;
+  }>([
+    {
+      name: 'uses config.numberFormat when set',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'count()', numberFormat: PERCENT_FORMAT }],
+        numberFormat: CURRENCY_FORMAT,
+      }),
+      expected: CURRENCY_FORMAT,
+    },
+    {
+      name: 'falls back to first series numberFormat when config.numberFormat is unset',
+      config: makeBuilderConfig({
+        select: [
+          { valueExpression: 'count()' },
+          { valueExpression: 'sum(x)', numberFormat: PERCENT_FORMAT },
+        ],
+      }),
+      expected: PERCENT_FORMAT,
+    },
+    {
+      name: 'falls back to inferred duration format when no explicit formats',
+      config: makeBuilderConfig({
+        select: [
+          { valueExpression: 'count()' },
+          { valueExpression: 'Duration', aggFn: 'avg' },
+        ],
+      }),
+      expected: DURATION_FORMAT,
+    },
+    {
+      name: 'returns undefined when no format can be resolved',
+      config: makeBuilderConfig({
+        select: [{ valueExpression: 'count()' }],
+      }),
+      expected: undefined,
+    },
+    {
+      name: 'uses config.numberFormat for raw SQL configs',
+      config: makeRawSqlConfig({ numberFormat: CURRENCY_FORMAT }),
+      expected: CURRENCY_FORMAT,
+    },
+  ])('chartFormat: $name', ({ config, expected }) => {
     const { result } = renderHook(() => useChartNumberFormats(config));
-    expect(result.current.chartFormat).toEqual(CURRENCY_FORMAT);
-  });
-
-  it('falls back to first series numberFormat for chartFormat when config.numberFormat is unset', () => {
-    const config = makeBuilderConfig({
-      select: [
-        { valueExpression: 'count()' },
-        { valueExpression: 'sum(x)', numberFormat: PERCENT_FORMAT },
-      ],
-    });
-    const { result } = renderHook(() => useChartNumberFormats(config));
-    expect(result.current.chartFormat).toEqual(PERCENT_FORMAT);
-  });
-
-  it('falls back to inferred duration format for chartFormat when no explicit formats', () => {
-    const config = makeBuilderConfig({
-      select: [
-        { valueExpression: 'count()' },
-        { valueExpression: 'Duration', aggFn: 'avg' },
-      ],
-    });
-    const { result } = renderHook(() => useChartNumberFormats(config));
-    expect(result.current.chartFormat).toEqual(DURATION_FORMAT);
-  });
-
-  it('returns undefined chartFormat when no format can be resolved', () => {
-    const config = makeBuilderConfig({
-      select: [{ valueExpression: 'count()' }],
-    });
-    const { result } = renderHook(() => useChartNumberFormats(config));
-    expect(result.current.chartFormat).toBeUndefined();
-  });
-
-  it('uses config.numberFormat as chartFormat for raw SQL configs', () => {
-    const config = makeRawSqlConfig({ numberFormat: CURRENCY_FORMAT });
-    const { result } = renderHook(() => useChartNumberFormats(config));
-    expect(result.current.chartFormat).toEqual(CURRENCY_FORMAT);
+    expect(result.current.chartFormat).toEqual(expected);
   });
 
   // --- formatByColumn resolution ---
