@@ -123,8 +123,10 @@ const HDXLineChartTooltip = withErrorBoundary(
                 !isPreviousPeriod && previousKey
                   ? payloadByKey.get(previousKey)
                   : undefined;
+              const valueColumnName =
+                lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
               const numberFormatForKey =
-                numberFormatByKey.get(p.dataKey) ?? numberFormat;
+                numberFormatByKey.get(valueColumnName) ?? numberFormat;
 
               return (
                 <TooltipItem
