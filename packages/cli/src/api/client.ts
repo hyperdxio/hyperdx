@@ -366,7 +366,7 @@ export interface MeTeam {
   name: string;
 }
 
-export interface MeResponse {
+interface MeResponse {
   accessKey: string;
   createdAt: string;
   email: string;
