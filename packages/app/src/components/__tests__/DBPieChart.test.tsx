@@ -89,6 +89,31 @@ describe('DBPieChart', () => {
     expect(screen.getByTestId('pie-chart-container')).toBeInTheDocument();
   });
 
+  it('should render pie chart legend with labels', () => {
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: [
+          { status: 'success', count: 100 },
+          { status: 'error', count: 50 },
+          { status: 'timeout', count: 25 },
+        ],
+        meta: [
+          { name: 'status', type: 'String' },
+          { name: 'count', type: 'UInt64' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithMantine(<DBPieChart config={baseTestConfig} />);
+    const legend = screen.getByTestId('pie-chart-legend');
+    expect(legend).toBeInTheDocument();
+    expect(screen.getByText('success')).toBeInTheDocument();
+    expect(screen.getByText('error')).toBeInTheDocument();
+    expect(screen.getByText('timeout')).toBeInTheDocument();
+  });
+
   it('passes the same config to useMVOptimizationExplanation, useQueriedChartConfig, and MVOptimizationIndicator', () => {
     // Mock useSource to return a source so MVOptimizationIndicator is rendered
     jest.mocked(useSource).mockReturnValue({
