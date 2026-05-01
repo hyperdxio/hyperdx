@@ -36,7 +36,7 @@ const TEST_FILE_PATTERNS = [
 ];
 
 // ── Thresholds (all line counts exclude test and trivial files) ───────────────
-const TIER2_MAX_LINES = 150;           // max prod lines eligible for Tier 2
+const TIER2_MAX_LINES = 250;           // max prod lines eligible for Tier 2
 const TIER4_ESCALATION_HUMAN = 1000;   // Tier 3 → 4 for human branches
 const TIER4_ESCALATION_AGENT = 400;    // Tier 3 → 4 for agent branches (stricter)
 

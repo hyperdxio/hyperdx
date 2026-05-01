@@ -373,9 +373,17 @@ describe('determineTier', () => {
       assert.equal(classify('alice', 'claude/small-multi', files), 2);
     });
 
-    it('human branch at 149 prod lines (just under threshold)', () => {
+    it('human branch at 249 prod lines (just under threshold)', () => {
       assert.equal(classify('alice', 'fix/component', [
-        makeFile('packages/app/src/Foo.tsx', 100, 49),  // 149 lines
+        makeFile('packages/app/src/Foo.tsx', 200, 49),  // 249 lines
+      ]), 2);
+    });
+
+    it('focused new UI component at 238 prod lines qualifies for Tier 2 (PR #2175 pattern)', () => {
+      assert.equal(classify('mikeshi', 'cursor/add-feedback-widget', [
+        makeFile('packages/app/src/components/AppNav/AppNavFeedback.tsx', 217, 0),
+        makeFile('packages/app/src/components/AppNav/AppNav.module.scss', 17, 0),
+        makeFile('packages/app/src/components/AppNav/AppNav.tsx', 4, 0),
       ]), 2);
     });
 
@@ -438,13 +446,13 @@ describe('determineTier', () => {
         makeFile('packages/api/src/services/checkAlerts.ts', 180, 70),       // prod: 250 lines
         makeFile('packages/api/src/__tests__/checkAlerts.test.ts', 1100, 0), // test: excluded
       ];
-      // 250 prod lines > TIER2_MAX_LINES (150) → Tier 3, not Tier 4
+      // 250 prod lines >= TIER2_MAX_LINES (250) → Tier 3, not Tier 4
       assert.equal(classify('alice', 'feat/alert-thresholds', files), 3);
     });
 
-    it('human branch at exactly 150 prod lines is Tier 3, not Tier 2', () => {
+    it('human branch at exactly 250 prod lines is Tier 3, not Tier 2', () => {
       assert.equal(classify('alice', 'fix/component', [
-        makeFile('packages/app/src/Foo.tsx', 100, 50),  // exactly TIER2_MAX_LINES — < is exclusive
+        makeFile('packages/app/src/Foo.tsx', 150, 100),  // exactly TIER2_MAX_LINES — < is exclusive
       ]), 3);
     });
 
