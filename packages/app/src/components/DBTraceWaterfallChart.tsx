@@ -1022,35 +1022,48 @@ export function DBTraceWaterfallChartContainer({
               {errorCountString}
             </span>
           </Text>
-          <Chip
-            size="xs"
-            variant="outline"
-            checked={showSpans}
-            onChange={() => setShowSpans(!showSpans)}
-            data-testid="show-spans-chip"
-          >
-            Spans
-          </Chip>
-          {logTableSource && (
-            <Chip
-              size="xs"
-              variant="outline"
-              checked={showLogs}
-              onChange={() => setShowLogs(!showLogs)}
-              data-testid="show-logs-chip"
-            >
-              Logs
-            </Chip>
-          )}
-          <Chip
-            size="xs"
-            variant="outline"
-            checked={showSpanEvents}
-            onChange={() => setShowSpanEvents(!showSpanEvents)}
-            data-testid="show-span-events-chip"
-          >
-            Span events
-          </Chip>
+          <Group gap={4} align="center">
+            <Text size="xs" c="dimmed">
+              Show:
+            </Text>
+            <Chip.Group multiple>
+              <Chip
+                size="xs"
+                checked={showSpans}
+                onChange={() => setShowSpans(!showSpans)}
+                data-testid="show-spans-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Spans
+              </Chip>
+              {logTableSource && (
+                <Chip
+                  size="xs"
+                  checked={showLogs}
+                  onChange={() => setShowLogs(!showLogs)}
+                  data-testid="show-logs-chip"
+                  styles={{
+                    label: { paddingInline: 8, height: 22, minHeight: 22 },
+                  }}
+                >
+                  Logs
+                </Chip>
+              )}
+              <Chip
+                size="xs"
+                checked={showSpanEvents}
+                onChange={() => setShowSpanEvents(!showSpanEvents)}
+                data-testid="show-span-events-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Span events
+              </Chip>
+            </Chip.Group>
+          </Group>
         </Group>
         <span>
           <Anchor
