@@ -214,7 +214,7 @@ jobs:
             }
 
       - name: Comment PR with test results
-        uses: mshick/add-pr-comment@v2
+        uses: mshick/add-pr-comment@v3
         # Skip for fork PRs: GITHUB_TOKEN cannot write to the base repo
         if:
           always() && github.event_name == 'pull_request' &&
