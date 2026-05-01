@@ -114,6 +114,32 @@ describe('DBPieChart', () => {
     expect(screen.getByText('timeout')).toBeInTheDocument();
   });
 
+  it('should render scrollable legend with many groups', () => {
+    const manyGroups = Array.from({ length: 30 }, (_, i) => ({
+      status: `group-${i}`,
+      count: 100 - i,
+    }));
+
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: manyGroups,
+        meta: [
+          { name: 'status', type: 'String' },
+          { name: 'count', type: 'UInt64' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithMantine(<DBPieChart config={baseTestConfig} />);
+    const legend = screen.getByTestId('pie-chart-legend');
+    expect(legend).toBeInTheDocument();
+    expect(legend).toHaveStyle({ alignSelf: 'stretch' });
+    expect(screen.getByText('group-0')).toBeInTheDocument();
+    expect(screen.getByText('group-29')).toBeInTheDocument();
+  });
+
   it('passes the same config to useMVOptimizationExplanation, useQueriedChartConfig, and MVOptimizationIndicator', () => {
     // Mock useSource to return a source so MVOptimizationIndicator is rendered
     jest.mocked(useSource).mockReturnValue({
