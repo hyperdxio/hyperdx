@@ -60,7 +60,6 @@ export const AppNavFeedback = () => {
     () => ({
       page: router.pathname,
       route: router.asPath,
-      query: JSON.stringify(router.query),
     }),
     [router],
   );
