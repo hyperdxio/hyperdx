@@ -40,7 +40,7 @@ jobs:
       # workflow_dispatch runs can checkout forked branches correctly.
       - name: Resolve PR metadata
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

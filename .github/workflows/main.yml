@@ -136,7 +136,7 @@ jobs:
 
     steps:
       - name: Download all test results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: test-results-*
           path: all-test-results
@@ -144,7 +144,7 @@ jobs:
       - name: Aggregate test results
         id: test-results
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           result-encoding: string
           script: |
