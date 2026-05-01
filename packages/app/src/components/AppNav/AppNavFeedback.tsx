@@ -56,21 +56,32 @@ export const AppNavFeedback = () => {
     setState('idle');
   }, []);
 
+  const pageContext = useCallback(
+    () => ({
+      page: router.pathname,
+      route: router.asPath,
+      query: JSON.stringify(router.query),
+    }),
+    [router],
+  );
+
   const handleVote = useCallback(
     (newVote: FeedbackVote) => {
       setVote(newVote);
       setState('voted');
+      HyperDX.addAction('user feedback vote', {
+        vote: newVote ?? '',
+        ...pageContext(),
+      });
     },
-    [setVote, setState],
+    [setVote, setState, pageContext],
   );
 
   const handleSubmit = useCallback(() => {
-    HyperDX.addAction('user feedback submitted', {
+    HyperDX.addAction('user feedback comment', {
       vote: vote ?? '',
       comment,
-      page: router.pathname,
-      route: router.asPath,
-      query: JSON.stringify(router.query),
+      ...pageContext(),
     });
 
     setState('thanks');
@@ -78,7 +89,7 @@ export const AppNavFeedback = () => {
       reset();
       setHidden(true);
     }, 1500);
-  }, [vote, comment, router, reset, setHidden]);
+  }, [vote, comment, pageContext, reset, setHidden]);
 
   if (!sdkEnabled || hidden) return null;
 
@@ -96,16 +107,7 @@ export const AppNavFeedback = () => {
             data-testid="feedback-thumbs-up"
             variant="subtle"
             size="sm"
-            onClick={() => {
-              handleVote('up');
-              HyperDX.addAction('user feedback submitted', {
-                vote: 'up',
-                comment: '',
-                page: router.pathname,
-                route: router.asPath,
-                query: JSON.stringify(router.query),
-              });
-            }}
+            onClick={() => handleVote('up')}
             title="Thumbs up"
           >
             <IconThumbUp size={14} />
@@ -114,16 +116,7 @@ export const AppNavFeedback = () => {
             data-testid="feedback-thumbs-down"
             variant="subtle"
             size="sm"
-            onClick={() => {
-              handleVote('down');
-              HyperDX.addAction('user feedback submitted', {
-                vote: 'down',
-                comment: '',
-                page: router.pathname,
-                route: router.asPath,
-                query: JSON.stringify(router.query),
-              });
-            }}
+            onClick={() => handleVote('down')}
             title="Thumbs down"
           >
             <IconThumbDown size={14} />
