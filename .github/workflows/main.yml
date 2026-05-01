@@ -61,7 +61,7 @@ jobs:
       - name: Install root dependencies
         run: yarn install
       - name: Expose GitHub Runtime
-        uses: crazy-max/ghaction-github-runtime@v2
+        uses: crazy-max/ghaction-github-runtime@v4
       - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
