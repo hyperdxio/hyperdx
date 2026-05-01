@@ -610,6 +610,8 @@ export function DBTraceWaterfallChartContainer({
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSpans, setShowSpans] = useState(true);
+  const [showLogs, setShowLogs] = useState(true);
 
   const { nodesMap, flattenedNodes } = useMemo(() => {
     const rootNodes: Node[] = [];
@@ -737,8 +739,16 @@ export function DBTraceWaterfallChartContainer({
     [nodesMap],
   );
 
-  const spanCount = flattenedNodes.length;
-  const errorCount = flattenedNodes.filter(
+  const visibleNodes = useMemo(() => {
+    if (showSpans && showLogs) return flattenedNodes;
+    return flattenedNodes.filter(node => {
+      if (node.type === SourceKind.Log) return showLogs;
+      return showSpans;
+    });
+  }, [flattenedNodes, showSpans, showLogs]);
+
+  const spanCount = visibleNodes.length;
+  const errorCount = visibleNodes.filter(
     node =>
       node.StatusCode === 'Error' ||
       node.SeverityText?.toLowerCase() === 'error',
@@ -763,7 +773,7 @@ export function DBTraceWaterfallChartContainer({
 
   const timelineRows = useMemo(
     () =>
-      flattenedNodes.map((result, i) => {
+      visibleNodes.map((result, i) => {
         const tookMs = (result.Duration || 0) * 1000;
         const startOffset = new Date(result.Timestamp).getTime();
         const start = startOffset - minOffset;
@@ -940,7 +950,7 @@ export function DBTraceWaterfallChartContainer({
       }),
     [
       collapsedIds,
-      flattenedNodes,
+      visibleNodes,
       formatTime,
       highlightedRowWhere,
       isFilterActive,
@@ -952,8 +962,7 @@ export function DBTraceWaterfallChartContainer({
       setCollapseTooltipShown,
     ],
   );
-  // TODO: Highlighting support
-  const initialScrollRowIndex = flattenedNodes.findIndex(v => {
+  const initialScrollRowIndex = visibleNodes.findIndex(v => {
     return v.id === highlightedRowWhere;
   });
 
@@ -1015,6 +1024,22 @@ export function DBTraceWaterfallChartContainer({
           </Text>
           <Checkbox
             size="xs"
+            label="Show spans"
+            checked={showSpans}
+            onChange={() => setShowSpans(!showSpans)}
+            data-testid="show-spans-checkbox"
+          />
+          {logTableSource && (
+            <Checkbox
+              size="xs"
+              label="Show logs"
+              checked={showLogs}
+              onChange={() => setShowLogs(!showLogs)}
+              data-testid="show-logs-checkbox"
+            />
+          )}
+          <Checkbox
+            size="xs"
             label="Show span events"
             checked={showSpanEvents}
             onChange={() => setShowSpanEvents(!showSpanEvents)}
@@ -1071,7 +1096,7 @@ export function DBTraceWaterfallChartContainer({
           <div>
             An unknown error occurred. <ContactSupportText />
           </div>
-        ) : flattenedNodes.length === 0 ? (
+        ) : visibleNodes.length === 0 ? (
           (emptyState ?? (
             <div className="my-3">No matching spans or logs found</div>
           ))

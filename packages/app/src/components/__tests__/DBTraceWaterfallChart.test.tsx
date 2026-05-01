@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -309,6 +310,56 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(
       screen.getByText('http span https://api.example.com/users'),
     ).toBeInTheDocument();
+  });
+
+  it('renders Show spans and Show logs checkboxes when log source is present', async () => {
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(screen.getByTestId('show-spans-checkbox')).toBeInTheDocument();
+    expect(screen.getByTestId('show-logs-checkbox')).toBeInTheDocument();
+  });
+
+  it('does not render Show logs checkbox when no log source', async () => {
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('show-spans-checkbox')).toBeInTheDocument();
+    expect(screen.queryByTestId('show-logs-checkbox')).not.toBeInTheDocument();
+  });
+
+  it('hides log rows when Show logs is unchecked', async () => {
+    const user = userEvent.setup();
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+
+    const showLogsCheckbox = screen.getByTestId('show-logs-checkbox');
+    await user.click(showLogsCheckbox);
+
+    await waitFor(() => {
+      expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    });
+  });
+
+  it('hides span rows when Show spans is unchecked', async () => {
+    const user = userEvent.setup();
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+
+    const showSpansCheckbox = screen.getByTestId('show-spans-checkbox');
+    await user.click(showSpansCheckbox);
+
+    await waitFor(() => {
+      expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    });
   });
 });
 
