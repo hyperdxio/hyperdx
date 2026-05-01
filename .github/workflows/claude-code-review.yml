@@ -62,7 +62,7 @@ jobs:
       # Checkout the fork's branch so Claude can read the actual PR code.
       # Using the PR head repo/ref works for both fork and non-fork PRs.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}

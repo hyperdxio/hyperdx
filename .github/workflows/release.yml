@@ -17,7 +17,7 @@ jobs:
         ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup node
         uses: actions/setup-node@v4
         with:
@@ -65,7 +65,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -105,7 +105,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -185,7 +185,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -229,7 +229,7 @@ jobs:
       app_was_pushed: 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -272,7 +272,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -317,7 +317,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -361,7 +361,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -406,7 +406,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -442,7 +442,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup node
         uses: actions/setup-node@v4
         with:
@@ -582,7 +582,7 @@ jobs:
       needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify Helm-Charts Downstream
@@ -622,7 +622,7 @@ jobs:
     #   needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Get Downstream App Installation Token
@@ -665,7 +665,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify ClickHouse/clickhouse-clickstack Downstream
