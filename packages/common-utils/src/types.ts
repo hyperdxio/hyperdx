@@ -1147,7 +1147,6 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
    * the source. Not a security boundary — bypassable by direct table SELECT.
