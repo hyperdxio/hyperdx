@@ -64,7 +64,7 @@ const PieChartLegend = memo(
       <ScrollArea
         data-testid="pie-chart-legend"
         type="auto"
-        style={{ flexShrink: 0, maxWidth: '40%', maxHeight: '100%' }}
+        style={{ flexShrink: 0, maxWidth: '40%', alignSelf: 'stretch' }}
         px="sm"
       >
         <Flex direction="column" gap={4}>
