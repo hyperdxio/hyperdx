@@ -76,6 +76,8 @@ export const AppNavFeedback = () => {
     [setVote, setState, pageContext],
   );
 
+  const [dismissed, setDismissed] = useState(false);
+
   const handleSubmit = useCallback(() => {
     HyperDX.addAction('user feedback comment', {
       vote: vote ?? '',
@@ -86,11 +88,11 @@ export const AppNavFeedback = () => {
     setState('thanks');
     setTimeout(() => {
       reset();
-      setHidden(true);
+      setDismissed(true);
     }, 1500);
-  }, [vote, comment, pageContext, reset, setHidden]);
+  }, [vote, comment, pageContext, reset]);
 
-  if (!sdkEnabled || hidden) return null;
+  if (!sdkEnabled || hidden || dismissed) return null;
 
   if (isCollapsed) {
     return (
@@ -126,53 +128,60 @@ export const AppNavFeedback = () => {
   }
 
   return (
-    <Box data-testid="feedback-inline" px="lg" py={4}>
+    <Box data-testid="feedback-inline">
       {state === 'thanks' ? (
         <Text
           size="xs"
           c="dimmed"
           data-testid="feedback-thanks"
           className={styles.feedbackLabel}
+          px="lg"
+          py={4}
         >
           Thanks for your feedback!
         </Text>
       ) : (
         <>
-          <Group gap={6} wrap="nowrap" align="center">
-            <ActionIcon
-              data-testid="feedback-thumbs-up"
-              variant={vote === 'up' ? 'secondary' : 'subtle'}
-              size="sm"
-              onClick={() => handleVote('up')}
-              title="Thumbs up"
-            >
-              {vote === 'up' ? (
-                <IconThumbUpFilled size={14} />
-              ) : (
-                <IconThumbUp size={14} />
-              )}
-            </ActionIcon>
-            <ActionIcon
-              data-testid="feedback-thumbs-down"
-              variant={vote === 'down' ? 'secondary' : 'subtle'}
-              size="sm"
-              onClick={() => handleVote('down')}
-              title="Thumbs down"
-            >
-              {vote === 'down' ? (
-                <IconThumbDownFilled size={14} />
-              ) : (
-                <IconThumbDown size={14} />
-              )}
-            </ActionIcon>
-            <Text
-              size="xs"
-              c="dimmed"
-              className={styles.feedbackLabel}
-              style={{ flex: 1 }}
-            >
-              Feedback?
-            </Text>
+          <Group
+            gap={6}
+            wrap="nowrap"
+            align="center"
+            className={styles.navItem}
+          >
+            <span className={styles.navItemContent}>
+              <span className={styles.navItemIcon}>
+                <ActionIcon
+                  data-testid="feedback-thumbs-up"
+                  variant={vote === 'up' ? 'secondary' : 'subtle'}
+                  size="xs"
+                  onClick={() => handleVote('up')}
+                  title="Thumbs up"
+                >
+                  {vote === 'up' ? (
+                    <IconThumbUpFilled size={14} />
+                  ) : (
+                    <IconThumbUp size={14} />
+                  )}
+                </ActionIcon>
+              </span>
+              <ActionIcon
+                data-testid="feedback-thumbs-down"
+                variant={vote === 'down' ? 'secondary' : 'subtle'}
+                size="xs"
+                onClick={() => handleVote('down')}
+                title="Thumbs down"
+                mr={4}
+              >
+                {vote === 'down' ? (
+                  <IconThumbDownFilled size={14} />
+                ) : (
+                  <IconThumbDown size={14} />
+                )}
+              </ActionIcon>
+              <Text size="xs" c="dimmed" className={styles.feedbackLabel}>
+                Feedback?
+              </Text>
+            </span>
             <Text
               data-testid="feedback-hide"
               size="xs"
@@ -186,7 +195,7 @@ export const AppNavFeedback = () => {
             </Text>
           </Group>
           {state === 'voted' && (
-            <Box pt={6}>
+            <Box px="lg" pt={4} pb={2}>
               <Textarea
                 data-testid="feedback-comment"
                 placeholder="Tell us more (optional)"
