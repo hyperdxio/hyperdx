@@ -30,7 +30,29 @@ type FeedbackState = 'idle' | 'voted' | 'thanks';
 
 const FORCE_ENABLE_KEY = 'hdx-feedback-enabled';
 
-export const AppNavFeedback = () => {
+class FeedbackErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
+export const AppNavFeedback = () => (
+  <FeedbackErrorBoundary>
+    <AppNavFeedbackInner />
+  </FeedbackErrorBoundary>
+);
+
+const AppNavFeedbackInner = () => {
   const { isCollapsed } = React.useContext(AppNavContext);
   const [forceEnabled] = useLocalStorage<boolean>({
     key: FORCE_ENABLE_KEY,
