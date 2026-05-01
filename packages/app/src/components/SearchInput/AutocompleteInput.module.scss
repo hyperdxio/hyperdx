@@ -26,6 +26,11 @@
     z-index: 100;
     box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
     border-bottom: 2px solid var(--color-bg-brand) !important;
+
+    textarea {
+      max-height: 150px;
+      overflow-y: auto !important;
+    }
   }
 
   /* Fade at the bottom when collapsed (single-line, not focused); applied to textarea */
