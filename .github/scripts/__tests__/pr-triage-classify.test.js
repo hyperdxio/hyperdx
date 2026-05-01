@@ -570,6 +570,13 @@ describe('buildTierComment', () => {
     assert.ok(body.includes('Standard feature/fix'));
   });
 
+  it('explains line count trigger when prod lines exceed Tier 2 threshold', () => {
+    const body = buildTierComment(3, makeSignals({ prodLines: 260 }));
+    assert.ok(body.includes('260'));
+    assert.ok(body.includes('Diff size'));
+    assert.ok(!body.includes('Standard feature/fix'));
+  });
+
   it('includes bot-author trigger for Tier 1 bot PRs', () => {
     const body = buildTierComment(1, makeSignals({ isBotAuthor: true, author: 'dependabot[bot]' }));
     assert.ok(body.includes('Bot author'));

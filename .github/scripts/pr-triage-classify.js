@@ -191,6 +191,9 @@ function buildTierComment(tier, signals) {
   if (tier === 4 && prodLines > sizeThreshold && criticalFiles.length === 0) {
     triggers.push(`**Large diff**: ${prodLines} production lines changed (threshold: ${sizeThreshold})`);
   }
+  if (tier === 3 && prodLines >= TIER2_MAX_LINES) {
+    triggers.push(`**Diff size**: ${prodLines} production lines changed (Tier 2 max: < ${TIER2_MAX_LINES})`);
+  }
   if (isBotAuthor) triggers.push(`**Bot author**: \`${author}\``);
   if (allFilesTrivial && !isBotAuthor) triggers.push('**All files are docs / images / lock files**');
   if (isCrossLayer) {
