@@ -6,6 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 
 import {
+  getDurationMsExpression,
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
@@ -124,6 +125,11 @@ describe('getTraceDurationNumberFormat', () => {
         { valueExpression: 'Duration / 1e9' },
       ]),
     ).toBeUndefined();
+    expect(
+      getTraceDurationNumberFormat(TRACE_SOURCE, [
+        { valueExpression: 'intDiv(Duration, 1000000)' },
+      ]),
+    ).toBeUndefined();
   });
 
   it('does not match modified or similar-named expressions', () => {
@@ -201,6 +207,55 @@ describe('getTraceDurationNumberFormat', () => {
 
   it('returns undefined when select is empty', () => {
     expect(getTraceDurationNumberFormat(TRACE_SOURCE, [])).toBeUndefined();
+  });
+});
+
+describe('getDurationMsExpression', () => {
+  const sourceWithPrecision = (
+    durationPrecision: number,
+    durationExpression = 'Duration',
+  ): TTraceSource =>
+    ({
+      ...TRACE_SOURCE,
+      durationExpression,
+      durationPrecision,
+    }) as TTraceSource;
+
+  it('uses intDiv for nanosecond precision (default OTel)', () => {
+    expect(getDurationMsExpression(sourceWithPrecision(9))).toBe(
+      'intDiv(Duration, 1000000)',
+    );
+  });
+
+  it('uses intDiv for microsecond precision', () => {
+    expect(getDurationMsExpression(sourceWithPrecision(6))).toBe(
+      'intDiv(Duration, 1000)',
+    );
+  });
+
+  it('returns the bare expression for millisecond precision', () => {
+    expect(getDurationMsExpression(sourceWithPrecision(3))).toBe('(Duration)');
+  });
+
+  it('multiplies when source unit is larger than millisecond (seconds)', () => {
+    expect(getDurationMsExpression(sourceWithPrecision(0))).toBe(
+      '(Duration) * 1000',
+    );
+  });
+
+  it('defaults to nanosecond precision when undefined', () => {
+    const source = {
+      ...TRACE_SOURCE,
+      durationExpression: 'Duration',
+      durationPrecision: undefined,
+    } as unknown as TTraceSource;
+    expect(getDurationMsExpression(source)).toBe('intDiv(Duration, 1000000)');
+  });
+
+  it('prefers a custom durationExpression', () => {
+    expect(
+      getDurationMsExpression(sourceWithPrecision(9, 'SpanDurationNanos')),
+    ).toBe('intDiv(SpanDurationNanos, 1000000)');
   });
 });
 

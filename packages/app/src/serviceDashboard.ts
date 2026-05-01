@@ -7,6 +7,16 @@ import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
 const COALESCE_FIELDS_LIMIT = 100;
 
+// Builds a SQL expression that converts a raw duration value (in the units
+// implied by `precision`) to milliseconds.
+function durationToMsExpression(expr: string, precision: number): string {
+  const exp = precision - 3;
+  if (exp > 0) return `intDiv(${expr}, 1${'0'.repeat(exp)})`;
+  if (exp < 0) return `(${expr}) * 1${'0'.repeat(-exp)}`;
+
+  return `(${expr})`;
+}
+
 // Helper function to format field access based on column type
 function formatFieldAccess(
   field: string,
@@ -178,8 +188,11 @@ export function getExpressions(
     endpoint: hasMaterializedEndpointColumn
       ? ENDPOINT_MATERIALIZED_COLUMN_NAME
       : fieldExpressions.spanName,
-    /** An expression for reading the Span duration in milliseconds. Using this will prevent the use of aggregating materialized views which aggregate `Duration` instead of `Duration/1e6` */
-    durationInMillis: `${fieldExpressions.duration}/1e${fieldExpressions.durationPrecision - 3}`,
+    /** An expression for reading the Span duration in milliseconds. Using this will prevent the use of aggregating materialized views which aggregate the raw duration column. */
+    durationInMillis: durationToMsExpression(
+      fieldExpressions.duration,
+      fieldExpressions.durationPrecision,
+    ),
     /** The divisor used to convert the Span duration to milliseconds */
     durationDivisorForMillis: `1e${fieldExpressions.durationPrecision - 3}`,
   };

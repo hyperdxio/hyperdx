@@ -118,7 +118,7 @@ async function addOtelDemoSources({
       },
       timestampValueExpression: 'Timestamp',
       defaultTableSelectExpression:
-        'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
+        'Timestamp, ServiceName, StatusCode, intDiv(Duration, 1000000), SpanName',
       serviceNameExpression: 'ServiceName',
       eventAttributesExpression: 'SpanAttributes',
       resourceAttributesExpression: 'ResourceAttributes',

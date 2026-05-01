@@ -345,7 +345,9 @@ describe('Service Dashboard', () => {
       );
 
       expect(result.current.isLoading).toBe(false);
-      expect(result.current.expressions?.durationInMillis).toBe('Duration/1e6');
+      expect(result.current.expressions?.durationInMillis).toBe(
+        'intDiv(Duration, 1000000)',
+      );
       expect(result.current.expressions?.durationDivisorForMillis).toBe('1e6');
     });
   });

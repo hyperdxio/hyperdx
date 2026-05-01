@@ -372,7 +372,7 @@ export async function inferTableSourceConfig({
           displayedTimestampValueExpression: 'Timestamp',
           implicitColumnExpression: 'SpanName',
           defaultTableSelectExpression:
-            'Timestamp, ServiceName as service, StatusCode as level, round(Duration / 1e6) as duration, SpanName',
+            'Timestamp, ServiceName as service, StatusCode as level, intDiv(Duration, 1000000) as duration, SpanName',
           eventAttributesExpression: 'SpanAttributes',
           serviceNameExpression: 'ServiceName',
           resourceAttributesExpression: 'ResourceAttributes',
@@ -392,8 +392,16 @@ export async function inferTableSourceConfig({
   };
 }
 
+// Returns a SQL expression that converts the source's raw duration to
+// milliseconds.
 export function getDurationMsExpression(source: TTraceSource) {
-  return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
+  const precision = source.durationPrecision ?? 9;
+  const expr = source.durationExpression;
+  const exp = precision - 3;
+  if (exp > 0) return `intDiv(${expr}, 1${'0'.repeat(exp)})`;
+  if (exp < 0) return `(${expr}) * 1${'0'.repeat(-exp)}`;
+
+  return `(${expr})`;
 }
 
 export function getDurationSecondsExpression(source: TTraceSource) {

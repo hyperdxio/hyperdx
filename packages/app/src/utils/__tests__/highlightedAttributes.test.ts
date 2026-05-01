@@ -135,7 +135,7 @@ describe('getHighlightedAttributesFromData', () => {
       eventAttributesExpression: 'SpanAttributes',
       resourceAttributesExpression: 'ResourceAttributes',
       defaultTableSelectExpression:
-        'Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName',
+        'Timestamp,ServiceName,StatusCode,intDiv(Duration,1000000),SpanName',
       traceIdExpression: 'TraceId',
       spanIdExpression: 'SpanId',
       durationExpression: 'Duration',
