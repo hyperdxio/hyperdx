@@ -18,6 +18,8 @@ import {
   IconThumbUpFilled,
 } from '@tabler/icons-react';
 
+import { IS_LOCAL_MODE } from '@/config';
+
 import { AppNavContext } from './AppNav.components';
 
 import styles from './AppNav.module.scss';
@@ -26,16 +28,27 @@ type FeedbackVote = 'up' | 'down' | null;
 
 type FeedbackState = 'idle' | 'voted' | 'thanks';
 
+const FORCE_ENABLE_KEY = 'hdx-feedback-enabled';
+
 export const AppNavFeedback = () => {
   const { isCollapsed } = React.useContext(AppNavContext);
+  const [forceEnabled] = useLocalStorage<string>({
+    key: FORCE_ENABLE_KEY,
+    defaultValue: '',
+  });
   const [hidden, setHidden] = useLocalStorage<boolean>({
     key: 'feedbackHidden',
     defaultValue: false,
   });
+
   const [vote, setVote] = useState<FeedbackVote>(null);
   const [comment, setComment] = useState('');
   const [state, setState] = useState<FeedbackState>('idle');
   const router = useRouter();
+
+  // Only show when HyperDX SDK is active (non-local mode),
+  // or when overridden via: localStorage.setItem('hdx-feedback-enabled', 'true')
+  const sdkEnabled = !IS_LOCAL_MODE || forceEnabled === 'true';
 
   const reset = useCallback(() => {
     setVote(null);
@@ -67,7 +80,7 @@ export const AppNavFeedback = () => {
     }, 1500);
   }, [vote, comment, router, reset, setHidden]);
 
-  if (hidden) return null;
+  if (!sdkEnabled || hidden) return null;
 
   if (isCollapsed) {
     return (
