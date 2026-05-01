@@ -3,18 +3,15 @@ import { useRouter } from 'next/router';
 import HyperDX from '@hyperdx/browser';
 import {
   ActionIcon,
+  Box,
   Button,
   Group,
-  Popover,
-  Stack,
   Text,
   Textarea,
   Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useLocalStorage } from '@mantine/hooks';
 import {
-  IconMessageHeart,
   IconThumbDown,
   IconThumbDownFilled,
   IconThumbUp,
@@ -27,31 +24,29 @@ import styles from './AppNav.module.scss';
 
 type FeedbackVote = 'up' | 'down' | null;
 
-type FeedbackState = 'vote' | 'comment' | 'thanks';
+type FeedbackState = 'idle' | 'voted' | 'thanks';
 
 export const AppNavFeedback = () => {
   const { isCollapsed } = React.useContext(AppNavContext);
-  const [opened, { close, toggle }] = useDisclosure(false);
+  const [hidden, setHidden] = useLocalStorage<boolean>({
+    key: 'feedbackHidden',
+    defaultValue: false,
+  });
   const [vote, setVote] = useState<FeedbackVote>(null);
   const [comment, setComment] = useState('');
-  const [state, setState] = useState<FeedbackState>('vote');
+  const [state, setState] = useState<FeedbackState>('idle');
   const router = useRouter();
 
   const reset = useCallback(() => {
     setVote(null);
     setComment('');
-    setState('vote');
+    setState('idle');
   }, []);
-
-  const handleClose = useCallback(() => {
-    close();
-    setTimeout(reset, 200);
-  }, [close, reset]);
 
   const handleVote = useCallback(
     (newVote: FeedbackVote) => {
       setVote(newVote);
-      setState('comment');
+      setState('voted');
     },
     [setVote, setState],
   );
@@ -66,126 +61,152 @@ export const AppNavFeedback = () => {
     });
 
     setState('thanks');
-    setTimeout(handleClose, 1500);
-  }, [vote, comment, router, handleClose]);
+    setTimeout(() => {
+      reset();
+      setHidden(true);
+    }, 1500);
+  }, [vote, comment, router, reset, setHidden]);
+
+  if (hidden) return null;
+
+  if (isCollapsed) {
+    return (
+      <Tooltip label="Feedback" position="right">
+        <Group
+          data-testid="feedback-inline"
+          gap={0}
+          justify="center"
+          py={4}
+          wrap="nowrap"
+        >
+          <ActionIcon
+            data-testid="feedback-thumbs-up"
+            variant="subtle"
+            size="sm"
+            onClick={() => {
+              handleVote('up');
+              HyperDX.addAction('user feedback submitted', {
+                vote: 'up',
+                comment: '',
+                page: router.pathname,
+                route: router.asPath,
+                query: JSON.stringify(router.query),
+              });
+            }}
+            title="Thumbs up"
+          >
+            <IconThumbUp size={14} />
+          </ActionIcon>
+          <ActionIcon
+            data-testid="feedback-thumbs-down"
+            variant="subtle"
+            size="sm"
+            onClick={() => {
+              handleVote('down');
+              HyperDX.addAction('user feedback submitted', {
+                vote: 'down',
+                comment: '',
+                page: router.pathname,
+                route: router.asPath,
+                query: JSON.stringify(router.query),
+              });
+            }}
+            title="Thumbs down"
+          >
+            <IconThumbDown size={14} />
+          </ActionIcon>
+        </Group>
+      </Tooltip>
+    );
+  }
 
   return (
-    <Popover
-      opened={opened}
-      onClose={handleClose}
-      position="right-start"
-      shadow="md"
-      width={280}
-    >
-      <Popover.Target>
-        <Tooltip label="Feedback" position="right" disabled={!isCollapsed}>
-          <UnstyledButton
-            data-testid="feedback-trigger"
-            className={styles.navItem}
-            onClick={toggle}
-          >
-            <span className={styles.navItemContent}>
-              <span className={styles.navItemIcon}>
-                <IconMessageHeart size={16} />
-              </span>
-              {!isCollapsed && <span>Feedback</span>}
-            </span>
-          </UnstyledButton>
-        </Tooltip>
-      </Popover.Target>
-      <Popover.Dropdown>
-        {state === 'vote' && (
-          <Stack gap="sm">
-            <Text size="sm" fw={500}>
+    <Box data-testid="feedback-inline" px="lg" py={4}>
+      {state === 'thanks' ? (
+        <Text
+          size="xs"
+          c="dimmed"
+          data-testid="feedback-thanks"
+          className={styles.feedbackLabel}
+        >
+          Thanks for your feedback!
+        </Text>
+      ) : (
+        <>
+          <Group gap={6} wrap="nowrap" align="center">
+            <ActionIcon
+              data-testid="feedback-thumbs-up"
+              variant={vote === 'up' ? 'secondary' : 'subtle'}
+              size="sm"
+              onClick={() => handleVote('up')}
+              title="Thumbs up"
+            >
+              {vote === 'up' ? (
+                <IconThumbUpFilled size={14} />
+              ) : (
+                <IconThumbUp size={14} />
+              )}
+            </ActionIcon>
+            <ActionIcon
+              data-testid="feedback-thumbs-down"
+              variant={vote === 'down' ? 'secondary' : 'subtle'}
+              size="sm"
+              onClick={() => handleVote('down')}
+              title="Thumbs down"
+            >
+              {vote === 'down' ? (
+                <IconThumbDownFilled size={14} />
+              ) : (
+                <IconThumbDown size={14} />
+              )}
+            </ActionIcon>
+            <Text
+              size="xs"
+              c="dimmed"
+              className={styles.feedbackLabel}
+              style={{ flex: 1 }}
+            >
               How&apos;s your experience?
             </Text>
-            <Group gap="xs" justify="center">
-              <ActionIcon
-                data-testid="feedback-thumbs-up"
-                variant="subtle"
-                size="xl"
-                onClick={() => handleVote('up')}
-                title="Thumbs up"
-              >
-                {vote === 'up' ? (
-                  <IconThumbUpFilled size={24} />
-                ) : (
-                  <IconThumbUp size={24} />
-                )}
-              </ActionIcon>
-              <ActionIcon
-                data-testid="feedback-thumbs-down"
-                variant="subtle"
-                size="xl"
-                onClick={() => handleVote('down')}
-                title="Thumbs down"
-              >
-                {vote === 'down' ? (
-                  <IconThumbDownFilled size={24} />
-                ) : (
-                  <IconThumbDown size={24} />
-                )}
-              </ActionIcon>
-            </Group>
-          </Stack>
-        )}
-        {state === 'comment' && (
-          <Stack gap="sm">
-            <Group gap="xs" justify="center">
-              <ActionIcon
-                data-testid="feedback-thumbs-up"
-                variant="subtle"
-                size="lg"
-                onClick={() => handleVote('up')}
-                title="Thumbs up"
-              >
-                {vote === 'up' ? (
-                  <IconThumbUpFilled size={20} />
-                ) : (
-                  <IconThumbUp size={20} />
-                )}
-              </ActionIcon>
-              <ActionIcon
-                data-testid="feedback-thumbs-down"
-                variant="subtle"
-                size="lg"
-                onClick={() => handleVote('down')}
-                title="Thumbs down"
-              >
-                {vote === 'down' ? (
-                  <IconThumbDownFilled size={20} />
-                ) : (
-                  <IconThumbDown size={20} />
-                )}
-              </ActionIcon>
-            </Group>
-            <Textarea
-              data-testid="feedback-comment"
-              placeholder="Tell us more (optional)"
-              value={comment}
-              onChange={e => setComment(e.currentTarget.value)}
-              minRows={2}
-              maxRows={4}
-              autosize
-              autoFocus
-            />
-            <Button
-              data-testid="feedback-submit"
-              variant="primary"
+            <Text
+              data-testid="feedback-hide"
               size="xs"
-              fullWidth
-              onClick={handleSubmit}
+              c="dimmed"
+              className={styles.feedbackHide}
+              onClick={() => setHidden(true)}
+              role="button"
+              tabIndex={0}
             >
-              Submit Feedback
-            </Button>
-          </Stack>
-        )}
-        {state === 'thanks' && (
-          <Text size="sm" ta="center" py="sm" data-testid="feedback-thanks">
-            Thanks for your feedback!
-          </Text>
-        )}
-      </Popover.Dropdown>
-    </Popover>
+              Hide
+            </Text>
+          </Group>
+          {state === 'voted' && (
+            <Box pt={6}>
+              <Textarea
+                data-testid="feedback-comment"
+                placeholder="Tell us more (optional)"
+                value={comment}
+                onChange={e => setComment(e.currentTarget.value)}
+                minRows={2}
+                maxRows={4}
+                autosize
+                autoFocus
+                size="xs"
+              />
+              <Button
+                data-testid="feedback-submit"
+                variant="primary"
+                size="compact-xs"
+                fullWidth
+                mt={6}
+                onClick={handleSubmit}
+              >
+                Submit
+              </Button>
+            </Box>
+          )}
+        </>
+      )}
+    </Box>
   );
 };
