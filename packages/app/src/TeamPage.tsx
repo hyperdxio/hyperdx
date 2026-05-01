@@ -20,12 +20,14 @@ import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
+import OptimizationsSection from './components/TeamSettings/OptimizationsSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
+import { IS_OPTIMIZATION_MANAGEMENT_ENABLED } from './config';
 import { withAppNav } from './layout';
 
 type TeamTab = {
@@ -155,6 +157,20 @@ export default function TeamPage() {
         },
       ],
     },
+    ...(IS_OPTIMIZATION_MANAGEMENT_ENABLED
+      ? [
+          {
+            value: 'optimization',
+            label: 'Performance Management',
+            sections: [
+              {
+                id: 'team-optimization',
+                content: <OptimizationsSection />,
+              },
+            ],
+          },
+        ]
+      : []),
   ];
 
   const queryTab =

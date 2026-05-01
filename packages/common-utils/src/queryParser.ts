@@ -803,6 +803,65 @@ function renderArrayFieldExpression({
         );
 }
 
+/**
+ * Compares two ClickHouse expressions to determine whether the index expression
+ * refers to the search column. Handles cases where the index expression has
+ * transformations like `lower(Body)` or `concatWithSeparator(';',Body,Message)`
+ * — both are treated as covering `Body`.
+ */
+export function indexCoversColumn(
+  indexExpression: string,
+  searchColumn: string,
+): boolean {
+  // Normalize expressions for comparison
+  const normalize = (expr: string) =>
+    expr.replace(/\s+/g, '').replace(/`/g, '');
+
+  const normalizedIndex = normalize(indexExpression);
+  const normalizedSearch = normalize(searchColumn);
+
+  // Direct match
+  if (normalizedIndex === normalizedSearch) {
+    return true;
+  }
+
+  // Check if index expression contains the search column
+  // E.g., lower(Body) should match Body, concatWithSeparator(';',Body,Message) should match Body
+  // Extract potential column names (alphanumeric + underscore)
+  const indexExpressionWords = normalizedIndex.match(/\w+/g);
+  const searchColumnName = normalizedSearch.match(/\w+/)?.[0];
+  if (
+    searchColumnName &&
+    indexExpressionWords &&
+    indexExpressionWords.includes(searchColumnName)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Locate a `text`-type skip index covering the given column expression.
+ * Returns the matching index metadata, or undefined if none exists.
+ *
+ * Note: Text index expressions should not be wrapped in tokens() or
+ * preprocessing functions like lower().
+ */
+export function findTextIndex(
+  skipIndices: SkipIndexMetadata[] | undefined,
+  columnExpression: string,
+): SkipIndexMetadata | undefined {
+  if (!skipIndices || skipIndices.length === 0) {
+    return undefined;
+  }
+  return skipIndices.find(
+    idx =>
+      idx.type === 'text' &&
+      indexCoversColumn(idx.expression, columnExpression),
+  );
+}
+
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
@@ -1176,18 +1235,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private async findTextIndex(
     columnExpression: string,
   ): Promise<SkipIndexMetadata | undefined> {
-    const skipIndices = await this.skipIndicesPromise;
-
-    if (!skipIndices || skipIndices.length === 0) {
-      return undefined;
-    }
-
-    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
-    return skipIndices.find(
-      idx =>
-        idx.type === 'text' &&
-        this.indexCoversColumn(idx.expression, columnExpression),
-    );
+    return findTextIndex(await this.skipIndicesPromise, columnExpression);
   }
 
   /**
@@ -1221,9 +1269,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
         if (parsed.hasTokens) {
           // Match the inner expression against our column
-          if (
-            this.indexCoversColumn(parsed.innerExpression, columnExpression)
-          ) {
+          if (indexCoversColumn(parsed.innerExpression, columnExpression)) {
             return {
               found: true,
               indexExpression: index.expression, // e.g., "tokens(lower(Body))"
@@ -1240,37 +1286,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     }
   }
 
-  /**
-   * Compares two expressions to determine if the index expression refers to the search column.
-   * Handles cases where index expression may have transformations like lower(Body) vs Body.
-   */
   indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
-    // Normalize expressions for comparison
-    const normalize = (expr: string) =>
-      expr.replace(/\s+/g, '').replace(/`/g, '');
-
-    const normalizedIndex = normalize(indexExpression);
-    const normalizedSearch = normalize(searchColumn);
-
-    // Direct match
-    if (normalizedIndex === normalizedSearch) {
-      return true;
-    }
-
-    // Check if index expression contains the search column
-    // E.g., lower(Body) should match Body, concatWithSeparator(';',Body,Message) should match Body
-    // Extract potential column names (alphanumeric + underscore)
-    const indexExpressionWords = normalizedIndex.match(/\w+/g);
-    const searchColumnName = normalizedSearch.match(/\w+/)?.[0];
-    if (
-      searchColumnName &&
-      indexExpressionWords &&
-      indexExpressionWords.includes(searchColumnName)
-    ) {
-      return true;
-    }
-
-    return false;
+    return indexCoversColumn(indexExpression, searchColumn);
   }
 
   async getColumnForField(field: string, context: SerializerContext) {

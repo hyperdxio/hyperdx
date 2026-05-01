@@ -17,7 +17,12 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { DynamicFavicon } from '@/components/DynamicFavicon';
-import { IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
+import { TomPopup } from '@/components/TomPopup';
+import {
+  IS_LOCAL_MODE,
+  IS_OPTIMIZATION_MANAGEMENT_ENABLED,
+  parseResourceAttributes,
+} from '@/config';
 import {
   DEFAULT_FONT_VAR,
   FONT_VAR_MAP,
@@ -122,6 +127,7 @@ function AppContent({
     >
       <ConfirmProvider>
         {getLayout(<Component {...pageProps} />)}
+        {IS_OPTIMIZATION_MANAGEMENT_ENABLED && <TomPopup />}
       </ConfirmProvider>
     </ThemeWrapper>
   );
@@ -190,7 +196,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
               <AppContent Component={Component} pageProps={pageProps} />
-              <ReactQueryDevtools initialIsOpen={true} />
+              {!IS_OPTIMIZATION_MANAGEMENT_ENABLED && (
+                <ReactQueryDevtools initialIsOpen={true} />
+              )}
             </QueryClientProvider>
           </QueryParamProvider>
         </HDXQueryParamProvider>

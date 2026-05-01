@@ -26,6 +26,18 @@ import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
 
+// Shared query-key builders — use these from both the hooks below and any
+// caller that needs to invalidate the cached metadata after a mutation, so
+// the keys can never silently drift out of sync.
+type TableKeyArgs = { databaseName: string; tableName: string };
+
+export const metadataQueryKeys = {
+  tableMetadata: ({ databaseName, tableName }: TableKeyArgs) =>
+    ['useMetadata.useTableMetadata', { databaseName, tableName }] as const,
+  columns: ({ databaseName, tableName }: TableKeyArgs) =>
+    ['useMetadata.useColumns', { databaseName, tableName }] as const,
+};
+
 // Hook to get metadata with proper settings applied
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
@@ -83,7 +95,7 @@ export function useColumns(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
-    queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
+    queryKey: metadataQueryKeys.columns({ databaseName, tableName }),
     queryFn: async () => {
       return metadata.getColumns({
         databaseName,
@@ -192,7 +204,7 @@ export function useTableMetadata(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata | undefined>({
-    queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
+    queryKey: metadataQueryKeys.tableMetadata({ databaseName, tableName }),
     queryFn: async () => {
       return await metadata.getTableMetadata({
         databaseName,

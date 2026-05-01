@@ -69,6 +69,19 @@ export class MetadataCache {
     return this.cache.set(key, value);
   }
 
+  delete(key: string): boolean {
+    return this.cache.delete(key);
+  }
+
+  /** Drop every cached entry whose key starts with the given prefix. */
+  deleteByPrefix(prefix: string) {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
   // TODO: This needs to be async, and use tanstack query on frontend for cache
   // TODO: Implement locks for refreshing
   // TODO: Shard cache by time
@@ -144,6 +157,43 @@ export class Metadata {
     this.cache.set('clickhouse-settings', updatedSettings);
   }
 
+  /**
+   * Shared prefix for every per-table cache entry. {@link invalidateTable}
+   * sweeps by this exact prefix, so all per-table keys must be built from
+   * it (via {@link tableCacheKey}) to stay invalidated in lockstep.
+   */
+  private static tableCacheKeyPrefix({
+    connectionId,
+    databaseName,
+    tableName,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+  }): string {
+    return `${connectionId}.${databaseName}.${tableName}.`;
+  }
+
+  private static tableCacheKey(
+    table: { connectionId: string; databaseName: string; tableName: string },
+    suffix: string,
+  ): string {
+    return `${Metadata.tableCacheKeyPrefix(table)}${suffix}`;
+  }
+
+  /**
+   * Drops every cached entry scoped to a single table (e.g. metadata,
+   * columns, skipIndices, sourceMaterializedViews, *.values). Call after
+   * a DDL change so callers don't read stale info on the next fetch.
+   */
+  invalidateTable(table: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+  }) {
+    this.cache.deleteByPrefix(Metadata.tableCacheKeyPrefix(table));
+  }
+
   private async queryTableMetadata({
     database,
     table,
@@ -157,7 +207,10 @@ export class Metadata {
     connectionId: string;
     cluster?: string;
   }): Promise<TableMetadata | undefined> {
-    const cacheKey = `${connectionId}.${database}.${table}.${cluster}.metadata`;
+    const cacheKey = Metadata.tableCacheKey(
+      { connectionId, databaseName: database, tableName: table },
+      `${cluster}.metadata`,
+    );
     return cache.getOrFetch(cacheKey, async () => {
       const sql = cluster
         ? chSql`SELECT * FROM cluster(${{ String: cluster }}, system.tables) WHERE database = ${{ String: database }} AND name = ${{ String: table }} LIMIT 1`
@@ -230,7 +283,10 @@ export class Metadata {
     connectionId,
   }: TableConnection) {
     return this.cache.getOrFetch(
-      `${connectionId}.${databaseName}.${tableName}.sourceMaterializedViews`,
+      Metadata.tableCacheKey(
+        { connectionId, databaseName, tableName },
+        'sourceMaterializedViews',
+      ),
       async () => {
         const toDatabaseTable = `%TO ${databaseName}.${tableName}%`;
         const sql = chSql`
@@ -261,7 +317,10 @@ export class Metadata {
     connectionId: string;
   }) {
     return this.cache.getOrFetch<ColumnMeta[]>(
-      `${connectionId}.${databaseName}.${tableName}.columns`,
+      Metadata.tableCacheKey(
+        { connectionId, databaseName, tableName },
+        'columns',
+      ),
       async () => {
         const sql = chSql`DESCRIBE ${tableExpr({ database: databaseName, table: tableName })}`;
         const columns = await this.clickhouseClient
@@ -347,9 +406,10 @@ export class Metadata {
     connectionId: string;
     metricName?: string;
   }) {
-    const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
+    const cacheKey = Metadata.tableCacheKey(
+      { connectionId, databaseName, tableName },
+      metricName ? `${column}.${metricName}.keys` : `${column}.keys`,
+    );
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -460,9 +520,10 @@ export class Metadata {
   } & TableConnection) {
     // HDX-2480 delete line below to reenable json filters
     return []; // Need to disable JSON keys for the time being.
-    const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
+    const cacheKey = Metadata.tableCacheKey(
+      { connectionId, databaseName, tableName },
+      metricName ? `${column}.${metricName}.keys` : `${column}.keys`,
+    );
 
     return this.cache.getOrFetch<{ key: string; chType: string }[]>(
       cacheKey,
@@ -530,7 +591,10 @@ export class Metadata {
     maxValues?: number;
     connectionId: string;
   }) {
-    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.values`;
+    const cacheKey = Metadata.tableCacheKey(
+      { connectionId, databaseName, tableName },
+      `${column}.${key}.values`,
+    );
 
     const cachedValues = this.cache.get<string[]>(cacheKey);
 
@@ -824,7 +888,10 @@ export class Metadata {
     connectionId: string;
   }): Promise<SkipIndexMetadata[]> {
     return this.cache.getOrFetch<SkipIndexMetadata[]>(
-      `${connectionId}.${databaseName}.${tableName}.skipIndices`,
+      Metadata.tableCacheKey(
+        { connectionId, databaseName, tableName },
+        'skipIndices',
+      ),
       async () => {
         const tableMetadata = await this.queryTableMetadata({
           cache: this.cache,

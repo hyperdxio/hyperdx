@@ -4461,6 +4461,7 @@ __metadata:
     "@xyflow/react": "npm:^12.9.0"
     chrono-node: "npm:^2.7.8"
     classnames: "npm:^2.3.1"
+    clickhouse-node-parser: "file:../../../clickhouse-parser"
     crypto-js: "npm:^4.2.0"
     crypto-randomuuid: "npm:^1.0.0"
     date-fns: "npm:^2.28.0"
@@ -12770,6 +12771,15 @@ __metadata:
   version: 4.1.0
   resolution: "cli-width@npm:4.1.0"
   checksum: 10c0/1fbd56413578f6117abcaf858903ba1f4ad78370a4032f916745fa2c7e390183a9d9029cf837df320b0fdce8137668e522f60a30a5f3d6529ff3872d265a955f
+  languageName: node
+  linkType: hard
+
+"clickhouse-node-parser@file:../../../clickhouse-parser::locator=%40hyperdx%2Fapp%40workspace%3Apackages%2Fapp":
+  version: 0.1.0
+  resolution: "clickhouse-node-parser@file:../../../clickhouse-parser#../../../clickhouse-parser::hash=d0c5d7&locator=%40hyperdx%2Fapp%40workspace%3Apackages%2Fapp"
+  dependencies:
+    zod: "npm:^4.3.6"
+  checksum: 10c0/82c50b4c1694af81091dec00e441eab2a0861611bc81c73492e147616a6b533a14ec04d116ba0e4f550a1b3b489b9d56a6823454b050f1d9f8f82d15c6f1af7f
   languageName: node
   linkType: hard
 

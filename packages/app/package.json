@@ -55,6 +55,7 @@
     "@xyflow/react": "^12.9.0",
     "chrono-node": "^2.7.8",
     "classnames": "^2.3.1",
+    "clickhouse-node-parser": "file:../../../clickhouse-parser",
     "crypto-js": "^4.2.0",
     "crypto-randomuuid": "^1.0.0",
     "date-fns": "^2.28.0",
