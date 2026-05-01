@@ -17,7 +17,7 @@ import {
   Anchor,
   Box,
   Center,
-  Checkbox,
+  Chip,
   Code,
   Divider,
   Group,
@@ -1022,28 +1022,35 @@ export function DBTraceWaterfallChartContainer({
               {errorCountString}
             </span>
           </Text>
-          <Checkbox
+          <Chip
             size="xs"
-            label="Show spans"
+            variant="outline"
             checked={showSpans}
             onChange={() => setShowSpans(!showSpans)}
-            data-testid="show-spans-checkbox"
-          />
+            data-testid="show-spans-chip"
+          >
+            Spans
+          </Chip>
           {logTableSource && (
-            <Checkbox
+            <Chip
               size="xs"
-              label="Show logs"
+              variant="outline"
               checked={showLogs}
               onChange={() => setShowLogs(!showLogs)}
-              data-testid="show-logs-checkbox"
-            />
+              data-testid="show-logs-chip"
+            >
+              Logs
+            </Chip>
           )}
-          <Checkbox
+          <Chip
             size="xs"
-            label="Show span events"
+            variant="outline"
             checked={showSpanEvents}
             onChange={() => setShowSpanEvents(!showSpanEvents)}
-          />
+            data-testid="show-span-events-chip"
+          >
+            Span events
+          </Chip>
         </Group>
         <span>
           <Anchor

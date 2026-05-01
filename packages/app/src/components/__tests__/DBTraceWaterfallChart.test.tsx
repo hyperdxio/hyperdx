@@ -312,25 +312,25 @@ describe('DBTraceWaterfallChartContainer', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders Show spans and Show logs checkboxes when log source is present', async () => {
+  it('renders Spans and Logs chips when log source is present', async () => {
     setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
     renderComponent();
     await waitForLoading();
 
-    expect(screen.getByTestId('show-spans-checkbox')).toBeInTheDocument();
-    expect(screen.getByTestId('show-logs-checkbox')).toBeInTheDocument();
+    expect(screen.getByTestId('show-spans-chip')).toBeInTheDocument();
+    expect(screen.getByTestId('show-logs-chip')).toBeInTheDocument();
   });
 
-  it('does not render Show logs checkbox when no log source', async () => {
+  it('does not render Logs chip when no log source', async () => {
     setupQueryMocks({ traceData: mockTraceData });
     renderComponent(null);
     await waitForLoading();
 
-    expect(screen.getByTestId('show-spans-checkbox')).toBeInTheDocument();
-    expect(screen.queryByTestId('show-logs-checkbox')).not.toBeInTheDocument();
+    expect(screen.getByTestId('show-spans-chip')).toBeInTheDocument();
+    expect(screen.queryByTestId('show-logs-chip')).not.toBeInTheDocument();
   });
 
-  it('hides log rows when Show logs is unchecked', async () => {
+  it('hides log rows when Logs chip is toggled off', async () => {
     const user = userEvent.setup();
     setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
     renderComponent();
@@ -338,15 +338,15 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(MockTimelineChart.latestProps.rows.length).toBe(2);
 
-    const showLogsCheckbox = screen.getByTestId('show-logs-checkbox');
-    await user.click(showLogsCheckbox);
+    const showLogsChip = screen.getByTestId('show-logs-chip');
+    await user.click(showLogsChip);
 
     await waitFor(() => {
       expect(MockTimelineChart.latestProps.rows.length).toBe(1);
     });
   });
 
-  it('hides span rows when Show spans is unchecked', async () => {
+  it('hides span rows when Spans chip is toggled off', async () => {
     const user = userEvent.setup();
     setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
     renderComponent();
@@ -354,8 +354,8 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(MockTimelineChart.latestProps.rows.length).toBe(2);
 
-    const showSpansCheckbox = screen.getByTestId('show-spans-checkbox');
-    await user.click(showSpansCheckbox);
+    const showSpansChip = screen.getByTestId('show-spans-chip');
+    await user.click(showSpansChip);
 
     await waitFor(() => {
       expect(MockTimelineChart.latestProps.rows.length).toBe(1);
