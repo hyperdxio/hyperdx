@@ -166,7 +166,7 @@ export const AppNavFeedback = () => {
               className={styles.feedbackLabel}
               style={{ flex: 1 }}
             >
-              How&apos;s your experience?
+              Feedback?
             </Text>
             <Text
               data-testid="feedback-hide"
