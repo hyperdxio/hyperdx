@@ -32,9 +32,9 @@ const FORCE_ENABLE_KEY = 'hdx-feedback-enabled';
 
 export const AppNavFeedback = () => {
   const { isCollapsed } = React.useContext(AppNavContext);
-  const [forceEnabled] = useLocalStorage<string>({
+  const [forceEnabled] = useLocalStorage<boolean>({
     key: FORCE_ENABLE_KEY,
-    defaultValue: '',
+    defaultValue: false,
   });
   const [hidden, setHidden] = useLocalStorage<boolean>({
     key: 'feedbackHidden',
@@ -48,7 +48,7 @@ export const AppNavFeedback = () => {
 
   // Only show when HyperDX SDK is active (non-local mode),
   // or when overridden via: localStorage.setItem('hdx-feedback-enabled', 'true')
-  const sdkEnabled = !IS_LOCAL_MODE || forceEnabled === 'true';
+  const sdkEnabled = !IS_LOCAL_MODE || forceEnabled === true;
 
   const reset = useCallback(() => {
     setVote(null);
