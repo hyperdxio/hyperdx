@@ -1026,48 +1026,46 @@ export function DBTraceWaterfallChartContainer({
             <Text size="xs" c="dimmed">
               Show:
             </Text>
-            <Chip.Group multiple>
-              <Group gap={4}>
+            <Group gap={4}>
+              <Chip
+                size="xs"
+                color="gray"
+                checked={showSpans}
+                onChange={() => setShowSpans(!showSpans)}
+                data-testid="show-spans-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Spans
+              </Chip>
+              {logTableSource && (
                 <Chip
                   size="xs"
                   color="gray"
-                  checked={showSpans}
-                  onChange={() => setShowSpans(!showSpans)}
-                  data-testid="show-spans-chip"
+                  checked={showLogs}
+                  onChange={() => setShowLogs(!showLogs)}
+                  data-testid="show-logs-chip"
                   styles={{
                     label: { paddingInline: 8, height: 22, minHeight: 22 },
                   }}
                 >
-                  Spans
+                  Logs
                 </Chip>
-                {logTableSource && (
-                  <Chip
-                    size="xs"
-                    color="gray"
-                    checked={showLogs}
-                    onChange={() => setShowLogs(!showLogs)}
-                    data-testid="show-logs-chip"
-                    styles={{
-                      label: { paddingInline: 8, height: 22, minHeight: 22 },
-                    }}
-                  >
-                    Logs
-                  </Chip>
-                )}
-                <Chip
-                  size="xs"
-                  color="gray"
-                  checked={showSpanEvents}
-                  onChange={() => setShowSpanEvents(!showSpanEvents)}
-                  data-testid="show-span-events-chip"
-                  styles={{
-                    label: { paddingInline: 8, height: 22, minHeight: 22 },
-                  }}
-                >
-                  Span events
-                </Chip>
-              </Group>
-            </Chip.Group>
+              )}
+              <Chip
+                size="xs"
+                color="gray"
+                checked={showSpanEvents}
+                onChange={() => setShowSpanEvents(!showSpanEvents)}
+                data-testid="show-span-events-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Span events
+              </Chip>
+            </Group>
           </Group>
         </Group>
         <span>
@@ -1122,9 +1120,13 @@ export function DBTraceWaterfallChartContainer({
             An unknown error occurred. <ContactSupportText />
           </div>
         ) : visibleNodes.length === 0 ? (
-          (emptyState ?? (
-            <div className="my-3">No matching spans or logs found</div>
-          ))
+          flattenedNodes.length > 0 ? (
+            <div className="my-3">All items are hidden by filters</div>
+          ) : (
+            (emptyState ?? (
+              <div className="my-3">No matching spans or logs found</div>
+            ))
+          )
         ) : (
           <TimelineChart
             maxHeight={heightPx}
