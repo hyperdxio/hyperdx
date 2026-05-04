@@ -1,20 +1,151 @@
+.timelineViewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+}
+
+.timelineContainer {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: auto;
+  isolation: isolate;
+}
+
+.timelineScroller {
+  position: relative;
+}
+
+.timelineCorner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  background: var(--color-bg-body);
+  z-index: 3;
+}
+
 .timelineRow {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   cursor: pointer;
 
   &:hover {
     background-color: var(--color-bg-highlighted);
+
+    .labelContent {
+      background-color: var(--color-bg-highlighted);
+    }
   }
 }
 
 .timelineRowActive {
   background-color: var(--color-bg-highlighted);
   border-radius: var(--mantine-radius-xs);
+
+  .labelContent {
+    background-color: var(--color-bg-highlighted);
+  }
 }
 
 .labelContainer {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: var(--color-bg-body);
+}
+
+.labelContent {
+  width: 100%;
+  height: 100%;
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 8px;
+}
+
+.eventsContainer {
+  flex: 1;
   position: relative;
+}
+
+.resizeHandleContainer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
+
+.mouseCursorWrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.xAxis {
+  position: sticky;
+  top: 0;
+  height: 24px;
+  padding-top: 4px;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--color-bg-body);
+}
+
+.xAxisInner {
+  display: flex;
+  align-items: center;
+}
+
+// Tick children are created/measured imperatively by TimelineXAxis.tsx
+// (it reaches in via firstElementChild). Don't add other element children.
+.xAxisTicks {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+}
+
+.xAxisTickLabel {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.5);
+}
+
+.mouseCursorRow {
+  display: flex;
+}
+
+.mouseCursorEventsColumn {
+  flex: 1;
+  overflow: hidden;
+}
+
+.mouseCursor {
+  will-change: transform;
+}
+
+.mouseCursorOverlay {
+  height: 0;
+  top: 12px;
+  position: relative;
+  will-change: transform;
+}
+
+.mouseCursorLabel {
+  padding: 0.5rem;
+  border-radius: var(--mantine-radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+}
+
+.mouseCursorLine {
+  width: 1px;
+  background: var(--color-bg-neutral);
 }
