@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -232,6 +232,12 @@ const TimePickerComponent = ({
   );
 
   const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
+
+  // When the default relative time mode changes, set the isRelative state
+  useEffect(() => {
+    setIsRelative(defaultRelativeTimeMode);
+  }, [defaultRelativeTimeMode]);
+
   // Must be state to ensure rerenders occur when ref changes
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
   const dateComponentPopoverProps = useMemo(

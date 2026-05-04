@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
@@ -1223,12 +1222,9 @@ export function DBSearchPage() {
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
-  const [isNuqsReady, startNuqsTransition] = useTransition();
   const [interval, setInterval] = useQueryState(
     'liveInterval',
-    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS).withOptions({
-      startTransition: startNuqsTransition,
-    }),
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
   );
 
   const [refreshFrequency, setRefreshFrequency] = useQueryState(
@@ -1243,15 +1239,15 @@ export function DBSearchPage() {
     }
   }, []);
 
+  // Sync the relative time input value with the interval
   useEffect(() => {
-    if (isReady && isNuqsReady && isLive) {
+    if (isReady && isLive) {
       updateRelativeTimeInputValue(interval);
     }
-    // we only want this to run on initial mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     updateRelativeTimeInputValue,
-    isNuqsReady,
+    isLive,
+    interval,
     searchedConfig.source,
     isReady,
   ]);
