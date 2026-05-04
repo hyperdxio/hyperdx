@@ -1256,21 +1256,6 @@ function LogTableModelForm(props: TableModelProps) {
         </FormRow>
 
         <Divider />
-        {/* <FormRow
-          label={'Unique Row ID Expression'}
-          helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
-        >
-          <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="uniqueRowIdExpression"
-            placeholder="Timestamp, ServiceName, Body"
-          />
-        </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
             tableConnection={{
