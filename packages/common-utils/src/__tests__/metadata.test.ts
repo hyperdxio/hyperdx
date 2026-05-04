@@ -35,6 +35,16 @@ const source: TSource = {
   ],
 };
 
+// Suppress expected console.warn/error noise from permission checks,
+// distributed table fallbacks, and column parsing edge cases
+beforeAll(() => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterAll(() => {
+  jest.restoreAllMocks();
+});
+
 describe('MetadataCache', () => {
   let metadataCache: MetadataCache;
 

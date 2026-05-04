@@ -5,9 +5,11 @@
 ## TypeScript
 
 - Avoid `any` - use proper typing
+- Avoid `as` casts, use `satisfies` or type inference whenever possible
 - Use Zod schemas for runtime validation
 - Define clear interfaces for data structures
 - Implement proper error boundaries
+- Define and import reusable named types instead of repeating verbose types
 
 ## Code Organization
 
@@ -19,6 +21,7 @@
 ## React Patterns
 
 - Functional components with hooks (not class components)
+- Write small, focused components
 - Extract reusable logic into custom hooks
 - Define TypeScript interfaces for props
 - Use proper keys for lists, memoization for expensive computations
@@ -26,6 +29,9 @@
 ## Mantine UI Components
 
 The project uses Mantine UI with **custom variants** defined in `packages/app/src/theme/mantineTheme.ts`.
+
+- Prefer Mantine components over custom-styled elements
+- Prefer individual Mantine style props (eg. `m='xs'`) over raw styles (eg. `style={{ margin: '4px' }}`)
 
 ### Button & ActionIcon Variants (REQUIRED)
 
@@ -121,6 +127,16 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
 
+## Semantic design tokens (prefer over raw Mantine colors)
+
+The UI is built with **Mantine components**, but **colors and surfaces** should follow the **semantic CSS custom properties** in our themes (`--color-*`, etc.), not ad-hoc Mantine palette values. Those tokens are defined in `packages/app/src/theme/themes/**/_tokens.scss`, align with a **Click UI**–style system, and keep HyperDX and ClickStack visually consistent. They are the path toward a shared design system even while Mantine remains the component layer.
+
+- **Do**: Use Mantine for layout, components, and spacing; use **semantic tokens** for themed backgrounds, text colors, borders, and states (e.g. `style={{ color: 'var(--color-text-muted)' }}` or `style={{ border: '1px solid var(--color-border)' }}`).
+- **Do not**: Rely on raw Mantine color props for app chrome and content when a semantic token exists — e.g. `c="gray.5"`, `bg="dark.7"`, or arbitrary `color="blue.4"` for surfaces that should match the rest of the product.
+- **Reference**: `packages/app/src/theme/semanticColorsGrouped.ts` (token names), theme SCSS under `packages/app/src/theme/themes/`, and Storybook (`SemanticColors` and related theme stories) for a visual map.
+
+Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale to our palette; that does not replace using **`var(--color-...)`** in new styling where you need explicit color control.
+
 ## Refactoring
 
 - Edit files directly - don't create `component-v2.tsx` copies
@@ -128,8 +144,8 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 - Verify all callers and integrations after changes
 - Refactor to improve clarity or reduce complexity, not just to change
 
-## File Naming
+## File Naming and Organization
 
 - Clear, descriptive names following package conventions
 - Avoid "temp", "refactored", "improved" in permanent filenames
-
+- Put related components in a single directory

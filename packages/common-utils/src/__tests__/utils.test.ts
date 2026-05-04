@@ -5,6 +5,7 @@ import {
   BuilderChartConfigWithDateRange,
   Connection,
   DashboardSchema,
+  DashboardTemplateSchema,
   MetricsDataType,
   SourceKind,
   TSource,
@@ -33,6 +34,16 @@ import {
 } from '../core/utils';
 
 describe('utils', () => {
+  // Suppress expected console.error noise from invalid text index types,
+  // unknown tokenizers, and distributed table parsing edge cases
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('formatDate', () => {
     it('12h utc', () => {
       const date = new Date('2021-01-01T12:00:00Z');
@@ -920,6 +931,56 @@ describe('utils', () => {
         configType: 'sql',
         connection: '',
       });
+    });
+  });
+
+  describe('DashboardTemplateSchema duplicate tile IDs', () => {
+    const makeTemplateTile = (id: string) => ({
+      id,
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+      config: {
+        name: `Tile ${id}`,
+        source: 'source1',
+        displayType: 'number',
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: '',
+        whereLanguage: 'sql',
+      },
+    });
+
+    it('accepts tiles with unique IDs', () => {
+      const template = {
+        version: '0.1.0',
+        name: 'Unique Tiles',
+        tiles: [
+          makeTemplateTile('tile-a'),
+          makeTemplateTile('tile-b'),
+          makeTemplateTile('tile-c'),
+        ],
+      };
+      expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
+    });
+
+    it('rejects tiles with duplicate IDs and surfaces the duplicate ID', () => {
+      const template = {
+        version: '0.1.0',
+        name: 'Duplicate Tiles',
+        tiles: [
+          makeTemplateTile('dup'),
+          makeTemplateTile('unique'),
+          makeTemplateTile('dup'),
+        ],
+      };
+
+      const result = DashboardTemplateSchema.safeParse(template);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map(i => i.message);
+        expect(messages).toContain('Duplicate tile ID: dup');
+      }
     });
   });
 

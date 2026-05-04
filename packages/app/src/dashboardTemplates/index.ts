@@ -7,6 +7,7 @@ import dotnetRuntime from './dotnet-runtime.json';
 import goRuntime from './go-runtime.json';
 import jvmRuntimeMetrics from './jvm-runtime-metrics.json';
 import nodejsRuntime from './nodejs-runtime.json';
+import pythonRuntime from './python-runtime.json';
 
 function parseTemplate(
   id: string,
@@ -26,6 +27,7 @@ const templates: Record<string, unknown> = {
   'go-runtime': goRuntime,
   'jvm-runtime-metrics': jvmRuntimeMetrics,
   'nodejs-runtime': nodejsRuntime,
+  'python-runtime': pythonRuntime,
 };
 
 export const DASHBOARD_TEMPLATES = Object.entries(templates)

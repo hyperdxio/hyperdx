@@ -31,11 +31,11 @@ describe('team router', () => {
 
     expect(_.omit(resp.body, ['_id', 'id', 'apiKey', 'createdAt']))
       .toMatchInlineSnapshot(`
-Object {
-  "allowedAuthMethods": Array [],
-  "name": "fake@deploysentinel.com's Team",
-}
-`);
+      {
+        "allowedAuthMethods": [],
+        "name": "fake@deploysentinel.com's Team",
+      }
+    `);
   });
 
   it('GET /team/tags - no tags', async () => {
@@ -43,7 +43,7 @@ Object {
 
     const resp = await agent.get('/team/tags').expect(200);
 
-    expect(resp.body.data).toMatchInlineSnapshot(`Array []`);
+    expect(resp.body.data).toMatchInlineSnapshot(`[]`);
   });
 
   it('GET /team/tags', async () => {
@@ -98,29 +98,27 @@ Object {
     });
     const resp = await agent.get('/team/members').expect(200);
 
-    expect(resp.body.data).toMatchInlineSnapshot(`
-Array [
-  Object {
-    "_id": "${resp.body.data[0]._id}",
-    "email": "fake@deploysentinel.com",
-    "hasPasswordAuth": true,
-    "isCurrentUser": true,
-    "name": "fake@deploysentinel.com",
-  },
-  Object {
-    "_id": "${user1._id}",
-    "email": "user1@example.com",
-    "hasPasswordAuth": true,
-    "isCurrentUser": false,
-  },
-  Object {
-    "_id": "${user2._id}",
-    "email": "user2@example.com",
-    "hasPasswordAuth": true,
-    "isCurrentUser": false,
-  },
-]
-`);
+    expect(resp.body.data.map(({ _id, ...rest }: any) => rest))
+      .toMatchInlineSnapshot(`
+      [
+        {
+          "email": "fake@deploysentinel.com",
+          "hasPasswordAuth": true,
+          "isCurrentUser": true,
+          "name": "fake@deploysentinel.com",
+        },
+        {
+          "email": "user1@example.com",
+          "hasPasswordAuth": true,
+          "isCurrentUser": false,
+        },
+        {
+          "email": "user2@example.com",
+          "hasPasswordAuth": true,
+          "isCurrentUser": false,
+        },
+      ]
+    `);
   });
 
   it('POST /team/invitation', async () => {
@@ -236,17 +234,17 @@ Array [
         name: i.name,
       })),
     ).toMatchInlineSnapshot(`
-Array [
-  Object {
-    "email": "user1@example.com",
-    "name": "User 1",
-  },
-  Object {
-    "email": "user2@example.com",
-    "name": "User 2",
-  },
-]
-`);
+      [
+        {
+          "email": "user1@example.com",
+          "name": "User 1",
+        },
+        {
+          "email": "user2@example.com",
+          "name": "User 2",
+        },
+      ]
+    `);
   });
 
   it('DELETE /team/member/:userId removes a user', async () => {

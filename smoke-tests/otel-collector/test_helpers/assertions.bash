@@ -3,7 +3,7 @@ assert_test_data() {
 }
 
 assert_test_data_compat() {
-    _assert_test_data_on_port "19000" "$@"
+    _assert_test_data_on_port "29000" "$@"
 }
 
 _assert_test_data_on_port() {

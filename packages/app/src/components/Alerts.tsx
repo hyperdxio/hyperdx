@@ -9,6 +9,7 @@ import {
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
+  AlertThresholdType,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
@@ -76,7 +77,7 @@ const WebhookChannelForm = <T extends FieldValues>({
         <Controller
           control={control}
           name={name! as Path<T>}
-          render={({ field }) => (
+          render={({ field, fieldState }) => (
             <Select
               data-testid="select-webhook"
               comboboxProps={{
@@ -90,6 +91,7 @@ const WebhookChannelForm = <T extends FieldValues>({
               }
               data={options}
               {...field}
+              error={fieldState.error?.message}
             />
           )}
         />
@@ -143,12 +145,55 @@ export const AlertChannelForm = <T extends FieldValues>({
 export const getAlertReferenceLines = ({
   thresholdType,
   threshold,
+  thresholdMax,
   // TODO: zScore
 }: {
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number;
 }) => {
-  if (threshold != null && thresholdType === 'below') {
+  if (threshold == null) {
+    return null;
+  }
+  if (thresholdType === AlertThresholdType.BETWEEN && thresholdMax != null) {
+    return (
+      <ReferenceArea
+        y1={threshold}
+        y2={thresholdMax}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />
+    );
+  }
+  if (
+    thresholdType === AlertThresholdType.NOT_BETWEEN &&
+    thresholdMax != null
+  ) {
+    return [
+      <ReferenceArea
+        key="not-between-lower"
+        y2={threshold}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />,
+      <ReferenceArea
+        key="not-between-upper"
+        y1={thresholdMax}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />,
+    ];
+  }
+  if (
+    thresholdType === AlertThresholdType.BELOW ||
+    thresholdType === AlertThresholdType.BELOW_OR_EQUAL
+  ) {
     return (
       <ReferenceArea
         y1={0}
@@ -160,7 +205,10 @@ export const getAlertReferenceLines = ({
       />
     );
   }
-  if (threshold != null && thresholdType === 'above') {
+  if (
+    thresholdType === AlertThresholdType.ABOVE ||
+    thresholdType === AlertThresholdType.ABOVE_EXCLUSIVE
+  ) {
     return (
       <ReferenceArea
         y1={threshold}
@@ -171,22 +219,20 @@ export const getAlertReferenceLines = ({
       />
     );
   }
-  if (threshold != null) {
-    return (
-      <ReferenceLine
-        y={threshold}
-        label={
-          <Label
-            value="Alert Threshold"
-            fill={'white'}
-            fontSize={11}
-            opacity={0.7}
-          />
-        }
-        stroke="red"
-        strokeDasharray="3 3"
-      />
-    );
-  }
-  return null;
+  // For 'equal' and 'not_equal', show a reference line at the threshold
+  return (
+    <ReferenceLine
+      y={threshold}
+      label={
+        <Label
+          value="Alert Threshold"
+          fill={'white'}
+          fontSize={11}
+          opacity={0.7}
+        />
+      }
+      stroke="red"
+      strokeDasharray="3 3"
+    />
+  );
 };

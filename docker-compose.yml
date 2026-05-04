@@ -62,6 +62,10 @@ services:
       SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
       OPAMP_PORT: ${HYPERDX_OPAMP_PORT}
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      # Per-signal OTLP endpoints (override OTEL_EXPORTER_OTLP_ENDPOINT for individual signals)
+      # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://otel-collector:4318/v1/traces'
+      # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://otel-collector:4318/v1/metrics'
+      # OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://otel-collector:4318/v1/logs'
       OTEL_SERVICE_NAME: 'hdx-oss-app'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
       DEFAULT_CONNECTIONS:

@@ -6,6 +6,7 @@ import type {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  AlertThresholdType,
   DisplayType,
   MetricsDataType,
   SourceKind,
@@ -48,6 +49,25 @@ const metricSource: TMetricSource = {
   timestampValueExpression: 'TimeUnix',
   metricTables: { gauge: 'gauge_table' } as TMetricSource['metricTables'],
   resourceAttributesExpression: 'ResourceAttributes',
+};
+
+const traceSource: TSource = {
+  id: 'source-trace',
+  name: 'Trace Source',
+  kind: SourceKind.Trace,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'spans' },
+  timestampValueExpression: 'Timestamp',
+  durationExpression: 'Duration',
+  spanIdExpression: 'SpanId',
+  traceIdExpression: 'TraceId',
+  parentSpanIdExpression: 'ParentSpanId',
+  defaultTableSelectExpression: 'SpanName',
+  implicitColumnExpression: 'SpanName',
+  statusCodeExpression: 'StatusCode',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+  durationPrecision: 9,
 };
 
 const seriesItem = {
@@ -1055,6 +1075,148 @@ describe('validateChartForm', () => {
     expect(errors.filter(e => e.path === 'series')).toHaveLength(0);
   });
 
+  // ── Alert thresholdMax validation ───────────────────────────────────
+
+  it('errors when between alert is missing thresholdMax', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      }),
+    );
+  });
+
+  it('errors when not_between alert is missing thresholdMax', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.NOT_BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+      }),
+    );
+  });
+
+  it('errors when thresholdMax is less than threshold', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 5,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
+      }),
+    );
+  });
+
+  it('does not error when thresholdMax equals threshold', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 10,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not error when thresholdMax is greater than threshold for between', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdMax: 20,
+          thresholdType: AlertThresholdType.BETWEEN,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not validate thresholdMax for non-range threshold types', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: {
+          interval: '1h',
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook' },
+        } as ChartEditorFormState['alert'],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
+  it('does not validate thresholdMax when no alert is configured', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        source: 'source-log',
+        alert: undefined,
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors.filter(e => e.path === 'alert.thresholdMax')).toHaveLength(0);
+  });
+
   // ── Multiple validation errors at once ───────────────────────────────
 
   it('accumulates multiple errors across different validation rules', () => {
@@ -1106,6 +1268,90 @@ describe('validateChartForm', () => {
     expect(setError).toHaveBeenCalledWith(
       'sqlTemplate',
       expect.objectContaining({ type: 'manual' }),
+    );
+  });
+
+  // ── Heatmap-specific validation ───────────────────────────────────────
+
+  it('returns no errors for a valid heatmap chart with trace source', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [
+          {
+            ...seriesItem,
+            valueExpression: 'Duration / 1e6',
+            countExpression: 'count()',
+            heatmapScaleType: 'log',
+          },
+        ],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects heatmap chart with multiple series', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [
+          { ...seriesItem, valueExpression: 'Duration / 1e6' },
+          { ...seriesItem, valueExpression: 'other' },
+        ],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toContainEqual(expect.objectContaining({ path: 'series' }));
+  });
+
+  it('rejects heatmap chart without a value expression', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        series: [{ ...seriesItem, valueExpression: '' }],
+      }),
+      traceSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ path: 'series.0.valueExpression' }),
+    );
+  });
+});
+
+describe('heatmap round-trip', () => {
+  it('preserves countExpression and heatmapScaleType through form state conversion', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Heatmap,
+      source: 'source-trace',
+      where: '',
+      series: [
+        {
+          ...seriesItem,
+          valueExpression: 'Duration / 1e6',
+          countExpression: 'count()',
+          heatmapScaleType: 'linear',
+        },
+      ],
+    };
+    const saved = convertFormStateToSavedChartConfig(form, traceSource);
+    expect(saved).toBeDefined();
+    const restored = convertSavedChartConfigToFormState(saved!);
+    expect(restored.series[0]).toEqual(
+      expect.objectContaining({
+        valueExpression: 'Duration / 1e6',
+        countExpression: 'count()',
+        heatmapScaleType: 'linear',
+      }),
     );
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
@@ -28,7 +28,7 @@ import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatDurationMs, formatNumber } from '@/utils';
+import { formatDurationMsCompact, formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
@@ -41,14 +41,14 @@ function heatmapPaths(opts: {
 }) {
   const { disp } = opts;
 
-  return (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+  return (u: uPlot, seriesIdx: number, _idx0: number, _idx1: number) => {
     uPlot.orient(
       u,
       seriesIdx,
       (
-        series,
-        dataX,
-        dataY,
+        _series,
+        _dataX,
+        _dataY,
         scaleX,
         scaleY,
         valToPosX,
@@ -57,10 +57,10 @@ function heatmapPaths(opts: {
         yOff,
         xDim,
         yDim,
-        moveTo,
-        lineTo,
+        _moveTo,
+        _lineTo,
         rect,
-        arc,
+        _arc,
       ) => {
         // mode 2 data format is not supported in types properly
         const d = u.data[seriesIdx] as unknown as Mode2DataArray;
@@ -75,7 +75,7 @@ function heatmapPaths(opts: {
 
         const fillPalette = disp.fill.lookup ?? [...new Set(fills)];
 
-        const fillPaths = fillPalette.map(color => new Path2D());
+        const fillPaths = fillPalette.map(() => new Path2D());
 
         // fillPalette.forEach(fill => {
         // 	fillPaths.set(fill, new Path2D());
@@ -232,6 +232,7 @@ const opt: uPlot.Options = {
   height: 600,
   mode: 2,
   ms: 1,
+  padding: [8, 8, 0, 4],
   legend: {
     show: false,
   },
@@ -243,10 +244,11 @@ const opt: uPlot.Options = {
   axes: [
     {
       ...axis,
+      gap: 10,
+      space: 60,
     },
     {
       ...axis,
-      size: 60, // fixed width so labels like "600ms" and "100µs" fit
     },
   ],
   series: [
@@ -284,7 +286,7 @@ function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
   };
 }
 
-type HeatmapChartConfig = {
+export type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
   select: [
     {
@@ -304,77 +306,50 @@ type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-export function ColorLegend({ colors }: { colors: string[] }) {
-  return (
-    <Flex
-      align="center"
-      gap={4}
-      role="img"
-      aria-label="Color scale: low to high count"
-    >
-      <Text size="10px" c="dimmed">
-        Low
-      </Text>
-      <div
-        style={{
-          display: 'flex',
-          width: 80,
-          height: 8,
-          borderRadius: 2,
-          overflow: 'hidden',
-        }}
-      >
-        {colors.map((color: string, i: number) => (
-          <div key={i} style={{ flex: 1, background: color }} />
-        ))}
-      </div>
-      <Text size="10px" c="dimmed">
-        High
-      </Text>
-    </Flex>
-  );
+/** Build a HeatmapChartConfig from a builder chart config that has heatmap extras on select[0]. */
+export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
+  heatmapConfig: HeatmapChartConfig;
+  scaleType: HeatmapScaleType;
+} {
+  const firstSelect = Array.isArray(config.select)
+    ? config.select[0]
+    : undefined;
+  return {
+    heatmapConfig: {
+      ...config,
+      displayType: DisplayType.Heatmap,
+      select: [
+        {
+          aggFn: 'heatmap' as const,
+          valueExpression: firstSelect?.valueExpression ?? '',
+          countExpression: firstSelect?.countExpression,
+        },
+      ],
+      granularity: 'auto',
+      numberFormat: config.numberFormat,
+    },
+    scaleType: firstSelect?.heatmapScaleType ?? 'log',
+  };
 }
 
-export type HeatmapScaleType = 'log' | 'linear';
+export const HEATMAP_N_BUCKETS = 80;
 
-function HeatmapContainer({
+/**
+ * Build the bounds (min/max) ChartConfig that runs first.  Result feeds
+ * `effectiveMin`/`max` into `buildHeatmapBucketConfig`.
+ */
+export function buildHeatmapBoundsConfig({
   config,
-  enabled = true,
-  onFilter,
-  title,
-  toolbarPrefix,
-  toolbarSuffix,
-  scaleType = 'log',
+  scaleType,
 }: {
   config: HeatmapChartConfig;
-  enabled?: boolean;
-  onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
-  title?: React.ReactNode;
-  toolbarPrefix?: React.ReactNode[];
-  toolbarSuffix?: React.ReactNode[];
-  scaleType?: HeatmapScaleType;
-}) {
-  const dateRange = config.dateRange;
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
-
-  const { colorScheme } = useMantineColorScheme();
-  const palette = colorScheme === 'light' ? lightPalette : darkPalette;
-
-  const nBuckets = 80;
-
+  scaleType: HeatmapScaleType;
+}): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
-  const countExpression = config.select[0].countExpression ?? 'count()';
-
-  // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
   const isAggregateExpression = isAggregateFunction(valueExpression);
-
-  // Use quantile-based lower bound to avoid near-zero outliers stretching
-  // the log axis.  For the upper bound, use actual max() so that latency
-  // spikes (typically <1% of spans) remain visible — log scale already
-  // handles wide ranges naturally.  Future: #1914 adds overflow-bucket
-  // indicators for smarter range clamping without hiding spikes.
   const qLo = scaleType === 'log' ? 0.01 : 0.001;
-  const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
+
+  return isAggregateExpression
     ? {
         ...config,
         where: '',
@@ -428,30 +403,33 @@ function HeatmapContainer({
           },
         ],
       };
+}
 
-  const {
-    data: minMaxData,
-    isLoading: isMinMaxLoading,
-    error: minMaxError,
-  } = useQueriedChartConfig(minMaxConfig, {
-    queryKey: ['heatmap', minMaxConfig],
-    enabled: enabled,
-  });
+/**
+ * Build the bucketed-counts ChartConfig that runs second.  `effectiveMin`/`max`
+ * are usually numbers (resolved from the bounds query), but accept strings so
+ * callers — like the editor's SQL preview — can pass placeholder tokens
+ * (e.g. `'{min}'`) before the bounds are known.
+ */
+export function buildHeatmapBucketConfig({
+  config,
+  scaleType,
+  effectiveMin,
+  max,
+  granularity,
+  nBuckets,
+}: {
+  config: HeatmapChartConfig;
+  scaleType: HeatmapScaleType;
+  effectiveMin: string | number;
+  max: string | number;
+  granularity: string;
+  nBuckets: number;
+}): BuilderChartConfigWithDateRange {
+  const valueExpression = config.select[0].valueExpression;
+  const countExpression = config.select[0].countExpression ?? 'count()';
+  const isAggregateExpression = isAggregateFunction(valueExpression);
 
-  const [errorModal, errorModalControls] = useDisclosure();
-
-  // UInt64 are returned as strings; quantile returns floats
-  const min = Number.parseFloat(minMaxData?.data?.[0]?.['min'] ?? '0');
-  const max = Number.parseFloat(minMaxData?.data?.[0]?.['max'] ?? '0');
-
-  // Ensure min > 0 for log scale (log(0) is undefined).
-  // Cap the range to ~4 orders of magnitude so the axis isn't dominated
-  // by a long empty tail of near-zero outliers.
-  const effectiveMin =
-    scaleType === 'log' ? Math.max(min, max * 1e-4 || 1e-4) : min;
-
-  // For log scale: bucket by log(value) to get log-spaced boundaries
-  // For linear scale: bucket by raw value (original behavior)
   const bucketExprAgg =
     scaleType === 'log'
       ? `widthBucket(log(greatest(toFloat64(value_calc), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
@@ -461,7 +439,7 @@ function HeatmapContainer({
       ? `widthBucket(log(greatest(toFloat64(${valueExpression}), ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
       : `widthBucket(${valueExpression}, ${effectiveMin}, ${max}, ${nBuckets})`;
 
-  const bucketConfig: BuilderChartConfigWithDateRange = isAggregateExpression
+  return isAggregateExpression
     ? {
         ...config,
         where: '',
@@ -516,6 +494,106 @@ function HeatmapContainer({
         orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
         granularity,
       };
+}
+
+export function ColorLegend({ colors }: { colors: string[] }) {
+  return (
+    <Flex
+      align="center"
+      gap={4}
+      role="img"
+      aria-label="Color scale: low to high count"
+    >
+      <Text size="10px" c="dimmed">
+        Low
+      </Text>
+      <div
+        style={{
+          display: 'flex',
+          width: 80,
+          height: 8,
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}
+      >
+        {colors.map((color: string, i: number) => (
+          <div key={i} style={{ flex: 1, background: color }} />
+        ))}
+      </div>
+      <Text size="10px" c="dimmed">
+        High
+      </Text>
+    </Flex>
+  );
+}
+
+export type HeatmapScaleType = 'log' | 'linear';
+
+function HeatmapContainer({
+  config,
+  enabled = true,
+  onFilter,
+  onClearFilter,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  scaleType = 'log',
+  showLegend = false,
+}: {
+  config: HeatmapChartConfig;
+  enabled?: boolean;
+  onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearFilter?: () => void;
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  scaleType?: HeatmapScaleType;
+  showLegend?: boolean;
+}) {
+  const dateRange = config.dateRange;
+  const granularity = convertDateRangeToGranularityString(dateRange, 245);
+
+  const { colorScheme } = useMantineColorScheme();
+  const palette = colorScheme === 'light' ? lightPalette : darkPalette;
+
+  const nBuckets = HEATMAP_N_BUCKETS;
+
+  // Use quantile-based lower bound to avoid near-zero outliers stretching
+  // the log axis.  For the upper bound, use actual max() so that latency
+  // spikes (typically <1% of spans) remain visible — log scale already
+  // handles wide ranges naturally.  Future: #1914 adds overflow-bucket
+  // indicators for smarter range clamping without hiding spikes.
+  const minMaxConfig = buildHeatmapBoundsConfig({ config, scaleType });
+
+  const {
+    data: minMaxData,
+    isLoading: isMinMaxLoading,
+    error: minMaxError,
+  } = useQueriedChartConfig(minMaxConfig, {
+    queryKey: ['heatmap', minMaxConfig],
+    enabled: enabled,
+  });
+
+  const [errorModal, errorModalControls] = useDisclosure();
+
+  // UInt64 are returned as strings; quantile returns floats
+  const min = Number.parseFloat(minMaxData?.data?.[0]?.['min'] ?? '0');
+  const max = Number.parseFloat(minMaxData?.data?.[0]?.['max'] ?? '0');
+
+  // Ensure min > 0 for log scale (log(0) is undefined).
+  // Cap the range to ~4 orders of magnitude so the axis isn't dominated
+  // by a long empty tail of near-zero outliers.
+  const effectiveMin =
+    scaleType === 'log' ? Math.max(min, max * 1e-4 || 1e-4) : min;
+
+  const bucketConfig = buildHeatmapBucketConfig({
+    config,
+    scaleType,
+    effectiveMin,
+    max,
+    granularity,
+    nBuckets,
+  });
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
@@ -582,7 +660,13 @@ function HeatmapContainer({
   }
 
   const toolbarItemsMemo = useMemo(() => {
-    const allToolbarItems = [];
+    const allToolbarItems: React.ReactNode[] = [];
+
+    if (showLegend) {
+      allToolbarItems.push(
+        <ColorLegend key="heatmap-legend" colors={palette} />,
+      );
+    }
 
     if (toolbarPrefix && toolbarPrefix.length > 0) {
       allToolbarItems.push(...toolbarPrefix);
@@ -593,7 +677,7 @@ function HeatmapContainer({
     }
 
     return allToolbarItems;
-  }, [toolbarPrefix, toolbarSuffix]);
+  }, [showLegend, palette, toolbarPrefix, toolbarSuffix]);
 
   const _error = error || minMaxError;
 
@@ -678,6 +762,7 @@ function HeatmapContainer({
                 }
               : undefined
           }
+          onClearFilter={onClearFilter}
           scaleType={scaleType}
           palette={palette}
         />
@@ -692,13 +777,9 @@ export default dynamic(() => Promise.resolve(HeatmapContainer), {
 
 function highlightDataPlugin({
   proximity,
-  yFormatter,
-  xFormatter,
   onPointHighlight,
 }: {
   proximity: number;
-  yFormatter: (value: number) => string;
-  xFormatter: (value: number) => string;
   onPointHighlight: (point: {
     // data point values
     xVal: number;
@@ -791,31 +872,17 @@ function Heatmap({
   data,
   numberFormat,
   onFilter,
+  onClearFilter,
   scaleType = 'linear',
   palette,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearFilter?: () => void;
   scaleType?: HeatmapScaleType;
   palette: string[];
 }) {
-  const [selectingInfo, setSelectingInfo] = useState<
-    | {
-        // In pixel units
-        top: number;
-        left: number;
-        width: number;
-        height: number;
-        // In data units
-        xMin: number;
-        yMin: number;
-        xMax: number;
-        yMax: number;
-      }
-    | undefined
-  >(undefined);
-
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
         xVal: number;
@@ -835,6 +902,28 @@ function Heatmap({
   // on init (before user hovers), which would show the tooltip on page load.
   const mouseInsideRef = useRef(false);
 
+  // Depend on the boolean, not the onFilter function reference, so the
+  // options useMemo doesn't recompute (and re-initialize uPlot — wiping its
+  // internal u.select drag rectangle) on every parent render.
+  const hasFilter = !!onFilter;
+
+  // Hold onFilter in a ref so the setSelect hook (captured inside the
+  // options useMemo) can always call the latest callback without needing
+  // onFilter in the memo's dep array.
+  const onFilterRef = useRef(onFilter);
+  useEffect(() => {
+    onFilterRef.current = onFilter;
+  }, [onFilter]);
+
+  // Hold the uPlot instance so outside-click can explicitly clear the
+  // persisted u.select rectangle (which is owned by uPlot, not React).
+  const uplotRef = useRef<uPlot | null>(null);
+
+  // Timestamp of the most recent drag-end. Guards the container's onClick
+  // handler from clearing the selection when the synthetic click event
+  // that fires on mouseup-after-drag arrives.
+  const justDraggedAtRef = useRef(0);
+
   const { ref, width, height } = useElementSize();
 
   const tickFormatter = useCallback(
@@ -848,7 +937,7 @@ function Heatmap({
           numberFormat?.output === 'duration'
             ? actualValue * (numberFormat?.factor ?? 1) * 1000
             : actualValue;
-        return formatDurationMs(msValue);
+        return formatDurationMsCompact(msValue);
       }
 
       return numberFormat
@@ -876,8 +965,26 @@ function Heatmap({
               opt.axes[0],
               {
                 ...opt.axes[1],
-                values: (u, vals) => {
+                values: (_u: uPlot, vals: number[]) => {
                   return vals.map(tickFormatter);
+                },
+                // Override the static size fn so it measures the actual
+                // formatted labels (from tickFormatter) rather than
+                // whatever raw values uPlot passes in a prior cycle.
+                size(self: uPlot, values: string[]) {
+                  if (!values || values.length === 0) return 50;
+                  const font =
+                    self.axes[1]?.font ?? '12px IBM Plex Mono, monospace';
+                  const ctx = self.ctx;
+                  ctx.save();
+                  ctx.font = font;
+                  let maxW = 0;
+                  for (const v of values) {
+                    const w = ctx.measureText(v).width;
+                    if (w > maxW) maxW = w;
+                  }
+                  ctx.restore();
+                  return Math.ceil(maxW) + 16;
                 },
                 // For log scale, place ticks at powers of 10 (0.01, 0.1, 1,
                 // 10, 100…) so labels are clean round numbers instead of
@@ -929,14 +1036,14 @@ function Heatmap({
       height,
       cursor: {
         drag: {
-          setScale: false, // Disable zooming
-          x: true,
-          y: true,
-          dist: 5, // Only trigger drag if distance is greater than 5 pixels
+          setScale: false,
+          x: hasFilter,
+          y: hasFilter,
+          dist: 5,
         },
-        show: true, // Ensure the cursor is enabled
+        show: true,
         focus: {
-          prox: 100, // Proximity to the cursor line to trigger focus
+          prox: 100,
         },
       },
       plugins: [
@@ -944,10 +1051,6 @@ function Heatmap({
         // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
         highlightDataPlugin({
           proximity: 20,
-          yFormatter: tickFormatter,
-          xFormatter: s => {
-            return `${new Date(s).toLocaleString()}`;
-          },
           onPointHighlight: ({
             xVal,
             yVal,
@@ -983,35 +1086,27 @@ function Heatmap({
                 return;
               }
 
-              // Calculate offset from parent so we can render tooltip
-              // relative to the parent pixels
-              const { offsetLeft, offsetTop } = u.over;
-
               const xMin = u.posToVal(u.select.left, 'x');
               const xMax = u.posToVal(u.select.left + u.select.width, 'x');
-              const yMax = u.posToVal(u.select.top, 'y');
-              const yMin = u.posToVal(u.select.top + u.select.height, 'y');
+              const rawYMax = u.posToVal(u.select.top, 'y');
+              const rawYMin = u.posToVal(u.select.top + u.select.height, 'y');
 
-              // This ensures we set the timeout after all click handlers
-              // to prevent our state from being wiped by onclick handler
-              setTimeout(() => {
-                setSelectingInfo({
-                  top: u.select.top + offsetTop,
-                  left: u.select.left + offsetLeft,
-                  width: u.select.width,
-                  height: u.select.height,
-                  xMin,
-                  xMax,
-                  yMin,
-                  yMax,
-                });
-              }, 20);
+              // y-values are stored in log space for log scale; convert back
+              const yMin = scaleType === 'log' ? Math.exp(rawYMin) : rawYMin;
+              const yMax = scaleType === 'log' ? Math.exp(rawYMax) : rawYMax;
+
+              // Apply the filter immediately on drag end. Record the
+              // timestamp so the synthetic click event that follows the
+              // drag (mouseup fires a click on the container) doesn't
+              // immediately clear the selection we just made.
+              justDraggedAtRef.current = performance.now();
+              onFilterRef.current?.(xMin / 1000, xMax / 1000, yMin, yMax);
             },
           },
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette]);
+  }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
 
   return (
     <div
@@ -1019,9 +1114,19 @@ function Heatmap({
       className="heatmap-selection-container"
       style={{ width: '100%', height: '100%', position: 'relative' }}
       onClick={() => {
-        if (selectingInfo != null) {
-          setSelectingInfo(undefined);
+        // Chromium fires a click event on mouseup even after a drag.
+        // Ignore it; the drag itself was handled by setSelect.
+        if (performance.now() - justDraggedAtRef.current < 300) {
+          return;
         }
+        if (!hasFilter) return;
+        // Random click on the chart clears the persisted selection and
+        // exits comparison mode.
+        uplotRef.current?.setSelect(
+          { left: 0, top: 0, width: 0, height: 0 },
+          false,
+        );
+        onClearFilter?.();
       }}
       onMouseEnter={() => {
         mouseInsideRef.current = true;
@@ -1036,6 +1141,12 @@ function Heatmap({
         // @ts-expect-error TODO: uPlot types are wrong for mode 2 data
         data={[[], data]}
         resetScales={true}
+        onCreate={chart => {
+          uplotRef.current = chart;
+        }}
+        onDelete={() => {
+          uplotRef.current = null;
+        }}
       />
       {highlightedPoint != null && (
         <>
@@ -1075,10 +1186,14 @@ function Heatmap({
               pointerEvents: 'none',
             }}
           >
-            <Text size="10px" pt="4px">
-              Click & Drag to Select Data
-            </Text>
-            <Divider my="xs" />
+            {onFilter && (
+              <>
+                <Text size="10px" pt="4px">
+                  Drag to Compare · Click to Clear
+                </Text>
+                <Divider my="xs" />
+              </>
+            )}
             <div>
               <FormatTime value={highlightedPoint.xVal} />
             </div>
@@ -1094,66 +1209,6 @@ function Heatmap({
             </div>
           </div>
         </>
-      )}
-      {selectingInfo != null && onFilter != null && (
-        <div
-          className="px-2 py-1 fs-8"
-          style={{
-            backdropFilter: 'blur(4px)',
-            backgroundColor: 'var(--mantine-color-body)',
-            border: '1px solid var(--mantine-color-default-border)',
-            borderRadius: 4,
-            position: 'absolute',
-            // Place above the selection; if too close to the top, flip below
-            ...(selectingInfo?.top > 30
-              ? { bottom: height - selectingInfo?.top + 4 }
-              : {
-                  top: selectingInfo?.top + (selectingInfo?.height ?? 0) + 4,
-                }),
-            left: selectingInfo?.left,
-          }}
-          onClick={e => {
-            e.stopPropagation();
-            // y-values are stored in log space for log scale; convert back
-            const yMin =
-              scaleType === 'log'
-                ? Math.exp(selectingInfo.yMin)
-                : selectingInfo.yMin;
-            const yMax =
-              scaleType === 'log'
-                ? Math.exp(selectingInfo.yMax)
-                : selectingInfo.yMax;
-            onFilter?.(
-              selectingInfo.xMin / 1000,
-              selectingInfo.xMax / 1000,
-              yMin,
-              yMax,
-            );
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              const yMin =
-                scaleType === 'log'
-                  ? Math.exp(selectingInfo.yMin)
-                  : selectingInfo.yMin;
-              const yMax =
-                scaleType === 'log'
-                  ? Math.exp(selectingInfo.yMax)
-                  : selectingInfo.yMax;
-              onFilter?.(
-                selectingInfo.xMin / 1000,
-                selectingInfo.xMax / 1000,
-                yMin,
-                yMax,
-              );
-            }
-          }}
-        >
-          Filter by Selection
-        </div>
       )}
     </div>
   );

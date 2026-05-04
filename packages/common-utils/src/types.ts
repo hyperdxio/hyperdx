@@ -137,6 +137,9 @@ export const DerivedColumnSchema = z.intersection(
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
     metricNameSql: z.string().optional(),
+    // Heatmap-specific fields (optional, only used when displayType is Heatmap)
+    countExpression: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -278,7 +281,17 @@ export type WebhookApiData = Omit<IWebhook, 'team'>;
 export enum AlertThresholdType {
   ABOVE = 'above',
   BELOW = 'below',
+  ABOVE_EXCLUSIVE = 'above_exclusive',
+  BELOW_OR_EQUAL = 'below_or_equal',
+  EQUAL = 'equal',
+  NOT_EQUAL = 'not_equal',
+  BETWEEN = 'between',
+  NOT_BETWEEN = 'not_between',
 }
+
+export const isRangeThresholdType = (type: string): boolean =>
+  type === AlertThresholdType.BETWEEN ||
+  type === AlertThresholdType.NOT_BETWEEN;
 
 export enum AlertState {
   ALERT = 'ALERT',
@@ -286,6 +299,21 @@ export enum AlertState {
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
 }
+
+export enum AlertErrorType {
+  QUERY_ERROR = 'QUERY_ERROR',
+  WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  INVALID_ALERT = 'INVALID_ALERT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export const AlertErrorSchema = z.object({
+  timestamp: z.union([z.string(), z.date()]),
+  type: z.nativeEnum(AlertErrorType),
+  message: z.string(),
+});
+
+export type AlertError = z.infer<typeof AlertErrorSchema>;
 
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
@@ -366,6 +394,32 @@ export const validateAlertScheduleOffsetMinutes = (
   }
 };
 
+export const validateAlertThresholdMax = (
+  alert: {
+    thresholdType: AlertThresholdType;
+    threshold: number;
+    thresholdMax?: number;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (isRangeThresholdType(alert.thresholdType)) {
+    if (alert.thresholdMax == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'thresholdMax is required for between/not_between threshold types',
+        path: ['thresholdMax'],
+      });
+    } else if (alert.thresholdMax < alert.threshold) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'thresholdMax must be greater than or equal to threshold',
+        path: ['thresholdMax'],
+      });
+    }
+  }
+};
+
 const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
 const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
 const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
@@ -402,6 +456,7 @@ export const AlertBaseObjectSchema = z.object({
   scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
@@ -421,7 +476,7 @@ export const AlertBaseSchema = AlertBaseObjectSchema;
 
 const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-);
+).superRefine(validateAlertThresholdMax);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
@@ -429,7 +484,7 @@ export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
 
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-);
+).superRefine(validateAlertThresholdMax);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
@@ -514,6 +569,27 @@ export type SavedSearchListApiResponse = z.infer<
 >;
 
 // --------------------------
+// PINNED FILTERS
+// --------------------------
+export const PinnedFiltersValueSchema = z
+  .record(
+    z.string().max(1024),
+    z.array(z.union([z.string().max(1024), z.boolean()])).max(50),
+  )
+  .refine(val => Object.keys(val).length <= 100, {
+    message: 'Too many filter keys (max 100)',
+  });
+export type PinnedFiltersValue = z.infer<typeof PinnedFiltersValueSchema>;
+
+export const PinnedFilterSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  fields: z.array(z.string().max(1024)).max(100),
+  filters: PinnedFiltersValueSchema,
+});
+export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
+
+// --------------------------
 // DASHBOARDS
 // --------------------------
 export enum NumericUnit {
@@ -594,23 +670,51 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string().min(1) }),
+  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+]);
+export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
+
+const OnClickSearchSchema = z.object({
+  type: z.literal('search'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
+
+export const OnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
+
+export const OnClickSchema = z.discriminatedUnion('type', [
+  OnClickSearchSchema,
+  OnClickDashboardSchema,
+]);
+export type OnClick = z.infer<typeof OnClickSchema>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-
 /**
- * Schema describing display settings which are shared between Raw SQL
+ * Schema describing settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
  **/
-const SharedChartDisplaySettingsSchema = z.object({
+const SharedChartSettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
   granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  onClick: OnClickSchema.optional(),
 });
 
-export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   sampleWeightExpression: z.string().optional(),
@@ -624,6 +728,7 @@ export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -669,7 +774,7 @@ const BuilderChartConfigSchema = z.intersection(
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
 
 /** Base schema for Raw SQL chart configs */
-const RawSqlBaseChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+const RawSqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('sql'),
   sqlTemplate: z.string(),
   connection: z.string(),
@@ -792,6 +897,8 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
   containerId: z.string().optional(),
+  // For tiles inside a tab container: which tab this tile belongs to
+  tabId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -803,11 +910,22 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+export const DashboardContainerTabSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+});
+
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
+  // Whether the group can be collapsed (default true)
+  collapsible: z.boolean().optional(),
+  // Whether to show a border around the group (default true)
+  bordered: z.boolean().optional(),
+  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
+  // Tiles reference a specific tab via tabId.
+  tabs: z.array(DashboardContainerTabSchema).optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -836,6 +954,27 @@ export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
 });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
+
+export function addDuplicateTileIdIssues(
+  tiles: { id?: string }[],
+  ctx: z.RefinementCtx,
+  options?: { messageSuffix?: string },
+) {
+  const suffix = options?.messageSuffix ?? '';
+  const seen = new Set<string>();
+  for (let i = 0; i < tiles.length; i++) {
+    const id = tiles[i].id;
+    if (!id) continue;
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate tile ID: ${id}${suffix}`,
+        path: [i, 'id'],
+      });
+    }
+    seen.add(id);
+  }
+}
 
 export const DashboardSchema = z.object({
   id: z.string(),
@@ -866,7 +1005,7 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   version: z.string().min(1),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  tiles: z.array(TileTemplateSchema),
+  tiles: z.array(TileTemplateSchema).superRefine(addDuplicateTileIdIssues),
   filters: z.array(DashboardFilterSchema).optional(),
 });
 export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
@@ -1008,7 +1147,15 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
+  /**
+   * @deprecated Application-side SQL predicate AND'd into every query against
+   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
+   * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
+   *
+   * Existing values are still honored at query time; new sources should not
+   * set it. The Sources settings UI form input is disabled.
+   */
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
@@ -1125,6 +1272,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isSearchableSource(source: TSource): boolean {
+  return isLogSource(source) || isTraceSource(source);
 }
 
 type SourceLikeForSampleWeight = {
@@ -1261,6 +1411,7 @@ export const AlertsPageItemSchema = z.object({
   scheduleOffsetMinutes: z.number().optional(),
   scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
   threshold: z.number(),
+  thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: z.object({ type: z.string().optional().nullable() }),
   state: z.nativeEnum(AlertState).optional(),
@@ -1309,6 +1460,7 @@ export const AlertsPageItemSchema = z.object({
       until: z.string(),
     })
     .optional(),
+  executionErrors: z.array(AlertErrorSchema).optional(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
@@ -1318,6 +1470,12 @@ export const AlertsApiResponseSchema = z.object({
 });
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
+
+export const AlertApiResponseSchema = z.object({
+  data: AlertsPageItemSchema,
+});
+
+export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
 
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({

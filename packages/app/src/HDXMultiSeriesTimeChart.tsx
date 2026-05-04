@@ -473,7 +473,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const tickFormatter = useCallback(
-    (value: number, index: number) => {
+    (value: number) => {
       return numberFormat
         ? formatNumber(value, {
             ...numberFormat,
@@ -540,7 +540,7 @@ export const MemoChart = memo(function MemoChart({
         syncId="hdx"
         syncMethod="value"
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={e => {
+        onMouseLeave={() => {
           setIsHovered(false);
 
           setHighlightStart(undefined);

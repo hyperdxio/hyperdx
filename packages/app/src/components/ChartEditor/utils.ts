@@ -12,6 +12,7 @@ import {
   getSampleWeightExpression,
   isLogSource,
   isMetricSource,
+  isRangeThresholdType,
   isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
@@ -27,7 +28,7 @@ import { ChartEditorFormState } from './types';
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
+    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
@@ -44,6 +45,10 @@ function normalizeChartConfig<
       config.displayType === DisplayType.Table ? config.having : undefined,
     orderBy:
       config.displayType === DisplayType.Table ? config.orderBy : undefined,
+    onClick:
+      config.onClick && config.displayType === DisplayType.Table
+        ? config.onClick
+        : undefined,
   };
 }
 
@@ -77,6 +82,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alert',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -120,6 +126,7 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
@@ -266,17 +273,49 @@ export const validateChartForm = (
     }
   }
 
-  // Validate number and pie charts only have one series
+  // Validate thresholdMax for range threshold types (between / not between)
+  if (form.alert && isRangeThresholdType(form.alert.thresholdType)) {
+    if (form.alert.thresholdMax == null) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Upper bound is required for between/not between threshold types',
+      });
+    } else if (form.alert.thresholdMax < form.alert.threshold) {
+      errors.push({
+        path: 'alert.thresholdMax',
+        message:
+          'Alert threshold upper bound must be greater than or equal to the lower bound',
+      });
+    }
+  }
+
+  // Validate number, pie, and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Number ||
-      form.displayType === DisplayType.Pie) &&
+      form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {
     errors.push({
       path: `series`,
       message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  // Validate heatmap requires a value expression
+  if (
+    !isRawSqlChart &&
+    form.displayType === DisplayType.Heatmap &&
+    Array.isArray(form.series) &&
+    form.series.length > 0 &&
+    !form.series[0]?.valueExpression
+  ) {
+    errors.push({
+      path: `series.0.valueExpression`,
+      message: 'Value expression is required for heatmap charts',
     });
   }
 

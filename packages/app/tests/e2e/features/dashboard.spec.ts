@@ -969,4 +969,174 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test.describe(
+    'Table chart - Display Group By Columns on Left',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('should move multiple group-by columns to the left when enabled', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Multi ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with two group-by columns', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy(
+            'ServiceName, SeverityText',
+          );
+        });
+
+        await test.step('Default order: series column first, group-by columns after', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+
+          const svcIdx = defaultHeaders.indexOf('ServiceName');
+          const sevIdx = defaultHeaders.indexOf('SeverityText');
+          expect(svcIdx).toBeGreaterThan(-1);
+          expect(sevIdx).toBeGreaterThan(-1);
+          const seriesIdx = defaultHeaders.findIndex(
+            h => h !== 'ServiceName' && h !== 'SeverityText',
+          );
+          expect(seriesIdx).toBeGreaterThan(-1);
+          expect(seriesIdx).toBeLessThan(svcIdx);
+          expect(seriesIdx).toBeLessThan(sevIdx);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(defaultHeaders.length);
+          expect(headersAfter[0]).toBe('ServiceName');
+          expect(headersAfter[1]).toBe('SeverityText');
+          expect(['ServiceName', 'SeverityText']).not.toContain(
+            headersAfter[headersAfter.length - 1],
+          );
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move a single group-by column to the left when multiple series are present', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS MultiSeries ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with one group-by and two series', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          // Distinct aliases so the two count() series render as two columns
+          // instead of colliding into one.
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'SeriesOne');
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'SeriesTwo');
+        });
+
+        await test.step('Default order: series columns first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders).toEqual([
+            'SeriesOne',
+            'SeriesTwo',
+            'ServiceName',
+          ]);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter).toEqual([
+            'ServiceName',
+            'SeriesOne',
+            'SeriesTwo',
+          ]);
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move the group-by column to the left for ratio series return type', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Ratio ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with ratio series and one group-by', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.toggleAsRatio();
+        });
+
+        await test.step('Default order: single ratio column first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders.length).toBe(2);
+          expect(defaultHeaders[defaultHeaders.length - 1]).toBe('ServiceName');
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(2);
+          expect(headersAfter[0]).toBe('ServiceName');
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+    },
+  );
 });

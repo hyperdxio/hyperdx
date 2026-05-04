@@ -65,11 +65,15 @@ async function getQuantileAggregateFunction(
     }
 
     // Use regex to extract the quantile function name inside AggregateFunction(...)
-    // For example, AggregateFunction(quantile(0.95), Int64) --> quantile
+    // For example, AggregateFunction(quantile(0.95), Int64)       --> quantile
     //              AggregateFunction(quantileTDigest(0.95), Int64) --> quantileTDigest
     //              AggregateFunction(quantileDD(0.001, 0.95), Int64) --> quantileDD
+    // The plural `quantiles*` variants return arrays, but a select item carries a
+    // single `level`, so we normalize to the singular form to pull a scalar value.
+    //              AggregateFunction(quantiles(0.9, 0.95), UInt64)        --> quantile
+    //              AggregateFunction(quantilesTDigest(0.9, 0.95), UInt64) --> quantileTDigest
     const match = type.match(/^AggregateFunction\(\s*([^(, ]+)\s*\(/);
-    return match?.[1];
+    return match?.[1]?.replace(/^quantiles/, 'quantile');
   } catch {
     return undefined;
   }
