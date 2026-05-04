@@ -1,7 +1,7 @@
 ---
-"@hyperdx/common-utils": patch
-"@hyperdx/api": patch
-"@hyperdx/app": patch
+"@hyperdx/common-utils": minor
+"@hyperdx/api": minor
+"@hyperdx/app": minor
 ---
 
 Add ability to disable data sources with improved UX
