@@ -1,14 +1,76 @@
+import { sanitizeUrl } from '@braintree/sanitize-url';
+import { parameterizedQueryToSql } from '@hyperdx/common-utils/dist/clickhouse';
+import opentelemetry from '@opentelemetry/api';
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { CODE_VERSION } from '@/config';
+import { CODE_VERSION, IS_DEV } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
+
+// Synced with Vercel Limits: https://vercel.com/docs/functions/configuring-functions/duration?framework=nextjs#duration-limits
+const MAX_CLICKHOUSE_PROXY_TIMEOUT_SECONDS = 800;
+
+/**
+ * Validates and sanitizes a URL path to prevent injection attacks.
+ * - Recursively decodes to catch double/triple encoding of ? and &
+ * - Rejects paths with encoded query string characters in pathname
+ * - Prevents protocol-based attacks (javascript:, data:, etc.)
+ * - Prevents host injection via protocol-relative URLs
+ *
+ * @param basePath - The path to validate (may include query string)
+ * @returns Sanitized path with pathname and query string
+ * @throws Error if path contains malicious patterns
+ */
+export const validateAndSanitizePath = (basePath: string): string => {
+  // Extract pathname portion (before any literal ?) for encoding attack check
+  // Must be done BEFORE sanitizeUrl because it decodes percent-encoded chars
+  const firstQuestionMark = basePath.indexOf('?');
+  const rawPathname =
+    firstQuestionMark >= 0 ? basePath.slice(0, firstQuestionMark) : basePath;
+
+  // Recursively decode pathname to prevent double-encoding attacks
+  // (e.g., %253F -> %3F -> ?, %2526 -> %26 -> &)
+  let decodedPathname = rawPathname;
+  let prevDecoded = '';
+  const maxIterations = 10; // Prevent infinite loops
+  let iterations = 0;
+  while (decodedPathname !== prevDecoded && iterations < maxIterations) {
+    prevDecoded = decodedPathname;
+    try {
+      decodedPathname = decodeURIComponent(decodedPathname);
+    } catch {
+      throw new Error('Invalid pathname: malformed URL encoding');
+    }
+    iterations++;
+  }
+
+  // Validate fully-decoded pathname doesn't contain query string characters
+  if (decodedPathname.includes('?') || decodedPathname.includes('&')) {
+    throw new Error('Invalid pathname: contains query string characters');
+  }
+
+  // Sanitize URL to prevent protocol-based attacks (javascript:, data:, etc.)
+  const sanitizedPath = sanitizeUrl(basePath);
+  if (sanitizedPath === 'about:blank') {
+    throw new Error('Invalid pathname: potentially malicious URL');
+  }
+
+  // Use URL parsing to properly separate pathname from query params
+  const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+
+  // Prevent host injection via protocol-relative URLs (e.g., //evil.com)
+  if (parsedUrl.hostname !== 'localhost') {
+    throw new Error('Invalid pathname: host injection attempt');
+  }
+
+  return `${parsedUrl.pathname}${parsedUrl.search}`;
+};
 
 const router = express.Router();
 
@@ -102,7 +164,7 @@ const getConnection: RequestHandler =
       };
       next();
     } catch (e) {
-      console.error('Error fetching connection info:', e);
+      console.error('Error setting up proxy hdx connection', e);
       next(e);
     }
   };
@@ -116,30 +178,11 @@ const proxyMiddleware: RequestHandler =
       return _req.method === 'GET' || _req.method === 'POST';
     },
     pathRewrite: function (path, req) {
-      // Parse query params from the original request URL (the `path` argument
-      // from http-proxy-middleware), not from `req.query`.
-      //
-      // Background: when this router runs inside the Next.js inline-API
-      // serverless function (Vercel previews — see HDX_PREVIEW_INLINE_API),
-      // Next.js's catch-all route `/api/[...all]` populates `req.query.all`
-      // with the matched path segments before Express ever sees the request.
-      // Express's `query` middleware then short-circuits on `if (!req.query)`
-      // and never re-parses, so the catch-all key stays in `req.query`.
-      //
-      // Constructing `new URLSearchParams(req.query)` from that polluted
-      // object then forwards `?all=clickhouse-proxy&...` upstream, which
-      // ClickHouse rejects with `Setting all is neither a builtin setting
-      // nor started with the prefix 'custom_'`. Reading from `path` (the
-      // original URL) sidesteps that mutation entirely.
-      //
-      // Express strips the `/clickhouse-proxy` mount prefix from `req.url`
-      // before this router runs, so `path` is already mount-relative
-      // (e.g. `/?query=SELECT+1`). The defensive regex below makes that
-      // assumption explicit and matches the upstream EE pattern; it is a
-      // no-op for the production code path but keeps behavior correct if
-      // this middleware is ever invoked outside its mounted router.
-      const strippedPath = path.replace(/^\/clickhouse-proxy/, '');
-      const parsedUrl = new URL(strippedPath, 'http://localhost');
+      const sanitizedPath = validateAndSanitizePath(
+        path.replace(/^\/clickhouse-proxy/, ''),
+      );
+
+      const parsedUrl = new URL(sanitizedPath, 'http://localhost');
       const { searchParams, pathname } = parsedUrl;
 
       // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
@@ -162,8 +205,9 @@ const proxyMiddleware: RequestHandler =
       }
       return _req._hdx_connection.host;
     },
+    proxyTimeout: MAX_CLICKHOUSE_PROXY_TIMEOUT_SECONDS * 1000,
     on: {
-      proxyReq: (proxyReq, _req) => {
+      proxyReq: (proxyReq, _req, res) => {
         // set user-agent to the hyperdx version identifier
         proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
 
@@ -178,9 +222,49 @@ const proxyMiddleware: RequestHandler =
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
 
-        if (_req.method === 'POST') {
+        if (_req.method !== 'POST') {
+          console.error(`Unsupported method ${_req.method}`);
+          return res.sendStatus(405);
+        }
+
+        let body = _req.body;
+        if (_req.headers['content-type'] === 'application/json') {
+          try {
+            body = JSON.stringify(body);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+
+        // Add request body to the active span (dev only — avoids leaking
+        // arbitrary SQL into production traces).
+        if (IS_DEV) {
+          const span = opentelemetry.trace.getActiveSpan();
+          if (span && body) {
+            try {
+              // Extract query params (param_* prefix) and reconstruct the full SQL
+              const params: Record<string, string> = {};
+              for (const [key, value] of Object.entries(_req.query)) {
+                if (key.startsWith('param_') && typeof value === 'string') {
+                  params[key.slice(6)] = value; // Remove 'param_' prefix
+                }
+              }
+              const sql = parameterizedQueryToSql({ sql: body, params });
+              span.setAttribute('http.request.body', sql);
+            } catch {
+              // Fall back to raw body if parameterization fails
+              span.setAttribute('http.request.body', body);
+            }
+          }
+        }
+
+        try {
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
-          proxyReq.write(_req.body);
+          proxyReq.write(body);
+        } catch (e) {
+          console.error(
+            `clickhouseProxy error writing body, body is type ${typeof body}`,
+          );
         }
       },
       proxyRes: (proxyRes, _req, res) => {
@@ -199,6 +283,16 @@ const proxyMiddleware: RequestHandler =
         if (_req.headers.origin) {
           proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
           proxyRes.headers['access-control-allow-credentials'] = 'true';
+        }
+
+        // Add a custom header to indicate that the response is a mixed response when applicable
+        // since the Clickhouse Web SDK allows accessing headers but not status codes.
+        if (proxyRes.statusCode === 207) {
+          proxyRes.headers['X-ClickHouse-Mixed-Response'] = 'true';
+        }
+
+        if (proxyRes.statusCode === 206) {
+          proxyRes.headers['X-ClickHouse-Service-Unavailable'] = 'true';
         }
       },
       error: (err, _req, _res) => {

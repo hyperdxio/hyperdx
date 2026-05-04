@@ -2728,6 +2728,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@braintree/sanitize-url@npm:^7.1.1":
+  version: 7.1.2
+  resolution: "@braintree/sanitize-url@npm:7.1.2"
+  checksum: 10c0/62f2aa0cf58626e3880b2dc1025c42064b4639abd157ae4e1c35f4c2f5031e9273772046a423979845069c814e27ff818e8e669280dc53585e6f033d5b7a59cb
+  languageName: node
+  linkType: hard
+
 "@bundled-es-modules/cookie@npm:^2.0.0":
   version: 2.0.0
   resolution: "@bundled-es-modules/cookie@npm:2.0.0"
@@ -4328,6 +4335,7 @@ __metadata:
   dependencies:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
+    "@braintree/sanitize-url": "npm:^7.1.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
