@@ -116,8 +116,31 @@ const proxyMiddleware: RequestHandler =
       return _req.method === 'GET' || _req.method === 'POST';
     },
     pathRewrite: function (path, req) {
-      // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
-      const qparams = new URLSearchParams(req.query);
+      // Parse query params from the original request URL (the `path` argument
+      // from http-proxy-middleware), not from `req.query`.
+      //
+      // Background: when this router runs inside the Next.js inline-API
+      // serverless function (Vercel previews — see HDX_PREVIEW_INLINE_API),
+      // Next.js's catch-all route `/api/[...all]` populates `req.query.all`
+      // with the matched path segments before Express ever sees the request.
+      // Express's `query` middleware then short-circuits on `if (!req.query)`
+      // and never re-parses, so the catch-all key stays in `req.query`.
+      //
+      // Constructing `new URLSearchParams(req.query)` from that polluted
+      // object then forwards `?all=clickhouse-proxy&...` upstream, which
+      // ClickHouse rejects with `Setting all is neither a builtin setting
+      // nor started with the prefix 'custom_'`. Reading from `path` (the
+      // original URL) sidesteps that mutation entirely.
+      //
+      // Express strips the `/clickhouse-proxy` mount prefix from `req.url`
+      // before this router runs, so `path` is already mount-relative
+      // (e.g. `/?query=SELECT+1`). The defensive regex below makes that
+      // assumption explicit and matches the upstream EE pattern; it is a
+      // no-op for the production code path but keeps behavior correct if
+      // this middleware is ever invoked outside its mounted router.
+      const strippedPath = path.replace(/^\/clickhouse-proxy/, '');
+      const parsedUrl = new URL(strippedPath, 'http://localhost');
+      const { searchParams, pathname } = parsedUrl;
 
       // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
       const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;
@@ -125,14 +148,13 @@ const proxyMiddleware: RequestHandler =
         const userEmail = req.user?.email;
         if (userEmail) {
           const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
-          qparams.set(userSettingKey, userEmail);
+          searchParams.set(userSettingKey, userEmail);
         } else {
           logger.debug('hyperdxSettingPrefix set, no session user found');
         }
       }
 
-      const newPath = req.path.replace('^/clickhouse-proxy', '');
-      return `/${newPath}?${qparams.toString()}`;
+      return `${pathname}?${searchParams.toString()}`;
     },
     router: _req => {
       if (!_req._hdx_connection?.host) {
