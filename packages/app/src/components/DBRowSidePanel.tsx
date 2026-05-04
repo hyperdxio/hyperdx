@@ -12,8 +12,16 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isSessionSource,
+  isTraceSource,
+  SourceKind,
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
 import DBRowSidePanelHeader, {
@@ -21,6 +29,7 @@ import DBRowSidePanelHeader, {
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
+import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
@@ -62,10 +71,10 @@ export type RowSidePanelContextProps = {
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
   shareUrl?: string;
-  dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TSource;
+  source?: TLogSource | TTraceSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -84,6 +93,7 @@ enum Tab {
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
+  aliasWith?: WithClause[];
   onClose: () => void;
   isNestedPanel?: boolean;
   breadcrumbPath?: BreadcrumbPath;
@@ -92,11 +102,12 @@ type DBRowSidePanelProps = {
 
 const DBRowSidePanel = ({
   rowId: rowId,
+  aliasWith,
   source,
   isNestedPanel = false,
   setSubDrawerOpen,
   onClose,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
@@ -108,6 +119,7 @@ const DBRowSidePanel = ({
   } = useRowData({
     source,
     rowId,
+    aliasWith,
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
@@ -115,7 +127,7 @@ const DBRowSidePanel = ({
   const handleBreadcrumbClick = useCallback(
     (targetLevel: number) => {
       // Current panel's level in the hierarchy
-      const currentLevel = breadcrumbPath.length;
+      const currentLevel = breadcrumbPath?.length ?? 0;
 
       // The target panel level corresponds to the breadcrumb index:
       // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
@@ -137,18 +149,25 @@ const DBRowSidePanel = ({
         onBreadcrumbClick?.(targetLevel);
       }
     },
-    [breadcrumbPath.length, onBreadcrumbClick, onClose],
+    [breadcrumbPath?.length, onBreadcrumbClick, onClose],
   );
 
   const hasOverviewPanel = useMemo(() => {
-    if (
-      source.resourceAttributesExpression ||
-      source.eventAttributesExpression
+    if (isLogSource(source) || isTraceSource(source)) {
+      if (
+        source.resourceAttributesExpression ||
+        source.eventAttributesExpression
+      ) {
+        return true;
+      }
+    } else if (
+      source.kind === SourceKind.Metric &&
+      source.resourceAttributesExpression
     ) {
       return true;
     }
     return false;
-  }, [source.eventAttributesExpression, source.resourceAttributesExpression]);
+  }, [source]);
 
   const defaultTab =
     source.kind === 'trace'
@@ -191,8 +210,9 @@ const DBRowSidePanel = ({
     normalizedRow?.['__hdx_severity_text'];
 
   const highlightedAttributeValues = useMemo(() => {
-    const attributeExpressions: TSource['highlightedRowAttributeExpressions'] =
-      [];
+    const attributeExpressions: NonNullable<
+      (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
+    > = [];
     if (
       (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
       source.highlightedRowAttributeExpressions
@@ -202,7 +222,10 @@ const DBRowSidePanel = ({
 
     // Add service name expression to all sources, to maintain compatibility with
     // the behavior prior to the addition of highlightedRowAttributeExpressions
-    if (source.serviceNameExpression) {
+    if (
+      (isLogSource(source) || isTraceSource(source)) &&
+      source.serviceNameExpression
+    ) {
       attributeExpressions.push({
         sqlExpression: source.serviceNameExpression,
       });
@@ -236,15 +259,19 @@ const DBRowSidePanel = ({
   const focusDate = timestampDate;
   const traceId: string | undefined = normalizedRow?.['__hdx_trace_id'];
 
-  const childSourceId =
-    source.kind === 'log'
-      ? source.traceSourceId
-      : source.kind === 'trace'
-        ? source.logSourceId
-        : undefined;
+  const childSourceId = isLogSource(source)
+    ? source.traceSourceId
+    : isTraceSource(source)
+      ? source.logSourceId
+      : undefined;
 
-  const traceSourceId =
-    source.kind === 'trace' ? source.id : source.traceSourceId;
+  const traceSourceId = isTraceSource(source)
+    ? source.id
+    : isLogSource(source)
+      ? source.traceSourceId
+      : isSessionSource(source)
+        ? source.traceSourceId
+        : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -299,6 +326,7 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
         />
@@ -377,6 +405,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-overview"
             source={source}
             rowId={rowId}
+            aliasWith={aliasWith}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -440,6 +469,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-parsed"
             source={source}
             rowId={rowId}
+            aliasWith={aliasWith}
           />
         </ErrorBoundary>
       )}
@@ -476,9 +506,11 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <div className="overflow-hidden flex-grow-1">
+          <div
+            className="overflow-hidden flex-grow-1"
+            data-testid="side-panel-tab-replay"
+          >
             <DBSessionPanel
-              data-testid="side-panel-tab-replay"
               dateRange={fourHourRange}
               focusDate={focusDate}
               setSubDrawerOpen={setSubDrawerOpen}
@@ -505,7 +537,6 @@ const DBRowSidePanel = ({
               data-testid="side-panel-tab-infrastructure"
               source={source}
               rowData={normalizedRow}
-              rowId={rowId}
             />
           </Box>
         </ErrorBoundary>
@@ -518,9 +549,10 @@ const DBRowSidePanel = ({
 export default function DBRowSidePanelErrorBoundary({
   onClose,
   rowId,
+  aliasWith,
   source,
   isNestedPanel,
-  breadcrumbPath = [],
+  breadcrumbPath,
   onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
@@ -531,8 +563,6 @@ export default function DBRowSidePanelErrorBoundary({
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
-
-  const { isChildModalOpen } = useContext(RowSidePanelContext);
 
   const [_, setQueryTab] = useQueryState(
     'tab',
@@ -559,7 +589,6 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withinPortal={!isNestedPanel}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();
@@ -570,7 +599,7 @@ export default function DBRowSidePanelErrorBoundary({
       styles={{
         body: {
           padding: '0',
-          height: '100vh',
+          height: '100%',
         },
       }}
       zIndex={drawerZIndex}
@@ -594,6 +623,7 @@ export default function DBRowSidePanelErrorBoundary({
             <DBRowSidePanel
               source={source}
               rowId={rowId}
+              aliasWith={aliasWith}
               onClose={_onClose}
               isNestedPanel={isNestedPanel}
               breadcrumbPath={breadcrumbPath}

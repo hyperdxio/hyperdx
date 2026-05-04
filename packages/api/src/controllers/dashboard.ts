@@ -1,5 +1,6 @@
 import {
   DashboardWithoutIdSchema,
+  SavedChartConfig,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
 import { map, partition, uniq } from 'lodash';
@@ -9,7 +10,7 @@ import {
   createOrUpdateDashboardAlerts,
   deleteDashboardAlerts,
   getDashboardAlertsByTile,
-  getTeamDashboardAlertsByTile,
+  getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
@@ -25,7 +26,7 @@ function pickAlertsByTile(tiles: Tile[]) {
 }
 
 type TileForAlertSync = Pick<Tile, 'id'> & {
-  config?: Pick<Tile['config'], 'alert'> | { alert?: IAlert | AlertDocument };
+  config?: Pick<SavedChartConfig, 'alert'> | { alert?: IAlert | AlertDocument };
 };
 
 function extractTileAlertData(tiles: TileForAlertSync[]): {
@@ -48,8 +49,13 @@ async function syncDashboardAlerts(
 ): Promise<void> {
   const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
     extractTileAlertData(oldTiles);
+
+  const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
+    id: t.id,
+    config: { alert: t.config.alert },
+  }));
   const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
-    extractTileAlertData(newTiles);
+    extractTileAlertData(newTilesForAlertSync);
 
   // 1. Create/update alerts for tiles that have alerts
   const alertsByTile = pickAlertsByTile(newTiles);
@@ -84,8 +90,10 @@ async function syncDashboardAlerts(
 
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
-    Dashboard.find({ team: teamId }),
-    getTeamDashboardAlertsByTile(teamId),
+    Dashboard.find({ team: teamId })
+      .populate('createdBy', 'email name')
+      .populate('updatedBy', 'email name'),
+    getTeamDashboardAlertsByDashboardAndTile(teamId),
   ]);
 
   const dashboards = _dashboards
@@ -94,7 +102,10 @@ export async function getDashboards(teamId: ObjectId) {
       ...d,
       tiles: d.tiles.map(t => ({
         ...t,
-        config: { ...t.config, alert: alerts[t.id]?.[0] },
+        config: {
+          ...t.config,
+          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+        },
       })),
     }));
 
@@ -103,12 +114,14 @@ export async function getDashboards(teamId: ObjectId) {
 
 export async function getDashboard(dashboardId: string, teamId: ObjectId) {
   const [_dashboard, alerts] = await Promise.all([
-    Dashboard.findOne({ _id: dashboardId, team: teamId }),
+    Dashboard.findOne({ _id: dashboardId, team: teamId })
+      .populate('createdBy', 'email name')
+      .populate('updatedBy', 'email name'),
     getDashboardAlertsByTile(teamId, dashboardId),
   ]);
 
   return {
-    ..._dashboard,
+    ..._dashboard?.toJSON(),
     tiles: _dashboard?.tiles.map(t => ({
       ...t,
       config: { ...t.config, alert: alerts[t.id]?.[0] },
@@ -124,6 +137,8 @@ export async function createDashboard(
   const newDashboard = await new Dashboard({
     ...dashboard,
     team: teamId,
+    createdBy: userId,
+    updatedBy: userId,
   }).save();
 
   await createOrUpdateDashboardAlerts(
@@ -166,6 +181,7 @@ export async function updateDashboard(
     {
       ...updates,
       tags: updates.tags && uniq(updates.tags),
+      updatedBy: userId,
     },
     { new: true },
   );

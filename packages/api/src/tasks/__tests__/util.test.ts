@@ -109,15 +109,15 @@ describe('util', () => {
     });
 
     it('should handle keys with empty segments', () => {
-      expect(() => unflattenObject({ 'foo..bar': 'baz' })).toThrowError();
+      expect(() => unflattenObject({ 'foo..bar': 'baz' })).toThrow();
     });
 
     it('should handle keys starting with separator', () => {
-      expect(() => unflattenObject({ '.foo.bar': 'baz' })).toThrowError();
+      expect(() => unflattenObject({ '.foo.bar': 'baz' })).toThrow();
     });
 
     it('should handle keys ending with separator', () => {
-      expect(() => unflattenObject({ 'foo.bar.': 'baz' })).toThrowError();
+      expect(() => unflattenObject({ 'foo.bar.': 'baz' })).toThrow();
     });
 
     it('should handle complex custom separator', () => {

@@ -1,4 +1,0 @@
-{
-  "entry": ["pages/**/*.tsx"],
-  "ignore": [".next/**"]
-}

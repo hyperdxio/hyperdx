@@ -3,7 +3,7 @@ import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
   MetricsDataType,
-  TSource,
+  TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
@@ -11,6 +11,7 @@ import { useGetKeyValues } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
+const SEPARATOR = ':::::::';
 
 const chartConfigByMetricType = ({
   dateRange,
@@ -18,9 +19,10 @@ const chartConfigByMetricType = ({
   metricType,
 }: {
   dateRange?: DateRange['dateRange'];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   metricType: MetricsDataType;
 }) => {
+  // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
   let _dateRange: DateRange['dateRange'] = dateRange
     ? dateRange
@@ -55,7 +57,7 @@ const chartConfigByMetricType = ({
 };
 
 function useMetricNames(
-  metricSource: TSource,
+  metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
 ) {
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
@@ -104,8 +106,44 @@ function useMetricNames(
   };
 }
 
+export function getMetricOptions(
+  gaugeMetrics: string[] | undefined,
+  histogramMetrics: string[] | undefined,
+  sumMetrics: string[] | undefined,
+  metricName: string | null | undefined,
+  metricType: MetricsDataType,
+) {
+  const metricsFromQuery = [
+    ...(gaugeMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}gauge`,
+      label: `${metric} (Gauge)`,
+    })) ?? []),
+    ...(histogramMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}histogram`,
+      label: `${metric} (Histogram)`,
+    })) ?? []),
+    ...(sumMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}sum`,
+      label: `${metric} (Sum)`,
+    })) ?? []),
+  ];
+  // if saved metric does not exist in the available options, assume it exists
+  // and add it to options
+  if (
+    metricName &&
+    !metricsFromQuery.find(
+      metric => metric.value === `${metricName}${SEPARATOR}${metricType}`,
+    )
+  ) {
+    metricsFromQuery.push({
+      value: `${metricName}${SEPARATOR}${metricType}`,
+      label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
+    });
+  }
+  return metricsFromQuery;
+}
+
 export function MetricNameSelect({
-  dateRange,
   metricType,
   metricName,
   setMetricType,
@@ -113,52 +151,32 @@ export function MetricNameSelect({
   isLoading,
   isError,
   metricSource,
+  error,
+  onFocus,
   'data-testid': dataTestId,
 }: {
-  dateRange?: DateRange['dateRange'];
   metricType: MetricsDataType;
   metricName: string | undefined | null;
   setMetricType: (metricType: MetricsDataType) => void;
   setMetricName: (metricName: string) => void;
   isLoading?: boolean;
   isError?: boolean;
-  metricSource: TSource;
+  metricSource: TMetricSource;
+  error?: string;
+  onFocus?: () => void;
   'data-testid'?: string;
 }) {
-  const SEPARATOR = ':::::::';
-
   const { gaugeMetrics, histogramMetrics, sumMetrics } =
     useMetricNames(metricSource);
 
   const options = useMemo(() => {
-    const metricsFromQuery = [
-      ...(gaugeMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}gauge`,
-        label: `${metric} (Gauge)`,
-      })) ?? []),
-      ...(histogramMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}histogram`,
-        label: `${metric} (Histogram)`,
-      })) ?? []),
-      ...(sumMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}sum`,
-        label: `${metric} (Sum)`,
-      })) ?? []),
-    ];
-    // if saved metric does not exist in the available options, assume it exists
-    // and add it to options
-    if (
-      metricName &&
-      !metricsFromQuery.find(
-        metric => metric.value !== `${metricName}${SEPARATOR}${metricType}`,
-      )
-    ) {
-      metricsFromQuery.push({
-        value: `${metricName}${SEPARATOR}${metricType}`,
-        label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
-      });
-    }
-    return metricsFromQuery;
+    return getMetricOptions(
+      gaugeMetrics,
+      histogramMetrics,
+      sumMetrics,
+      metricName,
+      metricType,
+    );
   }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
 
   const currentValue =
@@ -192,6 +210,8 @@ export function MetricNameSelect({
           setMetricType(_metricType.toLowerCase() as MetricsDataType);
         }
       }}
+      onFocus={onFocus}
+      error={error}
       data-testid={dataTestId}
     />
   );

@@ -1,5 +1,6 @@
 import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
+import { add, isSameSecond, sub } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Area,
@@ -16,15 +17,19 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { AxisDomain } from 'recharts/types/util/types';
+import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
-import { LineData } from './ChartUtils';
+import {
+  ChartTooltipContainer,
+  ChartTooltipItem,
+} from './components/charts/ChartTooltip';
+import { LineData, toStartOfInterval } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
@@ -42,40 +47,6 @@ type TooltipPayload = {
   opacity?: number;
 };
 
-const percentFormatter = new Intl.NumberFormat('en-US', {
-  style: 'percent',
-  maximumFractionDigits: 2,
-});
-
-const calculatePercentChange = (current: number, previous: number) => {
-  if (previous === 0) {
-    return current === 0 ? 0 : undefined;
-  }
-  return (current - previous) / previous;
-};
-
-const PercentChange = ({
-  current,
-  previous,
-}: {
-  current: number;
-  previous: number;
-}) => {
-  const percentChange = calculatePercentChange(current, previous);
-  if (percentChange == undefined) {
-    return null;
-  }
-
-  const Icon = percentChange > 0 ? IconCaretUpFilled : IconCaretDownFilled;
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
-      (<Icon size={12} />
-      {percentFormatter.format(Math.abs(percentChange))})
-    </span>
-  );
-};
-
 export const TooltipItem = memo(
   ({
     p,
@@ -87,30 +58,16 @@ export const TooltipItem = memo(
     numberFormat?: NumberFormat;
   }) => {
     return (
-      <div className="d-flex gap-2 items-center justify-center">
-        <div>
-          <svg width="12" height="4">
-            <line
-              x1="0"
-              y1="2"
-              x2="12"
-              y2="2"
-              stroke={p.color}
-              opacity={p.opacity}
-              strokeDasharray={p.strokeDasharray}
-            />
-          </svg>
-        </div>
-        <div>
-          <span style={{ color: p.color }}>
-            {truncateMiddle(p.name ?? p.dataKey, 50)}
-          </span>
-          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}{' '}
-          {previous && (
-            <PercentChange current={p.value} previous={previous?.value} />
-          )}
-        </div>
-      </div>
+      <ChartTooltipItem
+        color={p.color ?? ''}
+        name={p.name ?? p.dataKey}
+        value={p.value}
+        numberFormat={numberFormat}
+        indicator="line"
+        strokeDasharray={p.strokeDasharray}
+        opacity={p.opacity}
+        previous={previous?.value}
+      />
     );
   },
 );
@@ -139,42 +96,42 @@ const HDXLineChartTooltip = withErrorBoundary(
     );
 
     if (active && payload && payload.length) {
+      const header = (
+        <>
+          <FormatTime value={label * 1000} />
+          {previousPeriodOffsetSeconds != null && (
+            <>
+              {' (vs '}
+              <FormatTime
+                value={(label - previousPeriodOffsetSeconds) * 1000}
+              />
+              {')'}
+            </>
+          )}
+        </>
+      );
       return (
-        <div className={styles.chartTooltip}>
-          <div className={styles.chartTooltipHeader}>
-            <FormatTime value={label * 1000} />
-            {previousPeriodOffsetSeconds != null && (
-              <>
-                {' (vs '}
-                <FormatTime
-                  value={(label - previousPeriodOffsetSeconds) * 1000}
-                />
-                {')'}
-              </>
-            )}
-          </div>
-          <div className={styles.chartTooltipContent}>
-            {payload
-              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
-              .map((p: TooltipPayload) => {
-                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
-                const isPreviousPeriod = previousKey === p.dataKey;
-                const previousPayload =
-                  !isPreviousPeriod && previousKey
-                    ? payloadByKey.get(previousKey)
-                    : undefined;
+        <ChartTooltipContainer header={header}>
+          {payload
+            .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
+            .map((p: TooltipPayload) => {
+              const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+              const isPreviousPeriod = previousKey === p.dataKey;
+              const previousPayload =
+                !isPreviousPeriod && previousKey
+                  ? payloadByKey.get(previousKey)
+                  : undefined;
 
-                return (
-                  <TooltipItem
-                    key={p.dataKey}
-                    p={p}
-                    numberFormat={numberFormat}
-                    previous={previousPayload}
-                  />
-                );
-              })}
-          </div>
-        </div>
+              return (
+                <TooltipItem
+                  key={p.dataKey}
+                  p={p}
+                  numberFormat={numberFormat}
+                  previous={previousPayload}
+                />
+              );
+            })}
+        </ChartTooltipContainer>
       );
     }
     return null;
@@ -189,49 +146,44 @@ const HDXLineChartTooltip = withErrorBoundary(
   },
 );
 
-function CopyableLegendItem({ entry }: any) {
-  return (
-    <span
-      className={styles.legendItem}
-      style={{ color: entry.color }}
-      role="button"
-      onClick={() => {
-        window.navigator.clipboard.writeText(entry.value);
-        notifications.show({ color: 'green', message: `Copied to clipboard` });
-      }}
-      title="Click to expand"
-    >
-      <div className="d-flex gap-1 items-center justify-center">
-        <div>
-          <svg width="12" height="4">
-            <line
-              x1="0"
-              y1="2"
-              x2="12"
-              y2="2"
-              stroke={entry.color}
-              opacity={entry.opacity}
-              strokeDasharray={entry.payload?.strokeDasharray}
-            />
-          </svg>
-        </div>
-        {entry.value}
-      </div>
-    </span>
-  );
-}
-
-function ExpandableLegendItem({ entry, expanded }: any) {
+function ExpandableLegendItem({
+  entry,
+  expanded,
+  isSelected,
+  isDisabled,
+  onToggle,
+}: {
+  entry: any;
+  expanded?: boolean;
+  isSelected?: boolean;
+  isDisabled?: boolean;
+  onToggle?: (isShiftKey: boolean) => void;
+}) {
   const [_expanded, setExpanded] = useState(false);
   const isExpanded = _expanded || expanded;
 
   return (
     <span
       className={`d-flex gap-1 items-center justify-center ${styles.legendItem}`}
-      style={{ color: entry.color }}
+      style={{
+        color: entry.color,
+        opacity: isDisabled ? 0.3 : 1,
+        fontWeight: isSelected ? 600 : 400,
+        cursor: 'pointer',
+      }}
       role="button"
-      onClick={() => setExpanded(v => !v)}
-      title="Click to expand"
+      onClick={e => {
+        if (onToggle) {
+          onToggle(e.shiftKey);
+        } else {
+          setExpanded(v => !v);
+        }
+      }}
+      title={
+        isSelected
+          ? 'Click to show all (Shift+click to deselect)'
+          : 'Click to show only this (Shift+click for multi-select)'
+      }
     >
       <div>
         <svg width="12" height="4">
@@ -241,30 +193,52 @@ function ExpandableLegendItem({ entry, expanded }: any) {
             x2="12"
             y2="2"
             stroke={entry.color}
-            opacity={entry.opacity}
+            opacity={isDisabled ? 0.3 : 1}
             strokeDasharray={entry.payload?.strokeDasharray}
+            strokeWidth={isSelected ? 2.5 : 1.5}
           />
         </svg>
       </div>
-      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
+      {isExpanded || isSelected
+        ? entry.value
+        : truncateMiddle(`${entry.value}`, 35)}
     </span>
   );
 }
 
-export const LegendRenderer = memo<{
+const LegendRenderer = memo<{
   payload?: {
     dataKey: string;
     value: string;
     color: string;
   }[];
   lineDataMap: { [key: string]: LineData };
+  allLineData?: LineData[];
+  selectedSeries?: Set<string>;
+  onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
 }>(props => {
-  const { payload = [], lineDataMap } = props;
+  const { payload, lineDataMap, allLineData, selectedSeries, onToggleSeries } =
+    props;
+
+  const hasSelection = !!selectedSeries && selectedSeries.size > 0;
+
+  // Use allLineData to ensure all series are always shown in legend
+  const allSeriesPayload = useMemo(() => {
+    if (allLineData?.length) {
+      return allLineData.map(ld => ({
+        dataKey: ld.dataKey,
+        value: ld.displayName || ld.dataKey,
+        color: ld.color,
+        payload: { strokeDasharray: ld.isDashed ? '4 3' : '0' },
+      }));
+    }
+    return payload ?? [];
+  }, [allLineData, payload]);
 
   const sortedLegendItems = useMemo(() => {
     // Order items such that current and previous period lines are consecutive
     const currentPeriodKeyIndex = new Map<string, number>();
-    payload.forEach((line, index) => {
+    allSeriesPayload.forEach((line, index) => {
       const currentPeriodKey =
         lineDataMap[line.dataKey]?.currentPeriodKey || '';
       if (!currentPeriodKeyIndex.has(currentPeriodKey)) {
@@ -272,7 +246,7 @@ export const LegendRenderer = memo<{
       }
     });
 
-    return payload.sort((a, b) => {
+    return allSeriesPayload.sort((a, b) => {
       const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
       const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
 
@@ -281,20 +255,26 @@ export const LegendRenderer = memo<{
 
       return indexB - indexA || a.dataKey.localeCompare(b.dataKey);
     });
-  }, [payload, lineDataMap]);
+  }, [allSeriesPayload, lineDataMap]);
 
   const shownItems = sortedLegendItems.slice(0, MAX_LEGEND_ITEMS);
   const restItems = sortedLegendItems.slice(MAX_LEGEND_ITEMS);
 
   return (
     <div className={styles.legend}>
-      {shownItems.map((entry, index) => (
-        <ExpandableLegendItem
-          key={`item-${index}`}
-          value={entry.value}
-          entry={entry}
-        />
-      ))}
+      {shownItems.map((entry, index) => {
+        const isSelected = !!selectedSeries?.has(entry.value);
+        const isDisabled = hasSelection && !isSelected;
+        return (
+          <ExpandableLegendItem
+            key={`item-${index}`}
+            entry={entry}
+            isSelected={isSelected}
+            isDisabled={isDisabled}
+            onToggle={isShiftKey => onToggleSeries?.(entry.value, isShiftKey)}
+          />
+        );
+      })}
       {restItems.length ? (
         <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
           <Popover.Target>
@@ -304,13 +284,21 @@ export const LegendRenderer = memo<{
           </Popover.Target>
           <Popover.Dropdown p="xs">
             <div className={styles.legendTooltipContent}>
-              {restItems.map((entry, index) => (
-                <CopyableLegendItem
-                  key={`item-${index}`}
-                  value={entry.value}
-                  entry={entry}
-                />
-              ))}
+              {restItems.map((entry, index) => {
+                const isSelected = !!selectedSeries?.has(entry.value);
+                const isDisabled = hasSelection && !isSelected;
+                return (
+                  <ExpandableLegendItem
+                    key={`item-${index}`}
+                    entry={entry}
+                    isSelected={isSelected}
+                    isDisabled={isDisabled}
+                    onToggle={isShiftKey =>
+                      onToggleSeries?.(entry.value, isShiftKey)
+                    }
+                  />
+                );
+              })}
             </div>
           </Popover.Dropdown>
         </Popover>
@@ -320,6 +308,20 @@ export const LegendRenderer = memo<{
 });
 
 export const HARD_LINES_LIMIT = 60;
+
+const StackedBarWithOverlap = (props: BarProps) => {
+  const { x, y, width, height, fill } = props;
+  // Add a tiny bit to the height to create overlap. Otherwise there's a gap
+  return (
+    <rect
+      x={x}
+      y={y}
+      width={width}
+      height={height && height > 0 ? height + 0.5 : 0}
+      fill={fill}
+    />
+  );
+};
 
 export const MemoChart = memo(function MemoChart({
   graphResults,
@@ -336,6 +338,10 @@ export const MemoChart = memo(function MemoChart({
   onTimeRangeSelect,
   showLegend = true,
   previousPeriodOffsetSeconds,
+  selectedSeriesNames,
+  onToggleSeries,
+  granularity,
+  dateRangeEndInclusive = true,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -351,6 +357,10 @@ export const MemoChart = memo(function MemoChart({
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
   previousPeriodOffsetSeconds?: number;
+  selectedSeriesNames?: Set<string>;
+  onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
+  granularity: string;
+  dateRangeEndInclusive?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -361,34 +371,30 @@ export const MemoChart = memo(function MemoChart({
     displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
 
   const lines = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+
     const limitedGroupKeys = lineData
       .map(ld => ld.dataKey)
-      .slice(0, HARD_LINES_LIMIT);
+      .slice(0, HARD_LINES_LIMIT)
+      .filter((key, i) => {
+        const seriesName = lineData[i]?.displayName ?? key;
+        // If there's a selection, only show selected series
+        // If no selection, show all series
+        return !hasSelection || selectedSeriesNames.has(seriesName);
+      });
 
-    return limitedGroupKeys.map((key, i) => {
-      const color = lineData[i]?.color;
-      const strokeDasharray = lineData[i]?.isDashed ? '4 3' : '0';
-
-      const StackedBarWithOverlap = (props: BarProps) => {
-        const { x, y, width, height, fill } = props;
-        // Add a tiny bit to the height to create overlap. Otherwise there's a gap
-        return (
-          <rect
-            x={x}
-            y={y}
-            width={width}
-            height={height && height > 0 ? height + 0.5 : 0}
-            fill={fill}
-          />
-        );
-      };
+    return limitedGroupKeys.map(key => {
+      const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
+      const color = lineData[lineDataIndex]?.color;
+      const strokeDasharray = lineData[lineDataIndex]?.isDashed ? '4 3' : '0';
+      const seriesName = lineData[lineDataIndex]?.displayName ?? key;
 
       return displayType === 'stacked_bar' ? (
         <Bar
           key={key}
           type="monotone"
           dataKey={key}
-          name={lineData[i]?.displayName ?? key}
+          name={seriesName}
           fill={color}
           opacity={1}
           stackId="1"
@@ -405,15 +411,54 @@ export const MemoChart = memo(function MemoChart({
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
-                fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
+                fill: `url(#time-chart-lin-grad-${id}-${color?.replace('#', '').toLowerCase()})`,
                 strokeDasharray,
               })}
-          name={lineData[i]?.displayName ?? key}
+          name={seriesName}
           isAnimationActive={false}
+          connectNulls
         />
       );
     });
-  }, [lineData, displayType, id, isHovered]);
+  }, [lineData, displayType, id, isHovered, selectedSeriesNames]);
+
+  const yAxisDomain: AxisDomain = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+
+    if (!hasSelection) {
+      // No selection, let Recharts auto-calculate based on all data
+      return [0, 'auto'];
+    }
+
+    // When series are selected, calculate domain based only on visible series
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+
+    graphResults.forEach(dataPoint => {
+      lineData.forEach(ld => {
+        const seriesName = ld.displayName || ld.dataKey;
+        // Only consider selected series
+        if (selectedSeriesNames.has(seriesName)) {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            minValue = Math.min(minValue, value);
+            maxValue = Math.max(maxValue, value);
+          }
+        }
+      });
+    });
+
+    // If we found valid values, return them with some padding
+    if (minValue !== Infinity && maxValue !== -Infinity) {
+      const padding = (maxValue - minValue) * 0.1; // 10% padding
+      return [
+        Math.max(0, minValue - padding), // Don't go below 0
+        maxValue + padding,
+      ];
+    }
+
+    return ['auto', 'auto'];
+  }, [graphResults, lineData, selectedSeriesNames]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 
@@ -428,7 +473,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const tickFormatter = useCallback(
-    (value: number, index: number) => {
+    (value: number) => {
       return numberFormat
         ? formatNumber(value, {
             ...numberFormat,
@@ -456,6 +501,28 @@ export const MemoChart = memo(function MemoChart({
     return map;
   }, [lineData]);
 
+  const xAxisDomain: AxisDomain = useMemo(() => {
+    let startTime = toStartOfInterval(dateRange[0], granularity);
+    let endTime = toStartOfInterval(dateRange[1], granularity);
+    const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
+    if (endTimeIsBoundaryAligned && !dateRangeEndInclusive) {
+      endTime = sub(endTime, {
+        seconds: convertGranularityToSeconds(granularity),
+      });
+    }
+
+    // For bar charts, extend the domain in both directions by half a granularity unit
+    // so that the full bar width is within the bounds of the chart
+    if (displayType === DisplayType.StackedBar) {
+      const halfGranularitySeconds =
+        convertGranularityToSeconds(granularity) / 2;
+      startTime = sub(startTime, { seconds: halfGranularitySeconds });
+      endTime = add(endTime, { seconds: halfGranularitySeconds });
+    }
+
+    return [startTime.getTime() / 1000, endTime.getTime() / 1000];
+  }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
+
   return (
     <ResponsiveContainer
       width="100%"
@@ -473,7 +540,7 @@ export const MemoChart = memo(function MemoChart({
         syncId="hdx"
         syncMethod="value"
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={e => {
+        onMouseLeave={() => {
           setIsHovered(false);
 
           setHighlightStart(undefined);
@@ -590,10 +657,7 @@ export const MemoChart = memo(function MemoChart({
         )}
         <XAxis
           dataKey={timestampKey ?? 'ts_bucket'}
-          domain={[
-            dateRange[0].getTime() / 1000,
-            dateRange[1].getTime() / 1000,
-          ]}
+          domain={xAxisDomain}
           interval="preserveStartEnd"
           scale="time"
           type="number"
@@ -606,6 +670,7 @@ export const MemoChart = memo(function MemoChart({
           minTickGap={25}
           tickFormatter={tickFormatter}
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+          domain={yAxisDomain}
         />
         {lines}
         {isClickActive == null && (
@@ -635,7 +700,14 @@ export const MemoChart = memo(function MemoChart({
           <Legend
             iconSize={10}
             verticalAlign="bottom"
-            content={<LegendRenderer lineDataMap={lineDataMap} />}
+            content={
+              <LegendRenderer
+                lineDataMap={lineDataMap}
+                allLineData={lineData}
+                selectedSeries={selectedSeriesNames || new Set()}
+                onToggleSeries={onToggleSeries}
+              />
+            }
             offset={-100}
           />
         )}

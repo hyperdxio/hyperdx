@@ -3,7 +3,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -25,6 +24,7 @@ import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import AISummarizeButton from './AISummarizeButton';
 import {
   DBHighlightedAttributesList,
   HighlightedAttribute,
@@ -126,12 +126,13 @@ function BreadcrumbNavigation({
 }
 
 export default function DBRowSidePanelHeader({
-  attributes = [],
+  attributes,
   mainContent = '',
   mainContentHeader,
   date,
   severityText,
-  breadcrumbPath = [],
+  rowData,
+  breadcrumbPath,
   onBreadcrumbClick,
 }: {
   date: Date;
@@ -139,12 +140,12 @@ export default function DBRowSidePanelHeader({
   mainContentHeader?: string;
   attributes?: HighlightedAttribute[];
   severityText?: string;
+  rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
-  const { onPropertyAddClick, generateSearchUrl } =
-    useContext(RowSidePanelContext);
+  const { generateSearchUrl } = useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
   const mainContentDisplayed = React.useMemo(
@@ -194,11 +195,19 @@ export default function DBRowSidePanelHeader({
     [generateSearchUrl],
   );
 
+  const breadCrumbPathWithDefault = useMemo(() => {
+    return breadcrumbPath ?? [];
+  }, [breadcrumbPath]);
+
+  const attributesWithDefault = useMemo(() => {
+    return attributes ?? [];
+  }, [attributes]);
+
   return (
     <>
       {/* Breadcrumb navigation */}
       <BreadcrumbNavigation
-        breadcrumbPath={breadcrumbPath}
+        breadcrumbPath={breadCrumbPathWithDefault}
         onNavigateToLevel={onBreadcrumbClick}
       />
 
@@ -272,8 +281,9 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
+      <AISummarizeButton rowData={rowData} severityText={severityText} />
       <Box mt="xs">
-        <DBHighlightedAttributesList attributes={attributes} />
+        <DBHighlightedAttributesList attributes={attributesWithDefault} />
       </Box>
     </>
   );

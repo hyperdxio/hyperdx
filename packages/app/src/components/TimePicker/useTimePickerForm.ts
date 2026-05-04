@@ -36,11 +36,20 @@ export const useTimePickerForm = ({ mode }: { mode: TimePickerMode }) => {
 
     onValuesChange: values => {
       // Ensure that end date is not before start date
-      if (
-        values.endDate &&
-        values.startDate &&
-        values.endDate < values.startDate
-      ) {
+      // Guard with getTime() since Mantine v9 DateInput may supply strings
+      const start =
+        values.startDate instanceof Date
+          ? values.startDate
+          : values.startDate
+            ? new Date(values.startDate)
+            : null;
+      const end =
+        values.endDate instanceof Date
+          ? values.endDate
+          : values.endDate
+            ? new Date(values.endDate)
+            : null;
+      if (start && end && end.getTime() < start.getTime()) {
         form.setFieldValue('endDate', values.startDate);
       }
     },

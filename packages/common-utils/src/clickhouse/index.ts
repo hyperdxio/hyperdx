@@ -11,18 +11,20 @@ import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
-import { Metadata } from '@/core/metadata';
+import { getMetadata, Metadata } from '@/core/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
   splitChartConfigs,
 } from '@/core/renderChartConfig';
 import {
+  extractSettingsClauseFromEnd,
   hashCode,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { ChartConfigWithOptDateRange } from '@/types';
+import { isBuilderChartConfig } from '@/guards';
+import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
 // export @clickhouse/client-common types
 export type {
@@ -92,6 +94,8 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.Dynamic;
   } else if (dataType.startsWith('LowCardinality')) {
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
+  } else if (dataType.startsWith('Nullable(')) {
+    return convertCHDataTypeToJSType(dataType.slice(9, -1));
   }
 
   return null;
@@ -109,20 +113,38 @@ export const isJSDataTypeJSONStringifiable = (
   );
 };
 
-export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
-  const jsType = convertCHDataTypeToJSType(dataType);
-
-  if (
-    jsType === JSDataType.Map ||
-    jsType === JSDataType.Array ||
-    jsType === JSDataType.Tuple
-  ) {
-    throw new Error('Map, Array or Tuple type is not a primitive type');
-  } else if (jsType === JSDataType.Date) {
-    return JSDataType.Number;
+export const extractInnerCHArrayJSType = (
+  dataType: string,
+): JSDataType | null => {
+  if (dataType.trim().startsWith('Array(') && dataType.trim().endsWith(')')) {
+    const innerType = dataType.trim().slice(6, -1);
+    return convertCHDataTypeToJSType(innerType);
   }
 
-  return jsType;
+  return null;
+};
+
+export const convertCHTypeToLuceneSearchType = (
+  dataType: string,
+): {
+  type: JSDataType | null;
+  isArray: boolean;
+} => {
+  let jsType = convertCHDataTypeToJSType(dataType);
+  const isArray = jsType === JSDataType.Array;
+
+  if (jsType === JSDataType.Map || jsType === JSDataType.Tuple) {
+    throw new Error('Map or Tuple types cannot be searched with Lucene.');
+  } else if (jsType === JSDataType.Date) {
+    jsType = JSDataType.Number;
+  } else if (
+    jsType === JSDataType.Array &&
+    extractInnerCHArrayJSType(dataType)
+  ) {
+    jsType = extractInnerCHArrayJSType(dataType);
+  }
+
+  return { type: jsType, isArray };
 };
 
 const hash = (input: string | number) => Math.abs(hashCode(`${input}`));
@@ -403,6 +425,7 @@ export interface QueryInputs<Format extends DataFormat> {
   clickhouse_settings?: ClickHouseSettings;
   connectionId?: string;
   queryId?: string;
+  shouldSkipApplySettings?: boolean;
 }
 
 export type ClickhouseClientOptions = {
@@ -459,6 +482,10 @@ export abstract class BaseClickhouseClient {
     return this.client;
   }
 
+  async close(): Promise<void> {
+    await this.client?.close();
+  }
+
   protected logDebugQuery(
     query: string,
     query_params: Record<string, any> = {},
@@ -477,11 +504,15 @@ export abstract class BaseClickhouseClient {
     console.debug('--------------------------------------------------------');
   }
 
-  protected processClickhouseSettings(
-    external_clickhouse_settings?: ClickHouseSettings,
-  ): ClickHouseSettings {
+  protected async processClickhouseSettings({
+    connectionId,
+    externalClickhouseSettings,
+  }: {
+    connectionId?: string;
+    externalClickhouseSettings?: ClickHouseSettings;
+  }): Promise<ClickHouseSettings> {
     const clickhouse_settings = structuredClone(
-      external_clickhouse_settings || {},
+      externalClickhouseSettings || {},
     );
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
@@ -493,11 +524,48 @@ export abstract class BaseClickhouseClient {
       clickhouse_settings.max_execution_time = this.queryTimeout;
     }
 
-    return {
+    const defaultSettings: ClickHouseSettings = {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
+      output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
+    };
+
+    const metadata = getMetadata(this);
+    const serverSettings = await metadata.getSettings({ connectionId });
+
+    const applySettingIfAvailable = (name: string, value: string) => {
+      if (!serverSettings || !serverSettings.has(name)) return;
+      // eslint-disable-next-line security/detect-object-injection
+      defaultSettings[name] = value;
+    };
+
+    // Enables lazy materialization up to the given LIMIT
+    applySettingIfAvailable('query_plan_optimize_lazy_materialization', '1');
+    applySettingIfAvailable(
+      'query_plan_max_limit_for_lazy_materialization',
+      '100000',
+    );
+    // Enables skip indexes to be used for top k style queries up to the given LIMIT
+    applySettingIfAvailable('use_skip_indexes_for_top_k', '1');
+    applySettingIfAvailable(
+      'query_plan_max_limit_for_top_k_optimization',
+      '100000',
+    );
+    // TODO: HDX-3499 look into when we can and can't use this setting. For example, event deltas ORDER BY rand(), which is not compatible with this setting
+    // applySettingIfAvailable('use_top_k_dynamic_filtering', '1');
+    // Enables skip indexes to be used on data read
+    applySettingIfAvailable('use_skip_indexes_on_data_read', '1');
+    // Evaluate WHERE filters with mixed AND and OR conditions using skip indexes.
+    // If value is 0, then skip indicies only used on AND queries
+    applySettingIfAvailable('use_skip_indexes_for_disjunctions', '1');
+
+    // Enables full-text (inverted index) search.
+    applySettingIfAvailable('enable_full_text_index', '1');
+
+    return {
+      ...defaultSettings,
       ...clickhouse_settings,
     };
   }
@@ -557,6 +625,7 @@ export abstract class BaseClickhouseClient {
     config,
     metadata,
     opts,
+    querySettings,
   }: {
     config: ChartConfigWithOptDateRange;
     metadata: Metadata;
@@ -564,10 +633,15 @@ export abstract class BaseClickhouseClient {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
     };
+    querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
-    config = setChartSelectsAlias(config);
+    config = isBuilderChartConfig(config)
+      ? setChartSelectsAlias(config)
+      : config;
     const queries: ChSql[] = await Promise.all(
-      splitChartConfigs(config).map(c => renderChartConfig(c, metadata)),
+      splitChartConfigs(config).map(c =>
+        renderChartConfig(c, metadata, querySettings),
+      ),
     );
 
     const isTimeSeries = config.displayType === 'line';
@@ -590,7 +664,7 @@ export abstract class BaseClickhouseClient {
       return resultSets[0];
     }
     // metrics -> join resultSets
-    else if (resultSets.length > 1) {
+    else if (isBuilderChartConfig(config) && resultSets.length > 1) {
       const metaSet = new Map<string, { name: string; type: string }>();
       const tsBucketMap = new Map<string, Record<string, string | number>>();
       for (const resultSet of resultSets) {
@@ -654,6 +728,7 @@ export abstract class BaseClickhouseClient {
     config,
     metadata,
     opts,
+    querySettings,
   }: {
     config: ChartConfigWithOptDateRange;
     metadata: Metadata;
@@ -661,9 +736,14 @@ export abstract class BaseClickhouseClient {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
     };
+    querySettings: QuerySettings | undefined;
   }): Promise<{ isValid: boolean; rowEstimate?: number; error?: string }> {
     try {
-      const renderedConfig = await renderChartConfig(config, metadata);
+      const renderedConfig = await renderChartConfig(
+        config,
+        metadata,
+        querySettings,
+      );
       const explainedQuery = chSql`EXPLAIN ESTIMATE ${renderedConfig}`;
 
       const result = await this.query<'JSON'>({
@@ -736,11 +816,14 @@ export function chSqlToAliasMap(
   try {
     const sql = parameterizedQueryToSql(chSql);
 
+    // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
+    const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
+
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sql);
-
+      replaceJsonExpressions(sqlWithoutSettingsClause);
     const parser = new SQLParser.Parser();
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
     const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',

@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ibmPlexMono, inter, roboto, robotoMono } from '../src/fonts';
 import { meHandler } from '../src/mocks/handlers';
+import { AppThemeProvider } from '../src/theme/ThemeProvider';
+import { ThemeName } from '../src/theme/types';
 import { ThemeWrapper } from '../src/ThemeWrapper';
 
 import '@mantine/core/styles.css';
@@ -36,6 +38,19 @@ export const globalTypes = {
       items: [
         { value: 'light', title: 'Light' },
         { value: 'dark', title: 'Dark' },
+      ],
+    },
+  },
+  brand: {
+    name: 'Brand',
+    description: 'Brand theme',
+    defaultValue: 'hyperdx',
+    toolbar: {
+      icon: 'paintbrush',
+      title: 'Brand',
+      items: [
+        { value: 'hyperdx', title: 'HyperDX' },
+        { value: 'clickstack', title: 'ClickStack' },
       ],
     },
   },
@@ -79,23 +94,25 @@ const createQueryClient = () =>
 const preview: Preview = {
   decorators: [
     (Story, context) => {
-      // Create a fresh QueryClient for each story render
       const [queryClient] = React.useState(() => createQueryClient());
 
       const selectedFont = context.globals.font || 'inter';
       const font = fontMap[selectedFont as keyof typeof fontMap] || inter;
       const fontFamily = font.style.fontFamily;
+      const brandTheme = (context.globals.brand || 'hyperdx') as ThemeName;
 
       return (
         <div className={font.className}>
           <QueryClientProvider client={queryClient}>
             <QueryParamProvider adapter={NextAdapter}>
-              <ThemeWrapper
-                colorScheme={context.globals.theme || 'light'}
-                fontFamily={fontFamily}
-              >
-                <Story />
-              </ThemeWrapper>
+              <AppThemeProvider themeName={brandTheme}>
+                <ThemeWrapper
+                  colorScheme={context.globals.theme || 'light'}
+                  fontFamily={fontFamily}
+                >
+                  <Story />
+                </ThemeWrapper>
+              </AppThemeProvider>
             </QueryParamProvider>
           </QueryClientProvider>
         </div>

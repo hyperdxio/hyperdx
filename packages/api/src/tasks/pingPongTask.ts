@@ -4,7 +4,6 @@ import logger from '@/utils/logger';
 export default class PingPongTask implements HdxTask<PingTaskArgs> {
   constructor(private args: PingTaskArgs) {}
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async execute(): Promise<void> {
     logger.info(`
                    O .

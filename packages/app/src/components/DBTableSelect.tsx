@@ -7,7 +7,7 @@ import { useTablesDirect } from '@/clickhouse';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectRightSection } from './SourceSelect';
 
-export default function DBTableSelect({
+function DBTableSelect({
   database,
   setTable,
   table,
@@ -83,11 +83,7 @@ export function DBTableSelectControlled({
   size?: string;
   connectionId: string | undefined;
 } & UseControllerProps<any>) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+  const { field } = useController(props);
 
   return (
     <DBTableSelect

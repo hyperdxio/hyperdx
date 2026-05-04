@@ -6,12 +6,22 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isLogSource,
+  isMetricSource,
+  SourceKind,
+  TLogSource,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Box,
-  Button,
+  Breadcrumbs,
   Card,
   Flex,
   Grid,
@@ -43,8 +53,8 @@ import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useJsonColumns } from './hooks/useMetadata';
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -53,7 +63,7 @@ import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { useSources } from './source';
+import { useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -140,7 +150,7 @@ export const InfraPodsStatusTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
@@ -344,7 +354,7 @@ export const InfraPodsStatusTable = ({
 
   return (
     <Card p="md" data-testid="k8s-pods-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Group align="center" justify="space-between">
           Pods
           <SegmentedControl
@@ -529,7 +539,7 @@ const NodesTable = ({
   where,
   dateRange,
 }: {
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
@@ -616,7 +626,7 @@ const NodesTable = ({
 
   return (
     <Card p="md" data-testid="k8s-nodes-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         Nodes
       </Card.Section>
       <Card.Section>
@@ -733,7 +743,7 @@ const NamespacesTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const groupBy = ['k8s.namespace.name'];
@@ -770,8 +780,8 @@ const NamespacesTable = ({
         dateRange: [
           // We should only look at the latest values, otherwise we might
           // aggregate pod metrics from pods that have been terminated
-          sub(dateRange[1] ?? new Date(), { minutes: 5 }),
-          dateRange[1] ?? new Date(),
+          sub(dateRange[1], { minutes: 5 }),
+          dateRange[1],
         ],
         seriesReturnType: 'column',
       },
@@ -815,7 +825,7 @@ const NamespacesTable = ({
 
   return (
     <Card p="md" data-testid="k8s-namespaces-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         Namespaces
       </Card.Section>
       <Card.Section>
@@ -963,8 +973,12 @@ export const resolveSourceIds = (
 
   // Find a default metric source that matches the existing log source
   if (_logSourceId && !_metricSourceId) {
-    const { connection, metricSourceId: correlatedMetricSourceId } =
-      findSource(sources, { id: _logSourceId }) ?? {};
+    const foundSource = findSource(sources, { id: _logSourceId });
+    const connection = foundSource?.connection;
+    const correlatedMetricSourceId =
+      foundSource && isLogSource(foundSource)
+        ? foundSource.metricSourceId
+        : undefined;
     const metricSourceId =
       (correlatedMetricSourceId &&
         findSource(sources, { id: correlatedMetricSourceId })?.id) ??
@@ -975,8 +989,12 @@ export const resolveSourceIds = (
 
   // Find a default log source that matches the existing metric source
   if (!_logSourceId && _metricSourceId) {
-    const { connection, logSourceId: correlatedLogSourceId } =
-      findSource(sources, { id: _metricSourceId }) ?? {};
+    const foundSource = findSource(sources, { id: _metricSourceId });
+    const connection = foundSource?.connection;
+    const correlatedLogSourceId =
+      foundSource && isMetricSource(foundSource)
+        ? foundSource.logSourceId
+        : undefined;
     const logSourceId =
       (correlatedLogSourceId &&
         findSource(sources, { id: correlatedLogSourceId })?.id) ??
@@ -987,10 +1005,10 @@ export const resolveSourceIds = (
 
   // Find any two correlated log and metric sources
   const logSourceWithMetricSource = sources.find(
-    s =>
+    (s): s is TLogSource =>
       s.kind === SourceKind.Log &&
-      s.metricSourceId &&
-      findSource(sources, { id: s.metricSourceId }) &&
+      !!s.metricSourceId &&
+      !!findSource(sources, { id: s.metricSourceId }) &&
       !s.disabled,
   );
 
@@ -1035,8 +1053,14 @@ function KubernetesDashboardPage() {
     [_logSourceId, _metricSourceId, sources],
   );
 
-  const logSource = sources?.find(s => s.id === logSourceId);
-  const metricSource = sources?.find(s => s.id === metricSourceId);
+  const { data: logSource } = useSource({
+    id: logSourceId,
+    kinds: [SourceKind.Log],
+  });
+  const { data: metricSource } = useSource({
+    id: metricSourceId,
+    kinds: [SourceKind.Metric],
+  });
 
   const { control } = useForm({
     values: {
@@ -1076,8 +1100,12 @@ function KubernetesDashboardPage() {
     // Default to the log source's correlated metric source
     if (watchedLogSourceId && sources) {
       const logSource = findSource(sources, { id: watchedLogSourceId });
-      const correlatedMetricSource = logSource?.metricSourceId
-        ? findSource(sources, { id: logSource.metricSourceId })
+      const logSourceMetricSourceId =
+        logSource && isLogSource(logSource)
+          ? logSource.metricSourceId
+          : undefined;
+      const correlatedMetricSource = logSourceMetricSourceId
+        ? findSource(sources, { id: logSourceMetricSourceId })
         : undefined;
       if (
         correlatedMetricSource &&
@@ -1118,8 +1146,12 @@ function KubernetesDashboardPage() {
     // Default to the metric source's correlated log source
     if (watchedMetricSourceId && sources) {
       const metricSource = findSource(sources, { id: watchedMetricSourceId });
-      const correlatedLogSource = metricSource?.logSourceId
-        ? findSource(sources, { id: metricSource.logSourceId })
+      const metricSourceLogSourceId =
+        metricSource && isMetricSource(metricSource)
+          ? metricSource.logSourceId
+          : undefined;
+      const correlatedLogSource = metricSourceLogSourceId
+        ? findSource(sources, { id: metricSourceLogSourceId })
         : undefined;
       if (
         correlatedLogSource &&
@@ -1170,30 +1202,60 @@ function KubernetesDashboardPage() {
     ],
   });
 
-  // For future use if Live button is added
-  const [isLive, setIsLive] = React.useState(false);
-
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange: dateRange,
     onTimeRangeSelect,
-    isLive,
+    isLive: false,
   });
 
   const whereClause = searchQuery;
 
   const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
-  const searchInputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const onSearchSubmit = React.useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      setSearchQuery(_searchQuery || null);
-    },
-    [_searchQuery, setSearchQuery],
-  );
+  const { data: logSourceJsonColumns, isLoading: isLoadingJsonColumns } =
+    useJsonColumns(
+      logSource && {
+        databaseName: logSource.from.databaseName,
+        tableName: logSource.from.tableName,
+        connectionId: logSource.connection,
+      },
+    );
+
+  const eventAttributeExpressions = useMemo(() => {
+    if (isLoadingJsonColumns || !logSource) {
+      return undefined;
+    }
+
+    if (
+      logSource.eventAttributesExpression &&
+      logSourceJsonColumns?.includes(logSource.eventAttributesExpression)
+    ) {
+      return {
+        Severity: `${logSource.eventAttributesExpression}.object.type.:String`,
+        Kind: `${logSource.eventAttributesExpression}.object.regarding.kind.:String`,
+        Name: `${logSource.eventAttributesExpression}.object.regarding.name.:String`,
+        Message: `${logSource.eventAttributesExpression}.object.note.:String`,
+      };
+    }
+
+    return {
+      Severity: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
+      Kind: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'kind')`,
+      Name: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
+      Message: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
+    };
+  }, [isLoadingJsonColumns, logSource, logSourceJsonColumns]);
 
   return (
     <Box data-testid="kubernetes-dashboard-page" p="sm">
+      <Breadcrumbs mb="xs" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          Kubernetes
+        </Text>
+      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
@@ -1255,18 +1317,17 @@ function KubernetesDashboardPage() {
             />
           </form>
           <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <Button
+            <ActionIcon
               onClick={refresh}
               loading={manualRefreshCooloff}
               disabled={manualRefreshCooloff}
-              color="gray"
-              variant="outline"
+              variant="secondary"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
-              px="xs"
+              size="lg"
             >
               <IconRefresh size={18} />
-            </Button>
+            </ActionIcon>
           </Tooltip>
         </Group>
       </Group>
@@ -1299,19 +1360,15 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1338,19 +1395,15 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1386,30 +1439,13 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md" data-testid="k8s-warning-events-table">
-                  <Card.Section p="md" py="xs" withBorder>
+                  <Card.Section p="md" py="xs">
                     <Flex justify="space-between">
                       Latest Kubernetes Warning Events
-                      {/* 
-                      <Link
-                        href={`/search?q=${encodeURIComponent(
-                          `${
-                            whereClause.trim().length > 0
-                              ? `(${whereClause.trim()}) `
-                              : ''
-                          }(k8s.resource.name:"events" -level:"normal")`,
-                        )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
-                        passHref
-                        legacyBehavior
-                      >
-                        <Anchor size="xs" color="dimmed">
-                          Search <IconExternalLink size={12} style={{ display: 'inline' }} />
-                        </Anchor>
-                      </Link>
-                      */}
                     </Flex>
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    {logSource && (
+                    {logSource && eventAttributeExpressions && (
                       <DBSqlRowTableWithSideBar
                         sourceId={logSource.id}
                         config={{
@@ -1427,19 +1463,21 @@ function KubernetesDashboardPage() {
                               alias: 'Timestamp',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
+                              valueExpression:
+                                eventAttributeExpressions.Severity,
                               alias: 'Severity',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'kind')`,
+                              valueExpression: eventAttributeExpressions.Kind,
                               alias: 'Kind',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
+                              valueExpression: eventAttributeExpressions.Name,
                               alias: 'Name',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
+                              valueExpression:
+                                eventAttributeExpressions.Message,
                               alias: 'Message',
                             },
                           ],
@@ -1466,19 +1504,15 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="nodes-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1505,19 +1539,15 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="nodes-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1557,19 +1587,15 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespaces-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1596,19 +1622,15 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespaces-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {

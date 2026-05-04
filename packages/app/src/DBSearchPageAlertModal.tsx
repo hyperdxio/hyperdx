@@ -1,7 +1,6 @@
 import React from 'react';
 import router from 'next/router';
-import { useForm, useWatch } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -10,44 +9,58 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
+  Filter,
+  isRangeThresholdType,
+  scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
+  validateAlertScheduleOffsetMinutes,
+  validateAlertThresholdMax,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
-import { Alert as MantineAlert, TextInput } from '@mantine/core';
 import {
   Accordion,
+  Alert as MantineAlert,
   Box,
   Button,
   Group,
   LoadingOverlay,
   Modal,
+  NativeSelect,
+  NumberInput,
   Paper,
   Stack,
   Tabs,
   Text,
+  TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
-  IconBrandSlack,
   IconChartLine,
   IconInfoCircleFilled,
   IconPlus,
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
+  intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { AckAlert } from './components/alerts/AckAlert';
+import { AlertHistoryCardList } from './components/alerts/AlertHistoryCards';
+import { AlertScheduleFields } from './components/AlertScheduleFields';
+import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
@@ -56,16 +69,22 @@ import { optionsToSelectData } from './utils';
 const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
-    threshold: z.number().int().min(1),
+    threshold: z.number(),
+    thresholdMax: z.number().optional(),
+    scheduleOffsetMinutes: z.number().int().min(0).default(0),
+    scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
-  .passthrough();
+  .passthrough()
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
 
 const AlertForm = ({
   sourceId,
   where,
   whereLanguage,
+  filters,
   select,
   defaultValues,
   loading,
@@ -78,6 +97,7 @@ const AlertForm = ({
   sourceId?: string | null;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  filters?: Filter[] | null;
   select?: string | null;
   defaultValues?: null | AlertWithCreatedBy;
   loading?: boolean;
@@ -89,17 +109,30 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const { control, handleSubmit } = useForm<Alert>({
-    defaultValues: defaultValues || {
-      interval: '5m',
-      threshold: 1,
-      thresholdType: AlertThresholdType.ABOVE,
-      source: AlertSource.SAVED_SEARCH,
-      channel: {
-        type: 'webhook',
-        webhookId: '',
-      },
-    },
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { dirtyFields },
+  } = useForm<Alert>({
+    defaultValues: defaultValues
+      ? {
+          ...defaultValues,
+          scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
+          scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+        }
+      : {
+          interval: '5m',
+          threshold: 1,
+          scheduleOffsetMinutes: 0,
+          scheduleStartAt: null,
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: '',
+          },
+        },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
@@ -107,13 +140,37 @@ const AlertForm = ({
   const thresholdType = useWatch({ control, name: 'thresholdType' });
   const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
+  const scheduleOffsetMinutes = useWatch({
+    control,
+    name: 'scheduleOffsetMinutes',
+  });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const thresholdMax = useWatch({ control, name: 'thresholdMax' });
+  const maxScheduleOffsetMinutes = Math.max(
+    intervalToMinutes(interval ?? '5m') - 1,
+    0,
+  );
+  const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
+
+  const { data: alertData } = api.useAlert(defaultValues?.id);
+  const alert = alertData?.data;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
-      <Stack gap="xs">
-        <Paper px="md" py="sm" radius="xs">
+    <form
+      onSubmit={handleSubmit(data =>
+        onSubmit(
+          normalizeNoOpAlertScheduleFields(data, defaultValues, {
+            preserveExplicitScheduleOffsetMinutes:
+              dirtyFields.scheduleOffsetMinutes === true,
+            preserveExplicitScheduleStartAt:
+              dirtyFields.scheduleStartAt === true,
+          }),
+        ),
+      )}
+    >
+      <Paper px="sm" py="xs" radius="xs">
+        <Stack gap="xs">
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -121,38 +178,90 @@ const AlertForm = ({
             <Text size="sm" opacity={0.7}>
               Alert when
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
-              size="xs"
-              name={`thresholdType`}
+            <Controller
               control={control}
+              name="thresholdType"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  {...field}
+                  onChange={e => {
+                    field.onChange(e);
+                    if (
+                      isRangeThresholdType(e.currentTarget.value) &&
+                      thresholdMax == null
+                    ) {
+                      setValue('thresholdMax', (threshold ?? 0) + 1);
+                    }
+                  }}
+                />
+              )}
             />
-            <NumberInput
-              min={1}
-              size="xs"
-              w={80}
+            <Controller
               control={control}
-              name={`threshold`}
+              name="threshold"
+              render={({ field }) => (
+                <NumberInput size="xs" w={80} {...field} />
+              )}
             />
+            {isRangeThresholdType(thresholdType as AlertThresholdType) && (
+              <>
+                <Text size="sm" opacity={0.7}>
+                  and
+                </Text>
+                <Controller
+                  control={control}
+                  name="thresholdMax"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      size="xs"
+                      w={80}
+                      {...field}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </>
+            )}
             <Text size="sm" opacity={0.7}>
               lines appear within
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
-              size="xs"
-              name={`interval`}
+            <Controller
               control={control}
+              name="interval"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               via
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-              size="xs"
-              name={`channel.type`}
+            <Controller
               control={control}
+              name="channel.type"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
           </Group>
+          <AlertScheduleFields
+            control={control}
+            setValue={setValue}
+            scheduleOffsetName="scheduleOffsetMinutes"
+            scheduleStartAtName="scheduleStartAt"
+            scheduleOffsetMinutes={scheduleOffsetMinutes}
+            maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
+            offsetWindowLabel={`from each ${intervalLabel} window`}
+          />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
           </Text>
@@ -164,27 +273,71 @@ const AlertForm = ({
             disableKeywordAutocomplete
             size="xs"
           />
-        </Paper>
-        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
+          {groupBy &&
+            (thresholdType === AlertThresholdType.BELOW ||
+              thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||
+              thresholdType === AlertThresholdType.EQUAL ||
+              thresholdType === AlertThresholdType.NOT_EQUAL) && (
+              <MantineAlert
+                icon={<IconInfoCircleFilled size={16} />}
+                color="gray"
+                py="xs"
+              >
+                <Text size="sm" opacity={0.7}>
+                  Warning: Alerts with this threshold type and a &quot;grouped
+                  by&quot; value will not alert for periods with no data for a
+                  group.
+                </Text>
+              </MantineAlert>
+            )}
+          {(thresholdType === AlertThresholdType.EQUAL ||
+            thresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <MantineAlert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+            >
+              <Text size="sm" opacity={0.7}>
+                Note: Floating-point query results are not rounded during
+                equality comparison.
+              </Text>
+            </MantineAlert>
+          )}
+        </Stack>
+      </Paper>
+
+      {(defaultValues?.createdBy || alert) && (
+        <Paper px="md" py="sm" radius="xs" mt="sm">
+          <Group justify="space-between">
+            {defaultValues?.createdBy && (
+              <Box>
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Created by
+                </Text>
+                <Text size="sm" opacity={0.8}>
+                  {defaultValues.createdBy.name ||
+                    defaultValues.createdBy.email}
+                </Text>
+                {defaultValues.createdBy.name && (
+                  <Text size="xs" opacity={0.6}>
+                    {defaultValues.createdBy.email}
+                  </Text>
+                )}
+              </Box>
+            )}
+            {alert && (
+              <Group>
+                <AlertHistoryCardList alert={alert} />
+                <AckAlert alert={alert} />
+              </Group>
+            )}
+          </Group>
         </Paper>
-        {groupBy && thresholdType === AlertThresholdType.BELOW && (
-          <MantineAlert
-            icon={<IconInfoCircleFilled size={16} />}
-            bg="dark"
-            py="xs"
-          >
-            <Text size="sm" opacity={0.7}>
-              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
-              &quot;grouped by&quot; value will not alert for periods with no
-              data for a group.
-            </Text>
-          </MantineAlert>
-        )}
-      </Stack>
+      )}
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
         <Accordion.Item value="chart">
@@ -197,32 +350,18 @@ const AlertForm = ({
                 source={source}
                 where={where}
                 whereLanguage={whereLanguage}
+                filters={filters}
                 select={select}
                 interval={interval}
                 groupBy={groupByValue}
                 threshold={threshold}
+                thresholdMax={thresholdMax}
                 thresholdType={thresholdType}
               />
             )}
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-
-      {defaultValues?.createdBy && (
-        <Paper px="md" py="sm" radius="xs" mt="sm">
-          <Text size="xxs" opacity={0.5} mb={4}>
-            Created by
-          </Text>
-          <Text size="sm" opacity={0.8}>
-            {defaultValues.createdBy.name || defaultValues.createdBy.email}
-          </Text>
-          {defaultValues.createdBy.name && (
-            <Text size="xs" opacity={0.6}>
-              {defaultValues.createdBy.email}
-            </Text>
-          )}
-        </Paper>
-      )}
 
       <Group mt="lg" justify="space-between" gap="xs">
         <div>
@@ -239,10 +378,10 @@ const AlertForm = ({
           )}
         </div>
         <Group gap="xs">
-          <Button variant="light" color="gray" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="light" type="submit" loading={loading}>
+          <Button variant="primary" type="submit" loading={loading}>
             {defaultValues
               ? 'Save Alert'
               : hasSavedSearch
@@ -266,6 +405,7 @@ export const DBSearchPageAlertModal = ({
   onClose: () => void;
   open: boolean;
 }) => {
+  const brandName = useBrandDisplayName();
   const queryClient = useQueryClient();
   const createAlert = api.useCreateAlert();
   const updateAlert = api.useUpdateAlert();
@@ -309,9 +449,11 @@ export const DBSearchPageAlertModal = ({
           name,
           select: searchedConfig.select ?? '',
           where: searchedConfig.where ?? '',
-          whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+          whereLanguage:
+            searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
           source: searchedConfig.source ?? '',
           orderBy: searchedConfig.orderBy ?? '',
+          filters: searchedConfig.filters ?? [],
           tags: [],
         });
         await createAlert.mutate({
@@ -347,9 +489,10 @@ export const DBSearchPageAlertModal = ({
         });
       }
     } catch (error) {
+      console.error('Error creating/updating alert:', error);
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }
@@ -366,9 +509,10 @@ export const DBSearchPageAlertModal = ({
         autoClose: 5000,
       });
     } catch (error) {
+      console.error('Failed to delete alert:', error);
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }
@@ -383,7 +527,6 @@ export const DBSearchPageAlertModal = ({
       onClose={onClose}
       size="xl"
       withCloseButton={false}
-      zIndex={9999}
     >
       <Box pos="relative">
         <LoadingOverlay
@@ -437,6 +580,7 @@ export const DBSearchPageAlertModal = ({
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
+          filters={searchedConfig?.filters}
           select={searchedConfig?.select}
           defaultValues={
             activeIndex === 'stage'

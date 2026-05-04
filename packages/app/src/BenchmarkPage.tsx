@@ -1,32 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  parseAsInteger,
-  parseAsJson,
-  parseAsString,
-  useQueryState,
-} from 'nuqs';
+import { parseAsInteger, parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Code,
-  Grid,
-  Loader,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Button, Code, Grid, Stack, Table, Text, Title } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
+import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
 import { DBTimeChart } from './components/DBTimeChart';
-import { SQLEditorControlled } from './components/SQLEditor';
 
 function useBenchmarkQueryIds({
   queries,
@@ -212,13 +198,16 @@ function BenchmarkPage() {
   // Hack to get time range
   useEffect(() => {
     if (_queries.length > 0 && _connections.length > 0) {
+      // eslint-disable-next-line no-restricted-syntax
       setStartTime(new Date(Date.now() - 1000));
     }
   }, [_queries, _connections]);
+
   useEffect(() => {
     if (queryIds != null && queryIds[0] != null) {
       setEndTime(
         new Date(
+          // eslint-disable-next-line no-restricted-syntax
           Date.now() - 1000 * 9, // minus hard-coded flush interval
         ),
       );
@@ -254,7 +243,7 @@ function BenchmarkPage() {
               </Stack>
             </Grid.Col>
           </Grid>
-          <Button variant="outline" type="submit" loading={isQueryIdsLoading}>
+          <Button variant="primary" type="submit" loading={isQueryIdsLoading}>
             Run Benchmark
           </Button>
           {isQueryIdsLoading && (

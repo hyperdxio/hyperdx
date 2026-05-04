@@ -62,6 +62,52 @@ export class AlertsPage {
     await this.alertsButton.click();
   }
 
+  /**
+   * Get the alert card that contains a given name (saved search or dashboard/tile name).
+   * Scopes all further lookups to a single alert row so assertions aren't polluted
+   * by other tests' data.
+   */
+  getAlertCardByName(name: string) {
+    return this.alertsPageContainer
+      .locator('[data-testid^="alert-card-"]')
+      .filter({ hasText: name });
+  }
+
+  /**
+   * Get the error-indicator icon button inside a given alert card.
+   * The icon is only rendered when the alert has recorded execution errors.
+   */
+  getErrorIconForAlertCard(alertCard: Locator) {
+    return alertCard.locator('[data-testid^="alert-error-icon-"]');
+  }
+
+  /**
+   * Get the error details modal (rendered at the page level via Mantine portal).
+   * The modal is identified by its Mantine role and title rather than by the
+   * per-alert data-testid so callers don't need to know the alert id.
+   */
+  get errorModal() {
+    return this.page.getByRole('dialog', { name: 'Alert Execution Errors' });
+  }
+
+  /**
+   * Get the full error message Code block inside the currently-open error modal.
+   * Uses the native <code> role so we don't leak styling-level implementation
+   * details (the Mantine Code component renders as <code>).
+   */
+  get errorModalMessage() {
+    return this.errorModal.locator('pre');
+  }
+
+  /**
+   * Open the error modal for an alert card and wait for it to become visible.
+   */
+  async openErrorModalForAlertCard(alertCard: Locator) {
+    const icon = this.getErrorIconForAlertCard(alertCard);
+    await icon.scrollIntoViewIfNeeded();
+    await icon.click();
+  }
+
   // Getters for assertions
 
   get pageContainer() {

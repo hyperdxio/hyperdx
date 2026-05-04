@@ -1,18 +1,15 @@
-import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
+import { type Team } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-export type ITeam = {
+export interface ITeam extends Team {
   _id: ObjectId;
-  id: string;
-  name: string;
-  allowedAuthMethods?: 'password'[];
-  apiKey: string;
-  hookId: string;
-  collectorAuthenticationEnforced: boolean;
-} & TeamClickHouseSettings;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export type TeamDocument = mongoose.HydratedDocument<ITeam>;
 
 export default mongoose.model<ITeam>(
@@ -44,6 +41,7 @@ export default mongoose.model<ITeam>(
       queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
+      filterKeysFetchLimit: Number,
     },
     {
       timestamps: true,

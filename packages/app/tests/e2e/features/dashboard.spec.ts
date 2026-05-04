@@ -1,11 +1,22 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
+import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
+import { DashboardsListPage } from '../page-objects/DashboardsListPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
+} from '../utils/constants';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
+  let dashboardsListPage: DashboardsListPage;
 
   test.beforeEach(async ({ page }) => {
     dashboardPage = new DashboardPage(page);
+    dashboardsListPage = new DashboardsListPage(page);
     await dashboardPage.goto();
   });
 
@@ -29,96 +40,95 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
-  test(
-    'should persist dashboard across page reloads',
-    { tag: '@full-stack' },
-    async () => {
-      const uniqueDashboardName = `Test Dashboard ${Date.now()}`;
+  test('should persist dashboard across page reloads', {}, async () => {
+    const uniqueDashboardName = `Test Dashboard ${Date.now()}`;
 
-      await test.step('Create and name a new dashboard', async () => {
-        // Create dashboard using page object
-        await expect(dashboardPage.createButton).toBeVisible();
-        await dashboardPage.createNewDashboard();
+    await test.step('Create and name a new dashboard', async () => {
+      // Create dashboard using page object
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
 
-        // Edit dashboard name using page object method
-        await dashboardPage.editDashboardName(uniqueDashboardName);
-      });
+      // Edit dashboard name using page object method
+      await dashboardPage.editDashboardName(uniqueDashboardName);
+    });
 
-      await test.step('Add a tile to the dashboard', async () => {
-        // Open add tile modal
-        await expect(dashboardPage.addNewTileButton).toBeVisible();
-        await dashboardPage.addTile();
+    await test.step('Add a tile to the dashboard', async () => {
+      // Open add tile modal
+      await expect(dashboardPage.addButton).toBeVisible();
+      await dashboardPage.addTile();
 
-        // Create chart using chart editor component
-        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
-        await dashboardPage.chartEditor.createBasicChart(
-          'Persistence Test Chart',
-        );
+      // Create chart using chart editor component
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.createBasicChart(
+        'Persistence Test Chart',
+      );
 
-        // Wait for tile to appear first (wrapper element)
-        const dashboardTiles = dashboardPage.getTiles();
-        await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+      // Wait for tile to appear first (wrapper element)
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
 
-        // Then verify chart rendered inside (recharts can take time to initialize)
-        const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
-      });
+      // Then verify chart rendered inside (recharts can take time to initialize)
+      const chartContainers = dashboardPage.getChartContainers();
+      await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+    });
 
-      let dashboardUrl: string;
-      await test.step('Save dashboard URL', async () => {
-        dashboardUrl = dashboardPage.page.url();
-        console.log(`Dashboard URL: ${dashboardUrl}`);
-      });
+    let dashboardUrl: string;
 
-      await test.step('Navigate away from dashboard', async () => {
-        await dashboardPage.page.goto('/search');
-        await expect(dashboardPage.page).toHaveURL(/.*\/search/);
-      });
+    await test.step('Save dashboard URL', async () => {
+      dashboardUrl = dashboardPage.page.url();
+      console.log(`Dashboard URL: ${dashboardUrl}`);
+    });
 
-      await test.step('Return to dashboard and verify persistence', async () => {
-        await dashboardPage.page.goto(dashboardUrl);
+    await test.step('Navigate away from dashboard', async () => {
+      await dashboardPage.page.goto('/search');
+      await expect(dashboardPage.page).toHaveURL(/.*\/search/);
+    });
 
-        // Wait for dashboard to load by checking for tiles first
-        const dashboardTiles = dashboardPage.getTiles();
-        await expect(dashboardTiles).toHaveCount(1);
+    await test.step('Return to dashboard and verify persistence', async () => {
+      await dashboardPage.page.goto(dashboardUrl);
 
-        // Verify dashboard name persisted (displayed as h3 title)
-        const dashboardNameHeading =
-          dashboardPage.getDashboardHeading(uniqueDashboardName);
-        await expect(dashboardNameHeading).toBeVisible({ timeout: 5000 });
+      // Wait for dashboard to load by checking for tiles first
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1);
 
-        // Verify chart still shows
-        const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers.first()).toBeVisible();
-      });
+      // Verify dashboard name persisted (displayed as h3 title)
+      const dashboardNameHeading =
+        dashboardPage.getDashboardHeading(uniqueDashboardName);
+      await expect(dashboardNameHeading).toBeVisible({ timeout: 5000 });
 
-      await test.step('Verify dashboard appears in dashboards list', async () => {
-        await dashboardPage.goto();
+      // Verify chart still shows
+      const chartContainers = dashboardPage.getChartContainers();
+      await expect(chartContainers.first()).toBeVisible();
+    });
 
-        // Look for our dashboard in the list
-        const dashboardLink = dashboardPage.page.locator(
-          `text="${uniqueDashboardName}"`,
-        );
-        await expect(dashboardLink).toBeVisible({ timeout: 10000 });
+    await test.step('Verify dashboard appears in dashboards list', async () => {
+      await dashboardsListPage.goto();
 
-        // Click on it and verify it loads
-        await dashboardPage.goToDashboardByName(uniqueDashboardName);
+      // Look for our dashboard in the list
+      const dashboardLink = dashboardPage.page.locator(
+        `text="${uniqueDashboardName}"`,
+      );
+      await expect(dashboardLink).toBeVisible({ timeout: 10000 });
 
-        // Verify we're on the right dashboard
-        const dashboardTiles = dashboardPage.getTiles();
-        await expect(dashboardTiles).toHaveCount(1);
-      });
-    },
-  );
+      // Click on it and verify it loads
+      await dashboardPage.goToDashboardByName(uniqueDashboardName);
+
+      // Verify we're on the right dashboard
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1);
+    });
+  });
+
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async () => {
     test.setTimeout(60000);
+
     await test.step('Create new dashboard', async () => {
       await expect(dashboardPage.createButton).toBeVisible();
       await dashboardPage.createNewDashboard();
     });
 
     await test.step('Add first tile to dashboard', async () => {
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       // Create basic chart
@@ -131,16 +141,16 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Add second tile with Demo Metrics', async () => {
-      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await expect(dashboardPage.addButton).toBeVisible();
       await dashboardPage.addTile();
 
       // Select source and create chart with specific metric
       await expect(dashboardPage.chartEditor.source).toBeVisible();
       await dashboardPage.chartEditor.createChartWithMetric(
-        'K8s CPU Chart',
-        'Demo Metrics',
-        'k8s.container.cpu_limit',
-        'k8s.container.cpu_limit:::::::gauge',
+        'K8s Pod CPU Chart',
+        DEFAULT_METRICS_SOURCE_NAME,
+        'k8s.pod.cpu.utilization',
+        'k8s.pod.cpu.utilization:::::::gauge',
       );
     });
 
@@ -249,6 +259,883 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Verify chart is still visible (validates that the change worked)
         const chartContainers = dashboardPage.getChartContainers();
         await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+      });
+    },
+  );
+
+  test('should warn when closing tile editor with unsaved changes', async () => {
+    await dashboardPage.openNewTileEditor();
+    await dashboardPage.chartEditor.setChartName('My Unsaved Chart');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+
+    await dashboardPage.unsavedChangesConfirmCancelButton.click();
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+    await expect(dashboardPage.chartEditor.nameInput).toHaveValue(
+      'My Unsaved Chart',
+    );
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+    await dashboardPage.unsavedChangesConfirmDiscardButton.click();
+    await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+      timeout: 5000,
+    });
+  });
+
+  test('should add and remove alert on Number type chart', async () => {
+    test.setTimeout(60000);
+    const ts = Date.now();
+    const tileName = `E2E Alert Number Chart ${ts}`;
+    const webhookUrl = `https://example.com/number-chart-${ts}`;
+    const alertsPage = new AlertsPage(dashboardPage.page);
+
+    await test.step('Create new dashboard', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+    });
+
+    await test.step('create a Number type chart with alert', async () => {
+      await expect(dashboardPage.addButton).toBeVisible();
+      await dashboardPage.addTile();
+
+      await expect(dashboardPage.chartEditor.source).toBeVisible();
+
+      await dashboardPage.chartEditor.waitForDataToLoad();
+
+      await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+
+      await dashboardPage.chartEditor.selectSource(DEFAULT_METRICS_SOURCE_NAME);
+      await dashboardPage.chartEditor.selectMetric(
+        'k8s.pod.cpu.utilization',
+        'k8s.pod.cpu.utilization:::::::gauge',
+      );
+
+      await dashboardPage.chartEditor.setChartName(tileName);
+
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Add Alert',
+      );
+      await dashboardPage.chartEditor.clickAddAlert();
+      await dashboardPage.chartEditor.addNewWebhookButton.click();
+
+      await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+        'Generic',
+        `Test Webhook ${ts}`,
+        webhookUrl,
+      );
+
+      await dashboardPage.saveTile();
+    });
+
+    await test.step('Verify dashboard tiles and interactions', async () => {
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+
+      // Hover over first tile to reveal action buttons
+      await dashboardPage.hoverOverTile(0);
+
+      // Verify all action buttons are visible
+      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+        'edit',
+        'duplicate',
+        'delete',
+        'alerts',
+      ];
+      for (const button of buttons) {
+        const buttonLocator = dashboardPage.getTileButton(button);
+        await expect(buttonLocator).toBeVisible();
+      }
+    });
+
+    let dashboardUrl: string;
+
+    await test.step('Save dashboard URL', async () => {
+      dashboardUrl = dashboardPage.page.url();
+      console.log(`Dashboard URL: ${dashboardUrl}`);
+    });
+
+    await test.step('Navigate to alerts page', async () => {
+      await alertsPage.goto();
+    });
+
+    await test.step('Verify alerts page loads with content', async () => {
+      await expect(alertsPage.pageContainer).toBeVisible();
+      await expect(
+        alertsPage.pageContainer
+          .getByRole('link')
+          .filter({ hasText: tileName }),
+      ).toBeVisible({ timeout: 10000 });
+    });
+
+    await test.step('Navigate back to dashboard page', async () => {
+      await dashboardPage.page.goto(dashboardUrl);
+    });
+
+    await test.step('edit the tile to remove the alert', async () => {
+      // Hover over first tile to reveal edit button
+      await dashboardPage.editTile(0);
+
+      await dashboardPage.chartEditor.clickRemoveAlert();
+
+      await dashboardPage.saveTile();
+    });
+
+    await test.step('Navigate to alerts page', async () => {
+      await alertsPage.goto();
+    });
+
+    await test.step('Verify alerts page loads with no alerts', async () => {
+      await expect(alertsPage.pageContainer).toBeVisible();
+      await expect(
+        alertsPage.pageContainer
+          .getByRole('link')
+          .filter({ hasText: tileName }),
+      ).toBeHidden({ timeout: 10000 });
+    });
+  });
+
+  test('should close tile editor without confirm when there are no unsaved changes', async () => {
+    await dashboardPage.openNewTileEditor();
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+      timeout: 5000,
+    });
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+  });
+
+  test('should create and populate filters', {}, async () => {
+    test.setTimeout(30000);
+
+    await test.step('Create new dashboard', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+    });
+
+    await test.step('Create a table tile to filter', async () => {
+      await dashboardPage.addTile();
+
+      await dashboardPage.chartEditor.createTable({
+        chartName: 'Test Table',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
+        groupBy: 'ServiceName',
+      });
+
+      const accountCell = dashboardPage.page.getByTitle('accounting', {
+        exact: true,
+      });
+      const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
+      await expect(accountCell).toBeVisible();
+      await expect(adCell).toBeVisible();
+    });
+
+    await test.step('Add ServiceName filter to dashboard', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+      );
+
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+
+      await dashboardPage.closeFiltersModal();
+    });
+
+    await test.step('Add MetricName filter to dashboard', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await expect(dashboardPage.filtersList).toBeVisible();
+
+      await dashboardPage.addFilterToDashboard(
+        'Metric',
+        DEFAULT_METRICS_SOURCE_NAME,
+        'MetricName',
+        'gauge',
+      );
+
+      await expect(dashboardPage.getFilterItemByName('Metric')).toBeVisible();
+
+      await dashboardPage.closeFiltersModal();
+    });
+
+    await test.step('Verify tiles are filtered', async () => {
+      // Select 'accounting' in Service filter
+      await dashboardPage.clickFilterOption('Service', 'accounting');
+
+      const accountCell = dashboardPage.page.getByTitle('accounting', {
+        exact: true,
+      });
+      await expect(accountCell).toBeVisible();
+
+      // 'ad' ServiceName row should be filtered out
+      const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
+      await expect(adCell).toHaveCount(0);
+    });
+
+    await test.step('Verify metric filter is populated', async () => {
+      await dashboardPage.clickFilterOption(
+        'Metric',
+        'container.cpu.utilization',
+      );
+    });
+
+    await test.step('Delete a filter and verify it is removed', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.deleteFilterFromDashboard('Metric');
+
+      // Service filter should still be visible
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+
+      // Metric filter should be gone
+      await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(0);
+    });
+  });
+
+  test('should save and restore query and filter values', {}, async () => {
+    const testQuery = 'SeverityText:error';
+    let dashboardUrl: string;
+
+    await test.step('Create dashboard with chart', async () => {
+      await dashboardPage.createNewDashboard();
+
+      // Add a tile so dashboard is saveable
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+      const chartContainers = dashboardPage.getChartContainers();
+      await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+      // Save dashboard URL for later
+      dashboardUrl = dashboardPage.page.url();
+    });
+
+    await test.step('Add ServiceName filter to dashboard', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+      );
+
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+      await dashboardPage.closeFiltersModal();
+    });
+
+    await test.step('Select a filter value', async () => {
+      await dashboardPage.clickFilterOption('Service', 'accounting');
+
+      // Verify the filter is applied
+      const filterSelect = dashboardPage.getFilterSelectByName('Service');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
+    });
+
+    await test.step('Enter query in search bar', async () => {
+      const searchInput = dashboardPage.searchInput;
+      await expect(searchInput).toBeVisible();
+      await searchInput.fill(testQuery);
+    });
+
+    await test.step('Click save query button', async () => {
+      await dashboardPage.saveQueryAndFiltersAsDefault();
+
+      // Wait for success notification
+      const notification = dashboardPage.page.locator(
+        'text=/Filter query and dropdown values/i',
+      );
+      await expect(notification).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step('Navigate away from dashboard', async () => {
+      await dashboardPage.page.goto('/search');
+      await expect(dashboardPage.page).toHaveURL(/.*\/search/);
+    });
+
+    await test.step('Return to dashboard and verify query and filters are restored', async () => {
+      await dashboardPage.page.goto(dashboardUrl);
+
+      // Wait for dashboard controls to load
+      await expect(
+        dashboardPage.page.getByTestId('dashboard-page'),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
+
+      // Verify saved query is restored in search input
+      const searchInput = dashboardPage.searchInput;
+      await expect(searchInput).toHaveValue(testQuery);
+    });
+
+    await test.step('Clear URL params and verify query persists', async () => {
+      // Extract dashboard ID and navigate without query params
+      const dashboardId = dashboardUrl.split('/').pop()?.split('?')[0];
+      await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+      // Verify saved query still loads
+      const searchInput = dashboardPage.searchInput;
+      await expect(searchInput).toHaveValue(testQuery);
+
+      // Verify the saved filter value is populated
+      const filterSelect = dashboardPage.getFilterSelectByName('Service');
+      await expect(
+        filterSelect.locator('..').getByText('accounting'),
+      ).toBeVisible();
+    });
+  });
+
+  test(
+    'should handle URL query params overriding saved query',
+    {},
+    async () => {
+      const savedQuery = 'level:error';
+      const urlQuery = 'status:active';
+      let dashboardId: string;
+
+      await test.step('Create dashboard and save query', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a tile
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+        // Enter and save query
+        const searchInput = dashboardPage.searchInput;
+        await searchInput.fill(savedQuery);
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for save confirmation
+        await dashboardPage.page.waitForTimeout(1000);
+
+        // Extract dashboard ID
+        const url = dashboardPage.page.url();
+        dashboardId = url.split('/').pop()?.split('?')[0] || '';
+      });
+
+      await test.step('Navigate with URL query param', async () => {
+        // Navigate to dashboard with URL query param
+        await dashboardPage.page.goto(
+          `/dashboards/${dashboardId}?where=${encodeURIComponent(urlQuery)}`,
+        );
+
+        // Wait for dashboard controls to load
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-page'),
+        ).toBeVisible({ timeout: 10000 });
+        await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
+
+        // Verify URL query takes precedence over saved query
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(urlQuery);
+        await expect(searchInput).not.toHaveValue(savedQuery);
+      });
+
+      await test.step('Navigate without URL params to verify saved query', async () => {
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+        // Verify saved query is restored when no URL params
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(savedQuery);
+      });
+    },
+  );
+
+  test.describe('Raw SQL Dashboard Tiles', () => {
+    const LINE_SQL = `SELECT toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
+
+    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
+
+    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
+
+    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
+
+    test.beforeEach(async () => {
+      await dashboardPage.createNewDashboard();
+    });
+
+    test('Line chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Line ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Line chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(LINE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the line chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Table chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Table ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Table chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(TABLE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the table chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Number chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Number ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Number chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(NUMBER_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the number chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile).toContainText('1234');
+      });
+    });
+
+    test('Pie chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Pie ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Pie chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Pie);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the pie chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+  });
+
+  test(
+    'should deselect and hide the Custom aggregation function when switching to a metric source',
+    { tag: '@full-stack' },
+    async () => {
+      await test.step('Navigate to dashboard and open new tile editor', async () => {
+        await dashboardPage.openNewTileEditor();
+      });
+
+      await test.step('Select the "Custom" aggregation function', async () => {
+        await dashboardPage.chartEditor.selectAggFn('Custom');
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Custom');
+      });
+
+      await test.step('Switch the source to a metric source', async () => {
+        await dashboardPage.chartEditor.selectSource(
+          DEFAULT_METRICS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Verify the aggregation function was automatically changed away from "Custom"', async () => {
+        const selectedAggFn =
+          await dashboardPage.chartEditor.getSelectedAggFn();
+        expect(selectedAggFn).toBe('Count of Events');
+      });
+
+      await test.step('Verify the "Custom" option is NOT available in the aggregation dropdown', async () => {
+        const isCustomAvailable =
+          await dashboardPage.chartEditor.isAggFnOptionAvailable('Custom');
+        expect(isCustomAvailable).toBe(false);
+      });
+    },
+  );
+
+  test('should show error message and allow editing when tile source is missing', async ({
+    page,
+  }) => {
+    const apiUrl = getApiUrl();
+    const DELETABLE_SOURCE_NAME = `E2E Deletable Source ${Date.now()}`;
+
+    // Get an existing log source to copy its connection
+    const logSources = await getSources(page, 'log');
+    const { connection, from } = logSources[0];
+
+    // Create a dedicated source for this test via the API
+    const createResponse = await page.request.post(`${apiUrl}/sources`, {
+      data: {
+        kind: 'log',
+        name: DELETABLE_SOURCE_NAME,
+        connection,
+        from,
+        timestampValueExpression: 'TimestampTime',
+        defaultTableSelectExpression:
+          'Timestamp, ServiceName, SeverityText, Body',
+        serviceNameExpression: 'ServiceName',
+        implicitColumnExpression: 'Body',
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const createdSource = await createResponse.json();
+
+    await test.step('Create dashboard with tile using the deletable source', async () => {
+      await dashboardPage.goto();
+      await dashboardPage.createNewDashboard();
+
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.setChartName('Missing Source Tile');
+      await dashboardPage.chartEditor.selectSource(DELETABLE_SOURCE_NAME);
+      await dashboardPage.chartEditor.runQuery();
+      await dashboardPage.saveTile();
+
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Delete the source and reload the dashboard', async () => {
+      const dashboardUrl = page.url();
+
+      const deleteResponse = await page.request.delete(
+        `${apiUrl}/sources/${createdSource.id}`,
+      );
+      expect(deleteResponse.ok()).toBeTruthy();
+
+      await page.goto(dashboardUrl);
+      await expect(dashboardPage.getTiles()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Verify tile shows error message for missing source', async () => {
+      const tile = dashboardPage.getTiles().first();
+      await expect(tile).toContainText(
+        'The data source for this tile no longer exists',
+      );
+    });
+
+    await test.step('Verify tile can be edited when source is missing', async () => {
+      await dashboardPage.hoverOverTile(0);
+
+      const editButton = dashboardPage.getTileButton('edit');
+      await expect(editButton).toBeVisible();
+      await editButton.click();
+
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible({
+        timeout: 5000,
+      });
+    });
+  });
+
+  test(
+    'should clear saved query when WHERE input is cleared and saved',
+    {},
+    async () => {
+      const testQuery = 'level:warn';
+      let dashboardUrl: string;
+
+      await test.step('Create dashboard with chart', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a tile so dashboard is saveable
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+        // Save dashboard URL for later
+        dashboardUrl = dashboardPage.page.url();
+      });
+
+      await test.step('Enter and save query', async () => {
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toBeVisible();
+        await searchInput.fill(testQuery);
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for success notification
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Navigate away and verify query persists', async () => {
+        await dashboardPage.page.goto('/search');
+        await dashboardPage.page.goto(dashboardUrl);
+
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(testQuery);
+      });
+
+      await test.step('Clear the query and save', async () => {
+        const searchInput = dashboardPage.searchInput;
+        await searchInput.clear();
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for success notification
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Navigate away and verify query is cleared', async () => {
+        await dashboardPage.page.goto('/search');
+
+        // Extract dashboard ID and navigate back
+        const dashboardId = dashboardUrl.split('/').pop()?.split('?')[0];
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+        // Wait for dashboard to load
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+        // Verify search input is empty (saved query was removed)
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue('');
+      });
+    },
+  );
+
+  test.describe(
+    'Table chart - Display Group By Columns on Left',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('should move multiple group-by columns to the left when enabled', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Multi ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with two group-by columns', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy(
+            'ServiceName, SeverityText',
+          );
+        });
+
+        await test.step('Default order: series column first, group-by columns after', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+
+          const svcIdx = defaultHeaders.indexOf('ServiceName');
+          const sevIdx = defaultHeaders.indexOf('SeverityText');
+          expect(svcIdx).toBeGreaterThan(-1);
+          expect(sevIdx).toBeGreaterThan(-1);
+          const seriesIdx = defaultHeaders.findIndex(
+            h => h !== 'ServiceName' && h !== 'SeverityText',
+          );
+          expect(seriesIdx).toBeGreaterThan(-1);
+          expect(seriesIdx).toBeLessThan(svcIdx);
+          expect(seriesIdx).toBeLessThan(sevIdx);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(defaultHeaders.length);
+          expect(headersAfter[0]).toBe('ServiceName');
+          expect(headersAfter[1]).toBe('SeverityText');
+          expect(['ServiceName', 'SeverityText']).not.toContain(
+            headersAfter[headersAfter.length - 1],
+          );
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move a single group-by column to the left when multiple series are present', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS MultiSeries ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with one group-by and two series', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          // Distinct aliases so the two count() series render as two columns
+          // instead of colliding into one.
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'SeriesOne');
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'SeriesTwo');
+        });
+
+        await test.step('Default order: series columns first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders).toEqual([
+            'SeriesOne',
+            'SeriesTwo',
+            'ServiceName',
+          ]);
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter).toEqual([
+            'ServiceName',
+            'SeriesOne',
+            'SeriesTwo',
+          ]);
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
+      });
+
+      test('should move the group-by column to the left for ratio series return type', async () => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E GroupBy LHS Ratio ${ts}`;
+        let defaultHeaders: string[] = [];
+
+        await test.step('Configure a Table chart with ratio series and one group-by', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.toggleAsRatio();
+        });
+
+        await test.step('Default order: single ratio column first, group-by column last', async () => {
+          await dashboardPage.chartEditor.runQuery(false);
+          defaultHeaders =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(defaultHeaders.length).toBe(2);
+          expect(defaultHeaders[defaultHeaders.length - 1]).toBe('ServiceName');
+        });
+
+        await test.step('Enable "Display Group By Columns on Left" and verify reorder', async () => {
+          await dashboardPage.chartEditor.openDisplaySettings();
+          await dashboardPage.chartEditor.setGroupByColumnsOnLeft(true);
+          await dashboardPage.chartEditor.applyDisplaySettings();
+
+          const headersAfter =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headersAfter.length).toBe(2);
+          expect(headersAfter[0]).toBe('ServiceName');
+        });
+
+        await test.step('Save the tile and verify it renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+        });
       });
     },
   );

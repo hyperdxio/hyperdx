@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Card, Drawer, Stack, Text } from '@mantine/core';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
+// Easter egg: April Fools 2026 — see aiSummarize/ for details.
+import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
@@ -12,7 +14,7 @@ import {
   SEVERITY_TEXT_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 import { getFirstTimestampValueExpression } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -34,11 +36,13 @@ export default function PatternSidePanel({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;
 
-  const [selectedRowWhere, setSelectedRowWhere] = React.useState<string | null>(
-    null,
-  );
+  const [selectedRowWhere, setSelectedRowWhere] =
+    React.useState<RowWhereResult | null>(null);
 
-  const serviceNameExpression = source?.serviceNameExpression || 'Service';
+  const serviceNameExpression =
+    ((source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace) &&
+      source.serviceNameExpression) ||
+    'Service';
 
   const columnTypeMap = React.useMemo(() => {
     const map = new Map<string, { _type: JSDataType | null }>([
@@ -81,14 +85,28 @@ export default function PatternSidePanel({
 
   const handleRowClick = React.useCallback(
     (row: Record<string, any>) => {
-      const whereClause = getRowWhere({
+      const rowWhereResult = getRowWhere({
         body: row[PATTERN_COLUMN_ALIAS],
         ts: row[TIMESTAMP_COLUMN_ALIAS],
       });
-      setSelectedRowWhere(whereClause);
+      setSelectedRowWhere(rowWhereResult);
     },
     [getRowWhere],
   );
+
+  const INITIAL_LIMIT = 100;
+  const [showAll, setShowAll] = React.useState(false);
+
+  React.useEffect(() => {
+    setShowAll(false);
+  }, [pattern]);
+
+  const displayedSamples = React.useMemo(() => {
+    if (showAll || pattern.samples.length <= INITIAL_LIMIT) {
+      return pattern.samples;
+    }
+    return pattern.samples.slice(0, INITIAL_LIMIT);
+  }, [pattern.samples, showAll]);
 
   const handleCloseRowSidePanel = React.useCallback(() => {
     setSelectedRowWhere(null);
@@ -118,14 +136,18 @@ export default function PatternSidePanel({
             <Stack>
               <Card p="md">
                 <Text size="sm">{pattern.pattern}</Text>
+                <AISummarizePatternButton
+                  pattern={pattern}
+                  serviceNameExpression={serviceNameExpression}
+                />
               </Card>
               <Card p="md">
                 <Card.Section p="md" py="xs">
                   ~{pattern.count?.toLocaleString()} Sample Events
                 </Card.Section>
                 <RawLogTable
-                  rows={pattern.samples}
-                  generateRowId={row => row.id}
+                  rows={displayedSamples}
+                  generateRowId={row => ({ where: row.id, aliasWith: [] })}
                   displayedColumns={displayedColumns}
                   columnTypeMap={columnTypeMap}
                   columnNameMap={columnNameMap}
@@ -134,13 +156,25 @@ export default function PatternSidePanel({
                   showExpandButton={false}
                   isLive={false}
                 />
+                {!showAll && pattern.samples.length > INITIAL_LIMIT && (
+                  <Button
+                    variant="subtle"
+                    fullWidth
+                    size="xs"
+                    mt="xs"
+                    onClick={() => setShowAll(true)}
+                  >
+                    Show all {pattern.samples.length.toLocaleString()} samples
+                  </Button>
+                )}
               </Card>
             </Stack>
           </DrawerBody>
           {selectedRowWhere && (
             <DBRowSidePanel
               source={source}
-              rowId={selectedRowWhere}
+              rowId={selectedRowWhere.where}
+              aliasWith={selectedRowWhere.aliasWith}
               onClose={handleCloseRowSidePanel}
               isNestedPanel={true}
               breadcrumbPath={[{ label: 'Pattern Overview' }]}

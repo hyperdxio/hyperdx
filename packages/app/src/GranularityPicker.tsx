@@ -1,10 +1,9 @@
 import { memo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { Select } from '@mantine/core';
 
-import { Granularity } from './ChartUtils';
-
-export default function GranularityPicker({
+function GranularityPicker({
   value,
   onChange,
   disabled,
@@ -39,6 +38,10 @@ export default function GranularityPicker({
           label: '10 Minutes Granularity',
         },
         {
+          value: Granularity.FifteenMinute,
+          label: '15 Minutes Granularity',
+        },
+        {
           value: Granularity.ThirtyMinute,
           label: '30 Minutes Granularity',
         },
@@ -67,14 +70,8 @@ export default function GranularityPicker({
   );
 }
 
-export function GranularityPickerControlledComponent(
-  props: UseControllerProps<any>,
-) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+function GranularityPickerControlledComponent(props: UseControllerProps<any>) {
+  const { field } = useController(props);
 
   return <GranularityPicker value={field.value} onChange={field.onChange} />;
 }

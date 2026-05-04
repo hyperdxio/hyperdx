@@ -1,22 +1,32 @@
 import { z } from 'zod';
 
+import { isBuilderSavedChartConfig } from '@/guards';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
+  Connection,
   DashboardSchema,
+  DashboardTemplateSchema,
   MetricsDataType,
   SourceKind,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 import {
+  aliasMapToWithClauses,
   convertToDashboardTemplate,
+  extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
+  getAlignedDateRange,
+  getDistributedTableArgs,
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
+  joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseTokenizerFromTextIndex,
+  parseToNumber,
   parseToStartOfFunction,
   replaceJsonExpressions,
   splitAndTrimCSV,
@@ -24,6 +34,16 @@ import {
 } from '../core/utils';
 
 describe('utils', () => {
+  // Suppress expected console.error noise from invalid text index types,
+  // unknown tokenizers, and distributed table parsing edge cases
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('formatDate', () => {
     it('12h utc', () => {
       const date = new Date('2021-01-01T12:00:00Z');
@@ -265,7 +285,10 @@ describe('utils', () => {
     });
 
     it('should return the first column name for an array of objects input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -281,7 +304,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: undefined,
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -290,7 +313,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: '',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -299,7 +322,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -308,7 +331,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName ASC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -317,7 +340,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -326,7 +349,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp DESC, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -335,7 +358,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp desc, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -347,7 +370,7 @@ describe('utils', () => {
           { valueExpression: 'Timestamp', ordering: 'ASC' },
           { valueExpression: 'ServiceName', ordering: 'ASC' },
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -356,7 +379,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfDay(Timestamp)) DESC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -365,7 +388,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfHour(TimestampTime), TimestampTime) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -375,7 +398,7 @@ describe('utils', () => {
         timestampValueExpression:
           'toStartOfInterval(TimestampTime, INTERVAL 1 DAY)',
         orderBy: 'toStartOfInterval(TimestampTime, INTERVAL 1 DAY) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -405,7 +428,10 @@ describe('utils', () => {
     });
 
     it('should return true for ascending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'DESC' },
       ];
@@ -413,7 +439,10 @@ describe('utils', () => {
     });
 
     it('should return false for descending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'DESC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -488,7 +517,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -526,6 +555,7 @@ describe('utils', () => {
       expect(template).toEqual({
         name: 'My Dashboard',
         version: '0.1.0',
+        tags: ['tag1', 'tag2'],
         tiles: [
           {
             id: 'tile1',
@@ -609,7 +639,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -647,6 +677,7 @@ describe('utils', () => {
       expect(template).toEqual({
         name: 'My Dashboard',
         version: '0.1.0',
+        tags: ['tag1', 'tag2'],
         tiles: [
           {
             id: 'tile1',
@@ -676,6 +707,280 @@ describe('utils', () => {
           },
         ],
       });
+    });
+
+    it('should preserve level property for quantile aggFn in select', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Quantile Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'P95 Latency',
+              source: 'source1',
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.95,
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: 'Duration',
+                },
+              ],
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+      const tileConfig = template.tiles[0].config;
+      if (!isBuilderSavedChartConfig(tileConfig))
+        throw new Error('Expected builder config');
+      const selectList = tileConfig.select;
+      expect(Array.isArray(selectList)).toBe(true);
+      expect((selectList as any[])[0]).toMatchObject({
+        aggFn: 'quantile',
+        level: 0.95,
+      });
+    });
+
+    it('should convert connection IDs to names for RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Another SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn2',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+        {
+          id: 'conn2',
+          name: 'Staging DB',
+          host: 'http://localhost:8124',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, [], connections);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Staging DB',
+      });
+    });
+
+    it('should convert source IDs to names for RawSQL tiles with a source', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile With Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+              source: 'source1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'SQL Tile Without Source',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn1',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          kind: SourceKind.Log,
+          name: 'My Logs',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+          connection: 'conn1',
+        },
+      ];
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(
+        dashboard,
+        sources,
+        connections,
+      );
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+        source: 'My Logs',
+      });
+      // Tile without source should not have source set
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(
+        (template.tiles[1].config as { source?: string }).source,
+      ).toBeUndefined();
+    });
+
+    it('should fall back to empty string for unknown connection IDs in RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'unknown-conn',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, [], []);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: '',
+      });
+    });
+  });
+
+  describe('DashboardTemplateSchema duplicate tile IDs', () => {
+    const makeTemplateTile = (id: string) => ({
+      id,
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+      config: {
+        name: `Tile ${id}`,
+        source: 'source1',
+        displayType: 'number',
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: '',
+        whereLanguage: 'sql',
+      },
+    });
+
+    it('accepts tiles with unique IDs', () => {
+      const template = {
+        version: '0.1.0',
+        name: 'Unique Tiles',
+        tiles: [
+          makeTemplateTile('tile-a'),
+          makeTemplateTile('tile-b'),
+          makeTemplateTile('tile-c'),
+        ],
+      };
+      expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
+    });
+
+    it('rejects tiles with duplicate IDs and surfaces the duplicate ID', () => {
+      const template = {
+        version: '0.1.0',
+        name: 'Duplicate Tiles',
+        tiles: [
+          makeTemplateTile('dup'),
+          makeTemplateTile('unique'),
+          makeTemplateTile('dup'),
+        ],
+      };
+
+      const result = DashboardTemplateSchema.safeParse(template);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map(i => i.message);
+        expect(messages).toContain('Duplicate tile ID: dup');
+      }
     });
   });
 
@@ -1210,6 +1515,14 @@ describe('utils', () => {
         expr: 'toStartOfDay(',
         expected: undefined,
       },
+      {
+        expr: '-toInt64(toStartOfInterval(timestamp, toIntervalMinute(15)))',
+        expected: undefined,
+      },
+      {
+        expr: 'negate(toStartOfMinute(timestamp))',
+        expected: undefined,
+      },
     ])('Should parse $expr', ({ expr, expected }) => {
       expect(parseToStartOfFunction(expr)).toEqual(expected);
     });
@@ -1301,6 +1614,12 @@ describe('utils', () => {
         primaryKey: 'toStartOfMinute(`Time stamp`), other_column, `Time stamp`',
         expected: '`Time stamp`, toStartOfMinute(`Time stamp`)',
       },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          '-toInt64(toStartOfInterval(Timestamp, toIntervalMinute(15))), service_id, Timestamp',
+        expected: 'Timestamp',
+      },
     ] as const;
 
     it.each(testCases)(
@@ -1314,5 +1633,518 @@ describe('utils', () => {
         expect(actual).toBe(expected);
       },
     );
+  });
+
+  describe('getAlignedDateRange', () => {
+    it('should align start time down to the previous minute boundary', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:37Z'), // 37 seconds
+        new Date('2025-11-26T12:25:00Z'),
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:25:00.000Z');
+    });
+
+    it('should align end time up to the next minute boundary', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:00Z'),
+        new Date('2025-11-26T12:25:42Z'), // 42 seconds
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:26:00.000Z');
+    });
+
+    it('should align both start and end times with 5 minute granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:20:00
+        new Date('2025-11-26T12:27:42Z'), // Should round up to 12:30:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '5 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:20:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:30:00.000Z');
+    });
+
+    it('should align with 30 second granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:23:00
+        new Date('2025-11-26T12:25:42Z'), // Should round up to 12:26:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '30 second',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:26:00.000Z');
+    });
+
+    it('should align with 1 day granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to start of day
+        new Date('2025-11-28T08:15:00Z'), // Should round up to start of next day
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 day',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T00:00:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-29T00:00:00.000Z');
+    });
+
+    it('should not change range when already aligned to the interval', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:00Z'), // Already aligned
+        new Date('2025-11-26T12:25:00Z'), // Already aligned
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:25:00.000Z');
+    });
+
+    it('should align with 15 minute granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:15:00
+        new Date('2025-11-26T12:47:42Z'), // Should round up to 13:00:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '15 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:15:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T13:00:00.000Z');
+    });
+  });
+
+  describe('extractSettingsClauseFromEnd', () => {
+    test.each([
+      {
+        label: 'no settings clause',
+        sql: 'SELECT * FROM table',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: undefined,
+      },
+      {
+        label: 'basic',
+        sql: 'SELECT * FROM table SETTINGS opt=1, cast=1',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt=1, cast=1',
+      },
+      {
+        label: 'basic with semicolon',
+        sql: 'SELECT * FROM table SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'with WHERE clause',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'SETTINGS not at end',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1 FORMAT json;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        // This test case illustrates that subsequent clauses will also be extracted.
+        settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
+      },
+    ])(
+      'Extracts SETTINGS clause from: "$label" query',
+      ({ sql, settingsClause, withoutSettingsClause }) => {
+        const [remaining, extractedSettingsClause] =
+          extractSettingsClauseFromEnd(sql);
+        expect(remaining).toBe(withoutSettingsClause);
+        expect(extractedSettingsClause).toBe(settingsClause);
+      },
+    );
+  });
+
+  describe('parseToNumber', () => {
+    it('returns `undefined` for an empty string', () => {
+      expect(parseToNumber('')).toBe(undefined);
+    });
+
+    it('returns `undefined` for a whitespace string', () => {
+      expect(parseToNumber(' ')).toBe(undefined);
+    });
+
+    it('returns `undefined` for a non-numeric string', () => {
+      expect(parseToNumber(' . ? / ')).toBe(undefined);
+      expect(parseToNumber('  some string value ')).toBe(undefined);
+      expect(parseToNumber('5678abc')).toBe(undefined);
+    });
+
+    it('returns `undefined` for an infinite number', () => {
+      expect(parseToNumber('Infinity')).toBe(undefined);
+      expect(parseToNumber('-Infinity')).toBe(undefined);
+    });
+
+    it('returns the number value for a parseable number', () => {
+      expect(parseToNumber('123')).toBe(123);
+      expect(parseToNumber('0.123')).toBe(0.123);
+      expect(parseToNumber('1.123')).toBe(1.123);
+      expect(parseToNumber('10000000')).toBe(10000000);
+    });
+  });
+
+  describe('joinQuerySettings', () => {
+    test('returns `undefined` if the querySettings are `undefined` or empty', () => {
+      expect(joinQuerySettings(undefined)).toBe(undefined);
+      expect(joinQuerySettings([])).toBe(undefined);
+    });
+
+    test('filters out items whose `setting` or `value` field is empty', () => {
+      expect(
+        joinQuerySettings([
+          { setting: '', value: '1' },
+          { setting: 'async_insert', value: '' },
+          { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+        ]),
+      ).toEqual('async_insert_busy_timeout_min_ms = 20000');
+    });
+
+    test('joins the values into key value pairs', () => {
+      const result = joinQuerySettings([
+        { setting: 'additional_result_filter', value: 'x != 2' },
+        { setting: 'async_insert', value: '0' },
+        { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+      ]);
+
+      expect(result).toContain("additional_result_filter = 'x != 2'");
+      expect(result).toContain('async_insert = 0');
+      expect(result).toContain('async_insert_busy_timeout_min_ms = 20000');
+    });
+
+    test('joins the result into a comma separated string', () => {
+      expect(
+        joinQuerySettings([
+          { setting: 'additional_result_filter', value: 'x != 2' },
+          { setting: 'async_insert', value: '0' },
+          { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+        ]),
+      ).toEqual(
+        "additional_result_filter = 'x != 2', async_insert = 0, async_insert_busy_timeout_min_ms = 20000",
+      );
+    });
+
+    test('wraps non-numeric and infinite numeric values in quotes', () => {
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'x != 2' }]),
+      ).toEqual("setting_name = 'x != 2'");
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'string value' }]),
+      ).toEqual("setting_name = 'string value'");
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: '1000' }]),
+      ).toEqual('setting_name = 1000');
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'Infinity' }]),
+      ).toEqual("setting_name = 'Infinity'");
+    });
+  });
+  describe('parseTokenizerFromTextIndex', () => {
+    it.each([
+      {
+        type: 'text',
+        expected: undefined,
+      },
+      {
+        type: 'text()',
+        expected: undefined,
+      },
+      {
+        type: ' text ( tokenizer= array ) ',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(tokenizer=splitByNonAlpha)',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text( tokenizer = splitByNonAlpha )',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: "text(tokenizer = 'splitByNonAlpha')",
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text(tokenizer = "splitByNonAlpha")',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text(tokenizer = splitByString())',
+        expected: { type: 'splitByString', separators: [' '] },
+      },
+      {
+        type: `text(tokenizer = splitByString([', ', '; ', '\\n', '" ', '\\\\', '\\t', '(', ')']))`,
+        expected: {
+          type: 'splitByString',
+          separators: [', ', '; ', '\n', '" ', '\\', '\t', '(', ')'],
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5, 10))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: 10,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams)',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer= sparseGrams ())',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=unknown)',
+        expected: undefined,
+      },
+      {
+        type: '',
+        expected: undefined,
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=array)',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=ngrams)',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams())',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams(20))',
+        expected: { type: 'ngrams', n: 20 },
+      },
+    ])('should correctly parse tokenizer from: $type', ({ type, expected }) => {
+      const result = parseTokenizerFromTextIndex({
+        type: 'text',
+        typeFull: type,
+        name: 'text_idx',
+        expression: 'Body',
+        granularity: 1000,
+      });
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('aliasMapToWithClauses', () => {
+    it('should return undefined for undefined input', () => {
+      expect(aliasMapToWithClauses(undefined)).toBeUndefined();
+    });
+
+    it('should return undefined for empty alias map', () => {
+      expect(aliasMapToWithClauses({})).toBeUndefined();
+    });
+
+    it('should return undefined when all values are undefined', () => {
+      expect(
+        aliasMapToWithClauses({ body: undefined, service: undefined }),
+      ).toBeUndefined();
+    });
+
+    it('should return undefined when all values are empty strings', () => {
+      expect(
+        aliasMapToWithClauses({ body: '', service: '  ' }),
+      ).toBeUndefined();
+    });
+
+    it('should convert a single alias to a WITH clause', () => {
+      expect(aliasMapToWithClauses({ body: 'toString(Body)' })).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should convert multiple aliases to WITH clauses', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+        {
+          name: 'service',
+          sql: {
+            sql: "ResourceAttributes['service.name']",
+            params: {},
+          },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should skip entries with undefined or empty values', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        empty: '',
+        blank: '  ',
+        missing: undefined,
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toHaveLength(2);
+      expect(result![0].name).toBe('body');
+      expect(result![1].name).toBe('service');
+    });
+  });
+
+  describe('getLocalTableFromDistributedTable', () => {
+    const makeMetadata = (engineFull: string) =>
+      ({ engine_full: engineFull }) as any;
+
+    it('parses a simple Distributed engine_full', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('default', 'mydb', 'local_table', rand())"),
+      );
+      expect(result).toEqual({
+        cluster: 'default',
+        database: 'mydb',
+        table: 'local_table',
+      });
+    });
+
+    it('parses without a sharding key', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', 'db', 'tbl')"),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'db',
+        table: 'tbl',
+      });
+    });
+
+    it('handles double-quoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('Distributed("cluster", "my_database", "my_table")'),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'my_database',
+        table: 'my_table',
+      });
+    });
+
+    it('handles backtick-quoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', `mydb`, `local_tbl`, rand())"),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'mydb',
+        table: 'local_tbl',
+      });
+    });
+
+    it('handles unquoted identifiers', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('Distributed(cluster, mydb, local_tbl, rand())'),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'mydb',
+        table: 'local_tbl',
+      });
+    });
+
+    it('returns undefined when engine_full has fewer than 3 args', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata("Distributed('cluster', 'db')"),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined when engine_full does not match Distributed pattern', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata('MergeTree() ORDER BY id'),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('handles a complex sharding expression with nested parentheses', () => {
+      const result = getDistributedTableArgs(
+        makeMetadata(
+          "Distributed('cluster', 'db', 'tbl', sipHash64(UserID, EventDate))",
+        ),
+      );
+      expect(result).toEqual({
+        cluster: 'cluster',
+        database: 'db',
+        table: 'tbl',
+      });
+    });
   });
 });

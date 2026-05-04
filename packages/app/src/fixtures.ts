@@ -4,7 +4,7 @@ import { LocationMock } from '@jedmao/location';
 
 type PartialRouter = Partial<Router>;
 
-export const BASE_URL = 'https://www.hyperdx.io';
+const BASE_URL = 'https://www.hyperdx.io';
 
 /**
  * A Router to be used for testing which provides the bare minimum needed

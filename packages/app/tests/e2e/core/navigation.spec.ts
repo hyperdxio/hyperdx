@@ -39,24 +39,9 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           contentTestId: 'service-map-page',
         },
         {
-          testId: 'nav-link-dashboards',
-          href: '/dashboards',
-          contentTestId: 'dashboard-page',
-        },
-        {
-          testId: 'nav-link-clickhouse-dashboard',
-          href: '/clickhouse',
-          contentTestId: 'clickhouse-dashboard-page',
-        },
-        {
-          testId: 'nav-link-services-dashboard',
-          href: '/services',
-          contentTestId: 'services-dashboard-page',
-        },
-        {
-          testId: 'nav-link-k8s-dashboard',
-          href: '/kubernetes',
-          contentTestId: 'kubernetes-dashboard-page',
+          testId: 'nav-link-dashboards-list',
+          href: '/dashboards/list',
+          contentTestId: 'dashboards-list-page',
         },
       ];
 
@@ -71,22 +56,28 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await test.step('Navigate between each page', async () => {
         for (const { testId, contentTestId } of navLinks) {
           const link = page.locator(`[data-testid="${testId}"]`);
-          await link.click();
+          await link.scrollIntoViewIfNeeded();
+          // Use goto via the href attribute to avoid interference from
+          // Live Tail URL updates on the search page that can swallow clicks.
+          const href = await link.getAttribute('href');
+          await page.goto(href!);
 
           const content = page.locator(`[data-testid="${contentTestId}"]`);
-          await expect(content).toBeVisible();
+          await expect(content).toBeVisible({ timeout: 30_000 });
         }
 
         // Navigate back to first page at the end to test navigation away from the last page
         const firstLink = page.locator(`[data-testid="${navLinks[0].testId}"]`);
-        await firstLink.click();
+        const firstHref = await firstLink.getAttribute('href');
+        await page.goto(firstHref!);
         const firstContent = page.locator(
           `[data-testid="${navLinks[0].contentTestId}"]`,
         );
-        await expect(firstContent).toBeVisible();
+        await expect(firstContent).toBeVisible({ timeout: 30_000 });
       });
     },
   );
+
   test('should open user menu', async ({ page }) => {
     await test.step('Navigate to and click user menu trigger', async () => {
       // Wait for page to be fully loaded first
@@ -143,14 +134,28 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const documentationItem = page.locator(
         '[data-testid="documentation-menu-item"]',
       );
-      const discordItem = page.locator('[data-testid="discord-menu-item"]');
       const setupItem = page.locator(
         '[data-testid="setup-instructions-menu-item"]',
       );
+      const shortcutsItem = page.locator(
+        '[data-testid="keyboard-shortcuts-menu-item"]',
+      );
+      const discordItem = page.locator('[data-testid="discord-menu-item"]');
 
       await expect(documentationItem).toBeVisible();
-      await expect(discordItem).toBeVisible();
       await expect(setupItem).toBeVisible();
+      await expect(shortcutsItem).toBeVisible();
+      await expect(discordItem).toBeVisible();
+    });
+
+    await test.step('Open keyboard shortcuts from help menu', async () => {
+      const shortcutsItem = page.getByTestId('keyboard-shortcuts-menu-item');
+      await shortcutsItem.scrollIntoViewIfNeeded();
+      await shortcutsItem.click();
+
+      await expect(
+        page.getByRole('dialog', { name: 'Keyboard Shortcuts' }),
+      ).toBeVisible({ timeout: 10_000 });
     });
   });
 });

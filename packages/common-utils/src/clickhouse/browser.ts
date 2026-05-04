@@ -11,7 +11,10 @@ import {
   QueryInputs,
 } from './index';
 
-const localModeFetch: typeof fetch = (input, init) => {
+const localModeFetch: typeof fetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => {
   if (!init) init = {};
   const url = new URL(
     input instanceof URL ? input : input instanceof Request ? input.url : input,
@@ -26,11 +29,15 @@ const localModeFetch: typeof fetch = (input, init) => {
   delete init.headers?.['authorization'];
   if (username) url.searchParams.set('user', username);
   if (password) url.searchParams.set('password', password);
+  init.credentials = 'omit';
 
   return fetch(`${url.toString()}`, init);
 };
 
-const standardModeFetch: typeof fetch = (input, init) => {
+const standardModeFetch: typeof fetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => {
   if (!init) init = {};
   // authorization is handled on the backend, don't send this header
   delete init.headers?.['Authorization'];
@@ -105,6 +112,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     clickhouse_settings: externalClickhouseSettings,
     connectionId,
     queryId,
+    shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     // FIXME: we couldn't initialize the client in the constructor
     // since the window is not avalible
@@ -114,9 +122,14 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     this.logDebugQuery(query, query_params);
 
-    const clickhouseSettings = this.processClickhouseSettings(
-      externalClickhouseSettings,
-    );
+    let clickhouseSettings: ClickHouseSettings | undefined;
+    // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
+    if (!shouldSkipApplySettings) {
+      clickhouseSettings = await this.processClickhouseSettings({
+        connectionId,
+        externalClickhouseSettings,
+      });
+    }
 
     const httpHeaders: { [header: string]: string } = {
       ...(connectionId && connectionId !== 'local'

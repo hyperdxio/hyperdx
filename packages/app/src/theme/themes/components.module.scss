@@ -1,0 +1,13 @@
+.sliderMark {
+  width: 6px !important;
+  height: 6px !important;
+  margin-top: 1px;
+  border-radius: 100%;
+  border-color: var(--color-slider-dot) !important;
+  background-color: var(--color-slider-dot) !important;
+
+  &[data-filled] {
+    border-color: var(--color-slider-dot-active) !important;
+    background-color: var(--color-slider-dot-active) !important;
+  }
+}

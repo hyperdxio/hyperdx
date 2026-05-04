@@ -1,5 +1,535 @@
 # @hyperdx/app
 
+## 2.24.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- e2fc25da: feat: Add custom table onClick behavior
+- 7665fbe1: refactor: Unify section/group into single Group with collapsible/bordered options
+- Updated dependencies [b73f6fcc]
+- Updated dependencies [4c23e10a]
+- Updated dependencies [e2fc25da]
+- Updated dependencies [7665fbe1]
+  - @hyperdx/common-utils@0.18.1
+
+## 2.24.0
+
+### Minor Changes
+
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+- 0bfec148: Upgrade Mantine from v7 to v9 and remove react-hook-form-mantine dependency
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- c4a1311e: fix: Fix "Copy entire row as JSON" button crashing on rows with non-string values
+- a5869f0e: Dedupe source validation issue toasts so repeated source refetches update a single notification instead of stacking duplicates.
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 5149fabd: feat: Add Python Runtime Metrics dashboard template
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 739fe140: fix: time selector always resets to 00:00
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- 4ca1d472: Allow manually constructed /trace URLs to land in the existing search experience with the trace viewer opened from URL state. This keeps trace deep links user-friendly while reusing the search page for source selection, not-found handling, and trace inspection.
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
+## 2.23.2
+
+### Patch Changes
+
+- 0daa5299: feat: Generate stable source IDs in local mode
+
+## 2.23.1
+
+### Patch Changes
+
+- 7d1a8e54: fix: Show sidebar favorites empty state when none are starred yet
+- 800689ac: feat: Add reusable EmptyState component and adopt it across pages for consistent empty/no-data states
+- 2570ff84: fix: Change K8s CPU chart format from percentage to number to support both old and new OTel collector metric names
+- ad71dc2e: feat: Add keyboard shortcuts modal from the Help menu
+
+  - New **Keyboard shortcuts** item opens a modal documenting app shortcuts (command palette ⌘/Ctrl+K, search focus, time picker, tables, traces, dashboards, and more).
+  - Help menu items ordered by importance (documentation and setup before shortcuts and community).
+  - Shortcuts modal uses a readable width, row dividers, and **or** vs **+** labels so alternative keys are not confused with key chords.
+
+- 1bcca2cd: feat: Add alert icons to dashboard list page
+- 52986a94: Fix bug when accessing session replay panel from search page
+- ffc961c6: fix: Add error message and edit button when tile source is missing
+- 3ffafced: feat: show error details in search event patterns
+- 61db3e8b: refactor: Create TileAlertEditor component
+- f8d2edde: feat: Show created/updated metadata for saved searches and dashboards
+- Updated dependencies [24767c58]
+  - @hyperdx/common-utils@0.17.1
+
+## 2.23.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 20e47207: feat: Add input filter pills below search input to make filters usage more clear on seach page.
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- bfc93811: feat: Group Dashboards and Searches by Tag
+- 859ced5c: feat: Chart Explorer now auto-executes the chart on load when a valid source is configured. Deeplinks render results without requiring a manual click.
+- e6a0455a: fix: Properly enable line wrap behavior in JSON viewer by default
+- 518bda7d: feat: Add dashboard template gallery
+- 676e4f4b: fix: differentiate map indexing vs array indexing
+- 9852e9b0: perf: Defer expensive hooks in collapsed filter groups and virtualize nested filter lists
+- 5e5c6a94: fix: slider thumb and mark styling not applying theme tokens
+
+  - Move slider thumb styling from classNames to inline styles to fix CSS specificity issue where Mantine defaults override theme tokens
+  - Add !important to slider mark styles to ensure token-based colors apply
+  - Fix vertical centering of 6px slider mark dots within the 8px track
+  - Remove broken translateX/translateY nudge that misaligned marks
+
+- 4e54d850: fix: show Map sub-fields in facet panel for non-LowCardinality value types
+- 011a245f: fix: Fix error state and table overflows
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 05a1b765: fix: optimize order by should factor in wider cases, including the
+  default otel_traces
+- 48a8d32b: fix: Fixed bug preventing clicking into rows with nullable date types (and other misc type) columns.
+- a55b151e: fix: render clickhouse keywords properly in codemirror
+- 9cfb7e9c: fix: move help menu from footer to main nav links
+- 308da30b: feat: Add $\_\_sourceTable macro
+- 2bb8ccdc: fix: Fix query error when searching nested JSON values
+- df170d1e: fix: Show error on DBInfraPanel when correlated metric source is missing
+- e5c7fdf9: feat: Add saved searches listing page
+- 0cc1295d: fix: Add source schema preview to SQL Charts and Trace Panel
+- 1b77eab9: fix: replace sidebar collapse icons to align with ClickHouse collapse patterns
+- 853da16a: fix: Fix flaky E2E tests
+- b4e1498e: fix: Fix minor bugs in chart editor
+- bb24994f: feat: use 1 minute window for searches
+- Updated dependencies [518bda7d]
+- Updated dependencies [4e54d850]
+- Updated dependencies [53ba1e39]
+- Updated dependencies [b7581db8]
+- Updated dependencies [48a8d32b]
+- Updated dependencies [a15122b3]
+- Updated dependencies [a55b151e]
+- Updated dependencies [308da30b]
+- Updated dependencies [e5c7fdf9]
+- Updated dependencies [941d0450]
+  - @hyperdx/common-utils@0.17.0
+
+## 2.22.1
+
+### Patch Changes
+
+- 6c347a52: fix: ClickStack and HyperDX color token improvements
+
+  - Fix link colors in ClickStack (blue in light mode, yellow in dark mode)
+  - Override checkbox and radio button colors to use accent color with contrasting icons
+  - Restyle slider marks as solid 6px dots with semantic color tokens
+  - Add subtle Button variant to both themes
+
+- a6a83d59: feat: Add collapsible filter sidebar toggle to search page
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+- cdc29d5a: fix: Fix query error on ClickHouse Query latency chart
+- 8b629385: fix: Preserve default select when saving search
+- 7ab7f6de: feat: allow collapsing child spans
+- c9d1dda3: feat: Add column toggle button to filter panel in DBSearchPage
+- 45755260: fix: Prevent duplicate demo sources in Play Environment source select
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 1fb8e355: fix: Improve auto-complete behavior for aliases and maps
+- 2207edbf: docs: Link to the SQL-based visualization docs
+- dd313f77: fix: Fix intermittently-missing SQL autocomplete suggestions
+- e21811cc: feat: Add dashboard listing page
+- Updated dependencies [4f7dd9ef]
+- Updated dependencies [275dc941]
+- Updated dependencies [6936ef8e]
+  - @hyperdx/common-utils@0.16.2
+
+## 2.22.0
+
+### Minor Changes
+
+- a8216d7e: feat: allow scroll to zoom and panning to trace timeline viewer
+- b5c371e9: Add careers page (/careers) with Greenhouse job listings filtered to HyperDX/ClickStack roles, GitHub commit activity feed, and a CTA in the AppNav sidebar for local mode
+
+### Patch Changes
+
+- 60d1bbaf: feat: always-on attribute distribution mode for Event Deltas
+- 26759f79: feat: improved attribute sorting with entropy scoring and proportional comparison
+- 3d15b3de: feat: Enhance data source select with context-aware icons and inline actions
+- 134f1dca: fix: escape service filter values on Services page to handle quoted names safely
+- 068f72c7: fix: Add zero state to service map if no trace source is defined
+- 72d4642b: feat: Add `link` variant for Button and ActionIcon components
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 2e30c0e0: feat: Improve chart editor validations
+- 69cf33cb: feat: show inline span durations in trace timeline
+- e1cf4bca: fix: Override --mantine-color-text with semantic --color-text token
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- 33edc7e5: feat: Improve auto-completion for SQLEditor\
+- 1e0f8ec7: feat: enable horizontal scrolling on search results table for small screens
+- e355995c: fix: pass sidebar filters to alert preview chart
+- 1d83bebb: feat: Add support for dashboard filters on Raw SQL Charts
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 9682eb4d: fix: Fix filter value saving
+- 25a3291f: feat: Attach service version to all internal telemetry
+- Updated dependencies [2fab76bf]
+- Updated dependencies [e18f88c8]
+- Updated dependencies [e09c8c0e]
+- Updated dependencies [1381782b]
+- Updated dependencies [74d92594]
+- Updated dependencies [1d83bebb]
+- Updated dependencies [ce850647]
+- Updated dependencies [359b5874]
+- Updated dependencies [243e3baa]
+- Updated dependencies [4cee5d69]
+  - @hyperdx/common-utils@0.16.1
+
+## 2.21.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- f5828d1b: feat: field filtering and priority classification for Event Deltas
+- 2491c2a6: fix: Prevent metric name validation on markdown chart
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- 2efb8fdc: feat: filter/exclude/copy actions on Event Deltas attribute values
+- c5173ba2: fix: tile alerts with groupBy now correctly track and display group names
+- 705dd1b7: fix: Allow implicit column lucene search on services dashboard
+- f889c349: chore: separate timeline components to own modules, fix lint issues
+- 1e6fcf1c: feat: Add raw sql line charts
+- b4f05587: feat: localStorage for dashboards/saved searches in LOCAL mode
+- bbb1f1f0: feat: chart UX polish & heatmap fixes
+- 68ef3d6f: feat: deterministic sampling with adaptive sample size for Event Deltas
+- d661c809: fix: Add better URL encoding for query params with special characters
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+- Updated dependencies [1bae972e]
+- Updated dependencies [fd9f290e]
+- Updated dependencies [dda0f9a4]
+- Updated dependencies [32f1189a]
+- Updated dependencies [3bc5abbf]
+- Updated dependencies [1e6fcf1c]
+- Updated dependencies [902b8ebd]
+- Updated dependencies [a13b60d0]
+  - @hyperdx/common-utils@0.16.0
+
+## 2.20.0
+
+### Minor Changes
+
+- cd2b7a76: fix: revert use_top_k_dynamic_filtering setting for issues with ORDER BY rand()
+- 3e8cc729: feat: add alerts to number chart
+
+### Patch Changes
+
+- 8772f5e2: chore: update clickhouse versions for compose files
+- a6edb0dd: fix: the banner for the clickhouse build can now be collapsed
+- 5162acb4: fix: apply correct color-scheme for light and dark modes so scrollbars match the active theme
+- 1eede5ed: fix: align event patterns table headers to the left
+  fix: remove empty wrapper div on Event Deltas and Event Patterns tabs
+  fix: add consistent padding to Results Table, Event Deltas, and Event Patterns tabs
+- 3797e657: fix: guard formatNumber against non-numeric values
+- 247896e4: fix: Prevent crash when only one metric name exists
+- 578b1eea: fix: localmode stops prematurely fetching data
+  fix: users do not have to keep defining sources during onboarding modal if they already have sources
+- 875f78d4: fix: connections will automatically connect in clickstack build if default credentials test succeeds
+- Updated dependencies [cd2b7a76]
+- Updated dependencies [d760d2db]
+- Updated dependencies [34c9afeb]
+  - @hyperdx/common-utils@0.15.0
+
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- e55b81bc: fix: Support light-mode in tagging dropdown menu
+- 575779d2: Support JSON type in Surrounding Context
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
+## 2.18.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- e984e20e: feat: Theme-based branding in UI copy. Replace hardcoded "HyperDX" with the current theme display name so ClickStack deployments show "ClickStack" (e.g. "Welcome to ClickStack", page titles, error messages, help text). Adds `useBrandDisplayName()` hook in ThemeProvider.
+
+### Patch Changes
+
+- ec54757e: feat: Add confirm dialog when closing tile editor w/ changes
+- 185d4e40: fix: Add option to display all events in search histogram bars
+- fa2424da: fix: correct generated favicons for HyperDX and ClickStack
+- 5988850a: fix: Prevent sampled events error when HAVING clause is specified
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+- 38286f67: fix: searching json number property error
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
+## 2.17.0
+
+### Minor Changes
+
+- 3171a517: feat: Add option to filter out properties with blank values in column view
+- 5c895ff3: Allow overriding default connections
+
+### Patch Changes
+
+- 679b65d7: feat: added configuration to disable frontend otel exporter
+- 30f4dfdc: chore: update ClickStack favicons to be distinct across all ClickHouse apps/sites
+- 651bf99b: chore: deprecate Nextra and remove related code
+- 69f0b487: design: Make service map drill-down links more obvious
+- ce09b59b: feat: add static build generation
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- 161cdcc8: fix: error trace event pattern should have red color
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
+## 2.16.0
+
+### Minor Changes
+
+- 6241c388: feat: Add metrics attribute explorer in chart builder
+
+### Patch Changes
+
+- fa2b73ca: feat: Format byte numbers on ClickHouse page
+- b6c34b13: fix: Handling non-monotonic sums
+- 79356c4c: Set Button component default variant to "primary" for consistent styling across the app
+- 42820f39: fix: Apply theme CSS class during SSR to prevent button styling mismatch
+
+  Adds the theme class (e.g., `theme-hyperdx`) to the HTML element during server-side rendering in `_document.tsx`. This ensures CSS variables for button styling are correctly applied from the first render, preventing a hydration mismatch that caused primary buttons to display with Mantine's default styling instead of the custom theme styling when `NEXT_PUBLIC_THEME` was explicitly set.
+
+- e11b3138: fix: add react-hooks-eslint-plugin and fix issues across app
+- Updated dependencies [b6c34b13]
+  - @hyperdx/common-utils@0.12.2
+
+## 2.15.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+- 3c38272f: UI improvements for ClickStack/HyperDX:
+
+  - Improve Sessions page empty state with enhanced Card and Stepper component for setup instructions
+  - Apply consistent IBM Plex Mono font family to log tables, JSON viewer, and multi-series table charts
+
+- Updated dependencies [6cfa40a0]
+  - @hyperdx/common-utils@0.12.1
+
+## 2.15.0
+
+### Minor Changes
+
+- f44923ba: feat: Add auto-detecting and creating OTel sources during onboarding
+
+### Patch Changes
+
+- 9f75fe2e: fix: Ensure Noisy Patterns message isn't clipped
+- d89a2db2: fix: Fix side panel tab colors in ClickStack theme
+- ea56d11f: chore: Change "None" aggregation label to "Custom" in charts.
+- 7448508d: feat: Theme-aware UI improvements for ClickStack
+
+  - **Chart colors**: Made chart color palette theme-aware - ClickStack uses blue as primary color, HyperDX uses green. Charts now correctly display blue bars for ClickStack theme.
+  - **Semantic colors**: Updated semantic color functions (getChartColorSuccess, getChartColorWarning, getChartColorError) to be theme-aware, reading from CSS variables or falling back to theme-appropriate palettes.
+  - **Info log colors**: Changed info-level logs to use primary chart color (blue for ClickStack, green for HyperDX) instead of success green.
+  - **Button variants**: Made ResumeLiveTailButton variant conditional - uses 'secondary' for ClickStack theme, 'primary' for HyperDX theme.
+  - **Nav styles**: Fixed collapsed navigation styles for proper alignment and spacing when nav is collapsed to 50px width.
+  - **Icon stroke width**: Added custom stroke width (1.5) for Tabler icons in ClickStack theme only, providing a more refined appearance.
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 2f1a13cc: feat: Multi-theme system with HyperDX and ClickStack branding support
+
+  ## Major Features
+
+  ### Multi-Theme System
+
+  - Add infrastructure for supporting multiple brand themes (HyperDX & ClickStack)
+  - Theme switching available in dev/local mode via localStorage
+  - Production deployments use `NEXT_PUBLIC_THEME` environment variable (deployment-configured)
+  - Each theme provides its own logos, colors, favicons, and default fonts
+
+  ### Dynamic Favicons
+
+  - Implement theme-aware favicon system with SVG, PNG fallbacks, and Apple Touch Icon
+  - Add hydration-safe `DynamicFavicon` component
+  - Include XSS protection for theme-color meta tag validation
+
+  ### Component Refactoring
+
+  - Rename `Icon` → `Logomark` (icon/symbol only)
+  - Rename `Logo` → `Wordmark` (icon + text branding)
+  - Each theme provides its own `Logomark` and `Wordmark` components
+  - Update all component imports across the codebase
+
+  ### User Preferences Updates
+
+  - Rename `theme` property to `colorMode` to clarify light/dark mode vs brand theme
+  - Remove background overlay feature (backgroundEnabled, backgroundUrl, etc.)
+  - Add automatic data migration from legacy `theme` → `colorMode` in localStorage
+  - Ensure existing users don't lose their preferences during migration
+
+  ### Performance & Type Safety
+
+  - Optimize theme CSS class management (single class swap instead of iterating all themes)
+  - Improve type safety in migration function using destructuring
+  - Add type guards for runtime validation of localStorage data
+
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 9101a993: fix: Update ConnectionForm button variant based on test connection state
+
+  Changed the button variant in the ConnectionForm component to reflect the test connection state, using 'danger' for invalid states and 'secondary' for others. This improves user feedback during connection testing.
+
+- f7d8b83f: Improve sidebar expand/collapse animation
+- b8ab312a: chore: improve Team typing
+- 08b922cd: debug: notify SourceForm error path when message is 'Required'
+- 16df5024: fix: Fix tile hover state after closing edit modal
+- 22f882d6: Do not trigger table search input on modals/drawers
+- 7a5a5ef6: fix: Fix histogram disappearing and scrollbar issues on event patterns and search pages
+
+  Fixes regression from PR #1598 by adding proper flex container constraints to prevent histogram from disappearing and scrollbar from cutting off 120px early.
+
+- be4b784c: fix: Make JSON line hover visible in inline panel
+- eea4fa48: fix: Prevent orphan alert when duplicating dashboard tiles
+- 0dd58543: fix: Fix dashboard error when using filter on non-String column
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
+## 2.13.0
+
+### Minor Changes
+
+- 94ddc7eb: Add fullscreen panel view for dashboard charts
+
+  - Add YouTube-style fullscreen panel mode for dashboard charts
+  - Add expand button to chart hover toolbar (positioned after copy button)
+  - Implement 'f' keyboard shortcut to toggle fullscreen (works like YouTube)
+  - Support ESC key to exit fullscreen
+  - Works with all chart types: Line, Bar, Table, Number, Markdown, and Search
+  - Improved modal rendering to prevent screen shake/glitching
+  - Follows Mantine useHotkeys pattern for keyboard shortcuts
+
+- 9f51920b: Add a search input that allows searching within the virtual elements on the log search page
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- 5b3ce9fc: refactor: Standardize Button/ActionIcon variants and add ESLint enforcement
+- 1cf8cebb: feat: Support JSON Sessions
+- 190c66b8: Add metric column name validation when saving dashboard tiles
+- 9725a1fc: chore: Remove beta label from MVs
+- ddc54e43: feat: Allow customizing zero-fill behavior
+- 18222cd3: fix: Fix accuracy of ClickHouse inserts chart
+- 66b1a48a: fix: Disable usePresetDashboardFilters request in local mode
+- de680527: fix: Make pattern sampling query random
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- f39fcdac: fix: Refresh metadata after creating new connection in local mode
+- 5b252211: fix: Respect date range URL params on Services dashboard
+- ddc7dd04: various improvements to search result drawers and nesting logic
+- 79398be7: chore: Standardize granularities
+- 72d89989: Fix sessions subpanel not being closable, also fix loading indicator adding additional scrollbar to page
+- db845604: fix: bypass aliasWith so that useRowWhere works correctly
+- cf71a1cb: feat: Add text-brand semantic color tokens for theme flexibility
+- acefcbed: fix: Fix K8s events query for JSON schema
+- 3a2c33d3: feat: debounce highlighted attribute validation query
+- 1d961409: fix: Set correct values when opening number format form
+- 6752b3f8: fix: Filter DBTraceWaterfall events on timestamp expression
+- 1ed1ebf3: feat(charts): switch to Observable categorical color palette for better accessibility and theme support
+- 824a19a7: refactor(app-nav): reorganize AppNav component structure and improve maintainability
+- 78423450: Add `variant` prop to table components for muted background styling in dashboard tiles
+- f98fc519: perf: Query filter values from MVs
+- b2089fa9: fix: Prevent dashboard error when metricName is defined for non-metric source
+- 64998e0f: fix: Fix dashboard filters from Metric Tables
+- cf3ebb4b: feat: Add disabled state support and Storybook stories for Button and ActionIcon components
+
+  - Ensure all Button and ActionIcon variants use Mantine's default disabled styling for consistency
+  - Add comprehensive Storybook stories including Playground, DisabledStates, and LoadingStates
+  - Improve component documentation and testing capabilities
+
+- ac3082a5: Validate column names for metrics before creating a chart
+- 16036025: feat: Add HAVING filter to table charts
+- bf553d68: Revert "fix: alias reference bug in processRowToWhereClause"
+- 4a856173: feat: Add hasAllTokens for text index support
+- 5ba7fe00: style: Rename sidenav background color tokens for clarity and update AppNav hover/focus states
+- Updated dependencies [1cf8cebb]
+- Updated dependencies [418828e8]
+- Updated dependencies [79398be7]
+- Updated dependencies [bc8c4eec]
+- Updated dependencies [00854da8]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+- Updated dependencies [4a856173]
+  - @hyperdx/common-utils@0.11.0
+
+## 2.12.0
+
+### Minor Changes
+
+- 8b5e80da: Add chart legend series filtering with click and shift-click selection
+- 5dded38f: Refactor Sources components and add custom Mantine UI variants
+
+  - Move SourceForm to Sources/ subfolder with reusable SourcesList component
+  - Add primary, secondary, and danger button/action icon variants
+  - Improve Storybook with font switching and component stories
+  - Update ErrorBoundary styling with danger variant
+
+### Patch Changes
+
+- e9650e86: Fix hydration errors across a variety of pages
+- ab7645de: feat: Add a minimum date to MV configuration
+- 9f9629e4: fix: Increase span waterfall limit to 50 - 100k spans
+- 99863885: fix: Fix missing dashboard edit icons on search tile
+- 1a9362e7: Fix bug where loading saved search from another page might use default values instead
+- 2c288b1e: Fix threshold on alerts not visible, fix sessions page overflow bug
+- 8927f9e2: chore: bundle drain3 wasm deps
+- 725dbc2f: feat: Align line/bar chart date ranges to chart granularity
+- 1e6987e4: fix: Set better Chart Axis Bounds
+- 158ccefa: refactor: Add ChartContainer component with toolbar
+- 8213d69b: fix: Ensure displayed queries and MV indicators match queried configs
+- ae12ca16: feat: Add MV granularities and infer config from SummingMergeTree
+- 3b71fecb: fix: display "temporary dashboard" banner until dashboard is created
+- 8172fba9: fix: Fix a couple of visual bugs in Chart titles
+- 0c16a4b3: feat: Align date ranges to MV Granularity
+- Updated dependencies [ab7645de]
+- Updated dependencies [ebaebc14]
+- Updated dependencies [725dbc2f]
+- Updated dependencies [0c16a4b3]
+  - @hyperdx/common-utils@0.10.2
+
 ## 2.11.0
 
 ### Minor Changes

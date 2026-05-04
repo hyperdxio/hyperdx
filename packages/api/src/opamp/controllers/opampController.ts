@@ -81,6 +81,8 @@ type CollectorConfig = {
       ttl: string;
       logs_table_name: string;
       timeout: string;
+      create_schema: string;
+      json: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -95,6 +97,8 @@ type CollectorConfig = {
       password: string;
       ttl: string;
       timeout: string;
+      create_schema: string;
+      json: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -115,7 +119,9 @@ type CollectorConfig = {
   };
 };
 
-export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
+export const buildOtelCollectorConfig = (
+  teams: Pick<ITeam, 'apiKey' | 'collectorAuthenticationEnforced'>[],
+): CollectorConfig => {
   const apiKeys = teams.filter(team => team.apiKey).map(team => team.apiKey);
 
   if (config.IS_ALL_IN_ONE_IMAGE || config.IS_LOCAL_APP_MODE || config.IS_DEV) {
@@ -196,9 +202,12 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
         username: '${env:CLICKHOUSE_USER}',
         password: '${env:CLICKHOUSE_PASSWORD}',
-        ttl: '720h',
+        ttl: '${env:HYPERDX_OTEL_EXPORTER_TABLES_TTL:-720h}',
         logs_table_name: 'hyperdx_sessions',
         timeout: '5s',
+        create_schema:
+          '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
+        json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',
@@ -211,8 +220,11 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
         username: '${env:CLICKHOUSE_USER}',
         password: '${env:CLICKHOUSE_PASSWORD}',
-        ttl: '720h',
+        ttl: '${env:HYPERDX_OTEL_EXPORTER_TABLES_TTL:-720h}',
         timeout: '5s',
+        create_schema:
+          '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
+        json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',

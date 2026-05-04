@@ -1,10 +1,16 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { WithClause } from '@/hooks/useRowWhere';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
@@ -26,17 +32,28 @@ export enum ROW_DATA_ALIASES {
 export function useRowData({
   source,
   rowId,
+  aliasWith,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  aliasWith?: WithClause[];
 }) {
   const eventBodyExpr = getEventBody(source);
 
-  const searchedTraceIdExpr = source.traceIdExpression;
-  const searchedSpanIdExpr = source.spanIdExpression;
+  const searchedTraceIdExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.traceIdExpression
+      : undefined;
+  const searchedSpanIdExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.spanIdExpression
+      : undefined;
 
-  const severityTextExpr =
-    source.severityTextExpression || source.statusCodeExpression;
+  const severityTextExpr = isLogSource(source)
+    ? source.severityTextExpression
+    : isTraceSource(source)
+      ? source.statusCodeExpression
+      : undefined;
 
   const selectHighlightedRowAttributes =
     source.kind === SourceKind.Trace || source.kind === SourceKind.Log
@@ -88,7 +105,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.serviceNameExpression
+        ...((isLogSource(source) || isTraceSource(source)) &&
+        source.serviceNameExpression
           ? [
               {
                 valueExpression: source.serviceNameExpression,
@@ -104,7 +122,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.eventAttributesExpression
+        ...((isLogSource(source) || isTraceSource(source)) &&
+        source.eventAttributesExpression
           ? [
               {
                 valueExpression: source.eventAttributesExpression,
@@ -129,9 +148,10 @@ export function useRowData({
       where: rowId ?? '0=1',
       from: source.from,
       limit: { limit: 1 },
+      ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
     },
     {
-      queryKey: ['row_side_panel', rowId, source],
+      queryKey: ['row_side_panel', rowId, aliasWith, source],
       enabled: rowId != null,
     },
   );
@@ -182,13 +202,15 @@ export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
 export function RowDataPanel({
   source,
   rowId,
+  aliasWith,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  aliasWith?: WithClause[];
   'data-testid'?: string;
 }) {
-  const { data, isLoading, isError } = useRowData({ source, rowId });
+  const { data } = useRowData({ source, rowId, aliasWith });
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };

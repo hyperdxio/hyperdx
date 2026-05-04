@@ -1,5 +1,5 @@
 import router from 'next/router';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
   formatApproximateNumber,
@@ -16,7 +16,7 @@ jest.mock('next/router', () => ({
 }));
 
 describe('navigateToTraceSearch', () => {
-  const mockSource: TSource = {
+  const mockSource: TTraceSource = {
     id: 'test-source-id',
     name: 'Test Source',
     from: {
@@ -24,8 +24,16 @@ describe('navigateToTraceSearch', () => {
       databaseName: 'test_db',
     },
     timestampValueExpression: 'timestamp',
+    defaultTableSelectExpression: 'timestamp',
     connection: 'test-connection',
     kind: SourceKind.Trace,
+    durationExpression: 'Duration',
+    durationPrecision: 9,
+    traceIdExpression: 'TraceId',
+    spanIdExpression: 'SpanId',
+    parentSpanIdExpression: 'ParentSpanId',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
   };
 
   beforeEach(() => {

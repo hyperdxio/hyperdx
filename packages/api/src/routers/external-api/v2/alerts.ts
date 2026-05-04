@@ -1,7 +1,6 @@
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import {
   createAlert,
@@ -9,7 +8,12 @@ import {
   getAlertById,
   getAlerts,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
+import {
+  processRequestWithEnhancedErrors as processRequest,
+  validateRequestWithEnhancedErrors as validateRequest,
+} from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -22,168 +26,235 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       properties:
  *         message:
  *           type: string
+ *           description: Human-readable error message.
+ *           example: "NOT_FOUND: Alert not found"
+ *     AlertInterval:
+ *       type: string
+ *       enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
+ *       description: Evaluation interval.
+ *     AlertThresholdType:
+ *       type: string
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal, between, not_between]
+ *       description: Threshold comparison direction.
+ *     AlertSource:
+ *       type: string
+ *       enum: [saved_search, tile]
+ *       description: Alert source type.
+ *     AlertState:
+ *       type: string
+ *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED]
+ *       description: Current alert state.
+ *     AlertChannelType:
+ *       type: string
+ *       enum: [webhook]
+ *       description: Channel type.
+ *     AlertErrorType:
+ *       type: string
+ *       enum: [QUERY_ERROR, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       description: Category of error recorded during alert execution.
+ *     AlertExecutionError:
+ *       type: object
+ *       description: An error recorded during a recent alert execution.
+ *       required:
+ *         - timestamp
+ *         - type
+ *         - message
+ *       properties:
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *           description: When the error occurred.
+ *           example: "2026-04-17T12:00:00.000Z"
+ *         type:
+ *           $ref: '#/components/schemas/AlertErrorType'
+ *           description: Category of the error.
+ *           example: "QUERY_ERROR"
+ *         message:
+ *           type: string
+ *           description: Human-readable error message.
+ *           example: "Query timed out after 30s"
+ *     AlertSilenced:
+ *       type: object
+ *       description: Silencing metadata.
+ *       properties:
+ *         by:
+ *           type: string
+ *           description: User ID who silenced the alert.
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a234567"
+ *         at:
+ *           type: string
+ *           description: Silence start timestamp.
+ *           format: date-time
+ *           example: "2026-03-19T08:00:00.000Z"
+ *         until:
+ *           type: string
+ *           description: Silence end timestamp.
+ *           format: date-time
+ *           example: "2026-03-20T08:00:00.000Z"
+ *     AlertChannelWebhook:
+ *       type: object
+ *       required:
+ *         - type
+ *         - webhookId
+ *       properties:
+ *         type:
+ *           $ref: '#/components/schemas/AlertChannelType'
+ *           description: Channel type. Must be "webhook" for webhook alerts.
+ *         webhookId:
+ *           type: string
+ *           description: Webhook destination ID.
+ *           example: "65f5e4a3b9e77c001a789012"
+ *     AlertChannel:
+ *       oneOf:
+ *         - $ref: '#/components/schemas/AlertChannelWebhook'
+ *       discriminator:
+ *         propertyName: type
  *     Alert:
  *       type: object
  *       properties:
- *         id:
- *           type: string
- *           example: "65f5e4a3b9e77c001a123456"
- *         name:
- *           type: string
- *           example: "High Error Rate"
- *         message:
- *           type: string
- *           example: "Error rate exceeds threshold"
- *         threshold:
- *           type: number
- *           example: 100
- *         interval:
- *           type: string
- *           example: "15m"
- *         thresholdType:
- *           type: string
- *           enum: [above, below]
- *           example: "above"
- *         source:
- *           type: string
- *           enum: [tile, search]
- *           example: "tile"
- *         state:
- *           type: string
- *           example: "inactive"
- *         channel:
- *           type: object
- *           properties:
- *             type:
- *               type: string
- *               example: "webhook"
- *             webhookId:
- *               type: string
- *               example: "65f5e4a3b9e77c001a789012"
- *         team:
- *           type: string
- *           example: "65f5e4a3b9e77c001a345678"
- *         tileId:
- *           type: string
- *           example: "65f5e4a3b9e77c001a901234"
- *         dashboard:
- *           type: string
- *           example: "65f5e4a3b9e77c001a567890"
- *         savedSearch:
- *           type: string
- *           nullable: true
- *         groupBy:
- *           type: string
- *           nullable: true
- *         silenced:
- *           type: boolean
- *           nullable: true
- *         createdAt:
- *           type: string
- *           format: date-time
- *           example: "2023-01-01T00:00:00.000Z"
- *         updatedAt:
- *           type: string
- *           format: date-time
- *           example: "2023-01-01T00:00:00.000Z"
- *
- *     CreateAlertRequest:
- *       type: object
- *       required:
- *         - threshold
- *         - interval
- *         - source
- *         - thresholdType
- *         - channel
- *       properties:
  *         dashboardId:
  *           type: string
+ *           description: Dashboard ID for tile-based alerts.
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
+ *           description: Tile ID for tile-based alerts. Must be a line, stacked bar, or number type tile.
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
+ *         savedSearchId:
+ *           type: string
+ *           description: Saved search ID for saved_search alerts.
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a345678"
+ *         groupBy:
+ *           type: string
+ *           description: Group-by key for saved search alerts.
+ *           nullable: true
+ *           example: "ServiceName"
  *         threshold:
  *           type: number
+ *           description: Threshold value for triggering the alert. For between and not_between threshold types, this is the lower bound.
  *           example: 100
+ *         thresholdMax:
+ *           type: number
+ *           nullable: true
+ *           description: Upper bound for between and not_between threshold types. Required when thresholdType is between or not_between, must be >= threshold.
+ *           example: 500
  *         interval:
- *           type: string
+ *           $ref: '#/components/schemas/AlertInterval'
+ *           description: Evaluation interval for the alert.
  *           example: "1h"
- *         source:
+ *         scheduleOffsetMinutes:
+ *           type: integer
+ *           minimum: 0
+ *           description: Offset from the interval boundary in minutes. For example, 2 with a 5m interval evaluates windows at :02, :07, :12, etc. (UTC).
+ *           nullable: true
+ *           example: 2
+ *         scheduleStartAt:
  *           type: string
- *           enum: [tile, search]
+ *           format: date-time
+ *           description: Absolute UTC start time anchor. Alert windows start from this timestamp and repeat every interval.
+ *           nullable: true
+ *           example: "2026-02-08T10:00:00.000Z"
+ *         source:
+ *           $ref: '#/components/schemas/AlertSource'
+ *           description: Alert source type (tile-based or saved search).
  *           example: "tile"
  *         thresholdType:
- *           type: string
- *           enum: [above, below]
+ *           $ref: '#/components/schemas/AlertThresholdType'
+ *           description: Threshold comparison direction.
  *           example: "above"
  *         channel:
- *           type: object
- *           properties:
- *             type:
- *               type: string
- *               example: "webhook"
- *             webhookId:
- *               type: string
- *               example: "65f5e4a3b9e77c001a789012"
+ *           $ref: '#/components/schemas/AlertChannel'
+ *           description: Alert notification channel configuration.
  *         name:
  *           type: string
+ *           description: Human-friendly alert name.
+ *           nullable: true
  *           example: "Test Alert"
  *         message:
  *           type: string
+ *           description: Alert message template.
+ *           nullable: true
  *           example: "Test Alert Message"
  *
- *     UpdateAlertRequest:
- *       type: object
- *       properties:
- *         threshold:
- *           type: number
- *           example: 500
- *         interval:
- *           type: string
- *           example: "1h"
- *         thresholdType:
- *           type: string
- *           enum: [above, below]
- *           example: "above"
- *         source:
- *           type: string
- *           enum: [tile, search]
- *           example: "tile"
- *         dashboardId:
- *           type: string
- *           example: "65f5e4a3b9e77c001a567890"
- *         tileId:
- *           type: string
- *           example: "65f5e4a3b9e77c001a901234"
- *         channel:
- *           type: object
- *           properties:
- *             type:
- *               type: string
- *               example: "webhook"
- *             webhookId:
- *               type: string
- *               example: "65f5e4a3b9e77c001a789012"
- *         name:
- *           type: string
- *           example: "Updated Alert Name"
- *         message:
- *           type: string
- *           example: "Updated message"
- *
  *     AlertResponse:
+ *       allOf:
+ *         - $ref: '#/components/schemas/Alert'
+ *         - type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *               description: Unique alert identifier.
+ *               example: "65f5e4a3b9e77c001a123456"
+ *             state:
+ *               $ref: '#/components/schemas/AlertState'
+ *               description: Current alert state.
+ *               example: "ALERT"
+ *             teamId:
+ *               type: string
+ *               description: Team identifier.
+ *               example: "65f5e4a3b9e77c001a345678"
+ *             silenced:
+ *               $ref: '#/components/schemas/AlertSilenced'
+ *               description: Silencing metadata.
+ *               nullable: true
+ *             executionErrors:
+ *               type: array
+ *               nullable: true
+ *               description: Errors recorded during the most recent alert execution, if any.
+ *               items:
+ *                 $ref: '#/components/schemas/AlertExecutionError'
+ *             createdAt:
+ *               type: string
+ *               nullable: true
+ *               format: date-time
+ *               description: Creation timestamp.
+ *               example: "2023-01-01T00:00:00.000Z"
+ *             updatedAt:
+ *               type: string
+ *               nullable: true
+ *               format: date-time
+ *               description: Last update timestamp.
+ *               example: "2023-01-01T00:00:00.000Z"
+ *
+ *     CreateAlertRequest:
+ *       allOf:
+ *         - $ref: '#/components/schemas/Alert'
+ *         - type: object
+ *           required:
+ *             - threshold
+ *             - interval
+ *             - thresholdType
+ *             - channel
+ *
+ *     UpdateAlertRequest:
+ *       allOf:
+ *         - $ref: '#/components/schemas/Alert'
+ *         - type: object
+ *           required:
+ *             - threshold
+ *             - interval
+ *             - thresholdType
+ *             - channel
+ *
+ *     AlertResponseEnvelope:
  *       type: object
  *       properties:
  *         data:
- *           $ref: '#/components/schemas/Alert'
+ *           $ref: '#/components/schemas/AlertResponse'
+ *           description: The alert object.
  *
  *     AlertsListResponse:
  *       type: object
  *       properties:
  *         data:
  *           type: array
+ *           description: List of alert objects.
  *           items:
- *             $ref: '#/components/schemas/Alert'
+ *             $ref: '#/components/schemas/AlertResponse'
  *
  *     EmptyResponse:
  *       type: object
@@ -191,6 +262,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  */
 
 const router = express.Router();
+
 /**
  * @openapi
  * /api/v2/alerts/{id}:
@@ -213,26 +285,24 @@ const router = express.Router();
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AlertResponse'
+ *               $ref: '#/components/schemas/AlertResponseEnvelope'
  *             examples:
  *               alertResponse:
  *                 summary: Single alert response
  *                 value:
  *                   data:
  *                     id: "65f5e4a3b9e77c001a123456"
- *                     name: "CPU Usage Alert"
- *                     message: "CPU usage is above 80%"
  *                     threshold: 80
  *                     interval: "5m"
  *                     thresholdType: "above"
  *                     source: "tile"
- *                     state: "active"
+ *                     state: "ALERT"
  *                     channel:
  *                       type: "webhook"
  *                       webhookId: "65f5e4a3b9e77c001a789012"
- *                     team: "65f5e4a3b9e77c001a345678"
+ *                     teamId: "65f5e4a3b9e77c001a345678"
  *                     tileId: "65f5e4a3b9e77c001a901234"
- *                     dashboard: "65f5e4a3b9e77c001a567890"
+ *                     dashboardId: "65f5e4a3b9e77c001a567890"
  *                     createdAt: "2023-03-15T10:20:30.000Z"
  *                     updatedAt: "2023-03-15T14:25:10.000Z"
  *       '401':
@@ -298,19 +368,17 @@ router.get(
  *                 value:
  *                   data:
  *                     - id: "65f5e4a3b9e77c001a123456"
- *                       name: "High Error Rate"
- *                       message: "Error rate exceeds threshold"
  *                       threshold: 100
  *                       interval: "15m"
  *                       thresholdType: "above"
  *                       source: "tile"
- *                       state: "inactive"
+ *                       state: "OK"
  *                       channel:
  *                         type: "webhook"
  *                         webhookId: "65f5e4a3b9e77c001a789012"
- *                       team: "65f5e4a3b9e77c001a345678"
+ *                       teamId: "65f5e4a3b9e77c001a345678"
  *                       tileId: "65f5e4a3b9e77c001a901234"
- *                       dashboard: "65f5e4a3b9e77c001a567890"
+ *                       dashboardId: "65f5e4a3b9e77c001a567890"
  *                       createdAt: "2023-01-01T00:00:00.000Z"
  *                       updatedAt: "2023-01-01T00:00:00.000Z"
  *       '401':
@@ -374,7 +442,7 @@ router.get('/', async (req, res, next) => {
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AlertResponse'
+ *               $ref: '#/components/schemas/AlertResponseEnvelope'
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -388,23 +456,31 @@ router.get('/', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', async (req, res, next) => {
-  const teamId = req.user?.team;
-  const userId = req.user?._id;
-  if (teamId == null || userId == null) {
-    return res.sendStatus(403);
-  }
-  try {
-    const alertInput = req.body;
-    const createdAlert = await createAlert(teamId, alertInput, userId);
+router.post(
+  '/',
+  processRequest({
+    body: alertSchema,
+  }),
+  async (req, res, next) => {
+    const teamId = req.user?.team;
+    const userId = req.user?._id;
+    if (teamId == null || userId == null) {
+      return res.sendStatus(403);
+    }
+    try {
+      const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
 
-    return res.json({
-      data: translateAlertDocumentToExternalAlert(createdAlert),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+      const createdAlert = await createAlert(teamId, alertInput, userId);
+
+      return res.json({
+        data: translateAlertDocumentToExternalAlert(createdAlert),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @openapi
@@ -449,7 +525,7 @@ router.post('/', async (req, res, next) => {
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AlertResponse'
+ *               $ref: '#/components/schemas/AlertResponseEnvelope'
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -471,7 +547,7 @@ router.post('/', async (req, res, next) => {
  */
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -487,6 +563,8 @@ router.put(
       const { id } = req.params;
 
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
+
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {

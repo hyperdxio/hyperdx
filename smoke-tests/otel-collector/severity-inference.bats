@@ -44,3 +44,15 @@ load 'test_helpers/assertions.bash'
     sleep 1
     assert_test_data "data/severity-inference/skip-infer"
 }
+
+@test "should not infer severity from keywords embedded mid-word" {
+    emit_otel_data "http://localhost:4318" "data/severity-inference/no-infer-substring"
+    sleep 1
+    assert_test_data "data/severity-inference/no-infer-substring"
+}
+
+@test "should infer severity from superstring keywords like WARNING and CRITICAL" {
+    emit_otel_data "http://localhost:4318" "data/severity-inference/infer-superstring"
+    sleep 1
+    assert_test_data "data/severity-inference/infer-superstring"
+}

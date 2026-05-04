@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
-import { useForm, useWatch } from 'react-hook-form';
+import { parseAsJson, useQueryState } from 'nuqs';
+import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -24,15 +24,18 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+
+import OnboardingModal from './components/OnboardingModal';
 
 // Autocomplete can focus on column/map keys
 
@@ -52,12 +55,13 @@ function AIAssistant({
   submitRef: React.RefObject<(() => void) | undefined>;
   aiAssistantEnabled: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const [opened, setOpened] = useState(false);
   const [alertDismissed, setAlertDismissed] = useLocalStorage(
     'ai-assistant-alert-dismissed',
     false,
   );
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, handleSubmit } = useForm<{
     text: string;
     source: string;
   }>({
@@ -77,11 +81,9 @@ function AIAssistant({
       },
       {
         onSuccess(data) {
-          setConfig(data);
+          setConfig({ ...data, where: '' });
           onTimeRangeSelect(
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[0]),
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[1]),
           );
 
@@ -133,8 +135,8 @@ function AIAssistant({
         >
           <Text size="xs" pt="2px">
             New AI Assistant available, enable with configuring the{' '}
-            <code>ANTHROPIC_API_KEY</code> environment variable on the HyperDX
-            server.
+            <code>ANTHROPIC_API_KEY</code> environment variable on the{' '}
+            {brandName} server.
           </Text>
         </Alert>
         <Divider mt="sm" />
@@ -164,8 +166,9 @@ function AIAssistant({
         </Button>
         <Pill size="xs">Experimental</Pill>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         {opened && (
+          // eslint-disable-next-line react-hooks/refs
           <form onSubmit={handleSubmit(onSubmit)}>
             <Group mb="md">
               <SourceSelectControlled
@@ -189,7 +192,7 @@ function AIAssistant({
               {chartAssistant.isPending ? (
                 <Loader size="xs" type="dots" />
               ) : (
-                <Button type="submit" size="xs" variant="light">
+                <Button type="submit" size="xs" variant="primary">
                   Generate
                 </Button>
               )}
@@ -203,6 +206,7 @@ function AIAssistant({
 }
 
 function DBChartExplorerPage() {
+  const brandName = useBrandDisplayName();
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -224,14 +228,16 @@ function DBChartExplorerPage() {
     parseAsJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
+      connection: sources?.[0]?.connection,
     }),
   );
 
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>Chart Explorer - HyperDX</title>
+        <title>Chart Explorer - {brandName}</title>
       </Head>
+      <OnboardingModal />
       <AIAssistant
         setConfig={setChartConfig}
         onTimeRangeSelect={onTimeRangeSelect}
@@ -250,6 +256,7 @@ function DBChartExplorerPage() {
         onTimeRangeSearch={onSearch}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
+        autoRun
       />
     </Box>
   );

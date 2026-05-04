@@ -1,14 +1,14 @@
 import { ChSql, chSql } from '@/clickhouse';
-import { ChartConfig } from '@/types';
+import { BuilderChartConfig } from '@/types';
 
-type WithClauses = ChartConfig['with'];
+type WithClauses = BuilderChartConfig['with'];
 type TemplatedInput = ChSql | string;
 
 export const translateHistogram = ({
   select,
   ...rest
 }: {
-  select: Exclude<ChartConfig['select'], string>[number];
+  select: Exclude<BuilderChartConfig['select'], string>[number];
   timeBucketSelect: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;

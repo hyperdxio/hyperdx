@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { Box, Button, Text } from '@mantine/core';
+import { Box, Button } from '@mantine/core';
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { ColumnDef } from '@tanstack/react-table';
 
@@ -122,7 +122,7 @@ export const SpanEventsSubpanel = ({
 
         {hiddenRowsCount ? (
           <Button
-            variant="default"
+            variant="secondary"
             size="xs"
             my="sm"
             onClick={handleToggleMoreRows}

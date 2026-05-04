@@ -3,7 +3,14 @@ import path from 'path';
 
 // Check if we should use full-stack mode (with backend)
 const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
+// Check if we should use next dev (hot reload) instead of build + start
+const USE_DEV = process.env.E2E_USE_DEV === 'true';
 const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
+
+// Port configuration (set by scripts/test-e2e.sh via HDX_E2E_* env vars)
+const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
+const APP_PORT = process.env.HDX_E2E_APP_PORT || '21300';
+const APP_LOCAL_PORT = process.env.HDX_E2E_APP_LOCAL_PORT || '21200';
 
 // Timeout configuration constants (in milliseconds)
 const TEST_TIMEOUT_MS = 60 * 1000; // 60 seconds per test
@@ -18,7 +25,7 @@ export default defineConfig({
   /* Global setup to ensure server is ready */
   globalSetup: USE_FULLSTACK
     ? require.resolve('./tests/e2e/global-setup-fullstack.ts')
-    : require.resolve('./global-setup.js'),
+    : require.resolve('./tests/e2e/global-setup-local.ts'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -39,8 +46,8 @@ export default defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: USE_FULLSTACK
-      ? 'http://localhost:28081'
-      : process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8081',
+      ? `http://localhost:${APP_PORT}`
+      : process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${APP_LOCAL_PORT}`,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Take screenshot on failure */
@@ -72,20 +79,20 @@ export default defineConfig({
     ? [
         // Full-stack mode: Start API and App servers (infrastructure started separately)
         {
-          // Loads configuration from .env.e2e (connections, settings)
-          // Environment variables (MONGO_URI, etc.) can override .env.e2e values
+          // Connections/sources come from env (injected by run-e2e.js from e2e-fixtures.json)
           command: `cd ../api && ${process.env.MONGO_URI ? `MONGO_URI="${process.env.MONGO_URI}"` : ''} DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts`,
-          port: 29000,
+          port: parseInt(API_PORT, 10),
           reuseExistingServer: !process.env.CI,
           timeout: API_SERVER_STARTUP_TIMEOUT_MS,
           stdout: 'pipe',
           stderr: 'pipe',
         },
         {
-          command: process.env.CI
-            ? 'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start'
-            : 'SERVER_URL=http://localhost:29000 PORT=28081 NEXT_TELEMETRY_DISABLED=1 yarn run dev',
-          port: 28081,
+          // Full UI: Alerts + Dashboards. Not local mode; Alerts enabled;
+          command: USE_DEV
+            ? `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e next dev --webpack`
+            : `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e yarn build && SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e yarn start`,
+          port: parseInt(APP_PORT, 10),
           reuseExistingServer: !process.env.CI,
           timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
           stdout: 'pipe',
@@ -94,10 +101,10 @@ export default defineConfig({
       ]
     : {
         // Local mode: Frontend only
-        command: process.env.CI
-          ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start'
-          : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
-        port: 8081,
+        command: USE_DEV
+          ? `NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} NEXT_DIST_DIR=.next-e2e next dev --webpack`
+          : `NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_DIST_DIR=.next-e2e yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=${APP_LOCAL_PORT} NEXT_DIST_DIR=.next-e2e yarn start`,
+        port: parseInt(APP_LOCAL_PORT, 10),
         reuseExistingServer: !process.env.CI,
         timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
         stdout: 'pipe',

@@ -18,6 +18,16 @@ const MOCK_SAVED_SEARCH: any = {
   id: 'fake-saved-search-id',
 };
 
+// Mock logger to suppress error output in tests for this file
+jest.mock('@/utils/logger', () => ({
+  __esModule: true,
+  default: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
+}));
 describe('DefaultAlertProvider', () => {
   let provider: AlertProvider;
   const server = getServer();
@@ -138,8 +148,10 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create tile with source
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       // Create dashboard
       const dashboard = await Dashboard.create({
@@ -181,13 +193,14 @@ describe('DefaultAlertProvider', () => {
 
         // Validate source is proper ISource object
         const alertSource = result[0].alerts[0].source;
-        expect(alertSource.connection).toBe(connection.id); // Should be ObjectId, not populated IConnection
-        expect(alertSource.name).toBe('Test Source');
-        expect(alertSource.kind).toBe('log');
-        expect(alertSource.team).toBeDefined();
-        expect(alertSource.from?.databaseName).toBe('default');
-        expect(alertSource.from?.tableName).toBe('logs');
-        expect(alertSource.timestampValueExpression).toBe('timestamp');
+        expect(alertSource).toBeDefined();
+        expect(alertSource!.connection).toBe(connection.id); // Should be ObjectId, not populated IConnection
+        expect(alertSource!.name).toBe('Test Source');
+        expect(alertSource!.kind).toBe('log');
+        expect(alertSource!.team).toBeDefined();
+        expect(alertSource!.from?.databaseName).toBe('default');
+        expect(alertSource!.from?.tableName).toBe('logs');
+        expect(alertSource!.timestampValueExpression).toBe('timestamp');
 
         // Ensure it's a plain object, not a mongoose document
         expect((alertSource as any).toObject).toBeUndefined(); // mongoose documents have toObject method
@@ -291,8 +304,10 @@ describe('DefaultAlertProvider', () => {
       );
 
       // Create tile and alert
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       const dashboard = await Dashboard.create({
         team: team._id,
@@ -493,8 +508,10 @@ describe('DefaultAlertProvider', () => {
     it('should skip alerts with missing source', async () => {
       const team = await createTeam({ name: 'Test Team' });
 
-      const tile = makeTile({ id: 'test-tile' });
-      tile.config.source = new mongoose.Types.ObjectId().toString(); // Non-existent source
+      const tile = makeTile({
+        id: 'test-tile',
+        sourceId: new mongoose.Types.ObjectId().toString(), // Non-existent source
+      });
 
       const dashboard = await Dashboard.create({
         team: team._id,
@@ -674,8 +691,10 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create tile with source
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       // Create dashboard
       const dashboard = await Dashboard.create({

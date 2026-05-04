@@ -1,7 +1,7 @@
-/* stylelint-disable */
+/* stylelint-disable-file */
 // stylelint adds '}}' to end of file.. not sure why. Disabled for now.
 
-@use './_semantic-colors';
+@use '../src/theme/themes/base-tokens';
 
 // Bootstrap utilities only (d-flex, flex-column, m-*, p-*, etc.)
 @use './_bootstrap-utilities';
@@ -29,14 +29,27 @@
   --mantine-webkit-font-smoothing: inherit;
   --mantine-moz-font-smoothing: inherit;
 
-  color-scheme: dark;
-
   --app-font-family: var(--font-inter);
+}
+
+[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+[data-mantine-color-scheme='light'] {
+  color-scheme: light;
 }
 
 body {
   font-family: var(--app-font-family);
   font-size: var(--mantine-font-size-sm);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-outline-focus);
+  outline-offset: 2px;
+  border-radius: var(--mantine-radius-xs);
 }
 
 .accordion-button,
@@ -206,12 +219,6 @@ body {
   border-bottom: 2px solid var(--color-text) !important;
 }
 
-// Nextra Overrides
-.nextra-toc,
-.nextra-sidebar-container {
-  font-family: var(--font-inter) !important;
-}
-
 // custom overrides for jsontree
 .react-json-tree {
   & > ul {
@@ -272,31 +279,6 @@ body {
   opacity: 0.8;
 }
 
-.hover-color-white {
-  &:hover {
-    color: white;
-  }
-}
-
-.hdx-background-image {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  mix-blend-mode: screen;
-  z-index: 9999999;
-  pointer-events: none;
-}
-
-[data-mantine-color-scheme='light'] .hdx-background-image {
-  display: none;
-}
-
-a.mantine-focus-auto:hover {
-  color: inherit;
-}
-
 .recharts-tooltip-wrapper {
   &:focus,
   &:focus-visible {
@@ -315,6 +297,12 @@ a,
   border: 1px solid #50fa7b;
   background: #50fa7a0d !important;
   color: #2e224788;
+}
+
+// Heatmap selection uses red to match the outlier/selection color in delta charts.
+.heatmap-selection-container .u-select {
+  border-color: rgba(255, 99, 71, 0.8);
+  background: rgba(255, 99, 71, 0.05) !important;
 }
 
 .hdx-markdown {

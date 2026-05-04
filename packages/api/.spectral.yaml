@@ -1,0 +1,47 @@
+extends:
+  - spectral:oas
+
+rules:
+  # Require operation IDs on all endpoints
+  operation-operationId: error
+
+  # Require descriptions on operations
+  operation-description: error
+
+  # Require tags on operations
+  operation-tags: error
+
+  # Require a description in the info object
+  info-description: error
+
+  # Ensure info object has contact information
+  info-contact: off
+
+  # Ensure info object has a license
+  info-license: off
+
+  # Disabled: swagger-jsdoc generates $ref with sibling properties (description,
+  # example, etc.), which is invalid in OAS 3.0 but a known tooling limitation.
+  no-$ref-siblings: off
+
+  # Require descriptions on schema properties. Uses resolved: false so that
+  # properties with $ref + description siblings are evaluated before $ref
+  # resolution drops the sibling description.
+  component-schema-property-description:
+    description: Schema properties must have a description.
+    given: $.components.schemas[*].properties[*]
+    severity: error
+    resolved: false
+    then:
+      field: description
+      function: truthy
+
+  # Error when string schema properties are missing an example value
+  component-schema-property-example:
+    description: String schema properties should have an example value.
+    given: $.components.schemas[*].properties[?(@.type=='string')]
+    severity: error
+    resolved: false
+    then:
+      field: example
+      function: defined

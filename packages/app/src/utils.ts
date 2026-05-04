@@ -2,61 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject, SetStateAction } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type { SetStateAction } from 'react';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  NumericUnit,
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
-
-export function omit<T extends object, K extends keyof T>(
-  obj: T,
-  paths: K[],
-): Omit<T, K> {
-  return {
-    ...paths.reduce(
-      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
-      obj as object,
-    ),
-  } as Omit<T, K>;
-}
-
-export function generateSearchUrl({
-  query,
-  dateRange,
-  lineId,
-  isUTC,
-  savedSearchId,
-}: {
-  savedSearchId?: string;
-  query?: string;
-  dateRange?: [Date, Date];
-  lineId?: string;
-  isUTC?: boolean;
-}) {
-  const fromDate = dateRange ? dateRange[0] : new Date();
-  const toDate = dateRange ? dateRange[1] : new Date();
-  const qparams = new URLSearchParams({
-    q: query ?? '',
-    from: fromDate.getTime().toString(),
-    to: toDate.getTime().toString(),
-    tq: dateRangeToString([fromDate, toDate], isUTC ?? false),
-    ...(lineId ? { lid: lineId } : {}),
-  });
-  return `/search${
-    savedSearchId != null ? `/${savedSearchId}` : ''
-  }?${qparams.toString()}`;
-}
-
-export function useFirstNonNullValue<T>(value: T): T {
-  const [firstNonNullValue, setFirstNonNullValue] = useState<T>(value);
-  useEffect(() => {
-    if (value != null) {
-      setFirstNonNullValue(v => (v == null ? value : v));
-    }
-  }, [value]);
-  return firstNonNullValue;
-}
 
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
@@ -92,15 +48,6 @@ export const isValidUrl = (input: string) => {
   try {
     new URL(input);
     return true;
-  } catch (err) {
-    return false;
-  }
-};
-
-export const isValidJson = (input: string) => {
-  try {
-    JSON.parse(input);
-    return true;
   } catch {
     return false;
   }
@@ -126,7 +73,7 @@ export const getShortUrl = (url: string) => {
     }
 
     return shortUrl;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -183,7 +130,7 @@ export const QUERY_LOCAL_STORAGE = {
   LIMIT: 10, // cache up to 10
 };
 
-export function getLocalStorageValue<T>(key: string): T | null {
+function getLocalStorageValue<T>(key: string): T | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -298,7 +245,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   return [storedValue, setValue] as const;
 }
 
-export function useQueryHistory<T>(type: string | undefined) {
+export function useQueryHistory(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
   const setQueryHistory = useCallback(
@@ -405,20 +352,117 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Accessible chart colors
+// Chart color palette - single source of truth
+// Colors from Observable categorical palette, with custom brand green
+// https://observablehq.com/@d3/color-schemes
+const CHART_PALETTE = {
+  green: '#00c28a', // Brand green (Mantine green.5) - used as primary chart color
+  blue: '#4269d0',
+  orange: '#efb118',
+  red: '#ff725c',
+  cyan: '#6cc5b0',
+  pink: '#ff8ab7',
+  purple: '#a463f2',
+  lightBlue: '#97bbf5',
+  brown: '#9c6b4e',
+  gray: '#9498a0',
+  // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
+  redHighlight: '#ffa090',
+  orangeHighlight: '#f5c94d',
+} as const;
+
+// ClickStack theme chart color palette - Observable 10 categorical palette
+// https://observablehq.com/@d3/color-schemes
+const CLICKSTACK_CHART_PALETTE = {
+  blue: '#437EEF', // Primary color for ClickStack
+  orange: '#efb118',
+  red: '#ff725c',
+  cyan: '#6cc5b0',
+  green: '#3ca951',
+  pink: '#ff8ab7',
+  purple: '#a463f2',
+  lightBlue: '#97bbf5',
+  brown: '#9c6b4e',
+  gray: '#9498a0',
+  // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
+  redHighlight: '#ffa090',
+  orangeHighlight: '#f5c94d',
+} as const;
+
+// Ordered array for chart series - green first for brand consistency (HyperDX default)
+// Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
+// NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
 export const COLORS = [
-  '#20c997', // Green
-  // '#F81358', // Red
-  '#8250dc', // Light Purple
-  '#cdad7a', // Tan
-  '#0d6efd', // Blue
-  '#fd7e14', // Orange
-  '#0dcaf0', // Turqoise
-  '#828c95', // Grey
-  '#ff9382', // Coral
-  '#39b5ab', // Olive-tealish?
-  '#ffa600', // Yellow
+  CHART_PALETTE.green, // 1 - Brand green (primary) - HyperDX default
+  CHART_PALETTE.blue, // 2
+  CHART_PALETTE.orange, // 3
+  CHART_PALETTE.red, // 4
+  CHART_PALETTE.cyan, // 5
+  CHART_PALETTE.pink, // 6
+  CHART_PALETTE.purple, // 7
+  CHART_PALETTE.lightBlue, // 8
+  CHART_PALETTE.brown, // 9
+  CHART_PALETTE.gray, // 10
 ];
+
+/**
+ * Detects the active theme by checking for theme classes on documentElement.
+ * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
+ * Note: classList.contains() is O(1) and fast - no caching needed.
+ */
+function detectActiveTheme(): 'clickstack' | 'hyperdx' {
+  if (typeof window === 'undefined') {
+    // SSR: default to hyperdx (can't detect theme without DOM)
+    return 'hyperdx';
+  }
+
+  try {
+    const isClickStack =
+      document.documentElement.classList.contains('theme-clickstack');
+    return isClickStack ? 'clickstack' : 'hyperdx';
+  } catch {
+    // Fallback if DOM access fails
+    return 'hyperdx';
+  }
+}
+
+/**
+ * Reads chart color from CSS variable based on index.
+ * CSS variables handle theme switching automatically via theme classes on documentElement.
+ * Falls back to COLORS array if CSS variable is not available (SSR or getComputedStyle fails).
+ *
+ * Note on SSR/Hydration: During SSR, this returns fallback colors (HyperDX green palette).
+ * On client hydration, it reads from CSS variables which may differ for ClickStack theme.
+ * This is expected behavior - charts typically render after data fetching (client-side),
+ * so hydration mismatches are rare. If needed, wrap chart components with suppressHydrationWarning.
+ */
+function getColorFromCSSVariable(index: number): string {
+  const colorArrayLength = COLORS.length;
+
+  if (typeof window === 'undefined') {
+    // SSR: fallback to default colors (HyperDX palette)
+    return COLORS[index % colorArrayLength];
+  }
+
+  try {
+    const cssVarName = `--color-chart-${(index % colorArrayLength) + 1}`;
+    // Read from documentElement - CSS variables cascade from theme classes
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+
+    // Only use CSS variable if it's actually set (non-empty)
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  // Fallback to default colors
+  return COLORS[index % colorArrayLength];
+}
 
 export function hashCode(str: string) {
   let hash = 0,
@@ -433,6 +477,90 @@ export function hashCode(str: string) {
   return hash;
 }
 
+/**
+ * Gets theme-aware chart color from CSS variable or falls back to palette.
+ * Reads from --color-chart-{type} CSS variable, falls back to theme-appropriate palette.
+ *
+ * Note on SSR/Hydration: During SSR, returns HyperDX colors as default.
+ * On client, reads from CSS variables for accurate theme colors.
+ * Charts typically render client-side after data fetching, minimizing hydration issues.
+ */
+function getSemanticChartColor(
+  cssVarName: string,
+  hyperdxColor: string,
+  clickstackColor: string,
+): string {
+  if (typeof window === 'undefined') {
+    // SSR: use HyperDX as default (can't detect theme without DOM)
+    return hyperdxColor;
+  }
+
+  try {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  // Fallback to theme-appropriate palette
+  const activeTheme = detectActiveTheme();
+  return activeTheme === 'clickstack' ? clickstackColor : hyperdxColor;
+}
+
+// Semantic colors for log levels (theme-aware)
+// These are functions that read from CSS variables with theme-appropriate fallbacks
+export function getChartColorSuccess(): string {
+  return getSemanticChartColor(
+    '--color-chart-success',
+    CHART_PALETTE.green,
+    CLICKSTACK_CHART_PALETTE.green,
+  );
+}
+
+export function getChartColorWarning(): string {
+  return getSemanticChartColor(
+    '--color-chart-warning',
+    CHART_PALETTE.orange,
+    CLICKSTACK_CHART_PALETTE.orange,
+  );
+}
+
+export function getChartColorError(): string {
+  return getSemanticChartColor(
+    '--color-chart-error',
+    CHART_PALETTE.red,
+    CLICKSTACK_CHART_PALETTE.red,
+  );
+}
+
+// Highlighted variants (theme-aware)
+export function getChartColorSuccessHighlight(): string {
+  return getSemanticChartColor(
+    '--color-chart-success-highlight',
+    CHART_PALETTE.greenHighlight,
+    CLICKSTACK_CHART_PALETTE.greenHighlight,
+  );
+}
+
+export function getChartColorErrorHighlight(): string {
+  return getSemanticChartColor(
+    '--color-chart-error-highlight',
+    CHART_PALETTE.redHighlight,
+    CLICKSTACK_CHART_PALETTE.redHighlight,
+  );
+}
+
+export function getChartColorWarningHighlight(): string {
+  return getSemanticChartColor(
+    '--color-chart-warning-highlight',
+    CHART_PALETTE.orangeHighlight,
+    CLICKSTACK_CHART_PALETTE.orangeHighlight,
+  );
+}
+
 // Try to match log levels to colors
 export const semanticKeyedColor = (
   key: string | number | undefined,
@@ -441,47 +569,51 @@ export const semanticKeyedColor = (
   const logLevel = getLogLevelClass(`${key}`);
   if (logLevel != null) {
     return logLevel === 'error'
-      ? '#d63384' // magenta
+      ? getChartColorError()
       : logLevel === 'warn'
-        ? '#ffc107' // yellow
-        : '#20c997'; // green;
+        ? getChartColorWarning()
+        : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+          getColorFromCSSVariable(0);
   }
 
-  return COLORS[index % COLORS.length];
+  // Use CSS variable for theme-aware colors, fallback to hardcoded array
+  return getColorFromCSSVariable(index);
 };
 
 export const logLevelColor = (key: string | number | undefined) => {
   const logLevel = getLogLevelClass(`${key}`);
   return logLevel === 'error'
-    ? '#F81358' // red
+    ? getChartColorError()
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? getChartColorWarning()
+      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+        getColorFromCSSVariable(0);
 };
 
-// order of colors for sorting. green on bottom, then yellow, then red
-export const logLevelColorOrder = [
-  logLevelColor('info'),
-  logLevelColor('warn'),
-  logLevelColor('error'),
-];
+// order of colors for sorting. primary color (blue/green) on bottom, then yellow, then red
+// Computed lazily to avoid DOM access at module initialization (SSR-safe)
+export function getLogLevelColorOrder(): string[] {
+  return [logLevelColor('info'), logLevelColor('warn'), logLevelColor('error')];
+}
 
 const getLevelColor = (logLevel?: string) => {
   if (logLevel == null) {
     return;
   }
   return logLevel === 'error'
-    ? '#d63384' // magenta
+    ? getChartColorError()
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? getChartColorWarning()
+      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+        getColorFromCSSVariable(0);
 };
 
 export const getColorProps = (index: number, level: string): string => {
   const logLevel = getLogLevelClass(level);
   const colorOverride = getLevelColor(logLevel);
 
-  return colorOverride ?? COLORS[index % COLORS.length];
+  // Use CSS variable for theme-aware colors, fallback to hardcoded array
+  return colorOverride ?? getColorFromCSSVariable(index);
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
@@ -494,103 +626,216 @@ export const truncateMiddle = (str: string, maxLen = 10) => {
   )}`;
 };
 
-export const useIsBlog = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/blog');
-};
-
-export const useIsDocs = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/docs');
-};
-
-export const useIsTerms = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/terms');
-};
-
 export const usePrevious = <T>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
   useEffect(() => {
     ref.current = value;
   });
+  // eslint-disable-next-line react-hooks/refs
   return ref.current;
 };
 
-// From https://javascript.plainenglish.io/how-to-make-a-simple-custom-usedrag-react-hook-6b606d45d353
-export const useDrag = (
-  ref: MutableRefObject<HTMLDivElement | null>,
-  options: {
-    onDrag?: (e: PointerEvent) => any;
-    onPointerDown?: (e: PointerEvent) => any;
-    onPointerUp?: (e: PointerEvent) => any;
-    onPointerMove?: (e: PointerEvent) => any;
+type AutoScaleUnitConfig = {
+  type: 'auto_scale';
+  base: 'iec' | 'si';
+  isBits: boolean;
+  perSec: boolean;
+};
+
+type FixedUnitConfig = {
+  type: 'fixed';
+  suffix: string;
+};
+
+type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
+
+const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
+  // Data
+  [NumericUnit.BytesIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: false,
   },
-) => {
-  const {
-    onPointerDown = () => {},
-    onPointerUp = () => {},
-    onPointerMove = () => {},
-    onDrag = () => {},
-  } = options;
+  [NumericUnit.BytesSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BitsIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.BitsSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.Kibibytes]: { type: 'fixed', suffix: 'KiB' },
+  [NumericUnit.Kilobytes]: { type: 'fixed', suffix: 'KB' },
+  [NumericUnit.Mebibytes]: { type: 'fixed', suffix: 'MiB' },
+  [NumericUnit.Megabytes]: { type: 'fixed', suffix: 'MB' },
+  [NumericUnit.Gibibytes]: { type: 'fixed', suffix: 'GiB' },
+  [NumericUnit.Gigabytes]: { type: 'fixed', suffix: 'GB' },
+  [NumericUnit.Tebibytes]: { type: 'fixed', suffix: 'TiB' },
+  [NumericUnit.Terabytes]: { type: 'fixed', suffix: 'TB' },
+  [NumericUnit.Pebibytes]: { type: 'fixed', suffix: 'PiB' },
+  [NumericUnit.Petabytes]: { type: 'fixed', suffix: 'PB' },
+  // Data Rate
+  [NumericUnit.PacketsSec]: { type: 'fixed', suffix: 'pkt/s' },
+  [NumericUnit.BytesSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BytesSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.KibibytesSec]: { type: 'fixed', suffix: 'KiB/s' },
+  [NumericUnit.KibibitsSec]: { type: 'fixed', suffix: 'Kibit/s' },
+  [NumericUnit.KilobytesSec]: { type: 'fixed', suffix: 'KB/s' },
+  [NumericUnit.KilobitsSec]: { type: 'fixed', suffix: 'Kbit/s' },
+  [NumericUnit.MebibytesSec]: { type: 'fixed', suffix: 'MiB/s' },
+  [NumericUnit.MebibitsSec]: { type: 'fixed', suffix: 'Mibit/s' },
+  [NumericUnit.MegabytesSec]: { type: 'fixed', suffix: 'MB/s' },
+  [NumericUnit.MegabitsSec]: { type: 'fixed', suffix: 'Mbit/s' },
+  [NumericUnit.GibibytesSec]: { type: 'fixed', suffix: 'GiB/s' },
+  [NumericUnit.GibibitsSec]: { type: 'fixed', suffix: 'Gibit/s' },
+  [NumericUnit.GigabytesSec]: { type: 'fixed', suffix: 'GB/s' },
+  [NumericUnit.GigabitsSec]: { type: 'fixed', suffix: 'Gbit/s' },
+  [NumericUnit.TebibytesSec]: { type: 'fixed', suffix: 'TiB/s' },
+  [NumericUnit.TebibitsSec]: { type: 'fixed', suffix: 'Tibit/s' },
+  [NumericUnit.TerabytesSec]: { type: 'fixed', suffix: 'TB/s' },
+  [NumericUnit.TerabitsSec]: { type: 'fixed', suffix: 'Tbit/s' },
+  [NumericUnit.PebibytesSec]: { type: 'fixed', suffix: 'PiB/s' },
+  [NumericUnit.PebibitsSec]: { type: 'fixed', suffix: 'Pibit/s' },
+  [NumericUnit.PetabytesSec]: { type: 'fixed', suffix: 'PB/s' },
+  [NumericUnit.PetabitsSec]: { type: 'fixed', suffix: 'Pbit/s' },
+  // Throughput
+  [NumericUnit.Cps]: { type: 'fixed', suffix: 'cps' },
+  [NumericUnit.Ops]: { type: 'fixed', suffix: 'ops' },
+  [NumericUnit.Rps]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.ReadsSec]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.Wps]: { type: 'fixed', suffix: 'wps' },
+  [NumericUnit.Iops]: { type: 'fixed', suffix: 'iops' },
+  [NumericUnit.Cpm]: { type: 'fixed', suffix: 'cpm' },
+  [NumericUnit.Opm]: { type: 'fixed', suffix: 'opm' },
+  [NumericUnit.RpmReads]: { type: 'fixed', suffix: 'rpm' },
+  [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
+};
 
-  const [isDragging, setIsDragging] = useState(false);
+const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];
+const SI_BIT_UNITS = ['b', 'Kbit', 'Mbit', 'Gbit', 'Tbit', 'Pbit'];
 
-  const handlePointerDown = (e: PointerEvent) => {
-    setIsDragging(true);
+const formatAutoScaleData = (
+  value: number,
+  base: 'iec' | 'si',
+  isBits: boolean,
+  perSec: boolean,
+  mantissa: number,
+): string => {
+  const divisor = base === 'iec' ? 1024 : 1000;
+  const units =
+    base === 'iec'
+      ? isBits
+        ? IEC_BIT_UNITS
+        : IEC_BYTE_UNITS
+      : isBits
+        ? SI_BIT_UNITS
+        : SI_BYTE_UNITS;
+  const rateSuffix = perSec ? '/s' : '';
 
-    onPointerDown(e);
-  };
-
-  const handlePointerUp = (e: PointerEvent) => {
-    setIsDragging(false);
-
-    onPointerUp(e);
-  };
-
-  const handlePointerMove = (e: PointerEvent) => {
-    onPointerMove(e);
-
-    if (isDragging) {
-      onDrag(e);
-    }
-  };
-
-  useEffect(() => {
-    const element = ref.current;
-    if (element) {
-      element.addEventListener('pointerdown', handlePointerDown);
-      element.addEventListener('pointerup', handlePointerUp);
-      element.addEventListener('pointermove', handlePointerMove);
-
-      return () => {
-        element.removeEventListener('pointerdown', handlePointerDown);
-        element.removeEventListener('pointerup', handlePointerUp);
-        element.removeEventListener('pointermove', handlePointerMove);
-      };
-    }
-    // disable dependency array as this doesn't fit nicely with react
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return { isDragging };
+  let absVal = Math.abs(value);
+  let i = 0;
+  while (absVal >= divisor && i < units.length - 1) {
+    absVal /= divisor;
+    i++;
+  }
+  const scaledValue = value < 0 ? -absVal : absVal;
+  return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
 
 export const formatNumber = (
-  value?: number,
+  value?: string | number,
   options?: NumberFormat,
 ): string => {
   if (!value && value !== 0) {
     return 'N/A';
   }
 
+  // Guard against NaN only - ClickHouse can return numbers as strings, which
+  // we should still format. Only truly non-numeric values (NaN) get passed through.
+  if (typeof value !== 'number') {
+    if (isNaN(Number(value))) {
+      return String(value);
+    }
+    value = Number(value);
+  }
+
   if (!options) {
     return value.toString();
   }
 
+  const mantissa = options.mantissa ?? 0;
+
+  // Handle new unit categories with numericUnit
+  if (
+    options.numericUnit &&
+    (options.output === 'byte' ||
+      options.output === 'data_rate' ||
+      options.output === 'throughput')
+  ) {
+    const config = NUMERIC_UNIT_CONFIGS[options.numericUnit];
+    if (config) {
+      if (config.type === 'auto_scale') {
+        return formatAutoScaleData(
+          value,
+          config.base,
+          config.isBits,
+          config.perSec,
+          mantissa,
+        );
+      }
+      return `${value.toFixed(mantissa)} ${config.suffix}`;
+    }
+  }
+
+  // Handle data_rate / throughput without a numericUnit — fall through to number
+  if (options.output === 'data_rate' || options.output === 'throughput') {
+    return value.toFixed(mantissa);
+  }
+
+  if (options.output === 'duration') {
+    const factor = options.factor ?? 1;
+    const ms = value * factor * 1000;
+    return formatDurationMs(ms);
+  }
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
-    mantissa: options.mantissa || 0,
+    mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
     ...(options.output === 'byte' && {
@@ -602,11 +847,75 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
+
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   return (
-    numbro(value * (options.factor ?? 1)).format(numbroFormat) +
+    numbro(value * factor).format(numbroFormat) +
     (options.unit ? ` ${options.unit}` : '')
   );
 };
+
+/**
+ * Formats a duration value given in milliseconds into a human-readable
+ * adaptive string (e.g. "120.41s", "45ms", "3µs"). Mirrors the trace
+ * waterfall rendering style.
+ */
+export function formatDurationMs(ms: number): string {
+  if (ms < 0) {
+    return `-${formatDurationMs(-ms)}`;
+  }
+
+  if (ms === 0) {
+    return '0ms';
+  }
+
+  if (ms < 1) {
+    const µs = ms * 1000;
+    if (µs < 10) {
+      return `${parseFloat(µs.toPrecision(2))}µs`;
+    }
+    const µsRounded = Math.round(µs);
+    if (µsRounded < 1000) {
+      return `${µsRounded}µs`;
+    }
+  }
+
+  if (ms < 1000) {
+    if (ms < 10) {
+      return `${parseFloat(ms.toPrecision(3))}ms`;
+    }
+    return `${parseFloat(ms.toFixed(1))}ms`;
+  }
+
+  if (ms < 60_000) {
+    return `${parseFloat((ms / 1000).toFixed(2))}s`;
+  }
+
+  if (ms < 3_600_000) {
+    return `${parseFloat((ms / 60_000).toFixed(2))}min`;
+  }
+
+  return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
+}
+
+/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
+export function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+}
 
 // format uptime as days, hours, minutes or seconds
 export const formatUptime = (seconds: number) => {
@@ -622,15 +931,6 @@ export const formatUptime = (seconds: number) => {
 };
 
 // FIXME: eventually we want to separate metric name into two fields
-export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
-  const [mName, mDataType] = (metricName ?? '').split(' - ');
-
-  return {
-    name: mName,
-    dataType: mDataType as MetricsDataType,
-  };
-};
-
 // Date formatting
 export const mergePath = (path: string[], jsonColumns: string[] = []) => {
   const [key, ...rest] = path;
@@ -646,10 +946,17 @@ export const mergePath = (path: string[], jsonColumns: string[] = []) => {
             .join('.'),
         )
         .join('.')}`
-    : `${key}['${rest.join("']['")}']`;
+    : `${key}${rest
+        .map(v => {
+          const asNumber = Number(v);
+          const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
+          // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
+          return isArrayIndex ? `[${asNumber + 1}]` : `['${v}']`;
+        })
+        .join('')}`;
 };
 
-export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output = null;
   let error = null;
   try {
@@ -662,7 +969,7 @@ export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 
@@ -691,11 +998,38 @@ export function getMetricTableName(
   source: TSource,
   metricType?: string,
 ): string | undefined {
-  return metricType == null
-    ? source.from.tableName
-    : source.metricTables?.[
-        metricType.toLowerCase() as keyof typeof source.metricTables
-      ];
+  if (metricType == null) {
+    return source.from.tableName;
+  }
+  if (source.kind === SourceKind.Metric) {
+    return source.metricTables?.[
+      metricType.toLowerCase() as keyof typeof source.metricTables
+    ];
+  }
+  return undefined;
+}
+
+export function getAllMetricTables(source: TSource): TableConnection[] {
+  if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+
+  return Object.values(MetricsDataType)
+    .filter(
+      metricType =>
+        !!source.metricTables[
+          metricType as unknown as keyof TMetricSource['metricTables']
+        ],
+    )
+    .map(
+      metricType =>
+        ({
+          tableName:
+            source.metricTables[
+              metricType as unknown as keyof TMetricSource['metricTables']
+            ],
+          databaseName: source.from.databaseName,
+          connectionId: source.connection,
+        }) satisfies TableConnection,
+    );
 }
 
 /**
@@ -755,4 +1089,32 @@ export const orderByStringToSortingState = (
       desc: orderByParts[1].trim().toUpperCase() === 'DESC',
     },
   ];
+};
+
+export const mapKeyBy = <T>(array: T[], key: keyof T) => {
+  const map = new Map<T[typeof key], T>();
+
+  for (const item of array) {
+    map.set(item[key], item);
+  }
+
+  return map;
+};
+
+/**
+ * Check if an element is clickable, or if it is obscured by a modal or drawer
+ *
+ * @param el - The element to check if it is clickable
+ * @returns True if the element is clickable, false otherwise
+ */
+export const isElementClickable = (el: HTMLElement): boolean => {
+  if (!el) return false;
+
+  const rect = el.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const elementAtPoint = document.elementFromPoint(x, y);
+  // return true if the element at point is the same as the element passed in
+  // or if the element at point is a descendant of the element passed in
+  return el === elementAtPoint || el.contains(elementAtPoint);
 };

@@ -5,18 +5,23 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQuery,
@@ -24,17 +29,15 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import {
-  convertDateRangeToGranularityString,
-  toStartOfInterval,
-} from '@/ChartUtils';
+import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { getMetadata } from '@/metadata';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
+
+import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
 
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
@@ -67,6 +70,9 @@ const shouldUseChunking = (
 ): config is ChartConfigWithDateRange & {
   granularity: string;
 } => {
+  // Avoid chunking for raw SQL charts since they can include arbitrary window functions, etc.
+  if (isRawSqlChartConfig(config)) return false;
+
   // Granularity is required for chunking, otherwise we could break other group-bys.
   if (!isUsingGranularity(config)) return false;
 
@@ -93,10 +99,7 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(
-          config.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(config.dateRange)
       : config.granularity;
 
   const windows = [];
@@ -133,6 +136,7 @@ async function* fetchDataInChunks({
   enableQueryChunking = false,
   enableParallelQueries = false,
   metadata,
+  querySettings,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
@@ -140,15 +144,16 @@ async function* fetchDataInChunks({
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
   metadata: Metadata;
+  querySettings: QuerySettings | undefined;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
-  if (IS_MTVIEWS_ENABLED) {
+  if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-      await buildMTViewSelectQuery(config);
+      await buildMTViewSelectQuery(config, metadata, querySettings);
     // TODO: show the DDLs in the UI so users can run commands manually
     // eslint-disable-next-line no-console
     console.log('dataTableDDL:', dataTableDDL);
@@ -156,6 +161,11 @@ async function* fetchDataInChunks({
     console.log('mtViewDDL:', mtViewDDL);
     await renderMTViewConfig();
   }
+
+  // Readonly = 2 means the query is readonly but can still specify query settings.
+  const clickHouseSettings = isRawSqlChartConfig(config)
+    ? { readonly: '2' }
+    : {};
 
   if (enableParallelQueries) {
     // fetch in parallel
@@ -171,7 +181,9 @@ async function* fetchDataInChunks({
           metadata,
           opts: {
             abort_signal: signal,
+            clickhouse_settings: clickHouseSettings,
           },
+          querySettings,
         }),
       };
     });
@@ -213,6 +225,7 @@ async function* fetchDataInChunks({
       opts: {
         abort_signal: signal,
       },
+      querySettings,
     });
 
     yield { chunk: result, isComplete: i === windows.length - 1 };
@@ -259,7 +272,14 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
+      placeholderData: undefined,
+    });
+
+  const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
 
@@ -274,16 +294,7 @@ export function useQueriedChartConfig(
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
-      const optimizedConfig = source?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            config,
-            metadata,
-            clickhouseClient,
-            context.signal,
-            source,
-          )
-        : config;
-
+      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -303,6 +314,7 @@ export function useQueriedChartConfig(
         enableQueryChunking: options?.enableQueryChunking,
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
+        querySettings: source?.querySettings,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
@@ -334,7 +346,7 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
-    enabled: enabled && !isLoadingSource,
+    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 
   if (query.isError && options?.onError) {
@@ -342,7 +354,7 @@ export function useQueriedChartConfig(
   }
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingSource,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 
@@ -351,41 +363,43 @@ export function useRenderedSqlChartConfig(
   options?: UseQueryOptions<string>,
 ) {
   const { enabled = true } = options ?? {};
-  const metadata = useMetadataWithSettings();
-  const clickhouseClient = useClickhouseClient();
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
+  const metadata = useMetadataWithSettings();
+
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
+      placeholderData: undefined,
+    });
+
+  const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
 
   const query = useQuery({
     queryKey: ['renderedSql', config],
-    queryFn: async ({ signal }) => {
-      const optimizedConfig = source?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            config,
-            metadata,
-            clickhouseClient,
-            signal,
-            source,
-          )
-        : config;
-
-      const query = await renderChartConfig(optimizedConfig, getMetadata());
+    queryFn: async () => {
+      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const query = await renderChartConfig(
+        optimizedConfig,
+        metadata,
+        source?.querySettings,
+      );
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled: enabled && !isLoadingSource,
+    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingSource,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 
 export function useAliasMapFromChartConfig(
-  config: ChartConfigWithOptDateRange | undefined,
+  config: BuilderChartConfigWithOptDateRange | undefined,
   options?: UseQueryOptions<Record<string, string>>,
 ) {
   // For granularity: 'auto', the bucket size depends on dateRange duration (not absolute times).
@@ -395,6 +409,8 @@ export function useAliasMapFromChartConfig(
     config?.dateRange && isUsingGranularity(config)
       ? config.dateRange[1].getTime() - config.dateRange[0].getTime()
       : undefined;
+
+  const metadata = useMetadataWithSettings();
 
   return useQuery<Record<string, string>>({
     // Only include config properties that affect SELECT structure and aliases.
@@ -417,7 +433,11 @@ export function useAliasMapFromChartConfig(
         return {};
       }
 
-      const query = await renderChartConfig(config, getMetadata());
+      const query = await renderChartConfig(
+        config,
+        metadata,
+        undefined, // no query settings for creating alias map
+      );
 
       const aliasMap = chSqlToAliasMap(query);
 

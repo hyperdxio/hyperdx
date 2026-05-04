@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import {
   DashboardFilter,
   PresetDashboard,
@@ -12,9 +12,11 @@ import useDashboardFilters from './useDashboardFilters';
 export default function usePresetDashboardFilters({
   presetDashboard,
   sourceId,
+  enabled = true,
 }: {
   presetDashboard: PresetDashboard;
   sourceId: string;
+  enabled?: boolean;
 }) {
   const createDashboardFilter = api.useCreatePresetDashboardFilter();
   const updateDashboardFilter = api.useUpdatePresetDashboardFilter();
@@ -23,6 +25,7 @@ export default function usePresetDashboardFilters({
   const { data, refetch, isFetching } = api.usePresetDashboardFilters(
     presetDashboard,
     sourceId || '',
+    enabled,
   );
 
   const { filterValues, setFilterValue, filterQueries } = useDashboardFilters(

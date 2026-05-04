@@ -6,8 +6,25 @@ import {
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
+import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
+
+// Type for WITH clause entries, derived from ChartConfig's with property
+export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
+
+// Internal row field names used by the table component for row tracking
+export const INTERNAL_ROW_FIELDS = {
+  ID: '__hyperdx_id',
+  ALIAS_WITH: '__hyperdx_alias_with',
+} as const;
+
+// Result type for row WHERE clause with alias support
+export type RowWhereResult = {
+  where: string;
+  aliasWith: WithClause[];
+};
 
 type ColumnWithMeta = ColumnMetaType & {
   valueExpr: string;
@@ -35,6 +52,11 @@ export function processRowToWhereClause(
         throw new Error(
           `valueExpr not found for ${column}, ${JSON.stringify(columnMap)}`,
         );
+      }
+
+      // Handle nullish values for all types uniformly
+      if (value == null) {
+        return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
       }
 
       switch (jsType) {
@@ -83,10 +105,6 @@ export function processRowToWhereClause(
           );
 
         default:
-          // Handle nullish values
-          if (value == null) {
-            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
-          }
           // Handle the case when string is too long
           if (value.length > MAX_STRING_LENGTH) {
             return SqlString.format(
@@ -126,6 +144,7 @@ export default function useRowWhere({
           // but if the alias is not found, use the column name as the valueExpr
           const valueExpr =
             aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
+
           return [
             c.name,
             {
@@ -139,13 +158,25 @@ export default function useRowWhere({
     [meta, aliasMap],
   );
 
-  return useCallback(
-    (row: Record<string, any>) => {
-      // Filter out synthetic columns that aren't in the database schema
+  // Memoize the aliasWith array since it only depends on aliasMap
+  const aliasWith = useMemo(
+    () => aliasMapToWithClauses(aliasMap) ?? [],
+    [aliasMap],
+  );
 
-      const { __hyperdx_id, ...dbRow } = row;
-      return processRowToWhereClause(dbRow, columnMap);
+  return useCallback(
+    (row: Record<string, any>): RowWhereResult => {
+      // Filter out synthetic columns that aren't in the database schema
+      const {
+        [INTERNAL_ROW_FIELDS.ID]: _id,
+        [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
+        ...dbRow
+      } = row;
+      return {
+        where: processRowToWhereClause(dbRow, columnMap),
+        aliasWith,
+      };
     },
-    [columnMap],
+    [columnMap, aliasWith],
   );
 }

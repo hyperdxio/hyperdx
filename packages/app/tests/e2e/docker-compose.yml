@@ -1,10 +1,9 @@
 name: hdx-e2e
 services:
   db:
-    image: mongo:5.0.14-focal
-    command: --port 29998
+    image: mongo:5.0.32-focal
     ports:
-      - 29998:29998
+      - ${HDX_E2E_MONGO_PORT:-21100}:27017
     networks:
       - internal
     deploy:
@@ -15,6 +14,32 @@ services:
         reservations:
           memory: 512M
           cpus: '0.5'
+  ch-server:
+    image: clickhouse/clickhouse-server:26.1-alpine
+    ports:
+      - ${HDX_E2E_CH_PORT:-20500}:8123 # http api
+      - ${HDX_E2E_CH_NATIVE_PORT:-20600}:9000 # native
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ../../../../docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
+      - ../../../../docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
+      - ../../../../docker/clickhouse/local/init-db-e2e.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8123/ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 networks:
   internal:
-    name: 'hyperdx-e2e-internal-network'

@@ -16,7 +16,7 @@ export const DrawerHeader = React.memo<{
         <CloseButton
           onClick={onClose}
           aria-label="Close modal"
-          variant="light"
+          variant="subtle"
           size="md"
         />
       </Group>

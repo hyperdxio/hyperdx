@@ -1,13 +1,17 @@
 import {
   isUnsupportedCountFunction,
+  optimizeGetKeyValuesCalls,
   tryConvertConfigToMaterializedViewSelect,
   tryOptimizeConfigWithMaterializedView,
   tryOptimizeConfigWithMaterializedViewWithExplanations,
 } from '@/core/materializedViews';
 import { Metadata } from '@/core/metadata';
+import { isBuilderChartConfig } from '@/guards';
 import {
   ChartConfigWithOptDateRange,
   MaterializedViewConfiguration,
+  SourceKind,
+  TLogSource,
 } from '@/types';
 
 import { ColumnMeta } from '..';
@@ -80,7 +84,7 @@ describe('materializedViews', () => {
   const SOURCE = {
     from: { databaseName: 'default', tableName: 'otel_spans' },
     materializedViews: [MV_CONFIG_METRIC_ROLLUP_1M],
-  };
+  } as TLogSource;
 
   describe('tryConvertConfigToMaterializedViewSelect', () => {
     it('should return empty object if selecting a string instead of an array of aggregates', async () => {
@@ -105,7 +109,7 @@ describe('materializedViews', () => {
       });
     });
 
-    it('should return mvConfig and errors if selecting a column which is not in the materialized view', async () => {
+    it('should return errors if selecting a column which is not in the materialized view', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -133,7 +137,7 @@ describe('materializedViews', () => {
       ]);
     });
 
-    it('should return mvConfig and errors if selecting an aggregation which is not supported for the specified column', async () => {
+    it('should return errors if selecting an aggregation which is not supported for the specified column', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -188,6 +192,7 @@ describe('materializedViews', () => {
           databaseName: 'default',
           tableName: 'metrics_rollup_1m',
         },
+        timestampValueExpression: 'Timestamp',
         select: [
           {
             valueExpression: 'sum__Duration',
@@ -233,6 +238,7 @@ describe('materializedViews', () => {
             aggFn: 'avgMerge',
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -274,6 +280,113 @@ describe('materializedViews', () => {
             level: 0.95,
           },
         ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should normalize a quantiles AggregateFunction to quantileMerge', async () => {
+      const quantilesMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantiles(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should normalize a quantilesTDigest AggregateFunction to quantileTDigestMerge', async () => {
+      const quantilesTDigestMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantilesTDigest(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesTDigestMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileTDigestMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -315,6 +428,7 @@ describe('materializedViews', () => {
             level: 20,
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -355,6 +469,7 @@ describe('materializedViews', () => {
             aggFn: 'sum',
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: "StatusCode = '200'",
         groupBy: 'StatusCode',
         connection: 'test-connection',
@@ -399,6 +514,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -458,6 +574,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -501,6 +618,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -540,6 +658,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -579,6 +698,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -623,11 +743,12 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
 
-    it('should return mvConfig and errors if the granularity of the query is less than the materialized view granularity', async () => {
+    it('should return errors if the granularity of the query is less than the materialized view granularity', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -641,7 +762,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
-        granularity: '30 seconds',
+        granularity: '30 second',
       };
 
       const result = await tryConvertConfigToMaterializedViewSelect(
@@ -651,10 +772,41 @@ describe('materializedViews', () => {
       );
 
       expect(result.optimizedConfig).toBeUndefined();
-      expect(result.errors).toEqual(['Granularity must be at least 1 minute.']);
+      expect(result.errors).toEqual([
+        "Granularity must be a multiple of the view's granularity (1 minute).",
+      ]);
     });
 
-    it('should return mvConfig and errors if no granularity is specified but the date range is too short for the MV granularity', async () => {
+    it('should return errors if the granularity of the query is greater than but not a multiple of the materialized view granularity', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '90 second',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toBeUndefined();
+      expect(result.errors).toEqual([
+        "Granularity must be a multiple of the view's granularity (1 minute).",
+      ]);
+    });
+
+    it('should return errors if no granularity is specified but the date range is too short for the MV granularity', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -723,6 +875,7 @@ describe('materializedViews', () => {
         where: '',
         connection: 'test-connection',
         granularity: '1 minute',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -864,7 +1017,7 @@ describe('materializedViews', () => {
         connection: 'test-connection',
         dateRange: [
           new Date('2023-12-01T00:00:00Z'),
-          new Date('2023-12-31T23:59:59Z'),
+          new Date('2024-01-01T00:00:00Z'),
         ],
       };
 
@@ -884,7 +1037,7 @@ describe('materializedViews', () => {
         },
         dateRange: [
           new Date('2023-12-01T00:00:00Z'),
-          new Date('2023-12-31T23:59:59Z'),
+          new Date('2024-01-01T00:00:00Z'),
         ],
         select: [
           {
@@ -894,8 +1047,106 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
+    });
+
+    it('should set dateRangeEndInclusive to false when optimizing a config with dateRange', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '1 minute',
+        dateRange: [
+          new Date('2023-01-01T00:00:00Z'),
+          new Date('2023-01-02T01:00:00Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'count',
+            aggFn: 'sum',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '1 minute',
+        dateRange: chartConfig.dateRange,
+        dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should align dateRange to MV granularity when optimizing a config with dateRange', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2023-01-01T00:00:30Z'),
+          new Date('2023-01-02T01:00:45Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'count',
+            aggFn: 'sum',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2023-01-01T00:00:00Z'),
+          new Date('2023-01-02T01:01:00Z'),
+        ],
+        dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
+      });
     });
   });
 
@@ -950,7 +1201,7 @@ describe('materializedViews', () => {
         {} as any,
         {
           from: { databaseName: 'default', tableName: 'table_without_mv' },
-        },
+        } as TLogSource,
       );
 
       expect(actual).toEqual(chartConfig);
@@ -1004,6 +1255,7 @@ describe('materializedViews', () => {
             ],
             where: '',
             connection: 'test-connection',
+            timestampValueExpression: 'Timestamp',
           },
         }),
       );
@@ -1038,6 +1290,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const actual = await tryOptimizeConfigWithMaterializedView(
@@ -1109,6 +1362,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const actual = await tryOptimizeConfigWithMaterializedView(
@@ -1174,6 +1428,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
         ],
@@ -1270,6 +1525,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
           {
@@ -1287,6 +1543,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
         ],
@@ -1359,7 +1616,7 @@ describe('materializedViews', () => {
           {} as any,
           {
             from: { databaseName: 'default', tableName: 'table_without_mv' },
-          },
+          } as TLogSource,
         );
 
       expect(result).toEqual({
@@ -1371,7 +1628,7 @@ describe('materializedViews', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('should return mvConfig and errors if the generated MV config is not valid', async () => {
+    it('should return errors if the generated MV config is not valid', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -1424,6 +1681,7 @@ describe('materializedViews', () => {
             ],
             where: '',
             connection: 'test-connection',
+            timestampValueExpression: 'Timestamp',
           },
         }),
       );
@@ -1458,6 +1716,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const result =
@@ -1539,7 +1798,9 @@ describe('materializedViews', () => {
       expect(result.explanations).toEqual([
         {
           mvConfig: MV_CONFIG_METRIC_ROLLUP_1M,
-          errors: ['Granularity must be at least 1 minute.'],
+          errors: [
+            "Granularity must be a multiple of the view's granularity (1 minute).",
+          ],
           success: false,
         },
         {
@@ -1559,7 +1820,10 @@ describe('materializedViews', () => {
     it('should optimize a config with the MV that will scan the fewest rows, if multiple MVs could be used', async () => {
       mockClickHouseClient.testChartConfigValidity.mockImplementation(
         ({ config }) => {
-          if (config.from.tableName === 'db_statement_rollup_1s') {
+          if (
+            isBuilderChartConfig(config) &&
+            config.from.tableName === 'db_statement_rollup_1s'
+          ) {
             return Promise.resolve({
               isValid: true,
               rowEstimate: 1000,
@@ -1676,6 +1940,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const result =
@@ -1714,6 +1979,570 @@ describe('materializedViews', () => {
           config: optimizedConfig,
         }),
       );
+    });
+  });
+
+  describe('optimizeGetKeyValuesCalls', () => {
+    const mockClickHouseClient = {
+      testChartConfigValidity: jest.fn(),
+    } as unknown as jest.Mocked<ClickhouseClient>;
+
+    const MV_CONFIG_LOGS_1M: MaterializedViewConfiguration = {
+      databaseName: 'default',
+      tableName: 'logs_rollup_1m',
+      dimensionColumns: 'environment, service, status_code',
+      minGranularity: '1 minute',
+      timestampColumn: 'Timestamp',
+      aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+    };
+
+    const MV_CONFIG_LOGS_1H: MaterializedViewConfiguration = {
+      databaseName: 'default',
+      tableName: 'logs_rollup_1h',
+      dimensionColumns: 'environment, region',
+      minGranularity: '1 hour',
+      timestampColumn: 'Timestamp',
+      aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return MVs for all keys when single MV covers all keys', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service', 'status_code'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 1000,
+      });
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].keys).toEqual(['environment', 'service', 'status_code']);
+      expect(result[0].chartConfig.from).toEqual({
+        databaseName: 'default',
+        tableName: 'logs_rollup_1m',
+      });
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('should distribute keys across multiple MVs', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service', 'region'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M, MV_CONFIG_LOGS_1H],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockImplementation(
+        ({ config }) =>
+          Promise.resolve({
+            isValid: true,
+            rowEstimate:
+              isBuilderChartConfig(config) &&
+              config.from.tableName === 'logs_rollup_1h'
+                ? 500
+                : 1000,
+          }),
+      );
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      // Should prefer logs_rollup_1h (500 rows) over logs_rollup_1m (1000 rows) for shared keys
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1h',
+              },
+            }),
+            keys: expect.arrayContaining(['environment', 'region']),
+          }),
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1m',
+              },
+            }),
+            keys: ['service'],
+          }),
+        ]),
+      );
+    });
+
+    it('should return uncovered keys when no MV supports them', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'unsupported_key'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 1000,
+      });
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1m',
+              },
+            }),
+            keys: ['environment'],
+          }),
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs',
+              },
+            }),
+            keys: ['unsupported_key'],
+          }),
+        ]),
+      );
+    });
+
+    it('should skip invalid MVs and return uncovered keys', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: false,
+        error: 'Invalid query',
+      });
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
+    });
+
+    it('should prefer MVs with lower row estimates', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M, MV_CONFIG_LOGS_1H],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockImplementation(
+        ({ config }) =>
+          Promise.resolve({
+            isValid: true,
+            rowEstimate:
+              isBuilderChartConfig(config) &&
+              config.from.tableName === 'logs_rollup_1h'
+                ? 500
+                : 1000,
+          }),
+      );
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs_rollup_1h',
+          },
+        }),
+        keys: ['environment'],
+      });
+    });
+
+    it('should handle empty keys array', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys: string[] = [];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M],
+      };
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toEqual([]);
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should handle source with no materialized views', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [],
+      };
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should filter out MVs that do not support the date range', async () => {
+      const MV_CONFIG_WITH_MIN_DATE: MaterializedViewConfiguration = {
+        databaseName: 'default',
+        tableName: 'logs_rollup_recent',
+        dimensionColumns: 'environment, service',
+        minGranularity: '1 minute',
+        timestampColumn: 'Timestamp',
+        aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+        minDate: '2024-01-15',
+      };
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_WITH_MIN_DATE],
+      };
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should filter out MVs which have a granularity too large to support the date range', async () => {
+      const MV_CONFIG_WITH_MIN_DATE: MaterializedViewConfiguration = {
+        databaseName: 'default',
+        tableName: 'logs_rollup_recent',
+        dimensionColumns: 'environment, service',
+        minGranularity: '1 day',
+        timestampColumn: 'Timestamp',
+        aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+      };
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')], // only contains 1 MV interval
+        select: '',
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_WITH_MIN_DATE],
+      };
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should generate correct select statement with multiple keys', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+      };
+
+      const keys = ['environment', 'service', 'status_code'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_LOGS_1M],
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 1000,
+      });
+
+      await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(mockClickHouseClient.testChartConfigValidity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            select:
+              'groupUniqArray(1)(environment) AS param0, groupUniqArray(1)(service) AS param1, groupUniqArray(1)(status_code) AS param2',
+          }),
+          metadata,
+        }),
+      );
+    });
+
+    it('should use the MV timestamp column when it differs from the source table', async () => {
+      const MV_CONFIG_WITH_DIFFERENT_TIMESTAMP: MaterializedViewConfiguration =
+        {
+          databaseName: 'default',
+          tableName: 'logs_rollup_1h',
+          dimensionColumns: 'environment, service',
+          minGranularity: '1 hour',
+          timestampColumn: 'mv_timestamp', // Different from source
+          aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+        };
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+        timestampValueExpression: 'source_timestamp', // Source uses this
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        kind: SourceKind.Log,
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_WITH_DIFFERENT_TIMESTAMP],
+        timestampValueExpression: 'source_timestamp',
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 500,
+      });
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      // Should return one call using the MV
+      expect(result).toHaveLength(1);
+      expect(result[0].chartConfig.from).toEqual({
+        databaseName: 'default',
+        tableName: 'logs_rollup_1h',
+      });
+
+      // Should use the MV's timestamp column
+      expect(result[0].chartConfig.timestampValueExpression).toBe(
+        'mv_timestamp',
+      );
+
+      // Keys should be from the MV
+      expect(result[0].keys).toEqual(['environment', 'service']);
     });
   });
 });

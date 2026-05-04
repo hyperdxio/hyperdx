@@ -1,5 +1,5 @@
 import router from 'next/router';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 export function navigateToTraceSearch({
   dateRange,
@@ -7,7 +7,7 @@ export function navigateToTraceSearch({
   where,
 }: {
   dateRange: [Date, Date];
-  source: TSource;
+  source: TTraceSource;
   where: string;
 }) {
   const from = dateRange[0].getTime().toString();

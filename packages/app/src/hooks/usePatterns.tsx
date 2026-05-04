@@ -1,17 +1,11 @@
 import { useMemo } from 'react';
 import stripAnsi from 'strip-ansi';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
-import {
-  convertDateRangeToGranularityString,
-  timeBucketByGranularity,
-  toStartOfInterval,
-} from '@/ChartUtils';
-import {
-  selectColumnMapWithoutAdditionalKeys,
-  useConfigWithPrimaryAndPartitionKey,
-} from '@/components/DBRowTable';
+import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
+import { useConfigWithAdditionalSelect } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
@@ -24,11 +18,21 @@ function usePyodide(options: { enabled: boolean }) {
       const pyodide = await window.loadPyodide();
       await pyodide.loadPackage('micropip');
       const micropip = pyodide.pyimport('micropip');
-      const url = new URL(
+
+      // Install jsonpickle first (drain3 dependency)
+      const jsonpickleUrl = new URL(
+        '/jsonpickle-4.1.1-py3-none-any.whl',
+        window.location.origin,
+      );
+      await micropip.install(jsonpickleUrl.href);
+
+      // Then install drain3
+      const drain3Url = new URL(
         '/drain3-0.9.11-py3-none-any.whl',
         window.location.origin,
       );
-      await micropip.install(url.href);
+      await micropip.install(drain3Url.href);
+
       return pyodide;
     },
     refetchOnWindowFocus: false,
@@ -100,6 +104,7 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
+const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
 export type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;
@@ -119,15 +124,17 @@ function usePatterns({
   samples,
   bodyValueExpression,
   severityTextExpression,
+  statusCodeExpression,
   enabled = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;
+  statusCodeExpression?: string;
   enabled?: boolean;
 }) {
-  const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
+  const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
     ...config,
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [
@@ -136,21 +143,29 @@ function usePatterns({
       ...(severityTextExpression
         ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
         : []),
+      ...(statusCodeExpression
+        ? [`${statusCodeExpression} as ${STATUS_CODE_COLUMN_ALIAS}`]
+        : []),
     ].join(','),
     // TODO: Proper sampling
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: samples },
   });
 
-  const { data: sampleRows, isLoading: isSampleLoading } =
-    useQueriedChartConfig(
-      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-    );
+  const {
+    data: sampleRows,
+    isLoading: isSampleLoading,
+    error: sampleError,
+  } = useQueriedChartConfig(
+    configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+    { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+  );
 
-  const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
-    enabled,
-  });
+  const {
+    data: pyodide,
+    isLoading: isLoadingPyodide,
+    error: pyodideError,
+  } = usePyodide({ enabled });
 
   const query = useQuery({
     queryKey: ['patterns', config],
@@ -193,6 +208,7 @@ function usePatterns({
 
   return {
     ...query,
+    error: sampleError || pyodideError || query.error,
     isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
@@ -203,34 +219,31 @@ export function useGroupedPatterns({
   samples,
   bodyValueExpression,
   severityTextExpression,
+  statusCodeExpression,
   totalCount,
   enabled = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;
+  statusCodeExpression?: string;
   totalCount?: number;
   enabled?: boolean;
 }) {
   const {
     data: results,
     isLoading,
+    error,
     patternQueryConfig,
   } = usePatterns({
     config,
     samples,
     bodyValueExpression,
     severityTextExpression,
+    statusCodeExpression,
     enabled,
   });
-  const columnMap = useMemo(() => {
-    return selectColumnMapWithoutAdditionalKeys(
-      results?.meta,
-      results?.additionalKeysLength,
-    );
-  }, [results]);
-  const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
 
   const sampledRowCount = results?.data.length;
   const sampleMultiplier = useMemo(() => {
@@ -276,12 +289,15 @@ export function useGroupedPatterns({
 
       // return at least 1
       const count = Math.max(Math.round(rows.length * sampleMultiplier), 1);
+      const lastRow = rows.at(-1);
+
       fullPatternGroups[patternId] = {
         id: patternId,
-        pattern: rows[rows.length - 1].__hdx_pattern, // last pattern is usually the most up to date templated pattern
+        pattern: lastRow?.__hdx_pattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
-        severityText: rows[rows.length - 1].__hdx_severity_text, // last severitytext is usually representative of the entire pattern set
+        severityText: lastRow?.[SEVERITY_TEXT_COLUMN_ALIAS], // last severitytext is usually representative of the entire pattern set
+        statusCode: lastRow?.[STATUS_CODE_COLUMN_ALIAS],
         samples: rows,
         __hdx_pattern_trend: {
           data: Object.entries(bucketCounts).map(([bucket, count]) => ({
@@ -306,6 +322,7 @@ export function useGroupedPatterns({
   return {
     data: groupedResults,
     isLoading,
+    error,
     miner: results?.miner,
     sampledRowCount,
     patternQueryConfig,

@@ -125,8 +125,7 @@ export function SourcesList({
           </Text>
           <Button
             size="xs"
-            variant="light"
-            color="red"
+            variant="danger"
             leftSection={<IconRefresh size={14} />}
             onClick={handleRetry}
           >
@@ -156,15 +155,14 @@ export function SourcesList({
 
         {sources?.map((s, index) => (
           <React.Fragment key={s.id}>
-            <Flex
-              justify="space-between"
-              align="center"
-              opacity={s.disabled ? 0.5 : 1}
-              style={{
-                transition: 'opacity 0.2s ease',
-              }}
-            >
-              <div style={{ flex: 1 }}>
+            <Flex justify="space-between" align="center">
+              <div
+                style={{
+                  flex: 1,
+                  opacity: s.disabled ? 0.5 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+              >
                 <Flex align="center" gap="sm">
                   <div>
                     <Group gap="xs" align="center">

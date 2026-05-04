@@ -1,22 +1,32 @@
+import { differenceInSeconds } from 'date-fns';
+
 import { BaseClickhouseClient } from '@/clickhouse';
 import {
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithOptDateRange,
   CteChartConfig,
   InternalAggregateFunction,
   InternalAggregateFunctionSchema,
+  isLogSource,
+  isTraceSource,
   MaterializedViewConfiguration,
+  TLogSource,
   TSource,
+  TTraceSource,
 } from '@/types';
 
+// Source types that support materialized views
+type TMVSource = TLogSource | TTraceSource;
+
 import { Metadata, TableConnection } from './metadata';
-import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from './renderChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  getAlignedDateRange,
+  splitAndTrimWithBracket,
 } from './utils';
 
 type SelectItem = Exclude<
-  ChartConfigWithOptDateRange['select'],
+  BuilderChartConfigWithOptDateRange['select'],
   string
 >[number];
 
@@ -55,11 +65,15 @@ async function getQuantileAggregateFunction(
     }
 
     // Use regex to extract the quantile function name inside AggregateFunction(...)
-    // For example, AggregateFunction(quantile(0.95), Int64) --> quantile
+    // For example, AggregateFunction(quantile(0.95), Int64)       --> quantile
     //              AggregateFunction(quantileTDigest(0.95), Int64) --> quantileTDigest
     //              AggregateFunction(quantileDD(0.001, 0.95), Int64) --> quantileDD
+    // The plural `quantiles*` variants return arrays, but a select item carries a
+    // single `level`, so we normalize to the singular form to pull a scalar value.
+    //              AggregateFunction(quantiles(0.9, 0.95), UInt64)        --> quantile
+    //              AggregateFunction(quantilesTDigest(0.9, 0.95), UInt64) --> quantileTDigest
     const match = type.match(/^AggregateFunction\(\s*([^(, ]+)\s*\(/);
-    return match?.[1];
+    return match?.[1]?.replace(/^quantiles/, 'quantile');
   } catch {
     return undefined;
   }
@@ -120,7 +134,7 @@ function getAggregatedColumnConfig(
  **/
 function mvConfigSupportsGranularity(
   mvConfig: MaterializedViewConfiguration,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ): boolean {
   if (!chartConfig.granularity && !chartConfig.dateRange) {
     return true;
@@ -139,10 +153,7 @@ function mvConfigSupportsGranularity(
   // Determine the effective granularity if the granularity is 'auto'
   const chartGranularity =
     normalizedGranularity === 'auto' && chartConfig.dateRange
-      ? convertDateRangeToGranularityString(
-          chartConfig.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(chartConfig.dateRange)
       : normalizedGranularity;
 
   const chartGranularitySeconds = convertGranularityToSeconds(chartGranularity);
@@ -150,12 +161,28 @@ function mvConfigSupportsGranularity(
     mvConfig.minGranularity,
   );
 
-  return chartGranularitySeconds >= mvGranularitySeconds;
+  // The chart granularity must be a multiple of the MV granularity,
+  // to avoid unequal distribution of data across chart time buckets
+  // which don't align with the MV time buckets.
+  return (
+    chartGranularitySeconds >= mvGranularitySeconds &&
+    chartGranularitySeconds % mvGranularitySeconds === 0
+  );
+}
+
+function countIntervalsInDateRange(
+  dateRange: [Date, Date],
+  granularity: string,
+) {
+  const [startDate, endDate] = dateRange;
+  const granularitySeconds = convertGranularityToSeconds(granularity);
+  const diffSeconds = differenceInSeconds(endDate, startDate);
+  return Math.floor(diffSeconds / granularitySeconds);
 }
 
 function mvConfigSupportsDateRange(
   mvConfig: MaterializedViewConfiguration,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ) {
   if (mvConfig.minDate && !chartConfig.dateRange) {
     return false;
@@ -271,7 +298,7 @@ export type MVOptimizationExplanation = {
 };
 
 export async function tryConvertConfigToMaterializedViewSelect<
-  C extends ChartConfigWithOptDateRange | CteChartConfig,
+  C extends BuilderChartConfigWithOptDateRange | CteChartConfig,
 >(
   chartConfig: C,
   mvConfig: MaterializedViewConfiguration,
@@ -296,7 +323,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
 
   if (!mvConfigSupportsGranularity(mvConfig, chartConfig)) {
     const error = chartConfig.granularity
-      ? `Granularity must be at least ${mvConfig.minGranularity}.`
+      ? `Granularity must be a multiple of the view's granularity (${mvConfig.minGranularity}).`
       : 'The selected date range is too short for the granularity of this materialized view.';
     return { errors: [error] };
   }
@@ -334,13 +361,25 @@ export async function tryConvertConfigToMaterializedViewSelect<
     };
   }
 
-  const clonedConfig = {
+  const clonedConfig: C = {
     ...structuredClone(chartConfig),
     select,
+    timestampValueExpression: mvConfig.timestampColumn,
     from: {
       databaseName: mvConfig.databaseName,
       tableName: mvConfig.tableName,
     },
+    // Make the date range end exclusive to avoid selecting the entire next time bucket from the MV
+    // Align the date range to the MV granularity to avoid excluding the first time bucket
+    ...('dateRange' in chartConfig && chartConfig.dateRange
+      ? {
+          dateRangeEndInclusive: false,
+          dateRange: getAlignedDateRange(
+            chartConfig.dateRange,
+            mvConfig.minGranularity,
+          ),
+        }
+      : {}),
   };
 
   return {
@@ -349,13 +388,13 @@ export async function tryConvertConfigToMaterializedViewSelect<
 }
 
 /** Attempts to optimize a config with a single MV Config */
-async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
+async function tryOptimizeConfig<C extends BuilderChartConfigWithOptDateRange>(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
   mvConfig: MaterializedViewConfiguration,
-  sourceFrom: TSource['from'],
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ) {
   const errors: string[] = [];
   // Attempt to optimize any CTEs that exist in the config
@@ -365,8 +404,8 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
       config.with.map(async cte => {
         if (
           cte.chartConfig &&
-          cte.chartConfig.from.databaseName === sourceFrom.databaseName &&
-          cte.chartConfig.from.tableName === sourceFrom.tableName
+          cte.chartConfig.from.databaseName === source.from.databaseName &&
+          cte.chartConfig.from.tableName === source.from.tableName
         ) {
           return tryConvertConfigToMaterializedViewSelect(
             cte.chartConfig,
@@ -405,8 +444,8 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
 
   // Attempt to optimize the main (outer) select
   if (
-    config.from.databaseName === sourceFrom.databaseName &&
-    config.from.tableName === sourceFrom.tableName
+    config.from.databaseName === source.from.databaseName &&
+    config.from.tableName === source.from.tableName
   ) {
     const convertedOuterSelect = await tryConvertConfigToMaterializedViewSelect(
       optimizedConfig ?? config,
@@ -432,6 +471,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
       opts: {
         abort_signal: signal,
       },
+      querySettings: source.querySettings,
     });
 
     if (error) {
@@ -452,13 +492,13 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
 
 /** Attempts to optimize a config with each of the provided MV Configs */
 export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ): Promise<{
   optimizedConfig?: C;
   explanations: MVOptimizationExplanation[];
@@ -472,7 +512,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
         clickhouseClient,
         signal,
         mvConfig,
-        source.from,
+        source,
       ).then(result => ({ ...result, mvConfig })),
     ),
   );
@@ -506,13 +546,13 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
 }
 
 export async function tryOptimizeConfigWithMaterializedView<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
+  source: Omit<TMVSource, 'connection'>, // for overlap with ISource type
 ) {
   const { optimizedConfig } =
     await tryOptimizeConfigWithMaterializedViewWithExplanations(
@@ -543,4 +583,146 @@ function formatAggregateFunction(aggFn: string, level: number | undefined) {
   } else {
     return aggFn;
   }
+}
+
+function toMvId(
+  mv: Pick<MaterializedViewConfiguration, 'databaseName' | 'tableName'>,
+) {
+  return `${mv.databaseName}.${mv.tableName}`;
+}
+
+export interface GetKeyValueCall<C extends BuilderChartConfigWithOptDateRange> {
+  chartConfig: C;
+  keys: string[];
+}
+
+export async function optimizeGetKeyValuesCalls<
+  C extends BuilderChartConfigWithOptDateRange,
+>({
+  chartConfig,
+  keys,
+  source,
+  clickhouseClient,
+  metadata,
+  signal,
+}: {
+  chartConfig: C;
+  keys: string[];
+  source: TSource;
+  clickhouseClient: BaseClickhouseClient;
+  metadata: Metadata;
+  signal?: AbortSignal;
+}): Promise<GetKeyValueCall<C>[]> {
+  // Get the MVs from the source
+  const mvs =
+    ((isTraceSource(source) || isLogSource(source)) &&
+      source?.materializedViews) ||
+    [];
+  const mvsById = new Map(mvs.map(mv => [toMvId(mv), mv]));
+
+  // Identify keys which can be queried from a materialized view
+  const supportedKeysByMv = new Map<string, string[]>();
+  for (const [mvId, mv] of mvsById.entries()) {
+    const mvIntervalsInDateRange = chartConfig.dateRange
+      ? countIntervalsInDateRange(chartConfig.dateRange, mv.minGranularity)
+      : Infinity;
+    if (
+      // Ensures that the MV contains data for the selected date range
+      mvConfigSupportsDateRange(mv, chartConfig) &&
+      // Ensures that the MV's granularity is small enough that the selected date
+      // range will include multiple MV time buckets. (3 is an arbitrary cutoff)
+      mvIntervalsInDateRange >= 3
+    ) {
+      const dimensionColumns = splitAndTrimWithBracket(mv.dimensionColumns);
+      const keysInMV = keys.filter(k => dimensionColumns.includes(k));
+      if (keysInMV.length > 0) {
+        supportedKeysByMv.set(mvId, keysInMV);
+      }
+    }
+  }
+
+  // Build the configs which would be used to query each MV for all of the keys it supports
+  const configsToExplain = [...supportedKeysByMv.entries()].map(
+    ([mvId, mvKeys]) => {
+      const { databaseName, tableName, timestampColumn } = mvsById.get(mvId)!;
+      return {
+        ...structuredClone(chartConfig),
+        timestampValueExpression: timestampColumn,
+        from: {
+          databaseName,
+          tableName,
+        },
+        // These are dimension columns so we don't need to add any -Merge combinators
+        select: mvKeys
+          .map((k, i) => `groupUniqArray(1)(${k}) AS param${i}`)
+          .join(', '),
+      };
+    },
+  );
+
+  // Figure out which of those configs are valid by running EXPLAIN queries
+  const explainResults = await Promise.all(
+    configsToExplain.map(async config => {
+      const { isValid, rowEstimate = Number.POSITIVE_INFINITY } =
+        await clickhouseClient.testChartConfigValidity({
+          config,
+          metadata,
+          opts: { abort_signal: signal },
+          querySettings: source?.querySettings,
+        });
+      return {
+        id: toMvId({
+          databaseName: config.from.databaseName,
+          tableName: config.from.tableName,
+        }),
+        isValid,
+        rowEstimate,
+      };
+    }),
+  );
+
+  // For each key, find the best MV that can provide it while reading the fewest rows
+  const finalKeysByMv = new Map<string, string[]>();
+  const uncoveredKeys = new Set<string>(keys);
+  const sortedValidConfigs = explainResults
+    .filter(r => r.isValid)
+    .sort((a, b) => a.rowEstimate - b.rowEstimate);
+  for (const config of sortedValidConfigs) {
+    const mvKeys = supportedKeysByMv.get(config.id) ?? [];
+
+    // Only include keys which have not already been covered by a previous MV
+    const keysNotAlreadyCovered = mvKeys.filter(k => uncoveredKeys.has(k));
+    if (keysNotAlreadyCovered.length) {
+      finalKeysByMv.set(config.id, keysNotAlreadyCovered);
+      for (const key of keysNotAlreadyCovered) {
+        uncoveredKeys.delete(key);
+      }
+    }
+  }
+
+  // Build the final list of optimized calls
+  const calls = [...finalKeysByMv.entries()].map(([mvId, mvKeys]) => {
+    const { databaseName, tableName, timestampColumn } = mvsById.get(mvId)!;
+    const optimizedConfig: C = {
+      ...structuredClone(chartConfig),
+      timestampValueExpression: timestampColumn,
+      from: {
+        databaseName,
+        tableName,
+      },
+    };
+    return {
+      chartConfig: optimizedConfig,
+      keys: mvKeys,
+    };
+  });
+
+  if (uncoveredKeys.size) {
+    calls.push({
+      chartConfig: structuredClone(chartConfig),
+      keys: [...uncoveredKeys],
+    });
+  }
+
+  return calls;
 }

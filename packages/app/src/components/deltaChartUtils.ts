@@ -1,0 +1,519 @@
+/**
+ * Utility functions for DBDeltaChart.
+ * Pure helpers with no React dependencies — safe to import from tests.
+ */
+
+// Recursively flattens nested objects/arrays into dot-notation keys.
+// Empty objects produce an empty {} entry; empty arrays produce an empty [] entry.
+// Based on https://stackoverflow.com/a/19101235
+function flattenData(data: Record<string, any>) {
+  const result: Record<string, any> = {};
+  function recurse(cur: Record<string, any>, prop: string) {
+    if (Object(cur) !== cur) {
+      result[prop] = cur;
+    } else if (Array.isArray(cur)) {
+      let l;
+      for (let i = 0, l = cur.length; i < l; i++)
+        recurse(cur[i], prop + '[' + i + ']');
+      if (l == 0) result[prop] = [];
+    } else {
+      let isEmpty = true;
+      for (const p in cur) {
+        isEmpty = false;
+        recurse(cur[p], prop ? prop + '.' + p : p);
+      }
+      if (isEmpty && prop) result[prop] = {};
+    }
+  }
+  recurse(data, '');
+  return result;
+}
+
+export function getPropertyStatistics(data: Record<string, any>[]) {
+  const flattened = data.map(flattenData);
+  const propertyOccurences = new Map<string, number>();
+
+  const MIN_PROPERTY_OCCURENCES = 5;
+  const commonProperties = new Set<string>();
+
+  flattened.forEach(item => {
+    Object.entries(item).forEach(([key]) => {
+      const count = propertyOccurences.get(key) || 0;
+      propertyOccurences.set(key, count + 1);
+
+      if (count + 1 >= MIN_PROPERTY_OCCURENCES) {
+        commonProperties.add(key);
+      }
+    });
+  });
+
+  // property -> (value -> count)
+  const valueOccurences = new Map<string, Map<string, number>>();
+  flattened.forEach(item => {
+    Object.entries(item).forEach(([key, value]) => {
+      if (commonProperties.has(key)) {
+        let valuesMap = valueOccurences.get(key);
+        if (!valuesMap) {
+          valuesMap = new Map<string, number>();
+          valueOccurences.set(key, valuesMap);
+        }
+
+        const valueCount = valuesMap.get(value) || 0;
+        valuesMap.set(value, valueCount + 1);
+      }
+    });
+  });
+
+  const percentageOccurences = new Map<string, Map<string, number>>();
+  valueOccurences.forEach((valuesMap, property) => {
+    const percentageMap = new Map<string, number>();
+    valuesMap.forEach((valueCount, value) => {
+      percentageMap.set(
+        value,
+        (valueCount / (propertyOccurences.get(property) ?? 0)) * 100,
+      );
+    });
+    percentageOccurences.set(property, percentageMap);
+  });
+
+  return {
+    percentageOccurences,
+    propertyOccurences,
+    valueOccurences,
+  };
+}
+
+// Maximum number of distinct values to show in a chart before collapsing
+// the rest into an "Other (N)" bucket. The effective limit adapts: when the
+// actual unique count is at most MAX_CHART_VALUES_UPPER, all values are shown
+// without aggregation. This avoids the awkward "Other (1)" or "Other (2)" cases
+// for attributes like http.status_code that naturally have 4-8 values.
+export const MAX_CHART_VALUES = 6;
+export const MAX_CHART_VALUES_UPPER = 8;
+
+// Color for the "Other (N)" aggregated bucket — neutral gray.
+export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
+
+// Color for the "All spans" distribution bar (no selection / comparison mode off).
+export const ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)';
+
+export function mergeValueStatisticsMaps(
+  outlierValues: Map<string, number>, // value -> count
+  inlierValues: Map<string, number>,
+) {
+  const mergedArray: {
+    name: string;
+    outlierCount: number;
+    inlierCount: number;
+  }[] = [];
+  // Collect all value names for this property
+  // we sort them so timestamps are ordered
+  const allValues = Array.from(
+    new Set([...outlierValues.keys(), ...inlierValues.keys()]),
+  ).sort();
+
+  allValues.forEach(value => {
+    const count1 = outlierValues.get(value) || 0;
+    const count2 = inlierValues.get(value) || 0;
+    mergedArray.push({
+      name: value,
+      outlierCount: count1,
+      inlierCount: count2,
+    });
+  });
+
+  return mergedArray;
+}
+
+// Aggregates chart data beyond the effective limit into a single "Other (N)" entry.
+// Sorts by combined count (outlier + inlier) descending so the most frequent
+// values are kept. The effective limit adapts: if the total unique count is at
+// most MAX_CHART_VALUES_UPPER, all values are shown without aggregation.
+export function applyTopNAggregation(
+  data: { name: string; outlierCount: number; inlierCount: number }[],
+): {
+  name: string;
+  outlierCount: number;
+  inlierCount: number;
+  isOther?: boolean;
+}[] {
+  // Adaptive: show all values when they fit within the upper bound
+  if (data.length <= MAX_CHART_VALUES_UPPER) return data;
+
+  const sorted = [...data].sort(
+    (a, b) => b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
+  );
+  const top = sorted.slice(0, MAX_CHART_VALUES);
+  const rest = sorted.slice(MAX_CHART_VALUES);
+
+  const otherOutlierCount = rest.reduce(
+    (sum, item) => sum + item.outlierCount,
+    0,
+  );
+  const otherInlierCount = rest.reduce(
+    (sum, item) => sum + item.inlierCount,
+    0,
+  );
+
+  return [
+    ...top,
+    {
+      name: `Other (${rest.length})`,
+      outlierCount: otherOutlierCount,
+      inlierCount: otherInlierCount,
+      isOther: true,
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Filter key conversion helpers
+// ---------------------------------------------------------------------------
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Converts a flattened dot-notation property key (produced by flattenData())
+ * into a valid ClickHouse SQL expression for use in filter conditions.
+ *
+ * flattenData() uses JavaScript's object/array iteration, producing keys like:
+ *   "ResourceAttributes.service.name"     for Map(String, String) columns
+ *   "Events.Attributes[0].message.type"   for Array(Map(String, String)) columns
+ *
+ * These must be converted to bracket notation for ClickHouse Map access:
+ *   "ResourceAttributes['service.name']"
+ *   "Events.Attributes[1]['message.type']"  (note: 0-based JS -> 1-based CH index)
+ */
+export function flattenedKeyToSqlExpression(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): string {
+  for (const col of columnMeta) {
+    const baseType = stripTypeWrappers(col.type);
+
+    if (baseType.startsWith('Map(')) {
+      if (key.startsWith(col.name + '.')) {
+        const mapKey = key.slice(col.name.length + 1).replace(/'/g, "''");
+        return `${col.name}['${mapKey}']`;
+      }
+    } else if (baseType.startsWith('Array(')) {
+      const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+      if (innerType.startsWith('Map(')) {
+        const pattern = new RegExp(
+          `^${escapeRegExp(col.name)}\\[(\\d+)\\]\\.(.+)$`,
+        );
+        const match = key.match(pattern);
+        if (match) {
+          const chIndex = parseInt(match[1], 10) + 1;
+          const mapKey = match[2].replace(/'/g, "''");
+          return `${col.name}[${chIndex}]['${mapKey}']`;
+        }
+      }
+    }
+  }
+  return key;
+}
+
+/**
+ * Converts a flattened dot-notation property key into a filter key using
+ * ClickHouse bracket notation for Map columns.
+ * This matches the search bar format (WHERE ResourceAttributes['k8s.pod.name'] = ...).
+ * For simple (non-Map) columns, returns the key unchanged.
+ *
+ * NOTE: Currently produces the same output as flattenedKeyToSqlExpression for
+ * Map columns. Kept separate because filter keys may diverge in the future
+ * (e.g., sidebar facet format vs SQL WHERE clause format for Array(Map) columns).
+ */
+export function flattenedKeyToFilterKey(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): string {
+  // Delegates to flattenedKeyToSqlExpression for now — both produce bracket
+  // notation for Map columns. Kept as a separate entry point so filter keys
+  // can diverge from SQL expressions in the future (e.g., different format
+  // for sidebar facets vs WHERE clause for Array(Map) columns).
+  return flattenedKeyToSqlExpression(key, columnMeta);
+}
+
+export type AddFilterFn = (
+  property: string,
+  value: string,
+  action?: 'only' | 'exclude' | 'include',
+) => void;
+
+// ---------------------------------------------------------------------------
+// Field classification helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts the base column name from a flattened key.
+ * Strips array indices (e.g., "Events.Name[0]" → "Events.Name").
+ * Returns null for keys with sub-keys after array indices (e.g., "Events.Attributes[0].spanId").
+ */
+export function getBaseColumnName(key: string): string | null {
+  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
+  return arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
+}
+
+/** Removes `LowCardinality(...)` and `Nullable(...)` wrappers from ClickHouse type strings. */
+export function stripTypeWrappers(type: string): string {
+  let t = type.trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    if (t.startsWith('LowCardinality(') && t.endsWith(')')) {
+      t = t.slice('LowCardinality('.length, -1).trim();
+      changed = true;
+    } else if (t.startsWith('Nullable(') && t.endsWith(')')) {
+      t = t.slice('Nullable('.length, -1).trim();
+      changed = true;
+    }
+  }
+  return t;
+}
+
+/**
+ * Returns true if the field is a structural ID field that should always be hidden.
+ * Matches top-level String columns or Array(String) elements ending in "Id"/"ID".
+ */
+export function isIdField(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): boolean {
+  const colName = getBaseColumnName(key);
+  if (!colName) return false;
+  if (!/(Id|ID)$/.test(colName)) return false;
+
+  const col = columnMeta.find(c => c.name === colName);
+  if (!col) return false;
+  const baseType = stripTypeWrappers(col.type);
+  if (baseType === 'String') return true;
+  if (baseType.startsWith('Array(')) {
+    const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+    return innerType === 'String';
+  }
+  return false;
+}
+
+/**
+ * Returns true if the field is a per-index timestamp array element
+ * (e.g., Events.Timestamp[0]) from a column of type Array(DateTime64(...)).
+ */
+export function isTimestampArrayField(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): boolean {
+  const colName = getBaseColumnName(key);
+  if (!colName) return false;
+
+  const col = columnMeta.find(c => c.name === colName);
+  if (!col) return false;
+  const baseType = stripTypeWrappers(col.type);
+  if (!baseType.startsWith('Array(')) return false;
+  const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+  return innerType.startsWith('DateTime64(');
+}
+
+/**
+ * Returns true if the field should always be hidden (ID fields + timestamp arrays).
+ */
+export function isDenylisted(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): boolean {
+  return isIdField(key, columnMeta) || isTimestampArrayField(key, columnMeta);
+}
+
+/**
+ * Returns true if the field has high cardinality (most values unique).
+ * Uses min(outlierUniqueness, inlierUniqueness) > 0.9 with combined sample > 20.
+ */
+export function isHighCardinality(
+  key: string,
+  outlierValueOccurences: Map<string, Map<string, number>>,
+  inlierValueOccurences: Map<string, Map<string, number>>,
+  outlierPropertyOccurences: Map<string, number>,
+  inlierPropertyOccurences: Map<string, number>,
+): boolean {
+  const outlierTotal = outlierPropertyOccurences.get(key) ?? 0;
+  const inlierTotal = inlierPropertyOccurences.get(key) ?? 0;
+  const combinedSampleSize = outlierTotal + inlierTotal;
+  if (combinedSampleSize <= 20) return false;
+
+  const outlierUniqueValues = outlierValueOccurences.get(key)?.size ?? 0;
+  const inlierUniqueValues = inlierValueOccurences.get(key)?.size ?? 0;
+
+  const outlierUniqueness =
+    outlierTotal > 0 ? outlierUniqueValues / outlierTotal : null;
+  const inlierUniqueness =
+    inlierTotal > 0 ? inlierUniqueValues / inlierTotal : null;
+
+  let effectiveUniqueness: number;
+  if (outlierUniqueness !== null && inlierUniqueness !== null) {
+    effectiveUniqueness = Math.min(outlierUniqueness, inlierUniqueness);
+  } else if (outlierUniqueness !== null) {
+    effectiveUniqueness = outlierUniqueness;
+  } else if (inlierUniqueness !== null) {
+    effectiveUniqueness = inlierUniqueness;
+  } else {
+    return false;
+  }
+
+  return effectiveUniqueness > 0.9;
+}
+
+// ---------------------------------------------------------------------------
+// Sampling configuration
+// ---------------------------------------------------------------------------
+
+/** Default number of rows sampled when the total count is unknown */
+export const SAMPLE_SIZE = 1000;
+
+/** Minimum number of rows to sample */
+export const MIN_SAMPLE_SIZE = 500;
+
+/** Maximum number of rows to sample */
+export const MAX_SAMPLE_SIZE = 5000;
+
+/** Fraction of total rows to sample (e.g., 0.01 = 1%) */
+export const SAMPLE_RATIO = 0.01;
+
+/**
+ * Builds a deterministic ORDER BY expression for stable sampling.
+ * Uses the source's spanIdExpression when available, falls back to rand().
+ */
+export function getStableSampleExpression(spanIdExpression?: string): string {
+  if (spanIdExpression) {
+    return `cityHash64(${spanIdExpression})`;
+  }
+  return 'rand()';
+}
+
+/**
+ * Computes the effective sample size based on total row count.
+ * Adaptive formula: clamp(MIN_SAMPLE_SIZE, ceil(totalCount * SAMPLE_RATIO), MAX_SAMPLE_SIZE).
+ * Returns SAMPLE_SIZE as fallback when totalCount is 0 or unavailable.
+ */
+export function computeEffectiveSampleSize(totalCount: number): number {
+  if (totalCount <= 0) return SAMPLE_SIZE;
+  return Math.min(
+    MAX_SAMPLE_SIZE,
+    Math.max(MIN_SAMPLE_SIZE, Math.ceil(totalCount * SAMPLE_RATIO)),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Attribute sorting and scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Comparison mode scoring: normalizes each group's percentages to sum to 100%
+ * before computing max delta. Fields with identical proportional distributions
+ * score 0 regardless of coverage rate differences.
+ */
+export function computeComparisonScore(
+  outlierValues: Map<string, number>,
+  inlierValues: Map<string, number>,
+): number {
+  const allValues = new Set([...outlierValues.keys(), ...inlierValues.keys()]);
+  if (allValues.size === 0) return 0;
+
+  let outlierSum = 0;
+  let inlierSum = 0;
+  outlierValues.forEach(v => (outlierSum += v));
+  inlierValues.forEach(v => (inlierSum += v));
+
+  if (outlierSum === 0 && inlierSum === 0) return 0;
+  if (outlierSum === 0 || inlierSum === 0) {
+    // One group has data, the other doesn't.
+    const presentValues = outlierSum > 0 ? outlierValues : inlierValues;
+    // Single value with no comparison group is uninformative — score 0.
+    // (e.g., Events.Name[N] = "message" at 100% with no inlier data)
+    // Multi-value fields with no comparison group ARE informative — they show
+    // that the present group has a distinctive distribution.
+    if (presentValues.size <= 1) return 0;
+    // Normalize to [0, 100] so the score is scale-consistent with the two-group case.
+    const presentSum = outlierSum > 0 ? outlierSum : inlierSum;
+    let maxNormPct = 0;
+    presentValues.forEach(v => {
+      const pct = (v / presentSum) * 100;
+      if (pct > maxNormPct) maxNormPct = pct;
+    });
+    return maxNormPct;
+  }
+
+  let maxDelta = 0;
+  allValues.forEach(value => {
+    const outlierNorm = ((outlierValues.get(value) ?? 0) / outlierSum) * 100;
+    const inlierNorm = ((inlierValues.get(value) ?? 0) / inlierSum) * 100;
+    const delta = Math.abs(outlierNorm - inlierNorm);
+    if (delta > maxDelta) maxDelta = delta;
+  });
+  return maxDelta;
+}
+
+/**
+ * Shannon entropy-based distribution score for sorting properties.
+ * Returns [0, 1]: 1 = maximally useful (low entropy, dominant value among several),
+ * 0 = not useful (single value, empty, or perfectly uniform).
+ */
+export function computeEntropyScore(
+  valuePercentages: Map<string, number>,
+): number {
+  const nValues = valuePercentages.size;
+  if (nValues <= 1) return 0;
+
+  let totalPct = 0;
+  valuePercentages.forEach(pct => {
+    totalPct += pct;
+  });
+  if (totalPct === 0) return 0;
+
+  let entropy = 0;
+  valuePercentages.forEach(pct => {
+    const p = pct / totalPct;
+    if (p > 0) {
+      entropy -= p * Math.log2(p);
+    }
+  });
+
+  const maxEntropy = Math.log2(nValues);
+  if (maxEntropy === 0) return 0;
+
+  return 1 - entropy / maxEntropy;
+}
+
+/** Well-known OTel attribute suffixes that get a score boost */
+const BOOSTED_ATTRIBUTE_SUFFIXES = [
+  'service.name',
+  'http.method',
+  'http.request.method',
+  'http.status_code',
+  'http.response.status_code',
+  'error',
+  'error.type',
+  'deployment.environment',
+  'deployment.environment.name',
+  'rpc.method',
+  'rpc.service',
+  'db.system',
+  'db.operation',
+  'messaging.system',
+  'messaging.operation',
+];
+
+/**
+ * Returns 1 for well-known OTel attributes, 0 otherwise.
+ * Uses dot-segment boundary matching to avoid false positives
+ * (e.g., 'SpanAttributes.myerror' won't match the 'error' entry).
+ * Callers scale this as a tiebreaker (e.g., * 0.1) and only apply when baseScore > 0.
+ */
+export function semanticBoost(key: string): number {
+  const lowerKey = key.toLowerCase();
+  for (const suffix of BOOSTED_ATTRIBUTE_SUFFIXES) {
+    if (lowerKey.endsWith('.' + suffix) || lowerKey === suffix) return 1;
+  }
+  return 0;
+}

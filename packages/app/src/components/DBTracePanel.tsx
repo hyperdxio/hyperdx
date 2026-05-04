@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Center,
@@ -16,13 +20,22 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
+
+const eventRowWhereParser = parseAsJsonEncoded<{
+  id: string;
+  type: string;
+  aliasWith: WithClause[];
+}>();
 
 enum Tab {
   Overview = 'overview',
@@ -36,6 +49,7 @@ export default function DBTracePanel({
   focusDate,
   parentSourceId,
   initialRowHighlightHint,
+  emptyState,
   'data-testid': dataTestId,
 }: {
   parentSourceId?: string | null;
@@ -51,25 +65,28 @@ export default function DBTracePanel({
     spanId: string;
     body: string;
   };
+  emptyState?: ReactNode;
   'data-testid'?: string;
 }) {
-  const { control } = useForm({
+  const { control, setValue } = useForm({
     defaultValues: {
       source: childSourceId,
     },
   });
 
+  useEffect(() => {
+    setValue('source', childSourceId ?? null);
+  }, [childSourceId, setValue]);
+
   const sourceId = useWatch({ control, name: 'source' });
 
-  const { data: childSourceData, isLoading: isChildSourceDataLoading } =
-    useSource({
-      id: sourceId,
-    });
+  const { data: childSourceData } = useSource({
+    id: sourceId,
+  });
 
-  const { data: parentSourceData, isLoading: isParentSourceDataLoading } =
-    useSource({
-      id: parentSourceId,
-    });
+  const { data: parentSourceData } = useSource({
+    id: parentSourceId,
+  });
 
   const logSourceData =
     parentSourceData?.kind === SourceKind.Log
@@ -84,18 +101,11 @@ export default function DBTracePanel({
         ? childSourceData
         : null;
 
-  const isTraceSourceLoading =
-    childSourceData?.kind === SourceKind.Trace
-      ? isChildSourceDataLoading
-      : parentSourceData?.kind === SourceKind.Trace
-        ? isParentSourceDataLoading
-        : false;
-
   const { mutate: updateTableSource } = useUpdateSource();
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string }>(),
+    eventRowWhereParser,
   );
 
   const {
@@ -104,14 +114,22 @@ export default function DBTracePanel({
     setValue: traceIdSetValue,
   } = useForm<{ traceIdExpression: string }>({
     defaultValues: {
-      traceIdExpression: parentSourceData?.traceIdExpression ?? '',
+      traceIdExpression:
+        (parentSourceData &&
+          (isLogSource(parentSourceData) || isTraceSource(parentSourceData)) &&
+          parentSourceData.traceIdExpression) ||
+        '',
     },
   });
   useEffect(() => {
-    if (parentSourceData?.traceIdExpression) {
+    if (
+      parentSourceData &&
+      (isLogSource(parentSourceData) || isTraceSource(parentSourceData)) &&
+      parentSourceData.traceIdExpression
+    ) {
       traceIdSetValue('traceIdExpression', parentSourceData.traceIdExpression);
     }
-  }, [parentSourceData?.traceIdExpression, traceIdSetValue]);
+  }, [parentSourceData, traceIdSetValue]);
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
@@ -123,14 +141,21 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
+  const sourceSchemaPreview = useMemo(() => {
+    return <SourceSchemaPreview source={childSourceData} variant="text" />;
+  }, [childSourceData]);
+
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
     <div data-testid={dataTestId}>
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text size="xs" me="xs">
-            {parentSourceData?.traceIdExpression}:{' '}
-            {traceId || 'No trace id found for event'}
+            {parentSourceData &&
+            (isLogSource(parentSourceData) || isTraceSource(parentSourceData))
+              ? parentSourceData.traceIdExpression
+              : ''}
+            : {traceId || 'No trace id found for event'}
           </Text>
           {traceId != null && (
             <Button
@@ -148,26 +173,35 @@ export default function DBTracePanel({
               ? 'Trace Source'
               : 'Correlated Log Source'}
           </Text>
-          <SourceSelectControlled control={control} name="source" size="xs" />
+          <SourceSelectControlled
+            control={control}
+            name="source"
+            size="xs"
+            sourceSchemaPreview={sourceSchemaPreview}
+          />
         </Group>
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
           <Text size="xs">Trace ID Expression</Text>
-          <Flex>
+          <Flex align="center">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}
               size="xs"
+              parentRef={typeof document !== 'undefined' ? document.body : null}
             />
             <Button
               ms="sm"
-              variant="outline"
-              color="green"
+              variant="primary"
               onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
-                if (parentSourceData != null) {
+                if (
+                  parentSourceData &&
+                  (isLogSource(parentSourceData) ||
+                    isTraceSource(parentSourceData))
+                ) {
                   updateTableSource({
                     source: {
                       ...parentSourceData,
@@ -182,8 +216,7 @@ export default function DBTracePanel({
             </Button>
             <Button
               ms="sm"
-              variant="outline"
-              color="gray"
+              variant="secondary"
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
@@ -203,6 +236,7 @@ export default function DBTracePanel({
           highlightedRowWhere={eventRowWhere?.id}
           onClick={setEventRowWhere}
           initialRowHighlightHint={initialRowHighlightHint}
+          emptyState={emptyState}
         />
       )}
       {traceSourceData != null && eventRowWhere != null && (
@@ -233,6 +267,7 @@ export default function DBTracePanel({
                   : traceSourceData
               }
               rowId={eventRowWhere?.id}
+              aliasWith={eventRowWhere?.aliasWith}
             />
           )}
           {displayedTab === Tab.Parsed && (
@@ -243,6 +278,7 @@ export default function DBTracePanel({
                   : traceSourceData
               }
               rowId={eventRowWhere?.id}
+              aliasWith={eventRowWhere?.aliasWith}
             />
           )}
         </>

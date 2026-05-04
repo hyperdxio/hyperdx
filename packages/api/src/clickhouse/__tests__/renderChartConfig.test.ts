@@ -1,13 +1,12 @@
 // TODO: we might want to move this test file to common-utils package
 
-import { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
+import { ChSql, chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
-  AggregateFunctionSchema,
-  DerivedColumn,
   MetricsDataType,
+  QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 import ms from 'ms';
@@ -35,6 +34,13 @@ const TEST_METRIC_TABLES = {
   summary: DEFAULT_METRICS_TABLE.SUMMARY,
   'exponential histogram': DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
 };
+
+const querySettings: QuerySettings = [
+  { setting: 'optimize_read_in_order', value: '0' },
+  { setting: 'cast_keep_nullable', value: '1' },
+  { setting: 'count_distinct_implementation', value: 'uniqCombined64' },
+  { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+];
 
 describe('renderChartConfig', () => {
   const server = getServer();
@@ -108,7 +114,6 @@ describe('renderChartConfig', () => {
   });
 
   afterEach(async () => {
-    console.log('running db cleanup code');
     await server.clearDBs();
     jest.clearAllMocks();
   });
@@ -153,6 +158,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'ts',
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -191,6 +197,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'ts',
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -227,16 +234,10 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
-      const resp = await clickhouseClient
-        .query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-        })
-        .then(res => res.json() as any);
-      expect(resp.data).toMatchSnapshot();
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
     it('simple select + group by query logs', async () => {
@@ -273,6 +274,7 @@ describe('renderChartConfig', () => {
           groupBy: 'ServiceName',
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -343,6 +345,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(avgQuery)).toMatchSnapshot();
       const maxQuery = await renderChartConfig(
@@ -364,6 +367,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(maxQuery)).toMatchSnapshot();
       const sumQuery = await renderChartConfig(
@@ -385,6 +389,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(sumQuery)).toMatchSnapshot();
     });
@@ -410,6 +415,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -435,6 +441,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -460,6 +467,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -486,6 +494,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -658,6 +667,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -682,6 +692,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -706,6 +717,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -750,6 +762,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(minQuery)).toMatchSnapshot('minSum');
 
@@ -772,6 +785,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
@@ -1152,6 +1166,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1201,6 +1216,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1251,6 +1267,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1295,6 +1312,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1321,6 +1339,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1348,6 +1367,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1375,6 +1395,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1445,6 +1466,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);
@@ -1481,6 +1503,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);
@@ -1510,6 +1533,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);
@@ -1519,6 +1543,45 @@ describe('renderChartConfig', () => {
       // Verify the SQL uses simple string comparison (not IN-based)
       expect(query.sql).toContain("MetricName = 'k8s.pod.cpu.utilization'");
       expect(query.sql).not.toMatch(/MetricName IN /);
+    });
+  });
+
+  describe('Query settings', () => {
+    it('handles the the query settings', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: now,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: now,
+          SeverityText: 'info',
+          Body: 'This is a test message.',
+        },
+      ]);
+
+      const query = await renderChartConfig(
+        {
+          select: [{ valueExpression: 'Body' }],
+          from: logSource.from,
+          where: '',
+          timestampValueExpression: 'Timestamp',
+          connection: connection.id,
+          settings: chSql`max_result_rows = 1`,
+        },
+        metadata,
+        [...querySettings, { setting: 'result_overflow_mode', value: 'break' }],
+      );
+
+      const res = await queryData(query);
+      // ensures `result_overflow_mode = break` is applied, otherwise query would error.
+      expect(res).toHaveLength(2);
+      expect(res).toMatchSnapshot();
     });
   });
 });

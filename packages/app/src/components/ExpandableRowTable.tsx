@@ -4,11 +4,14 @@ import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 
+import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
+
 import styles from '../../styles/LogTable.module.scss';
 
 // Hook that provides a function to open the sidebar with specific row details
 const useSidebarOpener = () => {
-  const [, setRowId] = useQueryState('rowWhere');
+  const [, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [, setRowSource] = useQueryState('rowSource');
 
   return useCallback(
@@ -81,22 +84,6 @@ export const ExpandedLogRow = memo(
   },
 );
 
-export interface ExpandableRowTableProps {
-  // Expansion state management
-  expandedRows: Record<string, boolean>;
-  onToggleRowExpansion: (rowId: string) => void;
-  onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
-  collapseAllRows?: boolean;
-  showExpandButton?: boolean;
-
-  // Row data
-  source?: TSource;
-  getRowId: (row: Record<string, any>) => string;
-
-  // Table display
-  highlightedLineId?: string;
-}
-
 // Hook for managing expansion state
 export const useExpandableRows = (
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void,
@@ -152,7 +139,7 @@ const ExpandButton = memo(
           type="button"
           className={cx(styles.expandButton, {
             [styles.expanded]: isExpanded,
-            'text-success': highlightedLineId === rowId,
+            'text-brand': highlightedLineId === rowId,
             'text-muted': highlightedLineId !== rowId,
           })}
           onClick={e => {
@@ -179,7 +166,7 @@ export const createExpandButtonColumn = (
   highlightedLineId?: string,
 ) => ({
   id: 'expand-btn',
-  accessorKey: '__hyperdx_id',
+  accessorKey: INTERNAL_ROW_FIELDS.ID,
   header: () => '',
   cell: (info: any) => {
     const rowId = info.getValue() as string;
@@ -195,6 +182,7 @@ export const createExpandButtonColumn = (
     );
   },
   size: 32,
+  minSize: 32,
   enableResizing: false,
   enableSorting: false,
   meta: {

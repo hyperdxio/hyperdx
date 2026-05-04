@@ -1,5 +1,5 @@
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -8,14 +8,10 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = (obj: any) => {
-    return JSON.parse(JSON.stringify(obj));
-  };
-}
+import { COLORS, getChartColorError } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -45,7 +41,7 @@ describe('ChartUtils', () => {
           generateEmptyBuckets: false,
         }),
       ).toThrow(
-        'No timestamp column found with meta: [{"name":"AVG(toFloat64OrDefault(toString(Duration)))","type":"Float64"}]',
+        'No timestamp column found in result column metadata. Make sure a Date/DateTime column exists in the result set.\n\nResult column metadata: [{"name":"AVG(toFloat64OrDefault(toString(Duration)))","type":"Float64"}]',
       );
     });
 
@@ -128,7 +124,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
@@ -217,7 +213,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
@@ -227,7 +223,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -235,7 +231,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -245,7 +241,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
@@ -305,7 +301,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -313,7 +309,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -321,7 +317,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#F81358',
+          color: getChartColorError(),
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
@@ -331,7 +327,7 @@ describe('ChartUtils', () => {
       ]);
     });
 
-    it('should zero-fill missing time buckets', () => {
+    it('should zero-fill missing time buckets when generateEmptyBuckets is undefined', () => {
       const res = {
         data: [
           {
@@ -377,7 +373,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(1764159780000), new Date(1764159900000)],
         granularity: '1 minute',
-        generateEmptyBuckets: true,
       });
 
       expect(actual.graphResults).toEqual([
@@ -409,7 +404,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
@@ -419,7 +414,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -427,7 +422,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -437,11 +432,209 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
+          isDashed: false,
+        },
+      ]);
+    });
+
+    it('should fill missing time buckets with zero when generateEmptyBuckets is true', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        generateEmptyBuckets: true,
+      });
+
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159840,
+          'count()': 0,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
+        },
+      ]);
+    });
+
+    it('should not fill missing time buckets when generateEmptyBuckets is false', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      // Should only have the two data points, no filled buckets
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
+        },
+      ]);
+    });
+
+    it('should use only the first timestamp column when multiple are present', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            first_timestamp: '2025-11-26T11:12:00Z',
+            other_timestamp: '2025-11-26T11:13:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: 'first_timestamp',
+            type: 'DateTime',
+          },
+          {
+            name: 'other_timestamp',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.timestampColumn).toEqual({
+        name: 'first_timestamp',
+        type: 'DateTime',
+      });
+      expect(actual.graphResults).toEqual([
+        {
+          first_timestamp: 1764155520,
+          'count()': 10,
+        },
+      ]);
+    });
+
+    it('should treat Map, String, and Array type columns as group columns', () => {
+      const res = {
+        data: [
+          {
+            'count()': 5,
+            string_col: 'foo',
+            map_col: { key: 'val' },
+            array_col: [1, 2, 3],
+            __hdx_time_bucket: '2025-11-26T11:12:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: 'string_col',
+            type: 'String',
+          },
+          {
+            name: 'map_col',
+            type: 'Map(String, String)',
+          },
+          {
+            name: 'array_col',
+            type: 'Array(UInt64)',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      // All three non-numeric, non-timestamp columns form the group key.
+      // With a single value column, the value column name is omitted from the key.
+      // Map and Array values are serialized as JSON strings.
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764155520,
+          'foo · {"key":"val"} · [1,2,3]': 5,
+        },
+      ]);
+      expect(actual.lineData).toEqual([
+        {
+          color: COLORS[0],
+          dataKey: 'foo · {"key":"val"} · [1,2,3]',
+          currentPeriodKey: 'foo · {"key":"val"} · [1,2,3]',
+          previousPeriodKey: 'foo · {"key":"val"} · [1,2,3] (previous)',
+          displayName: 'foo · {"key":"val"} · [1,2,3]',
           isDashed: false,
         },
       ]);
@@ -503,6 +696,7 @@ describe('ChartUtils', () => {
         ],
         granularity: '1 minute',
         generateEmptyBuckets: false,
+        previousPeriodOffsetSeconds: 120,
       });
 
       expect(actual.graphResults).toEqual([
@@ -524,7 +718,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
@@ -533,7 +727,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#20c997',
+          color: COLORS[0],
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
@@ -553,7 +747,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -567,7 +761,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -582,7 +776,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -600,7 +794,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToNumberChartConfig(config);
 
@@ -617,7 +811,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 
@@ -631,7 +825,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 
@@ -645,11 +839,172 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 
       expect(convertedConfig.limit).toEqual({ limit: 200 });
+    });
+  });
+
+  describe('formatResponseForPieChart', () => {
+    const getColor = (index: number, label: string) =>
+      `color-${index}-${label}`;
+
+    it('returns empty array when data.data is empty', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('throws when meta is missing', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          { data: [{ 'count()': 10 }] } as any,
+          getColor,
+        ),
+      ).toThrow('No meta data found in response');
+    });
+
+    it('throws when there are no numeric value columns', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          {
+            data: [{ ServiceName: 'checkout' }],
+            meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
+          },
+          getColor,
+        ),
+      ).toThrow(
+        'No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: [{"name":"ServiceName","type":"LowCardinality(String)"}]',
+      );
+    });
+
+    it('uses the value column name as label when there are no group-by columns', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': 10 }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 10, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('joins group-by column values with " - " as the label', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 10, ServiceName: 'checkout', env: 'prod' },
+            { 'count()': 5, ServiceName: 'shipping', env: 'prod' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+            { name: 'env', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        {
+          label: 'checkout - prod',
+          value: 10,
+          color: 'color-0-checkout - prod',
+        },
+        {
+          label: 'shipping - prod',
+          value: 5,
+          color: 'color-1-shipping - prod',
+        },
+      ]);
+    });
+
+    it('parses string numeric values', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': '42' }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 42, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('filters out NaN values', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': 'not-a-number' }, { 'count()': 5 }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 5, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('sorts entries in descending order by value', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result.map(e => e.value)).toEqual([10, 3, 1]);
+    });
+
+    it('assigns colors by sorted index', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 1, ServiceName: 'b' },
+            { 'count()': 10, ServiceName: 'a' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      // 'a' (value 10) sorts first and gets index 0; 'b' (value 1) gets index 1
+      expect(result[0]).toMatchObject({ label: 'a', color: 'color-0-a' });
+      expect(result[1]).toMatchObject({ label: 'b', color: 'color-1-b' });
+    });
+
+    it('uses only the first numeric column as the value column', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ count: 5, duration: 999, ServiceName: 'svc' }],
+          meta: [
+            { name: 'count', type: 'UInt64' },
+            { name: 'duration', type: 'Float64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'svc', value: 5, color: 'color-0-svc' },
+      ]);
     });
   });
 });

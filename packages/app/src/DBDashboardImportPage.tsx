@@ -1,22 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { filter } from 'lodash';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
-import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  type DashboardTemplate,
+  DashboardTemplateSchema,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Anchor,
+  Breadcrumbs,
   Button,
   Collapse,
   Container,
   Group,
-  Input,
+  Loader,
   Stack,
   Table,
+  TagsInput,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -30,20 +38,19 @@ import {
   IconX,
 } from '@tabler/icons-react';
 
-import { PageHeader } from './components/PageHeader';
 import SelectControlled from './components/SelectControlled';
+import { useBrandDisplayName } from './theme/ThemeProvider';
+import api from './api';
+import { useConnections } from './connection';
 import { useCreateDashboard, useUpdateDashboard } from './dashboard';
+import { getDashboardTemplate } from './dashboardTemplates';
 import { withAppNav } from './layout';
 import { useSources } from './source';
-
-// The schema for the JSON data we expect to receive
-const InputSchema = DashboardTemplateSchema;
-type Input = z.infer<typeof InputSchema>;
 
 function FileSelection({
   onComplete,
 }: {
-  onComplete: (input: Input | null) => void;
+  onComplete: (input: DashboardTemplate | null) => void;
 }) {
   // The schema for the form data we expect to receive
   const FormSchema = z.object({ file: z.instanceof(File).nullable() });
@@ -52,15 +59,11 @@ function FileSelection({
 
   const [error, setError] = useState<{
     message: string;
-    details?: string;
+    details?: ReactNode;
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
   });
 
@@ -68,18 +71,38 @@ function FileSelection({
     setError(null);
     if (!file) return;
 
+    let data: unknown;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      const parsed = InputSchema.parse(data); // throws if invalid
-      onComplete(parsed);
-    } catch (e: any) {
+      data = JSON.parse(text);
+    } catch (e: unknown) {
+      onComplete(null);
+      setError({
+        message: 'Invalid JSON File',
+        details: e instanceof Error ? e.message : 'Failed to parse JSON',
+      });
+      return;
+    }
+
+    const result = DashboardTemplateSchema.safeParse(data);
+    if (!result.success) {
       onComplete(null);
       setError({
         message: 'Failed to Import Dashboard',
-        details: e?.message ?? 'Failed to parse/validate JSON',
+        details: (
+          <Stack gap={0}>
+            {result.error.issues.map(issue => (
+              <Text key={`${issue.path.join('.')}:${issue.message}`} c="red">
+                {issue.message}
+              </Text>
+            ))}
+          </Stack>
+        ),
       });
+      return;
     }
+
+    onComplete(result.data);
   };
 
   return (
@@ -110,7 +133,7 @@ function FileSelection({
                 <Dropzone.Accept>
                   <IconUpload
                     size={52}
-                    color="var(--color-text-success)"
+                    color="var(--color-text-brand)"
                     stroke={1.5}
                   />
                 </Dropzone.Accept>
@@ -146,7 +169,7 @@ function FileSelection({
         {error && (
           <div>
             <Text c="red">{error.message}</Text>
-            {error.details && (
+            {error.details != null && (
               <>
                 <Button
                   variant="transparent"
@@ -166,9 +189,7 @@ function FileSelection({
                     {errorDetails ? 'Hide Details' : 'Show Details'}
                   </Group>
                 </Button>
-                <Collapse in={errorDetails}>
-                  <Text c="red">{error.details}</Text>
-                </Collapse>
+                <Collapse expanded={errorDetails}>{error.details}</Collapse>
               </>
             )}
           </div>
@@ -178,43 +199,57 @@ function FileSelection({
   );
 }
 
-const SourceResolutionForm = z.object({
+const MappingForm = z.object({
   dashboardName: z.string().min(1),
+  tags: z.array(z.string()),
   sourceMappings: z.array(z.string()),
+  connectionMappings: z.array(z.string()),
   filterSourceMappings: z.array(z.string()).optional(),
 });
 
-type SourceResolutionFormValues = z.infer<typeof SourceResolutionForm>;
+type MappingFormValues = z.infer<typeof MappingForm>;
 
-function Mapping({ input }: { input: Input }) {
+function Mapping({ input }: { input: DashboardTemplate }) {
   const router = useRouter();
   const { data: sources } = useSources();
+  const { data: connections } = useConnections();
+  const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryParam('dashboardId', StringParam);
 
   const { handleSubmit, getFieldState, control, setValue } =
-    useForm<SourceResolutionFormValues>({
-      resolver: zodResolver(SourceResolutionForm),
+    useForm<MappingFormValues>({
+      resolver: zodResolver(MappingForm),
       defaultValues: {
         dashboardName: input.name,
-        sourceMappings: input.tiles.map(() => undefined),
+        tags: input.tags ?? [],
+        sourceMappings: input.tiles.map(() => ''),
+        connectionMappings: input.tiles.map(() => ''),
       },
     });
 
-  // When the inputs change, reset the form
+  // When the input changes, reset the form
   useEffect(() => {
-    if (!input || !sources) return;
+    if (!input || !sources || !connections) return;
 
     const sourceMappings = input.tiles.map(tile => {
-      // find matching source name
+      const config = tile.config as SavedChartConfig;
+      if (!config.source) return '';
       const match = sources.find(
-        source =>
-          source.name.toLowerCase() === tile.config.source.toLowerCase(),
+        source => source.name.toLowerCase() === config.source!.toLowerCase(),
+      );
+      return match?.id || '';
+    });
+
+    const connectionMappings = input.tiles.map(tile => {
+      const config = tile.config as SavedChartConfig;
+      if (!isRawSqlSavedChartConfig(config)) return '';
+      const match = connections.find(
+        conn => conn.name.toLowerCase() === config.connection.toLowerCase(),
       );
       return match?.id || '';
     });
 
     const filterSourceMappings = input.filters?.map(filter => {
-      // find matching source name
       const match = sources.find(
         source => source.name.toLowerCase() === filter.source.toLowerCase(),
       );
@@ -222,18 +257,21 @@ function Mapping({ input }: { input: Input }) {
     });
 
     setValue('sourceMappings', sourceMappings);
+    setValue('connectionMappings', connectionMappings);
     setValue('filterSourceMappings', filterSourceMappings);
-  }, [setValue, sources, input]);
+  }, [setValue, sources, connections, input]);
 
   const isUpdatingRef = useRef(false);
   const sourceMappings = useWatch({ control, name: 'sourceMappings' });
+  const connectionMappings = useWatch({ control, name: 'connectionMappings' });
   const prevSourceMappingsRef = useRef(sourceMappings);
+  const prevConnectionMappingsRef = useRef(connectionMappings);
 
+  // Propagate source mapping changes to other tiles/filters with the same input source
   useEffect(() => {
     if (isUpdatingRef.current) return;
     if (!sourceMappings || !input.tiles) return;
 
-    // Find which mapping changed
     const changedIdx = sourceMappings.findIndex(
       (mapping, idx) => mapping !== prevSourceMappingsRef.current?.[idx],
     );
@@ -242,47 +280,99 @@ function Mapping({ input }: { input: Input }) {
     prevSourceMappingsRef.current = sourceMappings;
 
     const inputTile = input.tiles[changedIdx];
-    if (!inputTile) return;
+    const inputTileConfig = inputTile?.config;
+    if (!inputTileConfig || !inputTileConfig.source) return;
+
     const sourceId = sourceMappings[changedIdx] ?? '';
+    const inputTileSource = inputTileConfig.source;
+
     const keysForTilesWithMatchingSource = input.tiles
-      .map((tile, index) => ({ ...tile, index }))
-      .filter(tile => tile.config.source === inputTile.config.source)
+      .map((tile, index) => ({ config: tile.config, index }))
+      .filter(tile => tile.config.source === inputTileSource)
       .map(({ index }) => `sourceMappings.${index}` as const);
 
     const keysForFiltersWithMatchingSource =
       input.filters
         ?.map((filter, index) => ({ ...filter, index }))
-        .filter(f => f.source === inputTile.config.source)
+        .filter(f => f.source === inputTileSource)
         .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
     isUpdatingRef.current = true;
-
     for (const key of [
       ...keysForTilesWithMatchingSource,
       ...keysForFiltersWithMatchingSource,
     ]) {
-      const fieldState = getFieldState(key);
-      // Only set if the field has not been modified
-      if (!fieldState.isDirty) {
-        setValue(key, sourceId, {
-          shouldValidate: true,
-        });
+      if (!getFieldState(key).isDirty) {
+        setValue(key, sourceId, { shouldValidate: true });
       }
     }
-
     isUpdatingRef.current = false;
   }, [sourceMappings, input.tiles, input.filters, getFieldState, setValue]);
+
+  // Propagate connection mapping changes to other RawSQL tiles with the same input connection
+  useEffect(() => {
+    if (isUpdatingRef.current) return;
+    if (!connectionMappings || !input.tiles) return;
+
+    const changedIdx = connectionMappings.findIndex(
+      (mapping, idx) => mapping !== prevConnectionMappingsRef.current?.[idx],
+    );
+    if (changedIdx === -1) return;
+
+    prevConnectionMappingsRef.current = connectionMappings;
+
+    const inputTile = input.tiles[changedIdx];
+    const inputTileConfig = inputTile?.config as SavedChartConfig | undefined;
+    if (!inputTileConfig || !isRawSqlSavedChartConfig(inputTileConfig)) return;
+
+    const connectionId = connectionMappings[changedIdx] ?? '';
+    const inputTileConnection = inputTileConfig.connection;
+
+    const keysForTilesWithMatchingConnection = input.tiles
+      .map((tile, index) => ({
+        config: tile.config as SavedChartConfig,
+        index,
+      }))
+      .filter(
+        tile =>
+          isRawSqlSavedChartConfig(tile.config) &&
+          tile.config.connection === inputTileConnection,
+      )
+      .map(({ index }) => `connectionMappings.${index}` as const);
+
+    isUpdatingRef.current = true;
+    for (const key of keysForTilesWithMatchingConnection) {
+      if (!getFieldState(key).isDirty) {
+        setValue(key, connectionId, { shouldValidate: true });
+      }
+    }
+    isUpdatingRef.current = false;
+  }, [connectionMappings, input.tiles, getFieldState, setValue]);
 
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
 
-  const onSubmit = async (data: SourceResolutionFormValues) => {
+  const onSubmit = async (data: MappingFormValues) => {
     try {
-      // Zip the source mappings with the input tiles
+      // Zip the source/connection mappings with the input tiles
       const zippedTiles = input.tiles.map((tile, idx) => {
         const source = sources?.find(
           source => source.id === data.sourceMappings[idx],
         );
+
+        if (isRawSqlSavedChartConfig(tile.config)) {
+          const connection = connections?.find(
+            conn => conn.id === data.connectionMappings[idx],
+          );
+          return {
+            ...tile,
+            config: {
+              ...tile.config,
+              connection: connection!.id,
+              ...(source ? { source: source.id } : {}),
+            },
+          };
+        }
         return {
           ...tile,
           config: {
@@ -307,6 +397,7 @@ function Mapping({ input }: { input: Input }) {
         tiles: zippedTiles,
         filters: zippedFilters,
         name: data.dashboardName,
+        tags: data.tags,
       });
       let _dashboardId = dashboardId;
       if (_dashboardId) {
@@ -349,32 +440,67 @@ function Mapping({ input }: { input: Input }) {
             />
           )}
         />
+        <Controller
+          name="tags"
+          control={control}
+          render={({ field }) => (
+            <TagsInput
+              label="Tags"
+              placeholder="Add tags"
+              data={existingTags?.data ?? []}
+              {...field}
+            />
+          )}
+        />
         <Table>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
-              <Table.Th>Input Source Name</Table.Th>
-              <Table.Th>Mapped Source Name</Table.Th>
+              <Table.Th>Input Source</Table.Th>
+              <Table.Th>Mapped Source</Table.Th>
+              <Table.Th>Input Connection</Table.Th>
+              <Table.Th>Mapped Connection</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {input.tiles.map((tile, i) => (
-              <Table.Tr key={tile.id}>
-                <Table.Td>{tile.config.name}</Table.Td>
-                <Table.Td>{tile.config.source}</Table.Td>
-                <Table.Td>
-                  <SelectControlled
-                    control={control}
-                    name={`sourceMappings.${i}`}
-                    data={sources?.map(source => ({
-                      value: source.id,
-                      label: source.name,
-                    }))}
-                    placeholder="Select a source"
-                  />
-                </Table.Td>
-              </Table.Tr>
-            ))}
+            {input.tiles.map((tile, i) => {
+              const config = tile.config;
+              const isRawSql = isRawSqlSavedChartConfig(config);
+              return (
+                <Table.Tr key={tile.id}>
+                  <Table.Td>{tile.config.name}</Table.Td>
+
+                  <Table.Td>{config.source ?? ''}</Table.Td>
+                  <Table.Td>
+                    {config.source != null && (
+                      <SelectControlled
+                        control={control}
+                        name={`sourceMappings.${i}`}
+                        data={sources?.map(source => ({
+                          value: source.id,
+                          label: source.name,
+                        }))}
+                        placeholder="Select a source"
+                      />
+                    )}
+                  </Table.Td>
+                  <Table.Td>{isRawSql ? config.connection : ''}</Table.Td>
+                  <Table.Td>
+                    {isRawSql ? (
+                      <SelectControlled
+                        control={control}
+                        name={`connectionMappings.${i}`}
+                        data={connections?.map(conn => ({
+                          value: conn.id,
+                          label: conn.name,
+                        }))}
+                        placeholder="Select a connection"
+                      />
+                    ) : null}
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
             {input.filters?.map((filter, i) => (
               <Table.Tr key={filter.id}>
                 <Table.Td>{filter.name} (filter)</Table.Td>
@@ -390,6 +516,8 @@ function Mapping({ input }: { input: Input }) {
                     placeholder="Select a source"
                   />
                 </Table.Td>
+                <Table.Td />
+                <Table.Td />
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -397,7 +525,7 @@ function Mapping({ input }: { input: Input }) {
         {createDashboard.isError && (
           <Text c="red">{createDashboard.error.toString()}</Text>
         )}
-        <Button type="submit" loading={createDashboard.isPending}>
+        <Button type="submit" loading={createDashboard.isPending} mb="md">
           Finish Import
         </Button>
       </Stack>
@@ -406,24 +534,69 @@ function Mapping({ input }: { input: Input }) {
 }
 
 function DBDashboardImportPage() {
-  const [input, setInput] = useState<Input | null>(null);
+  const brandName = useBrandDisplayName();
+  const router = useRouter();
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const templateName = router.query.template as string | undefined;
+  const isTemplate = !!templateName;
+  const isLoadingRoute = !router.isReady;
+
+  const templateInput = useMemo(
+    () => (templateName ? getDashboardTemplate(templateName) : undefined),
+    [templateName],
+  );
+
+  const [fileInput, setFileInput] = useState<DashboardTemplate | null>(null);
+  const input = templateInput ?? fileInput;
+  const isTemplateNotFound = isTemplate && !isLoadingRoute && !templateInput;
 
   return (
     <div>
       <Head>
-        <title>Create a Dashboard - HyperDX</title>
+        <title>Import Dashboard - {brandName}</title>
       </Head>
-      <PageHeader>
-        <div>Create Dashboard &gt; Import Dashboard</div>
-      </PageHeader>
+      <Breadcrumbs my="lg" ms="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        {isTemplate && (
+          <Anchor
+            component={Link}
+            href="/dashboards/templates"
+            fz="sm"
+            c="dimmed"
+          >
+            Templates
+          </Anchor>
+        )}
+        <Text fz="sm" c="dimmed">
+          Import
+        </Text>
+      </Breadcrumbs>
       <div>
         <Container>
           <Stack gap="lg" mt="xl">
-            <FileSelection
-              onComplete={i => {
-                setInput(i);
-              }}
-            />
+            {isLoadingRoute ? (
+              <Loader mx="auto" />
+            ) : isTemplateNotFound ? (
+              <Stack align="center" gap="sm" py="xl">
+                <Text ta="center">Oops! We couldn't find that template.</Text>
+                <Text ta="center">
+                  Try{' '}
+                  <Anchor component={Link} href="/dashboards/templates">
+                    browsing available templates
+                  </Anchor>
+                  .
+                </Text>
+              </Stack>
+            ) : !isTemplate ? (
+              <FileSelection
+                onComplete={i => {
+                  setFileInput(i);
+                }}
+              />
+            ) : null}
             {input && <Mapping input={input} />}
           </Stack>
         </Container>

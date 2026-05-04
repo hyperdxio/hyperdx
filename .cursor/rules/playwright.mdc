@@ -1,0 +1,12 @@
+---
+description: HyperDX Playwright E2E test conventions for writing, reviewing, and fixing tests. Use when creating, editing, or debugging any E2E test in this project.
+globs:
+alwaysApply: false
+---
+
+When writing, reviewing, or fixing Playwright E2E tests for this project, follow the conventions in @.claude/skills/playwright/SKILL.md.
+
+To run tests:
+```bash
+./scripts/test-e2e.sh --quiet <file> [--grep "\"<pattern>\""]
+```

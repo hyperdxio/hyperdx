@@ -1,0 +1,51 @@
+.sortButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  min-width: 0;
+
+  &:hover {
+    color: var(--color-text);
+  }
+}
+
+.resizer {
+  position: relative;
+  width: 8px;
+  align-self: stretch;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    width: 2px;
+    height: 14px;
+    background-color: var(--color-border-emphasis);
+    border-radius: 2px;
+  }
+}
+
+.headerCellWithAction {
+  transition: background-color 0.15s ease-in-out;
+  border-radius: var(--mantine-radius-sm);
+
+  &:hover {
+    background-color: var(--log-table-muted-bg);
+  }
+
+  &:hover .headerRemoveButton {
+    opacity: 1;
+  }
+}
+
+.headerRemoveButton {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}

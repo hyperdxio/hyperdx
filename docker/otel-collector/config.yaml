@@ -19,7 +19,7 @@ processors:
           # Infer: extract the first log level keyword from the first 256 characters of the body
           - set(log.cache["substr"], log.body.string) where Len(log.body.string) < 256
           - set(log.cache["substr"], Substring(log.body.string, 0, 256)) where Len(log.body.string) >= 256
-          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
+          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>\\b(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
           # Infer: detect FATAL
           - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.cache["0"], "(?i)(alert|crit|emerg|fatal)")
           - set(log.severity_text, "fatal") where log.severity_number == SEVERITY_NUMBER_FATAL
@@ -52,6 +52,20 @@ processors:
     timeout: 5s
     override: false
   batch:
+    # Defaults are tuned for ClickHouse, which prefers fewer, larger inserts.
+    # ClickHouse recommends inserting in packets of at least 1000 rows or no
+    # more than 1 request per second. The upstream collector defaults
+    # (send_batch_size: 8192, timeout: 200ms) can yield very small batches
+    # under low load, which hurts ClickHouse insert performance and creates
+    # excess parts in MergeTree tables.
+    #
+    # Each setting can be overridden via env vars (mirroring the upstream
+    # batch processor options). Set HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE
+    # to a positive value if you need to enforce an upper bound; the default
+    # of 0 means "no upper limit".
+    send_batch_size: ${env:HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE:-10000}
+    send_batch_max_size: ${env:HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE:-0}
+    timeout: ${env:HYPERDX_OTEL_BATCH_TIMEOUT:-5s}
   memory_limiter:
     # 80% of maximum memory up to 2G
     limit_mib: 1500

@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+API_BUILD_DIR="${SCRIPT_DIR}/../build"
+
+# shellcheck disable=SC2086
+# NODE_REQUIRE_FLAGS is intentionally unquoted for word-splitting into -r <module>
+NODE_REQUIRE_FLAGS="-r @hyperdx/node-opentelemetry/build/src/tracing"
+
+command="$1"
+shift 2>/dev/null || true
+
+case "$command" in
+  api)
+    exec node $NODE_REQUIRE_FLAGS "$API_BUILD_DIR/index.js" "$@"
+    ;;
+  task)
+    exec node $NODE_REQUIRE_FLAGS "$API_BUILD_DIR/tasks/index.js" "$@"
+    ;;
+  *)
+    echo "Usage: hyperdx <command> [args...]"
+    echo "Commands:"
+    echo "  api           Start the HyperDX API server"
+    echo "  task <name>   Run a named task (e.g., check-alerts)"
+    exit 1
+    ;;
+esac

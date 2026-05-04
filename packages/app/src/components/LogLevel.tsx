@@ -16,7 +16,7 @@ export default function LogLevel({
         levelClass === 'error'
           ? 'red'
           : levelClass === 'warn'
-            ? 'yellow'
+            ? 'var(--color-chart-warning)'
             : 'gray'
       }
       {...props}

@@ -1,10 +1,9 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Anchor,
   Box,
   Card,
   Drawer,
@@ -16,7 +15,6 @@ import {
 } from '@mantine/core';
 
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -25,6 +23,7 @@ import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
+import { WithClause } from '@/hooks/useRowWhere';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -42,7 +41,7 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray">
+        <Text size="xs" c="gray">
           {label}
         </Text>
         <Text size="sm">{value}</Text>
@@ -57,7 +56,7 @@ const PodDetails = ({
   podName,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   podName: string;
 }) => {
   const { data: logsData } = useV2LogBatch<{
@@ -131,14 +130,10 @@ function PodLogs({
   dateRange,
   logSource,
   where,
-  rowId,
-  onRowClick,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
-  rowId: string | null;
-  onRowClick: (rowId: string) => void;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
@@ -183,7 +178,7 @@ function PodLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Pod Logs & Spans
           <Flex gap="xs" align="center">
@@ -221,8 +216,8 @@ export default function PodDetailsSidePanel({
   logSource,
   metricSource,
 }: {
-  logSource: TSource;
-  metricSource: TSource;
+  logSource: TLogSource;
+  metricSource: TMetricSource;
 }) {
   const [podName, setPodName] = useQueryParam(
     'podName',
@@ -233,9 +228,7 @@ export default function PodDetailsSidePanel({
   );
 
   const [rowId, setRowId] = React.useState<string | null>(null);
-  const handleRowClick = React.useCallback((rowWhere: string) => {
-    setRowId(rowWhere);
-  }, []);
+  const [aliasWith] = React.useState<WithClause[]>([]);
   const handleCloseRowSidePanel = React.useCallback(() => {
     setRowId(null);
   }, []);
@@ -284,6 +277,7 @@ export default function PodDetailsSidePanel({
   const { data: logServiceNames } = useGetKeyValues(
     {
       chartConfig: {
+        source: logSource.id,
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`,
         whereLanguage: 'lucene',
@@ -368,18 +362,14 @@ export default function PodDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -404,18 +394,14 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -440,7 +426,7 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md">
-                  <Card.Section p="md" py="xs" withBorder>
+                  <Card.Section p="md" py="xs">
                     Latest Pod Events
                   </Card.Section>
                   <Card.Section>
@@ -465,8 +451,6 @@ export default function PodDetailsSidePanel({
                   logSource={logSource}
                   where={logsWhere}
                   dateRange={dateRange}
-                  rowId={rowId}
-                  onRowClick={handleRowClick}
                 />
               </Grid.Col>
             </Grid>
@@ -475,6 +459,7 @@ export default function PodDetailsSidePanel({
             <DBRowSidePanel
               source={logSource}
               rowId={rowId}
+              aliasWith={aliasWith}
               onClose={handleCloseRowSidePanel}
               isNestedPanel={true}
             />

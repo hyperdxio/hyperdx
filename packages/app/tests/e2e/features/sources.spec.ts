@@ -1,5 +1,12 @@
 import { SearchPage } from '../page-objects/SearchPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_SESSIONS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
+} from '../utils/constants';
 
 const COMMON_FIELDS = [
   'Name',
@@ -22,6 +29,7 @@ const LOG_FIELDS = [
   'Trace Id Expression',
   'Span Id Expression',
   'Implicit Column Expression',
+  'Default Order By',
 ];
 
 const TRACE_FIELDS = [
@@ -44,6 +52,7 @@ const TRACE_FIELDS = [
   'Span Events Expression',
   'Implicit Column Expression',
   'Displayed Timestamp Column',
+  'Default Order By',
 ];
 
 const SESSION_FIELDS = [...COMMON_FIELDS, 'Correlated Trace Source'];
@@ -59,18 +68,30 @@ const METRIC_FIELDS = [
 ];
 
 const editableSourcesData = [
-  { name: 'Demo Logs', fields: LOG_FIELDS, radioButtonName: 'Log' },
-  { name: 'Demo Traces', fields: TRACE_FIELDS, radioButtonName: 'Trace' },
+  {
+    name: DEFAULT_LOGS_SOURCE_NAME,
+    fields: LOG_FIELDS,
+    radioButtonName: 'Log',
+  },
+  {
+    name: DEFAULT_TRACES_SOURCE_NAME,
+    fields: TRACE_FIELDS,
+    radioButtonName: 'Trace',
+  },
 ];
 
 const allSourcesData = [
   ...editableSourcesData,
   {
-    name: 'Demo Metrics',
+    name: DEFAULT_METRICS_SOURCE_NAME,
     fields: METRIC_FIELDS,
     radioButtonName: 'OTEL Metrics',
   },
-  { name: 'Demo Sessions', fields: SESSION_FIELDS, radioButtonName: 'Session' },
+  {
+    name: DEFAULT_SESSIONS_SOURCE_NAME,
+    fields: SESSION_FIELDS,
+    radioButtonName: 'Session',
+  },
 ];
 
 test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
@@ -81,15 +102,13 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await searchPage.goto();
   });
 
-  test('should open source settings menu', async () => {
-    // Click source settings menu
-    await searchPage.sourceMenu.click();
+  test('should show source actions in dropdown', async () => {
+    // Open source selector dropdown
+    await searchPage.sourceDropdown.click();
 
-    // Verify create new source menu item is visible
+    // Verify action items are visible in the dropdown
     await expect(searchPage.createNewSourceItem).toBeVisible();
-
-    // Verify edit source menu items are visible
-    await expect(searchPage.editSourceMenuItem).toBeVisible();
+    await expect(searchPage.editSourcesItem).toBeVisible();
   });
 
   test(
@@ -123,7 +142,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
   );
 
   test('should show proper fields when creating a new source', async () => {
-    await searchPage.sourceMenu.click();
+    await searchPage.sourceDropdown.click();
     await searchPage.createNewSourceItem.click();
     // for each source type (log, trace, session, metric), verify the correct fields are shown
     for (const sourceData of allSourcesData) {
@@ -150,4 +169,60 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     }
     await searchPage.page.keyboard.press('Escape');
   });
+
+  test(
+    'should persist custom ORDER BY and return search results',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const API_URL = getApiUrl();
+      const logSources = await getSources(page, 'log');
+      const source = logSources.find(
+        (s: any) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+      );
+      expect(source).toBeDefined();
+
+      const sourceId = source._id;
+      const customOrderBy = 'Timestamp ASC';
+
+      try {
+        await test.step('Set custom orderByExpression on the source', async () => {
+          const updateResponse = await page.request.put(
+            `${API_URL}/sources/${sourceId}`,
+            {
+              data: {
+                ...source,
+                id: sourceId,
+                orderByExpression: customOrderBy,
+              },
+            },
+          );
+          expect(updateResponse.ok()).toBeTruthy();
+        });
+
+        await test.step('Verify orderByExpression is persisted', async () => {
+          const updatedSources = await getSources(page, 'log');
+          const updatedSource = updatedSources.find(
+            (s: any) => s._id === sourceId,
+          );
+          expect(updatedSource).toBeDefined();
+          expect(updatedSource.orderByExpression).toBe(customOrderBy);
+        });
+
+        await test.step('Verify search results load with custom ORDER BY', async () => {
+          await searchPage.goto();
+          await searchPage.selectSource(source.name);
+          await searchPage.submitEmptySearch();
+          await expect(searchPage.table.firstRow).toBeVisible();
+        });
+      } finally {
+        await page.request.put(`${API_URL}/sources/${sourceId}`, {
+          data: {
+            ...source,
+            id: sourceId,
+            orderByExpression: '',
+          },
+        });
+      }
+    },
+  );
 });

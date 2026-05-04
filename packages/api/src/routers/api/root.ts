@@ -1,3 +1,4 @@
+import type { InstallationApiResponse } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
@@ -53,7 +54,8 @@ router.get('/health', async (req, res) => {
   });
 });
 
-router.get('/installation', async (req, res, next) => {
+type InstallationEspRes = express.Response<InstallationApiResponse>;
+router.get('/installation', async (_, res: InstallationEspRes, next) => {
   try {
     const _isTeamExisting = await isTeamExisting();
     return res.json({

@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
+import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
 
@@ -18,11 +20,15 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
-  // trace source
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
+
+  const { getFieldExpression } = useFieldExpressionGenerator(source);
 
   const config = useMemo(() => {
-    if (!source || !traceId) {
+    if (!source || !traceId || !getFieldExpression) {
       return;
     }
     return {
@@ -32,11 +38,11 @@ export const useSessionId = ({
           alias: 'Timestamp',
         },
         {
-          valueExpression: `${source.resourceAttributesExpression}['rum.sessionId']`,
+          valueExpression: `${getFieldExpression(source.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')}`,
           alias: 'rumSessionId',
         },
         {
-          valueExpression: `${source.resourceAttributesExpression}['service.name']`,
+          valueExpression: `${getFieldExpression(source.resourceAttributesExpression ?? 'ResourceAttributes', 'service.name')}`,
           alias: 'serviceName',
         },
         {
@@ -51,7 +57,7 @@ export const useSessionId = ({
       where: `${source.traceIdExpression} = '${traceId}'`,
       whereLanguage: 'sql' as const,
     };
-  }, [source, traceId]);
+  }, [source, traceId, getFieldExpression]);
 
   const { data } = useEventsData({
     config: config!, // ok to force unwrap, the query will be disabled if config is null
@@ -61,22 +67,19 @@ export const useSessionId = ({
   });
 
   const result = useMemo(() => {
-    for (const row of data?.data || []) {
-      if (row.parentSpanId === null && row.rumSessionId) {
-        return {
-          rumServiceName: row.serviceName,
-          rumSessionId: row.rumSessionId,
-        };
-      }
+    const rowData = data?.data || [];
+    let row = rowData.find(
+      row => row.parentSpanId === null && row.rumSessionId,
+    );
+    if (!row) {
+      // otherwise just return the first session id
+      row = rowData.find(row => row.rumSessionId);
     }
-    // otherwise just return the first session id
-    for (const row of data?.data || []) {
-      if (row.rumSessionId) {
-        return {
-          rumServiceName: row.serviceName,
-          rumSessionId: row.rumSessionId,
-        };
-      }
+    if (row) {
+      return {
+        rumServiceName: row.serviceName,
+        rumSessionId: row.rumSessionId,
+      };
     }
     return { rumServiceName: undefined, rumSessionId: undefined };
   }, [data]);
@@ -99,9 +102,16 @@ export const DBSessionPanel = ({
   serviceName: string;
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
-  const { data: traceSource } = useSource({ id: traceSourceId });
+  const { data: traceSource } = useSource({
+    id: traceSourceId,
+    kinds: [SourceKind.Trace],
+  });
   const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
-    id: traceSource?.sessionSourceId,
+    id:
+      traceSource && isTraceSource(traceSource)
+        ? traceSource.sessionSourceId
+        : undefined,
+    kinds: [SourceKind.Session],
   });
 
   if (!traceSource || (!sessionSource && isSessionSourceLoading)) {

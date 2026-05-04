@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -10,28 +10,57 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
+  useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
 
 import api from '@/api';
+import { IS_LOCAL_MODE } from '@/config';
+import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
+import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
 import { getMetadata } from '@/metadata';
+import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
 
 // Hook to get metadata with proper settings applied
-// TODO: replace all getMetadata calls with useMetadataWithSettings
 export function useMetadataWithSettings() {
-  const metadata = getMetadata();
+  const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
   const settingsApplied = useRef(false);
+  const queryClient = useQueryClient();
+
+  // Create a listener that triggers when connections are updated in local mode
+  useEffect(() => {
+    const isBrowser =
+      typeof window !== 'undefined' && typeof window.document !== 'undefined';
+    if (!isBrowser || !IS_LOCAL_MODE) return;
+
+    const createNewMetadata = (event: StorageEvent) => {
+      if (event.key === LOCAL_STORE_CONNECTIONS_KEY && event.newValue) {
+        // Create a new metadata instance with a new ClickHouse client,
+        // since the existing one will not have connection / auth info.
+        setMetadata(getMetadata());
+        settingsApplied.current = false;
+        // Clear react-query cache so that metadata is refetched with
+        // the new connection info, and error states are cleared.
+        queryClient.resetQueries();
+      }
+    };
+
+    window.addEventListener('storage', createNewMetadata);
+    return () => {
+      window.removeEventListener('storage', createNewMetadata);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
       metadata.setClickHouseSettings({
-        max_rows_to_read: me.team.metadataMaxRowsToRead,
+        max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
       settingsApplied.current = true;
     }
@@ -109,9 +138,20 @@ export function useMultipleAllFields(
         return [];
       }
 
-      const fields2d = await Promise.all(
+      const promiseResults = await Promise.allSettled(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
+
+      const fields2d: Field[][] = promiseResults.map(result => {
+        if (result.status === 'rejected') {
+          console.warn(
+            'Failed to fetch fields for table connection',
+            result.reason,
+          );
+          return [];
+        }
+        return result.value;
+      });
 
       // skip deduplication if not needed
       if (fields2d.length === 1) return fields2d[0];
@@ -151,7 +191,7 @@ export function useTableMetadata(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
-  return useQuery<TableMetadata>({
+  return useQuery<TableMetadata | undefined>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
       return await metadata.getTableMetadata({
@@ -173,7 +213,9 @@ export function useMultipleGetKeyValues(
     limit,
     disableRowLimit,
   }: {
-    chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
+    chartConfigs:
+      | BuilderChartConfigWithDateRange
+      | BuilderChartConfigWithDateRange[];
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
@@ -182,32 +224,51 @@ export function useMultipleGetKeyValues(
 ) {
   const metadata = useMetadataWithSettings();
   const chartConfigsArr = toArray(chartConfigs);
-  return useQuery<{ key: string; value: string[] }[]>({
+
+  const { enabled = true } = options || {};
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const { data: sources, isLoading: isLoadingSources } = useSources();
+
+  const maxKeys =
+    me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+
+  const query = useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
+      maxKeys,
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       return (
         await Promise.all(
-          chartConfigsArr.map(chartConfig =>
-            metadata.getKeyValues({
+          chartConfigsArr.map(chartConfig => {
+            const source = chartConfig.source
+              ? sources?.find(s => s.id === chartConfig.source)
+              : undefined;
+            return metadata.getKeyValuesWithMVs({
               chartConfig,
-              keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+              keys: keys.slice(0, maxKeys),
               limit,
               disableRowLimit,
-            }),
-          ),
+              source,
+              signal,
+            });
+          }),
         )
       ).flatMap(v => v);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length,
     placeholderData: keepPreviousData,
     ...options,
+    enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });
+
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSources,
+  };
 }
 
 export function useGetValuesDistribution(
@@ -216,13 +277,17 @@ export function useGetValuesDistribution(
     key,
     limit,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     key: string;
     limit: number;
   },
   options?: Omit<UseQueryOptions<Map<string, number>, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const { data: source, isLoading: isLoadingSource } = useSource({
+    id: chartConfig.source,
+  });
+
   return useQuery<Map<string, number>>({
     queryKey: ['useMetadata.useGetValuesDistribution', chartConfig, key],
     queryFn: async () => {
@@ -230,10 +295,11 @@ export function useGetValuesDistribution(
         chartConfig,
         key,
         limit,
+        source,
       });
     },
     staleTime: Infinity,
-    enabled: !!key,
+    enabled: !!key && !isLoadingSource,
     placeholderData: keepPreviousData,
     retry: false,
     ...options,
@@ -247,7 +313,7 @@ export function useGetKeyValues(
     limit,
     disableRowLimit,
   }: {
-    chartConfig?: ChartConfigWithDateRange;
+    chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;

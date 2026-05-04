@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import cx from 'classnames';
-import { pick } from 'lodash';
+import Link from 'next/link';
 import {
   parseAsString,
   parseAsStringEnum,
@@ -9,21 +8,41 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import type { TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithDateRange,
   CteChartConfig,
   DisplayType,
   Filter,
+  isLogSource,
+  isTraceSource,
+  pickSampleWeightExpressionProps,
   PresetDashboard,
   SourceKind,
-  TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
+
+// Extract common chart config fields from a source.
+// This avoids union type issues with lodash `pick` on discriminated unions.
+function pickSourceConfigFields(source: TSource) {
+  return {
+    timestampValueExpression: source.timestampValueExpression,
+    connection: source.connection,
+    from: source.from,
+    ...(isLogSource(source) || isTraceSource(source)
+      ? { implicitColumnExpression: source.implicitColumnExpression }
+      : {}),
+    ...pickSampleWeightExpressionProps(source),
+  };
+}
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Grid,
   Group,
@@ -43,7 +62,6 @@ import {
 } from '@tabler/icons-react';
 
 import {
-  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
@@ -54,17 +72,17 @@ import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import SelectControlled from '@/components/SelectControlled';
 import ServiceDashboardDbQuerySidePanel from '@/components/ServiceDashboardDbQuerySidePanel';
 import ServiceDashboardEndpointSidePanel from '@/components/ServiceDashboardEndpointSidePanel';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { withAppNav } from '@/layout';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getExpressions,
   useServiceDashboardExpressions,
@@ -72,6 +90,7 @@ import {
 import { useSource, useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
+import DisplaySwitcher from './components/charts/DisplaySwitcher';
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
 import { IS_LOCAL_MODE } from './config';
 import DashboardFilters from './DashboardFilters';
@@ -91,6 +110,13 @@ type AppliedConfig = AppliedConfigParams & {
 };
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
+
+export function buildInFilterCondition(
+  columnExpression: string,
+  value: string,
+): string {
+  return SqlString.format('? IN (?)', [SqlString.raw(columnExpression), value]);
+}
 
 function getScopedFilters({
   appliedConfig,
@@ -114,7 +140,10 @@ function getScopedFilters({
   if (appliedConfig.service) {
     filters.push({
       type: 'sql',
-      condition: `${expressions.service} IN ('${appliedConfig.service}')`,
+      condition: buildInFilterCondition(
+        expressions.service,
+        appliedConfig.service,
+      ),
     });
   }
   if (includeNonEmptyEndpointFilter) {
@@ -137,7 +166,10 @@ function ServiceSelectControlled({
   dateRange: [Date, Date];
   onCreate?: () => void;
 } & UseControllerProps<any>) {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
@@ -201,10 +233,10 @@ function ServiceSelectControlled({
 export function EndpointLatencyChart({
   source,
   dateRange,
-  appliedConfig = {},
-  extraFilters = [],
+  appliedConfig,
+  extraFilters,
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
@@ -214,43 +246,34 @@ export function EndpointLatencyChart({
     'line' | 'histogram'
   >('line');
 
+  const displaySwitcher = (
+    <DisplaySwitcher
+      key="display-switcher"
+      value={latencyChartType}
+      onChange={setLatencyChartType}
+      options={[
+        {
+          value: 'line',
+          label: 'Display as Line Chart',
+          icon: <IconChartLine />,
+        },
+        {
+          value: 'histogram',
+          label: 'Display as Histogram',
+          icon: <IconChartHistogram />,
+        },
+      ]}
+    />
+  );
+
   return (
     <ChartBox style={{ height: 350 }}>
-      <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm">Request Latency</Text>
-        <div className="bg-muted px-2 py-1 rounded fs-8">
-          <Tooltip label="Display as Line Chart">
-            <ActionIcon
-              size="xs"
-              me={2}
-              className={cx({
-                'text-success': latencyChartType === 'line',
-                'text-muted-hover': latencyChartType !== 'line',
-              })}
-              onClick={() => setLatencyChartType('line')}
-            >
-              <IconChartLine />
-            </ActionIcon>
-          </Tooltip>
-
-          <Tooltip label="Display as Histogram">
-            <ActionIcon
-              size="xs"
-              className={cx({
-                'text-success': latencyChartType === 'histogram',
-                'text-muted-hover': latencyChartType !== 'histogram',
-              })}
-              onClick={() => setLatencyChartType('histogram')}
-            >
-              <IconChartHistogram />
-            </ActionIcon>
-          </Tooltip>
-        </div>
-      </Group>
       {source &&
         expressions &&
         (latencyChartType === 'line' ? (
           <DBTimeChart
+            title="Request Latency"
+            toolbarSuffix={[displaySwitcher]}
             showDisplaySwitcher={false}
             sourceId={source.id}
             hiddenSeries={[
@@ -260,13 +283,10 @@ export function EndpointLatencyChart({
             ]}
             config={{
               source: source.id,
-              ...pick(source, [
-                'timestampValueExpression',
-                'connection',
-                'from',
-              ]),
-              where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              ...pickSourceConfigFields(source),
+              where: appliedConfig?.where || '',
+              whereLanguage:
+                (appliedConfig?.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
@@ -303,8 +323,11 @@ export function EndpointLatencyChart({
                 },
               ],
               filters: [
-                ...extraFilters,
-                ...getScopedFilters({ appliedConfig, expressions }),
+                ...(extraFilters ?? []),
+                ...getScopedFilters({
+                  appliedConfig: appliedConfig ?? {},
+                  expressions,
+                }),
               ],
               numberFormat: MS_NUMBER_FORMAT,
               dateRange,
@@ -312,15 +335,14 @@ export function EndpointLatencyChart({
           />
         ) : (
           <DBHistogramChart
+            title="Request Latency"
+            toolbarSuffix={[displaySwitcher]}
             config={{
               source: source.id,
-              ...pick(source, [
-                'timestampValueExpression',
-                'connection',
-                'from',
-              ]),
-              where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              ...pickSourceConfigFields(source),
+              where: appliedConfig?.where || '',
+              whereLanguage:
+                (appliedConfig?.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   alias: 'data_nanoseconds',
@@ -334,8 +356,11 @@ export function EndpointLatencyChart({
                 },
               ],
               filters: [
-                ...extraFilters,
-                ...getScopedFilters({ appliedConfig, expressions }),
+                ...(extraFilters ?? []),
+                ...getScopedFilters({
+                  appliedConfig: appliedConfig ?? {},
+                  expressions,
+                }),
               ],
               dateRange,
             }}
@@ -352,7 +377,10 @@ function HttpTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [reqChartType, setReqChartType] = useQueryState(
@@ -374,14 +402,15 @@ function HttpTab({
   }, []);
 
   const requestErrorRateConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
           source: source.id,
-          ...pick(source, ['timestampValueExpression', 'connection', 'from']),
+          ...pickSourceConfigFields(source),
           where: appliedConfig.where || '',
-          whereLanguage: appliedConfig.whereLanguage || 'sql',
+          whereLanguage:
+            (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
           displayType: DisplayType.Line,
           select: [
             // Separate the aggregations from the rate calculation so that AggregatingMergeTree MVs can be used
@@ -405,10 +434,14 @@ function HttpTab({
           numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
           filters: getScopedFilters({ appliedConfig, expressions }),
           dateRange: searchedTimeRange,
-        } satisfies ChartConfigWithDateRange;
+        } satisfies BuilderChartConfigWithDateRange;
       }
       return {
         timestampValueExpression: 'series_time_bucket',
+        implicitColumnExpression:
+          isLogSource(source) || isTraceSource(source)
+            ? source.implicitColumnExpression
+            : undefined,
         connection: source.connection,
         source: source.id,
         with: [
@@ -416,13 +449,18 @@ function HttpTab({
             name: 'error_series',
             chartConfig: {
               timestampValueExpression: source?.timestampValueExpression || '',
+              implicitColumnExpression:
+                isLogSource(source) || isTraceSource(source)
+                  ? source?.implicitColumnExpression || ''
+                  : '',
               connection: source?.connection ?? '',
               from: source?.from ?? {
                 databaseName: '',
                 tableName: '',
               },
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   valueExpression: '',
@@ -458,11 +496,9 @@ function HttpTab({
                 },
               ],
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
-            } as ChartConfigWithOptDateRange,
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
+            } as CteChartConfig,
             isSubquery: true,
           },
           // Select the top N series from the search as we don't want to crash the browser.
@@ -536,27 +572,31 @@ function HttpTab({
         displayType: DisplayType.Line,
         numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
         groupBy: 'zipped, endpoint',
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [source, searchedTimeRange, appliedConfig, expressions, reqChartType]);
 
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Request Error Rate</Text>
-            <SegmentedControl
-              size="xs"
-              value={reqChartType}
-              onChange={setReqChartType}
-              data={[
-                { label: 'Overall', value: 'overall' },
-                { label: 'By Endpoint', value: 'endpoint' },
-              ]}
-            />
-          </Group>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-request-error-rate-chart"
+        >
           {source && requestErrorRateConfig && (
             <DBTimeChart
+              title="Request Error Rate"
+              toolbarSuffix={[
+                <SegmentedControl
+                  key="request-error-rate-segmented-control"
+                  size="xs"
+                  value={reqChartType}
+                  onChange={setReqChartType}
+                  data={[
+                    { label: 'Overall', value: 'overall' },
+                    { label: 'By Endpoint', value: 'endpoint' },
+                  ]}
+                />,
+              ]}
               sourceId={source.id}
               hiddenSeries={['total_requests', 'error_requests']}
               config={requestErrorRateConfig}
@@ -568,22 +608,20 @@ function HttpTab({
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Request Throughput</Text>
-          </Group>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-request-throughput-chart"
+        >
           {source && expressions && (
             <DBTimeChart
+              title="Request Throughput"
               sourceId={source.id}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 displayType: DisplayType.Line,
                 select: [
                   {
@@ -604,12 +642,9 @@ function HttpTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
-          </Group>
-
           {source && expressions && (
             <DBListBarChart
+              title="Top 20 Most Time Consuming Endpoints"
               groupColumn="Endpoint"
               valueColumn="Total (ms)"
               getRowSearchLink={getRowSearchLink}
@@ -622,13 +657,10 @@ function HttpTab({
               ]}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 select: [
                   // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
@@ -705,7 +737,7 @@ function HttpTab({
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        {source && (
+        {source && isTraceSource(source) && (
           <EndpointLatencyChart
             appliedConfig={appliedConfig}
             dateRange={searchedTimeRange}
@@ -714,30 +746,36 @@ function HttpTab({
         )}
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">
-              Top 20{' '}
-              {topEndpointsChartType === 'time'
-                ? 'Most Time Consuming'
-                : 'Highest Error Rate'}
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={topEndpointsChartType}
-              onChange={(value: string) => {
-                if (value === 'time' || value === 'error') {
-                  setTopEndpointsChartType(value);
-                }
-              }}
-              data={[
-                { label: 'Sort by Time', value: 'time' },
-                { label: 'Sort by Errors', value: 'error' },
-              ]}
-            />
-          </Group>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-top-endpoints-table"
+        >
           {source && expressions && (
             <DBTableChart
+              title={
+                <Text size="sm">
+                  Top 20{' '}
+                  {topEndpointsChartType === 'time'
+                    ? 'Most Time Consuming'
+                    : 'Highest Error Rate'}
+                </Text>
+              }
+              toolbarSuffix={[
+                <SegmentedControl
+                  key="top-endpoints-chart-segmented-control"
+                  size="xs"
+                  value={topEndpointsChartType}
+                  onChange={(value: string) => {
+                    if (value === 'time' || value === 'error') {
+                      setTopEndpointsChartType(value);
+                    }
+                  }}
+                  data={[
+                    { label: 'Sort by Time', value: 'time' },
+                    { label: 'Sort by Errors', value: 'error' },
+                  ]}
+                />,
+              ]}
               getRowSearchLink={getRowSearchLink}
               hiddenColumns={[
                 'total_count',
@@ -748,13 +786,10 @@ function HttpTab({
               ]}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 select: [
                   // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
@@ -843,7 +878,10 @@ function DatabaseTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
@@ -855,7 +893,7 @@ function DatabaseTab({
   }, []);
 
   const totalTimePerQueryConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
 
       return {
@@ -864,13 +902,10 @@ function DatabaseTab({
             name: 'queries_by_total_time',
             isSubquery: true,
             chartConfig: {
-              ...pick(source, [
-                'timestampValueExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
@@ -899,10 +934,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
@@ -974,11 +1007,11 @@ function DatabaseTab({
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
         source: source.id,
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
   const totalThroughputPerQueryConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
 
       return {
@@ -987,13 +1020,10 @@ function DatabaseTab({
             name: 'queries_by_total_count',
             isSubquery: true,
             chartConfig: {
-              ...pick(source, [
-                'timestampValueExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   alias: 'total_query_count',
@@ -1017,10 +1047,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
@@ -1095,18 +1123,36 @@ function DatabaseTab({
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
         source: source.id,
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
+  const displaySwitcher = (
+    <DisplaySwitcher
+      key="display-switcher"
+      value={chartType}
+      onChange={setChartType}
+      options={[
+        {
+          label: 'Show as List',
+          icon: <IconFilter size={14} />,
+          value: 'list',
+        },
+        {
+          label: 'Show as Table',
+          icon: <IconTable size={14} />,
+          value: 'table',
+        },
+      ]}
+    />
+  );
+
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Total Time Consumed per Query</Text>
-          </Group>
           {source && totalTimePerQueryConfig && (
             <DBTimeChart
+              title="Total Time Consumed per Query"
               sourceId={source.id}
               config={totalTimePerQueryConfig}
               disableDrillDown
@@ -1117,11 +1163,9 @@ function DatabaseTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Throughput per Query</Text>
-          </Group>
           {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
+              title="Throughput per Query"
               sourceId={source.id}
               config={totalThroughputPerQueryConfig}
               disableQueryChunking
@@ -1132,36 +1176,12 @@ function DatabaseTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Top 20 Most Time Consuming Queries</Text>
-            <Box>
-              <Button.Group>
-                <Button
-                  variant="subtle"
-                  color={chartType === 'list' ? 'green' : 'gray'}
-                  size="xs"
-                  title="List"
-                  onClick={() => setChartType('list')}
-                >
-                  <IconFilter size={14} />
-                </Button>
-
-                <Button
-                  variant="subtle"
-                  color={chartType === 'table' ? 'green' : 'gray'}
-                  size="xs"
-                  title="Table"
-                  onClick={() => setChartType('table')}
-                >
-                  <IconTable size={14} />
-                </Button>
-              </Button.Group>
-            </Box>
-          </Group>
           {source &&
             expressions &&
             (chartType === 'list' ? (
               <DBListBarChart
+                title="Top 20 Most Time Consuming Queries"
+                toolbarItems={[displaySwitcher]}
                 groupColumn="Statement"
                 valueColumn="Total"
                 hoverCardPosition="top-start"
@@ -1174,13 +1194,11 @@ function DatabaseTab({
                 ]}
                 config={{
                   source: source.id,
-                  ...pick(source, [
-                    'timestampValueExpression',
-                    'connection',
-                    'from',
-                  ]),
+                  ...pickSourceConfigFields(source),
                   where: appliedConfig.where || '',
-                  whereLanguage: appliedConfig.whereLanguage || 'sql',
+                  whereLanguage:
+                    (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
+                    'sql',
                   dateRange: searchedTimeRange,
                   groupBy: 'Statement',
                   selectGroupBy: false,
@@ -1246,6 +1264,8 @@ function DatabaseTab({
               />
             ) : (
               <DBTableChart
+                title="Top 20 Most Time Consuming Queries"
+                toolbarSuffix={[displaySwitcher]}
                 getRowSearchLink={getRowSearchLink}
                 hiddenColumns={[
                   'duration_ns',
@@ -1255,13 +1275,11 @@ function DatabaseTab({
                 ]}
                 config={{
                   source: source.id,
-                  ...pick(source, [
-                    'timestampValueExpression',
-                    'connection',
-                    'from',
-                  ]),
+                  ...pickSourceConfigFields(source),
                   where: appliedConfig.where || '',
-                  whereLanguage: appliedConfig.whereLanguage || 'sql',
+                  whereLanguage:
+                    (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
+                    'sql',
                   dateRange: searchedTimeRange,
                   groupBy: 'Statement',
                   orderBy: '"Total" DESC',
@@ -1339,28 +1357,26 @@ function ErrorsTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
+    <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Error Events per Service</Text>
-          </Group>
           {source && expressions && (
             <DBTimeChart
+              title="Error Events per Service"
               sourceId={source.id}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 displayType: DisplayType.StackedBar,
                 select: [
                   {
@@ -1376,7 +1392,10 @@ function ErrorsTab({
                   },
                   ...getScopedFilters({ appliedConfig, expressions }),
                 ],
-                groupBy: source.serviceNameExpression || expressions.service,
+                groupBy:
+                  (isLogSource(source) || isTraceSource(source)
+                    ? source.serviceNameExpression
+                    : undefined) || expressions.service,
                 dateRange: searchedTimeRange,
               }}
             />
@@ -1431,10 +1450,15 @@ function ServicesDashboardPage() {
     };
   }, [appliedConfigParams, sources]);
 
-  const { control, setValue, handleSubmit } = useForm({
+  // Services dashboard is SQL-first (WHERE filters are applied to metric/SQL queries).
+  // Default to 'sql' here; Search and Dashboard pages default to 'lucene'.
+  const effectiveWhereLanguage =
+    appliedConfigWithoutFilters?.whereLanguage ?? getStoredLanguage() ?? 'sql';
+
+  const { control, handleSubmit } = useForm({
     defaultValues: {
       where: '',
-      whereLanguage: 'sql' as 'sql' | 'lucene',
+      whereLanguage: effectiveWhereLanguage as 'sql' | 'lucene',
       service: appliedConfigWithoutFilters?.service || '',
       source: appliedConfigWithoutFilters?.source ?? '',
     },
@@ -1463,6 +1487,7 @@ function ServicesDashboardPage() {
   } = usePresetDashboardFilters({
     presetDashboard: PresetDashboard.Services,
     sourceId: sourceId || '',
+    enabled: !IS_LOCAL_MODE,
   });
 
   const appliedConfig = useMemo(
@@ -1506,19 +1531,22 @@ function ServicesDashboardPage() {
     isLive,
   });
 
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    handleSubmit(values => {
-      setAppliedConfigParams(values);
-    })();
-  }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
+  const onSubmit = useCallback(
+    (submitTime: boolean = true) => {
+      if (submitTime) onSearch(displayedTimeInputValue);
+      handleSubmit(values => {
+        setAppliedConfigParams(values);
+      })();
+    },
+    [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue],
+  );
 
   // Auto-submit when source changes
   // Note: do not include appliedConfig.source in the deps,
   // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
     if (sourceId && sourceId != previousSourceId) {
-      onSubmit();
+      onSubmit(false);
     }
   }, [sourceId, onSubmit, previousSourceId]);
 
@@ -1527,12 +1555,20 @@ function ServicesDashboardPage() {
   // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
     if (service != previousService) {
-      onSubmit();
+      onSubmit(false);
     }
   }, [service, onSubmit, previousService]);
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">
+      <Breadcrumbs mb="sm" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          Services
+        </Text>
+      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       <ServiceDashboardEndpointSidePanel
         service={service}
@@ -1564,43 +1600,14 @@ function ServicesDashboardPage() {
               name="service"
               dateRange={searchedTimeRange}
             />
-            <WhereLanguageControlled
-              name="whereLanguage"
+            <SearchWhereInput
+              tableConnection={tcFromSource(source)}
               control={control}
-              sqlInput={
-                <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(source)}
-                  onSubmit={onSubmit}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="sql"
-                  label="WHERE"
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              }
-              luceneInput={
-                <SearchInputV2
-                  tableConnection={tcFromSource(source)}
-                  control={control}
-                  name="where"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="lucene"
-                  placeholder="Search your events w/ Lucene ex. column:foo"
-                  enableHotkey
-                  onSubmit={onSubmit}
-                />
-              }
+              name="where"
+              onSubmit={onSubmit}
+              enableHotkey
+              data-testid="services-search-input"
+              minWidth="200px"
             />
             <TimePicker
               inputValue={displayedTimeInputValue}
@@ -1609,31 +1616,36 @@ function ServicesDashboardPage() {
             />
             {!IS_LOCAL_MODE && (
               <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-                <Button
-                  variant="default"
-                  px="xs"
+                <ActionIcon
+                  variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
+                  size="lg"
                 >
-                  <IconFilterEdit strokeWidth={1} />
-                </Button>
+                  <IconFilterEdit size={18} />
+                </ActionIcon>
               </Tooltip>
             )}
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-              <Button
+              <ActionIcon
                 onClick={refresh}
                 loading={manualRefreshCooloff}
                 disabled={manualRefreshCooloff}
-                color="gray"
-                variant="outline"
+                variant="secondary"
                 title="Refresh dashboard"
                 aria-label="Refresh dashboard"
-                px="xs"
+                size="lg"
               >
                 <IconRefresh size={18} />
-              </Button>
+              </ActionIcon>
             </Tooltip>
-            <Button variant="outline" type="submit" px="sm">
-              <IconPlayerPlay size={16} />
+            <Button
+              variant="primary"
+              type="submit"
+              px="sm"
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
+            >
+              Run
             </Button>
           </Group>
         </Group>

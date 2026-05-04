@@ -1,12 +1,13 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TLogSource, TSource } from '@hyperdx/common-utils/dist/types';
 
 import { getJSONColumnNames } from '@/components/DBRowDataPanel';
 
+type HighlightedAttributeExpressions =
+  TLogSource['highlightedRowAttributeExpressions'];
+
 export function getSelectExpressionsForHighlightedAttributes(
-  expressions: TSource[
-    | 'highlightedRowAttributeExpressions'
-    | 'highlightedTraceAttributeExpressions'] = [],
+  expressions: HighlightedAttributeExpressions = [],
 ) {
   return expressions.map(({ sqlExpression, alias }) => ({
     valueExpression: sqlExpression,
@@ -16,9 +17,7 @@ export function getSelectExpressionsForHighlightedAttributes(
 
 export function getHighlightedAttributesFromData(
   source: TSource,
-  attributes: TSource[
-    | 'highlightedRowAttributeExpressions'
-    | 'highlightedTraceAttributeExpressions'] = [],
+  attributes: HighlightedAttributeExpressions = [],
   data: Record<string, unknown>[],
   meta: ResponseJSON['meta'],
 ) {

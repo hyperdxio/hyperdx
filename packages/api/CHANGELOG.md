@@ -1,5 +1,281 @@
 # @hyperdx/api
 
+## 2.24.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- Updated dependencies [b73f6fcc]
+- Updated dependencies [4c23e10a]
+- Updated dependencies [e2fc25da]
+- Updated dependencies [7665fbe1]
+  - @hyperdx/common-utils@0.18.1
+
+## 2.24.0
+
+### Minor Changes
+
+- 9781ae63: Add an MCP (Model Context Protocol) server to the HyperDX API, enabling AI assistants (Claude, Cursor, OpenCode, etc.) to query observability data, manage dashboards, and explore data sources directly via standardized tool calls.
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+
+### Patch Changes
+
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+- Updated dependencies [418f70c5]
+- Updated dependencies [1fada918]
+- Updated dependencies [7953c028]
+- Updated dependencies [d3a61f9b]
+- Updated dependencies [5885d479]
+- Updated dependencies [cc714f90]
+- Updated dependencies [085f3074]
+- Updated dependencies [3c057720]
+- Updated dependencies [6ff1ba60]
+  - @hyperdx/common-utils@0.18.0
+
+## 2.23.2
+
+## 2.23.1
+
+### Patch Changes
+
+- f8d2edde: feat: Show created/updated metadata for saved searches and dashboards
+- Updated dependencies [24767c58]
+  - @hyperdx/common-utils@0.17.1
+
+## 2.23.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 59b1f46f: fix: Show alerts on a tile only when dashboard matches
+- Updated dependencies [518bda7d]
+- Updated dependencies [4e54d850]
+- Updated dependencies [53ba1e39]
+- Updated dependencies [b7581db8]
+- Updated dependencies [48a8d32b]
+- Updated dependencies [a15122b3]
+- Updated dependencies [a55b151e]
+- Updated dependencies [308da30b]
+- Updated dependencies [e5c7fdf9]
+- Updated dependencies [941d0450]
+  - @hyperdx/common-utils@0.17.0
+
+## 2.22.1
+
+### Patch Changes
+
+- 470b2c29: ci: Replace QEMU with native ARM64 runners for release builds
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 47e1f565: feat: Add OpenAI provider support for AI assistance
+- 629009da: Update OpenAI model configuration to use the new Responses API
+- acd117ab: perf: Optimize alerthistories aggregation queries to reduce DocDB CPU load
+- Updated dependencies [4f7dd9ef]
+- Updated dependencies [275dc941]
+- Updated dependencies [6936ef8e]
+  - @hyperdx/common-utils@0.16.2
+
+## 2.22.0
+
+### Patch Changes
+
+- f410e6dc: Bump AI SDK to v6
+- e05bd6b6: Include saved search filters in alert ClickHouse queries
+- f5ce2329: ci: Add linting for openapi specs
+- e09c8c0e: fix: query settings length validation
+- 1381782b: feat: Support raw sql number charts and pie charts
+- e2a82c6b: feat: Add Raw SQL Chart support to external dashboard APIs
+- a345b83e: perf: optimize AlertHistory aggregation queries with time-window filters and compound index
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 25a3291f: feat: Attach service version to all internal telemetry
+- a0b3361a: feat: unified hyperdx entrypoint script for API and alert task startup
+- Updated dependencies [2fab76bf]
+- Updated dependencies [e18f88c8]
+- Updated dependencies [e09c8c0e]
+- Updated dependencies [1381782b]
+- Updated dependencies [74d92594]
+- Updated dependencies [1d83bebb]
+- Updated dependencies [ce850647]
+- Updated dependencies [359b5874]
+- Updated dependencies [243e3baa]
+- Updated dependencies [4cee5d69]
+  - @hyperdx/common-utils@0.16.1
+
+## 2.21.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- daab2cac: support saved query/filter values in external api
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- c5173ba2: fix: tile alerts with groupBy now correctly track and display group names
+- cabe4d8e: fix: add whereLanguage to tile alerts
+- 260c4299: feat: Improve validation of external alert API input
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+- Updated dependencies [1bae972e]
+- Updated dependencies [fd9f290e]
+- Updated dependencies [dda0f9a4]
+- Updated dependencies [32f1189a]
+- Updated dependencies [3bc5abbf]
+- Updated dependencies [1e6fcf1c]
+- Updated dependencies [902b8ebd]
+- Updated dependencies [a13b60d0]
+  - @hyperdx/common-utils@0.16.0
+
+## 2.20.0
+
+### Minor Changes
+
+- 3e8cc729: feat: add alerts to number chart
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- fedd586b: feat: Remove potentially-sensitive fields from external webhooks API
+- 54744093: fix: AI Notebook CH connections need to send pw
+- 34c9afeb: feat: Add list webhooks API
+- Updated dependencies [cd2b7a76]
+- Updated dependencies [d760d2db]
+- Updated dependencies [34c9afeb]
+  - @hyperdx/common-utils@0.15.0
+
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- cbe319c0: fix: use field as metricName in external metrics API when metricName is not provided
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
+## 2.18.0
+
+### Minor Changes
+
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 18e96904: fix: update required fields in our spec
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
+## 2.17.0
+
+### Patch Changes
+
+- 679b65d7: feat: added configuration to disable frontend otel exporter
+- 27f478a6: feat: Add external GET /sources API
+- d759d046: support filters in dashboards external api
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- 9ab68432: Minor fixes in the sources external API: 1. avoid inline schemas, 2. use short format timestamps for materializedView.minGranularity
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
+## 2.16.0
+
+### Patch Changes
+
+- Updated dependencies [b6c34b13]
+  - @hyperdx/common-utils@0.12.2
+
+## 2.15.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+- Updated dependencies [6cfa40a0]
+  - @hyperdx/common-utils@0.12.1
+
+## 2.15.0
+
+### Patch Changes
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 3aa8be0a: Concat zod errors into a single message field
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 4e7d04c7: API: Show error "Invalid JSON payload" if the JSON body has a syntax error
+- 941bc23e: fix: Fix inaccurate openapi docs for external alerts API
+- b8ab312a: chore: improve Team typing
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
+## 2.13.0
+
+### Minor Changes
+
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- d769f88d: Fix issue when a source type is switched after creation
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- 79398be7: chore: Standardize granularities
+- eef80b7e: Add ability to define different anthropic api BASE_URLs, add core logic for different ai providers
+- 4a856173: feat: Add hasAllTokens for text index support
+- Updated dependencies [1cf8cebb]
+- Updated dependencies [418828e8]
+- Updated dependencies [79398be7]
+- Updated dependencies [bc8c4eec]
+- Updated dependencies [00854da8]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+- Updated dependencies [4a856173]
+  - @hyperdx/common-utils@0.11.0
+
+## 2.12.0
+
+### Patch Changes
+
+- ebaebc14: feat: Use materialized views in alert execution
+- ac1a2f77: chore: Format OpenAPI docs
+- 725dbc2f: feat: Align line/bar chart date ranges to chart granularity
+- ae12ca16: feat: Add MV granularities and infer config from SummingMergeTree
+- fd81c4cb: chore: bump MongoDB version to 5.0.32
+- Updated dependencies [ab7645de]
+- Updated dependencies [ebaebc14]
+- Updated dependencies [725dbc2f]
+- Updated dependencies [0c16a4b3]
+  - @hyperdx/common-utils@0.10.2
+
 ## 2.11.0
 
 ### Patch Changes

@@ -1,56 +1,144 @@
+import {
+  displayTypeSupportsRawSqlAlerts,
+  validateRawSqlForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, {
-  AlertChannel,
-  AlertInterval,
-  AlertSource,
-  AlertThresholdType,
-  IAlert,
-} from '@/models/alert';
+import Alert, { AlertSource, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
+import Webhook from '@/models/webhook';
+import { Api400Error } from '@/utils/errors';
 import logger from '@/utils/logger';
-import { alertSchema } from '@/utils/zod';
+import { alertSchema, objectIdSchema } from '@/utils/zod';
 
-export type AlertInput = {
+export type AlertInput = Omit<
+  IAlert,
+  | 'id'
+  | 'scheduleStartAt'
+  | 'savedSearchId'
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'team'
+  | 'state'
+> & {
   id?: string;
-  source?: AlertSource;
-  channel: AlertChannel;
-  interval: AlertInterval;
-  thresholdType: AlertThresholdType;
-  threshold: number;
-
-  // Message template
-  name?: string | null;
-  message?: string | null;
-
-  // Log alerts
-  groupBy?: string;
+  // Replace the Date-type fields from IAlert
+  scheduleStartAt?: string | null;
+  // Replace the ObjectId-type fields from IAlert
   savedSearchId?: string;
-
-  // Chart alerts
   dashboardId?: string;
-  tileId?: string;
+};
 
-  // Silenced
-  silenced?: {
-    by?: ObjectId;
-    at: Date;
-    until: Date;
-  };
+const validateObjectId = (id: string | undefined, message: string) => {
+  if (objectIdSchema.safeParse(id).success === false) {
+    throw new Api400Error(message);
+  }
+};
+
+export const validateAlertInput = async (
+  teamId: ObjectId,
+  alertInput: Pick<
+    AlertInput,
+    'source' | 'dashboardId' | 'tileId' | 'savedSearchId' | 'channel'
+  >,
+) => {
+  if (alertInput.source === AlertSource.TILE) {
+    validateObjectId(alertInput.dashboardId, 'Invalid dashboard ID');
+
+    const dashboard = await Dashboard.findOne({
+      _id: alertInput.dashboardId,
+      team: teamId,
+    });
+
+    if (dashboard == null) {
+      throw new Api400Error('Dashboard not found');
+    }
+
+    const tile = dashboard.tiles.find(tile => tile.id === alertInput.tileId);
+
+    if (tile == null) {
+      throw new Api400Error('Tile not found');
+    }
+
+    if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
+      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      const { errors } = validateRawSqlForAlert(tile.config);
+      if (errors.length > 0) {
+        throw new Api400Error(
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
+        );
+      }
+    }
+  }
+
+  if (alertInput.source === AlertSource.SAVED_SEARCH) {
+    validateObjectId(alertInput.savedSearchId, 'Invalid saved search ID');
+
+    const savedSearch = await SavedSearch.findOne({
+      _id: alertInput.savedSearchId,
+      team: teamId,
+    });
+
+    if (savedSearch == null) {
+      throw new Api400Error('Saved search not found');
+    }
+  }
+
+  if (alertInput.channel.type === 'webhook') {
+    validateObjectId(alertInput.channel.webhookId, 'Invalid webhook ID');
+
+    if (
+      (await Webhook.findOne({
+        _id: alertInput.channel.webhookId,
+        team: teamId,
+      })) == null
+    ) {
+      throw new Api400Error('Webhook not found');
+    }
+  }
 };
 
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+  // Preserve existing DB value when scheduleStartAt is omitted from updates
+  // (undefined), while still allowing explicit clears via null.
+  const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
+  // If scheduleStartAt is explicitly provided, offset-based alignment is ignored.
+  // Force persisted offset to 0 so updates can't leave stale non-zero offsets.
+  // If scheduleStartAt is explicitly cleared and offset is omitted, also reset
+  // to 0 to avoid preserving stale values from older documents.
+  const normalizedScheduleOffsetMinutes =
+    hasScheduleStartAt && alert.scheduleStartAt != null
+      ? 0
+      : hasScheduleStartAt && alert.scheduleOffsetMinutes == null
+        ? 0
+        : alert.scheduleOffsetMinutes;
+
   return {
     channel: alert.channel,
     interval: alert.interval,
+    ...(normalizedScheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
+    }),
+    ...(hasScheduleStartAt && {
+      scheduleStartAt:
+        alert.scheduleStartAt == null ? null : new Date(alert.scheduleStartAt),
+    }),
     source: alert.source,
     threshold: alert.threshold,
+    thresholdMax: alert.thresholdMax,
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
@@ -75,18 +163,6 @@ export const createAlert = async (
   alertInput: z.infer<typeof alertSchema>,
   userId: ObjectId,
 ) => {
-  if (alertInput.source === AlertSource.TILE) {
-    if ((await Dashboard.findById(alertInput.dashboardId)) == null) {
-      throw new Error('Dashboard ID not found');
-    }
-  }
-
-  if (alertInput.source === AlertSource.SAVED_SEARCH) {
-    if ((await SavedSearch.findById(alertInput.savedSearchId)) == null) {
-      throw new Error('Saved Search ID not found');
-    }
-  }
-
   return new Alert({
     ...makeAlert(alertInput, userId),
     team: teamId,
@@ -126,12 +202,14 @@ export const getAlertById = async (
   });
 };
 
-export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
+export const getTeamDashboardAlertsByDashboardAndTile = async (
+  teamId: ObjectId,
+) => {
   const alerts = await Alert.find({
     source: AlertSource.TILE,
     team: teamId,
   }).populate('createdBy', 'email name');
-  return groupBy(alerts, 'tileId');
+  return groupBy(alerts, a => `${a.dashboard?.toString()}:${a.tileId}`);
 };
 
 export const getDashboardAlertsByTile = async (
@@ -199,6 +277,20 @@ export const deleteSavedSearchAlerts = async (
 
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
+    savedSearch: ISavedSearch;
+    dashboard: IDashboard;
+    createdBy?: IUser;
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+};
+
+export const getAlertEnhanced = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId,
+) => {
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
     createdBy?: IUser;

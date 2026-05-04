@@ -11,6 +11,7 @@ export interface IConnection {
   password: string;
   username: string;
   team: ObjectId;
+  hyperdxSettingPrefix?: string;
 }
 
 export default mongoose.model<IConnection>(
@@ -29,6 +30,7 @@ export default mongoose.model<IConnection>(
         type: String,
         select: false,
       },
+      hyperdxSettingPrefix: String,
     },
     {
       timestamps: true,

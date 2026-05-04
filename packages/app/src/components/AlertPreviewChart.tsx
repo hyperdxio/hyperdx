@@ -1,10 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
+  AlertThresholdType,
+  ChartConfigWithDateRange,
+  DisplayType,
+  Filter,
+  isLogSource,
+  isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -13,14 +24,16 @@ import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
 
-export type AlertPreviewChartProps = {
+type AlertPreviewChartProps = {
   source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  filters?: Filter[] | null;
   interval: AlertInterval;
   groupBy?: string;
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number;
   select?: string | null;
 };
 
@@ -28,16 +41,20 @@ export const AlertPreviewChart = ({
   source,
   where,
   whereLanguage,
+  filters,
   interval,
   groupBy,
   threshold,
+  thresholdMax,
   thresholdType,
   select,
 }: AlertPreviewChartProps) => {
   const resolvedSelect =
     (select && select.trim().length > 0
       ? select
-      : source.defaultTableSelectExpression) ?? '';
+      : isLogSource(source) || isTraceSource(source)
+        ? source.defaultTableSelectExpression
+        : undefined) ?? '';
 
   const { data: aliasMap } = useAliasMapFromChartConfig({
     select: resolvedSelect,
@@ -46,41 +63,54 @@ export const AlertPreviewChart = ({
     from: source.from,
     whereLanguage: whereLanguage || undefined,
   });
-  const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-    name: key,
-    sql: {
-      sql: value,
-      params: {},
-    },
-    isSubquery: false,
-  }));
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
+
+  // Delegate to the shared builder so this preview sees the same filters,
+  // sample weights, and implicit columns as the scheduled alert task and
+  // the app search page. Overrides `displayType` to Line and pins SELECT to
+  // a count() aggregate because the preview always renders the alert's
+  // count-over-time threshold view, regardless of the saved search's
+  // display columns.
+  //
+  // The `select` prop on this component is intentionally NOT forwarded —
+  // it's only used above (for `useAliasMapFromChartConfig`) so alias-WITH
+  // clauses match the saved search's display select.
+  //
+  // Cast to ChartConfigWithDateRange because the builder widens `dateRange`
+  // to optional, but it's always set here via `intervalToDateRange`.
+  const config = useMemo<ChartConfigWithDateRange>(() => {
+    const chartConfig = buildSearchChartConfig(source, {
+      where,
+      whereLanguage,
+      filters,
+      groupBy,
+      select: ALERT_COUNT_DEFAULT_SELECT,
+      displayType: DisplayType.Line,
+      dateRange: intervalToDateRange(interval),
+      granularity: intervalToGranularity(interval),
+    }) as ChartConfigWithDateRange;
+    return { ...chartConfig, with: aliasWith };
+  }, [source, where, whereLanguage, filters, groupBy, interval, aliasWith]);
+
+  const referenceLines = useMemo(
+    () =>
+      getAlertReferenceLines({
+        threshold,
+        thresholdMax,
+        thresholdType,
+      }),
+    [threshold, thresholdMax, thresholdType],
+  );
 
   return (
     <Paper w="100%" h={200}>
       <DBTimeChart
         sourceId={source.id}
         showDisplaySwitcher={false}
-        referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
-        config={{
-          where: where || '',
-          whereLanguage: whereLanguage || undefined,
-          dateRange: intervalToDateRange(interval),
-          granularity: intervalToGranularity(interval),
-          implicitColumnExpression: source.implicitColumnExpression,
-          groupBy,
-          with: aliasWith,
-          select: [
-            {
-              aggFn: 'count' as const,
-              aggCondition: '',
-              aggConditionLanguage: 'sql',
-              valueExpression: '',
-            },
-          ],
-          timestampValueExpression: source.timestampValueExpression,
-          from: source.from,
-          connection: source.connection,
-        }}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
+        referenceLines={referenceLines}
+        config={config}
       />
     </Paper>
   );

@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
-export interface ITeamInvite {
+interface ITeamInvite {
   createdAt: Date;
   email: string;
   name?: string;

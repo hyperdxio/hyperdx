@@ -6,13 +6,22 @@ import {
   ChSql,
   chSql,
   ColumnMeta,
+  concatChSql,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  BuilderChartConfig,
+  BuilderChartConfigWithDateRange,
+  TSource,
+} from '@/types';
+import { SourceKind } from '@/types';
+
+import { optimizeGetKeyValuesCalls } from './materializedViews';
+import { getDistributedTableArgs, objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -69,18 +78,27 @@ export type TableMetadata = {
   database: string;
   name: string;
   uuid: string;
+  /** Note: This will contain the engine of the local table, when the table is Distributed */
   engine: string;
   is_temporary: number;
   data_paths: string[];
   metadata_path: string;
   metadata_modification_time: string;
   metadata_version: number;
+  /** Note: This may be a Distributed table. Use create_local_table_query for the local table's DDL. */
   create_table_query: string;
+  /** DDL for the local (non-distributed) table, when the table is Distributed */
+  create_local_table_query?: string;
+  /** Note: This will contain the engine_full of the local table, when the table is Distributed */
   engine_full: string;
   as_select: string;
+  /** Note: This will contain the partition_key of the local table, when the table is Distributed */
   partition_key: string;
+  /** Note: This will contain the sorting_key of the local table, when the table is Distributed */
   sorting_key: string;
+  /** Note: This will contain the primary_key of the local table, when the table is Distributed */
   primary_key: string;
+  /** Note: This will contain the sampling_key of the local table, when the table is Distributed */
   sampling_key: string;
   storage_policy: string;
   total_rows: string;
@@ -90,6 +108,14 @@ export type TableMetadata = {
   active_parts: string;
   total_marks: string;
   comment: string;
+};
+
+export type SkipIndexMetadata = {
+  name: string;
+  type: string; // 'bloom_filter', 'tokenbf_v1', 'minmax', etc.
+  typeFull: string; // e.g., 'text(tokenizer='splitByNonAlpha')'
+  expression: string; // e.g., "tokens(lower(Body))"
+  granularity: number;
 };
 
 export class Metadata {
@@ -123,27 +149,78 @@ export class Metadata {
     table,
     cache,
     connectionId,
+    cluster,
   }: {
     database: string;
     table: string;
     cache: MetadataCache;
     connectionId: string;
-  }) {
-    return cache.getOrFetch(
-      `${connectionId}.${database}.${table}.metadata`,
-      async () => {
-        const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
-        const json = await this.clickhouseClient
-          .query<'JSON'>({
-            connectionId,
-            query: sql.sql,
-            query_params: sql.params,
-            clickhouse_settings: this.getClickHouseSettings(),
-          })
-          .then(res => res.json<TableMetadata>());
-        return json.data[0];
-      },
-    );
+    cluster?: string;
+  }): Promise<TableMetadata | undefined> {
+    const cacheKey = `${connectionId}.${database}.${table}.${cluster}.metadata`;
+    return cache.getOrFetch(cacheKey, async () => {
+      const sql = cluster
+        ? chSql`SELECT * FROM cluster(${{ String: cluster }}, system.tables) WHERE database = ${{ String: database }} AND name = ${{ String: table }} LIMIT 1`
+        : chSql`SELECT * FROM system.tables WHERE database = ${{ String: database }} AND name = ${{ String: table }} LIMIT 1`;
+      const json = await this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query: sql.sql,
+          query_params: sql.params,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(res => res.json<TableMetadata>());
+      return json.data[0];
+    });
+  }
+
+  private async querySkipIndices({
+    database,
+    table,
+    connectionId,
+    cluster,
+  }: {
+    database: string;
+    table: string;
+    connectionId: string;
+    cluster?: string;
+  }): Promise<SkipIndexMetadata[]> {
+    const sql = cluster
+      ? chSql`
+        SELECT 
+          name,
+          type,
+          type_full as typeFull,
+          expr as expression,
+          granularity
+        FROM cluster(${{ String: cluster }}, system.data_skipping_indices)
+        WHERE database = ${{ String: database }} AND table = ${{ String: table }}`
+      : chSql`
+        SELECT
+          name,
+          type,
+          type_full as typeFull,
+          expr as expression,
+          granularity
+        FROM system.data_skipping_indices
+        WHERE database = ${{ String: database }} AND table = ${{ String: table }}`;
+
+    const data = await this.clickhouseClient
+      .query<'JSON'>({
+        connectionId,
+        query: sql.sql,
+        query_params: sql.params,
+        clickhouse_settings: this.getClickHouseSettings(),
+      })
+      .then(res => res.json<SkipIndexMetadata>())
+      .then(d => {
+        return d.data.map(row => ({
+          ...row,
+          granularity: Number(row.granularity),
+        }));
+      });
+
+    return data;
   }
 
   /** Queries and returns the list of materialized views which insert into the given target table */
@@ -216,7 +293,7 @@ export class Metadata {
       connectionId,
     });
 
-    // Build up materalized fields lookup table
+    // Build up materialized fields lookup table
     return new Map(
       columns
         .filter(
@@ -584,16 +661,67 @@ export class Metadata {
     tableName: string;
     connectionId: string;
   }) {
-    const tableMetadata = await this.queryTableMetadata({
+    let tableMetadata = await this.queryTableMetadata({
       cache: this.cache,
       database: databaseName,
       table: tableName,
       connectionId,
     });
 
+    // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
+    if (tableMetadata?.engine === 'Distributed') {
+      try {
+        const { cluster, database, table } =
+          getDistributedTableArgs(tableMetadata) ?? {};
+
+        if (!database || !table || !cluster) {
+          throw new Error(
+            `Could not parse underlying local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
+          );
+        }
+
+        // Query local table metadata from the specified cluster
+        const localTableMetadata = await this.queryTableMetadata({
+          cache: this.cache,
+          database,
+          table,
+          cluster,
+          connectionId,
+        });
+
+        if (!localTableMetadata) {
+          throw new Error(
+            `Could not find underlying local table metadata for Distributed table: ${database}.${table}`,
+          );
+        }
+
+        // Override Distributed table metadata with local table metadata where relevant
+        tableMetadata = {
+          ...tableMetadata,
+          ...pick(localTableMetadata, [
+            // Distributed tables have these, but we make use of the
+            // underlying local table's engine value for optimizations instead.
+            'engine',
+            'engine_full',
+            // Distributed tables never have these, so we'll use the local table's
+            'partition_key',
+            'sorting_key',
+            'primary_key',
+            'sampling_key',
+          ]),
+          create_local_table_query: localTableMetadata?.create_table_query,
+        };
+      } catch (e) {
+        console.error(
+          'Failed to fetch underlying table metadata for Distributed table, using Distributed table metadata as fallback',
+          e,
+        );
+      }
+    }
+
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
     if (
-      tableMetadata.partition_key.startsWith('(') &&
+      tableMetadata?.partition_key.startsWith('(') &&
       tableMetadata.partition_key.endsWith(')')
     ) {
       tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
@@ -601,16 +729,332 @@ export class Metadata {
     return tableMetadata;
   }
 
+  /** Reads the value of the setting with the given name from system.settings. */
+  async getSetting({
+    settingName,
+    connectionId,
+  }: {
+    settingName: string;
+    connectionId: string;
+  }) {
+    return this.cache.getOrFetch(`${connectionId}.${settingName}`, async () => {
+      const sql = chSql`
+          SELECT name, value
+          FROM system.settings
+          WHERE name = ${{ String: settingName }}
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ name: string; value: string }>());
+
+        if (json.data.length > 0) {
+          return json.data[0].value;
+        }
+
+        return undefined;
+      } catch (e) {
+        // Don't retry permissions errors, just silently return undefined
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch settings:', e);
+          return undefined;
+        }
+
+        throw e;
+      }
+    });
+  }
+
+  async getSettings({ connectionId }: { connectionId?: string }) {
+    return this.cache.getOrFetch(
+      `${connectionId}.availableSettings`,
+      async () => {
+        const query = 'SELECT name, value FROM system.settings';
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          // Don't retry permissions errors, just silently return undefined
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch settings, may result in unoptimized queries:',
+              e,
+            );
+            return new Map();
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
+  /**
+   * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
+   * Results are cached using MetadataCache.
+   *
+   * Skip indices are ClickHouse data skipping indices that improve query performance
+   * by allowing the query optimizer to skip reading entire data parts.
+   */
+  async getSkipIndices({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<SkipIndexMetadata[]> {
+    return this.cache.getOrFetch<SkipIndexMetadata[]>(
+      `${connectionId}.${databaseName}.${tableName}.skipIndices`,
+      async () => {
+        const tableMetadata = await this.queryTableMetadata({
+          cache: this.cache,
+          database: databaseName,
+          table: tableName,
+          connectionId,
+        });
+
+        let database = databaseName;
+        let table = tableName;
+        let cluster: string | undefined;
+
+        // For Distributed tables, query skip indices on the underlying local
+        // table via the cluster() function so we reach the correct cluster.
+        if (tableMetadata?.engine === 'Distributed') {
+          const parsed = getDistributedTableArgs(tableMetadata);
+
+          if (!parsed) {
+            console.error(
+              `Could not parse local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
+            );
+          } else {
+            database = parsed.database;
+            table = parsed.table;
+            cluster = parsed.cluster;
+          }
+        }
+
+        try {
+          return await this.querySkipIndices({
+            database,
+            table,
+            connectionId,
+            cluster,
+          });
+        } catch (e) {
+          // Don't retry permissions errors, just silently return empty array
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn('Not enough privileges to fetch skip indices:', e);
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
+  /**
+   * Inspects the ClickHouse connection for OpenTelemetry telemetry tables.
+   * Returns one coherent set of tables from the same database.
+   *
+   * When multiple databases contain the same table schema, this function prioritizes
+   * returning a complete set from a single database rather than mixing tables from different databases.
+   */
+  async getOtelTables({ connectionId }: { connectionId: string }): Promise<{
+    database: string;
+    tables: {
+      logs?: string;
+      traces?: string;
+      sessions?: string;
+      metrics: {
+        gauge?: string;
+        sum?: string;
+        summary?: string;
+        histogram?: string;
+        expHistogram?: string;
+      };
+    };
+  } | null> {
+    return this.cache.getOrFetch(`${connectionId}.otelTables`, async () => {
+      const OTEL_TABLE_NAMES = [
+        'otel_logs',
+        'otel_traces',
+        'hyperdx_sessions',
+        'otel_metrics_gauge',
+        'otel_metrics_sum',
+        'otel_metrics_summary',
+        'otel_metrics_histogram',
+        'otel_metrics_exp_histogram',
+      ];
+
+      const tableNameParams = OTEL_TABLE_NAMES.map(
+        t => chSql`${{ String: t }}`,
+      );
+
+      const sql = chSql`
+          SELECT
+            database,
+            name
+          FROM system.tables
+          WHERE (database != 'system')
+            AND (name IN (${concatChSql(',', tableNameParams)}))
+          ORDER BY database, name
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ database: string; name: string }>());
+
+        if (json.data.length === 0) {
+          return null;
+        }
+
+        // Group tables by database
+        const tablesByDatabase = new Map<string, Set<string>>();
+        for (const row of json.data) {
+          if (!tablesByDatabase.has(row.database)) {
+            tablesByDatabase.set(row.database, new Set());
+          }
+          tablesByDatabase.get(row.database)!.add(row.name);
+        }
+
+        // Find the database with the most complete set of tables
+        let bestDatabase = '';
+        let bestScore = 0;
+
+        for (const [database, tables] of tablesByDatabase.entries()) {
+          // Score based on number of essential tables present
+          let score = 0;
+          if (tables.has('otel_logs')) score += 10;
+          if (tables.has('otel_traces')) score += 10;
+          if (tables.has('hyperdx_sessions')) score += 5;
+          if (tables.has('otel_metrics_gauge')) score += 2;
+          if (tables.has('otel_metrics_sum')) score += 2;
+          if (tables.has('otel_metrics_histogram')) score += 2;
+          if (tables.has('otel_metrics_summary')) score += 1;
+          if (tables.has('otel_metrics_exp_histogram')) score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestDatabase = database;
+          }
+        }
+
+        if (!bestDatabase) {
+          return null;
+        }
+
+        const selectedTables = tablesByDatabase.get(bestDatabase)!;
+
+        return {
+          database: bestDatabase,
+          tables: {
+            logs: selectedTables.has('otel_logs') ? 'otel_logs' : undefined,
+            traces: selectedTables.has('otel_traces')
+              ? 'otel_traces'
+              : undefined,
+            sessions: selectedTables.has('hyperdx_sessions')
+              ? 'hyperdx_sessions'
+              : undefined,
+            metrics: {
+              gauge: selectedTables.has('otel_metrics_gauge')
+                ? 'otel_metrics_gauge'
+                : undefined,
+              sum: selectedTables.has('otel_metrics_sum')
+                ? 'otel_metrics_sum'
+                : undefined,
+              summary: selectedTables.has('otel_metrics_summary')
+                ? 'otel_metrics_summary'
+                : undefined,
+              histogram: selectedTables.has('otel_metrics_histogram')
+                ? 'otel_metrics_histogram'
+                : undefined,
+              expHistogram: selectedTables.has('otel_metrics_exp_histogram')
+                ? 'otel_metrics_exp_histogram'
+                : undefined,
+            },
+          },
+        };
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch tables:', e);
+          return null;
+        }
+
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * Parses a ClickHouse index expression to check if it uses the tokens() function.
+   * Returns the inner expression if tokens() is found.
+   *
+   * Examples:
+   * - tokens(Body) -> { hasTokens: true, innerExpression: 'Body' }
+   * - tokens(lower(Body)) -> { hasTokens: true, innerExpression: 'lower(Body)' }
+   * - lower(Body) -> { hasTokens: false }
+   */
+  static parseTokensExpression(expression: string):
+    | {
+        hasTokens: true;
+        innerExpression: string;
+      }
+    | { hasTokens: false } {
+    const tokensRegex = /^tokens\s*\((.*)\)$/i;
+    const match = expression.trim().match(tokensRegex);
+
+    if (match) {
+      return {
+        hasTokens: true,
+        innerExpression: match[1].trim(),
+      };
+    }
+
+    return { hasTokens: false };
+  }
+
   async getValuesDistribution({
     chartConfig,
     key,
     samples = 100_000,
     limit = 100,
+    source,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     key: string;
     samples?: number;
     limit?: number;
+    source: TSource | undefined;
   }) {
     const cacheKeyConfig = pick(chartConfig, [
       'connection',
@@ -621,9 +1065,9 @@ export class Metadata {
       'with',
     ]);
     return this.cache.getOrFetch(
-      `${JSON.stringify(cacheKeyConfig)}.${key}.valuesDistribution`,
+      `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
-        const config: ChartConfigWithDateRange = {
+        const config: BuilderChartConfigWithDateRange = {
           ...chartConfig,
           with: [
             ...(chartConfig.with || []),
@@ -651,7 +1095,11 @@ export class Metadata {
           limit: { limit },
         };
 
-        const sql = await renderChartConfig(config, this);
+        const sql = await renderChartConfig(
+          config,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -689,14 +1137,32 @@ export class Metadata {
     keys,
     limit = 20,
     disableRowLimit = false,
+    signal,
+    source,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
-  }) {
+    signal?: AbortSignal;
+    source:
+      | Omit<TSource, 'connection'> /* for overlap with ISource type */
+      | undefined;
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${objectHash(cacheKeyConfig)}.getKeyValues`,
       async () => {
         if (keys.length === 0) return [];
 
@@ -747,7 +1213,11 @@ export class Metadata {
               };
             })();
 
-        const sql = await renderChartConfig(sqlConfig, this);
+        const sql = await renderChartConfig(
+          sqlConfig,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -764,16 +1234,84 @@ export class Metadata {
                   max_rows_to_read: '0',
                 }
               : undefined,
+            abort_signal: signal,
           })
-          .then(res => res.json<any>());
+          .then(res => res.json<Record<string, string[] | number[]>>());
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(Boolean), // remove nulls
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          value: value?.filter(v => v != null && v !== '') as  // remove nulls and empty strings
+            | string[]
+            | number[],
         }));
+      },
+    );
+  }
+
+  async getKeyValuesWithMVs({
+    chartConfig,
+    keys,
+    source,
+    limit = 20,
+    disableRowLimit,
+    signal,
+  }: {
+    chartConfig: BuilderChartConfigWithDateRange;
+    keys: string[];
+    source: TSource | undefined;
+    limit?: number;
+    disableRowLimit?: boolean;
+    signal?: AbortSignal;
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
+    return this.cache.getOrFetch(
+      `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
+      async () => {
+        if (keys.length === 0) return [];
+
+        const defaultKeyValueCall = { chartConfig, keys };
+        const canHaveMVs =
+          source &&
+          (source.kind === SourceKind.Log || source.kind === SourceKind.Trace);
+        const getKeyValueCalls = canHaveMVs
+          ? await optimizeGetKeyValuesCalls({
+              chartConfig,
+              keys,
+              source,
+              clickhouseClient: this.clickhouseClient,
+              metadata: this,
+              signal,
+            })
+          : [defaultKeyValueCall];
+
+        const allResults = await Promise.all(
+          getKeyValueCalls.map(async ({ chartConfig, keys }) =>
+            this.getKeyValues({
+              chartConfig,
+              keys,
+              limit,
+              disableRowLimit,
+              signal,
+              source,
+            }),
+          ),
+        );
+
+        return allResults.flat();
       },
     );
   }
@@ -802,7 +1340,9 @@ export type TableConnectionChoice =
       tableConnections?: never;
     };
 
-export function tcFromChartConfig(config?: ChartConfig): TableConnection {
+export function tcFromChartConfig(
+  config?: BuilderChartConfig,
+): TableConnection {
   return {
     databaseName: config?.from?.databaseName ?? '',
     tableName: config?.from?.tableName ?? '',

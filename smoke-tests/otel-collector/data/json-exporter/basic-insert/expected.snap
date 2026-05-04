@@ -1,0 +1,3 @@
+"JSON exporter log with string attributes","user-123","GET","",""
+"JSON exporter log with integer attribute","","","200",""
+"JSON exporter log with boolean attribute","","","","false"

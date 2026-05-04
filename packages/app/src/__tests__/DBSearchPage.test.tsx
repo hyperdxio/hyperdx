@@ -1,3 +1,4 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
 import * as sourceModule from '@/source';
@@ -27,32 +28,28 @@ describe('useDefaultOrderBy', () => {
           expected: 'Timestamp DESC',
         },
         {
-          // Traces Table
           sortingKey: 'ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: 'Timestamp DESC',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Optimized Traces Table
           sortingKey:
             'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: '(toStartOfHour(Timestamp), toDateTime(Timestamp)) DESC',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Unsupported for now as it's not a great sort key, want to just
-          // use default behavior for this
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Unsupported prefix sort key
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Inverted sort key order, we should not try to optimize this
           sortingKey:
-            'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
-          expected: 'Timestamp DESC',
+            'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
@@ -70,14 +67,14 @@ describe('useDefaultOrderBy', () => {
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp), Timestamp) DESC',
         },
         {
           // test variation of toUnixTimestamp
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey:
@@ -88,6 +85,24 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
           timestampValueExpression: 'Timestamp, toStartOfMinute(Timestamp)',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
           expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
         },
         {
@@ -102,7 +117,6 @@ describe('useDefaultOrderBy', () => {
         },
         {
           sortingKey: 'Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: 'Timestamp DESC',
         },
         {
@@ -140,25 +154,22 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'TimestampTime, Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: '(TimestampTime, Timestamp) DESC',
         },
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: 'Timestamp',
-          expected: 'Timestamp DESC',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
         {
-          sortingKey: '',
-          timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: '',
-          expected: 'Timestamp DESC',
+          sortingKey: 'ServiceName, TimestampTime, Timestamp',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
       ];
       for (const testCase of testCases) {
         it(`${testCase.sortingKey}`, () => {
           const mockSource = {
+            kind: SourceKind.Log,
             timestampValueExpression:
               testCase.timestampValueExpression || 'Timestamp',
             displayedTimestampValueExpression:
@@ -203,7 +214,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(null));
 
-      expect(result.current).toBe(' DESC');
+      expect(result.current).toBe(undefined);
     });
 
     it('should handle undefined sourceID ungracefully', () => {
@@ -221,11 +232,95 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(undefined));
 
-      expect(result.current).toBe(' DESC');
+      expect(result.current).toBe(undefined);
+    });
+
+    it('should return orderByExpression when set on the source', () => {
+      const mockSource = {
+        kind: SourceKind.Log,
+        timestampValueExpression: 'Timestamp',
+        orderByExpression: 'Timestamp ASC',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfMinute(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('Timestamp ASC');
+    });
+
+    it('should fall back to optimized order when orderByExpression is empty', () => {
+      const mockSource = {
+        kind: SourceKind.Log,
+        timestampValueExpression: 'Timestamp',
+        orderByExpression: '',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfHour(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
+    });
+
+    it('should fall back to optimized order when orderByExpression is undefined', () => {
+      const mockSource = {
+        kind: SourceKind.Log,
+        timestampValueExpression: 'Timestamp',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfHour(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
     });
 
     it('should handle complex Timestamp expressions', () => {
       const mockSource = {
+        kind: SourceKind.Log,
         timestampValueExpression: 'toDateTime(timestamp_ms / 1000)',
       };
 

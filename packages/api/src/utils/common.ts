@@ -10,7 +10,7 @@ export type Json =
   | Json[]
   | { [key: string]: Json };
 
-export const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output: null | T = null;
   let error: null | Error | unknown = null;
   try {
@@ -27,15 +27,20 @@ export const tryJSONStringify = (json: Json) => {
   return result;
 };
 
+export function parseJSON<T = unknown>(raw: string, label: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch (e) {
+    throw new Error(`${label} is not valid JSON: ${(e as Error).message}`);
+  }
+}
+
 export const truncateString = (str: string, length: number) => {
   if (str.length > length) {
     return str.substring(0, length) + '...';
   }
   return str;
 };
-
-export const sleep = (ms: number) =>
-  new Promise(resolve => setTimeout(resolve, ms));
 
 export const convertMsToGranularityString = (ms: number): Granularity => {
   const granularitySizeSeconds = Math.ceil(ms / 1000);

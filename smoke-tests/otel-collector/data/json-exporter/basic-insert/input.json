@@ -1,0 +1,83 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "json-exporter"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "basic-insert"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "test-service"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999590000000000",
+              "body": {
+                "stringValue": "JSON exporter log with string attributes"
+              },
+              "attributes": [
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "user-123"
+                  }
+                },
+                {
+                  "key": "request.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000001",
+              "body": {
+                "stringValue": "JSON exporter log with integer attribute"
+              },
+              "attributes": [
+                {
+                  "key": "http.status_code",
+                  "value": {
+                    "intValue": "200"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000002",
+              "body": {
+                "stringValue": "JSON exporter log with boolean attribute"
+              },
+              "attributes": [
+                {
+                  "key": "error",
+                  "value": {
+                    "boolValue": false
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

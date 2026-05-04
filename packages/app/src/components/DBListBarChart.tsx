@@ -1,15 +1,20 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { omit } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 
+import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResolvedNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { omit } from '@/utils';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 function ListItem({
@@ -175,9 +180,12 @@ export default function DBListBarChart({
   enabled,
   valueColumn,
   groupColumn,
-  hiddenSeries = [],
+  hiddenSeries,
+  title,
+  toolbarItems,
+  showMVOptimizationIndicator = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
   getRowSearchLink?: (row: any) => string;
   hoverCardPosition?: FloatingPosition;
@@ -186,6 +194,9 @@ export default function DBListBarChart({
   valueColumn: string;
   groupColumn: string;
   hiddenSeries?: string[];
+  title?: React.ReactNode;
+  toolbarItems?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -197,6 +208,13 @@ export default function DBListBarChart({
     },
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
+  const { data: source } = useSource({ id: config.source });
+
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -204,57 +222,97 @@ export default function DBListBarChart({
     }
 
     return Object.keys(rows?.[0])
-      .filter(key => !hiddenSeries.includes(key))
+      .filter(key => !hiddenSeries?.includes(key))
       .map(key => ({
         dataKey: key,
         displayName: key,
-        numberFormat: config.numberFormat,
+        numberFormat: resolvedNumberFormat,
       }));
-  }, [config.numberFormat, data, hiddenSeries]);
+  }, [resolvedNumberFormat, data, hiddenSeries]);
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-list-bar-chart-mv-indicator"
+          config={queriedConfig}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
+    }
+
+    if (toolbarItems && toolbarItems.length > 0) {
+      allToolbarItems.push(...toolbarItems);
+    }
+
+    return allToolbarItems;
+  }, [
+    queriedConfig,
+    source,
+    toolbarItems,
+    showMVOptimizationIndicator,
+    mvOptimizationData,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError ? (
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
+          </Text>
+          <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Sent Query:
+              Error Message:
             </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
-    </div>
-  ) : data?.data.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <ListBar
-      data={data?.data ?? []}
-      columns={columns}
-      getRowSearchLink={getRowSearchLink}
-      hoverCardPosition={hoverCardPosition}
-      groupColumn={groupColumn}
-      valueColumn={valueColumn}
-    />
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+            {error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={error?.query} />
+              </>
+            )}
+          </Box>
+        </div>
+      ) : data?.data.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <ListBar
+          data={data?.data ?? []}
+          columns={columns}
+          getRowSearchLink={getRowSearchLink}
+          hoverCardPosition={hoverCardPosition}
+          groupColumn={groupColumn}
+          valueColumn={valueColumn}
+        />
+      )}
+    </ChartContainer>
   );
 }

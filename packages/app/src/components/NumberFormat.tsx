@@ -1,35 +1,32 @@
 import * as React from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useMemo } from 'react';
 import {
-  Button,
+  Control,
+  Controller,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
+import { NumberFormat, NumericUnit } from '@hyperdx/common-utils/dist/types';
+import {
   Checkbox as MCheckbox,
-  Drawer,
   NativeSelect,
   Paper,
   Slider,
   Stack,
   TextInput,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
   IconClock,
   IconCurrencyDollar,
   IconDatabase,
+  IconHourglass,
   IconNumbers,
   IconPercentage,
-  IconX,
 } from '@tabler/icons-react';
 
-import { NumberFormat } from '../types';
 import { formatNumber } from '../utils';
 
-const FORMAT_NAMES: Record<string, string> = {
-  number: 'Number',
-  currency: 'Currency',
-  percent: 'Percentage',
-  byte: 'Bytes',
-  time: 'Time',
-};
+import { ChartConfigDisplaySettings } from './ChartDisplaySettingsDrawer';
 
 const FORMAT_ICONS: Record<string, React.ReactNode> = {
   number: <IconNumbers size={14} />,
@@ -37,57 +34,141 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   percent: <IconPercentage size={14} />,
   byte: <IconDatabase size={14} />,
   time: <IconClock size={14} />,
+  duration: <IconHourglass size={14} />,
+  data_rate: <IconDatabase size={14} />,
+  throughput: <IconNumbers size={14} />,
 };
 
+const TEST_NUMBER = 1234;
+
+export const DEFAULT_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number' as const,
+  mantissa: 2,
+  thousandSeparated: true,
+  average: false,
+  decimalBytes: false,
+};
+
+type UnitOption = { value: NumericUnit; label: string };
+type OutputOption = { value: NumberFormat['output']; label: string };
+type OutputGroup = { group: string; items: OutputOption[] };
+
+const DATA_UNIT_OPTIONS: UnitOption[] = [
+  { value: NumericUnit.BytesIEC, label: 'bytes (IEC)' },
+  { value: NumericUnit.BytesSI, label: 'bytes (SI)' },
+  { value: NumericUnit.BitsIEC, label: 'bits (IEC)' },
+  { value: NumericUnit.BitsSI, label: 'bits (SI)' },
+  { value: NumericUnit.Kibibytes, label: 'kibibytes' },
+  { value: NumericUnit.Kilobytes, label: 'kilobytes' },
+  { value: NumericUnit.Mebibytes, label: 'mebibytes' },
+  { value: NumericUnit.Megabytes, label: 'megabytes' },
+  { value: NumericUnit.Gibibytes, label: 'gibibytes' },
+  { value: NumericUnit.Gigabytes, label: 'gigabytes' },
+  { value: NumericUnit.Tebibytes, label: 'tebibytes' },
+  { value: NumericUnit.Terabytes, label: 'terabytes' },
+  { value: NumericUnit.Pebibytes, label: 'pebibytes' },
+  { value: NumericUnit.Petabytes, label: 'petabytes' },
+];
+
+const DATA_RATE_UNIT_OPTIONS: UnitOption[] = [
+  { value: NumericUnit.PacketsSec, label: 'packets/sec' },
+  { value: NumericUnit.BytesSecIEC, label: 'bytes/sec (IEC)' },
+  { value: NumericUnit.BytesSecSI, label: 'bytes/sec (SI)' },
+  { value: NumericUnit.BitsSecIEC, label: 'bits/sec (IEC)' },
+  { value: NumericUnit.BitsSecSI, label: 'bits/sec (SI)' },
+  { value: NumericUnit.KibibytesSec, label: 'kibibytes/sec' },
+  { value: NumericUnit.KibibitsSec, label: 'kibibits/sec' },
+  { value: NumericUnit.KilobytesSec, label: 'kilobytes/sec' },
+  { value: NumericUnit.KilobitsSec, label: 'kilobits/sec' },
+  { value: NumericUnit.MebibytesSec, label: 'mebibytes/sec' },
+  { value: NumericUnit.MebibitsSec, label: 'mebibits/sec' },
+  { value: NumericUnit.MegabytesSec, label: 'megabytes/sec' },
+  { value: NumericUnit.MegabitsSec, label: 'megabits/sec' },
+  { value: NumericUnit.GibibytesSec, label: 'gibibytes/sec' },
+  { value: NumericUnit.GibibitsSec, label: 'gibibits/sec' },
+  { value: NumericUnit.GigabytesSec, label: 'gigabytes/sec' },
+  { value: NumericUnit.GigabitsSec, label: 'gigabits/sec' },
+  { value: NumericUnit.TebibytesSec, label: 'tebibytes/sec' },
+  { value: NumericUnit.TebibitsSec, label: 'tebibits/sec' },
+  { value: NumericUnit.TerabytesSec, label: 'terabytes/sec' },
+  { value: NumericUnit.TerabitsSec, label: 'terabits/sec' },
+  { value: NumericUnit.PebibytesSec, label: 'pebibytes/sec' },
+  { value: NumericUnit.PebibitsSec, label: 'pebibits/sec' },
+  { value: NumericUnit.PetabytesSec, label: 'petabytes/sec' },
+  { value: NumericUnit.PetabitsSec, label: 'petabits/sec' },
+];
+
+const THROUGHPUT_UNIT_OPTIONS: UnitOption[] = [
+  { value: NumericUnit.Cps, label: 'counts/sec (cps)' },
+  { value: NumericUnit.Ops, label: 'ops/sec (ops)' },
+  { value: NumericUnit.Rps, label: 'requests/sec (rps)' },
+  { value: NumericUnit.ReadsSec, label: 'reads/sec (rps)' },
+  { value: NumericUnit.Wps, label: 'writes/sec (wps)' },
+  { value: NumericUnit.Iops, label: 'I/O ops/sec (iops)' },
+  { value: NumericUnit.Cpm, label: 'counts/min (cpm)' },
+  { value: NumericUnit.Opm, label: 'ops/min (opm)' },
+  { value: NumericUnit.RpmReads, label: 'reads/min (rpm)' },
+  { value: NumericUnit.Wpm, label: 'writes/min (wpm)' },
+];
+
+const UNIT_OPTIONS_BY_OUTPUT: Record<string, UnitOption[]> = {
+  byte: DATA_UNIT_OPTIONS,
+  data_rate: DATA_RATE_UNIT_OPTIONS,
+  throughput: THROUGHPUT_UNIT_OPTIONS,
+};
+
+const DEFAULT_NUMERIC_UNIT_BY_OUTPUT: Partial<
+  Record<NumberFormat['output'], NumericUnit>
+> = {
+  byte: NumericUnit.BytesIEC,
+  data_rate: NumericUnit.BytesSecIEC,
+  throughput: NumericUnit.Cps,
+};
+
+const OUTPUT_CATEGORY_OPTIONS: OutputGroup[] = [
+  {
+    group: 'Basic',
+    items: [
+      { value: 'number', label: 'Number' },
+      { value: 'currency', label: 'Currency' },
+      { value: 'percent', label: 'Percentage' },
+      { value: 'duration', label: 'Duration' },
+      { value: 'time', label: 'Time (clock)' },
+    ],
+  },
+  {
+    group: 'Data',
+    items: [{ value: 'byte', label: 'Data' }],
+  },
+  {
+    group: 'Network',
+    items: [
+      { value: 'data_rate', label: 'Data rate' },
+      { value: 'throughput', label: 'Throughput' },
+    ],
+  },
+];
+
+const hasNumericUnit = (output: string) =>
+  output === 'byte' || output === 'data_rate' || output === 'throughput';
+
 export const NumberFormatForm: React.FC<{
-  value?: NumberFormat;
-  onApply: (value: NumberFormat) => void;
-  onClose: () => void;
-}> = ({ value, onApply, onClose }) => {
-  const { register, handleSubmit, control, setValue } = useForm<NumberFormat>({
-    values: value,
-    defaultValues: {
-      factor: 1,
-      output: 'number',
-      mantissa: 2,
-      thousandSeparated: true,
-      average: false,
-      decimalBytes: false,
-    },
-  });
+  control: Control<ChartConfigDisplaySettings>;
+  setValue: UseFormSetValue<ChartConfigDisplaySettings>;
+}> = ({ control, setValue }) => {
+  const format =
+    useWatch({ control, name: 'numberFormat' }) ?? DEFAULT_NUMBER_FORMAT;
 
-  const values = useWatch({ control });
-  const valuesWithDefaults = values ?? {
-    factor: 1,
-    output: 'number' as const,
-    mantissa: 2,
-    thousandSeparated: true,
-    average: false,
-    decimalBytes: false,
-  };
-
-  const testNumber = 1234;
+  const unitOptions = useMemo(
+    () =>
+      format.output ? (UNIT_OPTIONS_BY_OUTPUT[format.output] ?? null) : null,
+    [format.output],
+  );
 
   return (
     <>
       <Stack style={{ flex: 1 }}>
-        {/* <TextInput
-          label="Coefficient"
-          type="number"
-          description="Multiply number by this value before formatting. You can use it to convert source value to seconds, bytes, base currency, etc."
-          {...register('factor', { valueAsNumber: true })}
-          rightSectionWidth={70}
-          rightSection={
-            <Button
-              variant="default"
-              compact
-              size="sm"
-              onClick={() => setValue('factor', 1)}
-            >
-              Reset
-            </Button>
-          }
-        /> */}
         <div
           style={{
             display: 'flex',
@@ -97,37 +178,59 @@ export const NumberFormatForm: React.FC<{
             gap: 10,
           }}
         >
-          <NativeSelect
-            label="Output format"
-            leftSection={
-              valuesWithDefaults.output &&
-              FORMAT_ICONS[valuesWithDefaults.output]
-            }
-            style={{ flex: 1 }}
-            data={[
-              { value: 'number', label: 'Number' },
-              { value: 'currency', label: 'Currency' },
-              { value: 'byte', label: 'Bytes' },
-              { value: 'percent', label: 'Percentage' },
-              { value: 'time', label: 'Time' },
-            ]}
-            {...register('output')}
+          <Controller
+            control={control}
+            key="numberFormat.output"
+            name="numberFormat.output"
+            render={({ field: { onChange, ...field } }) => (
+              <NativeSelect
+                {...field}
+                label="Output format"
+                leftSection={format.output && FORMAT_ICONS[format.output]}
+                style={{ flex: 1 }}
+                data={OUTPUT_CATEGORY_OPTIONS}
+                onChange={e => {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+                  const newOutput = e.target.value as NumberFormat['output'];
+                  onChange(newOutput);
+                  setValue(
+                    'numberFormat.numericUnit',
+                    DEFAULT_NUMERIC_UNIT_BY_OUTPUT[newOutput] ?? undefined,
+                  );
+                }}
+              />
+            )}
           />
-          {valuesWithDefaults.output === 'currency' && (
-            <TextInput
-              w={80}
-              label="Symbol"
-              placeholder="$"
-              {...register('currencySymbol')}
+          {format.output === 'currency' && (
+            <Controller
+              control={control}
+              key="numberFormat.currencySymbol"
+              name="numberFormat.currencySymbol"
+              render={({ field }) => (
+                <TextInput {...field} w={80} label="Symbol" placeholder="$" />
+              )}
             />
           )}
-          {/* <TextInput
-            w={100}
-            label="Unit"
-            placeholder=""
-            {...register('unit')}
-          /> */}
         </div>
+
+        {unitOptions && (
+          <Controller
+            control={control}
+            key="numberFormat.numericUnit"
+            name="numberFormat.numericUnit"
+            render={({ field: { value, onChange, ...field } }) => (
+              <NativeSelect
+                {...field}
+                label="Unit"
+                value={
+                  value ?? DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output ?? '']
+                }
+                onChange={e => onChange(e.target.value)}
+                data={unitOptions}
+              />
+            )}
+          />
+        )}
 
         <div style={{ marginTop: -6 }}>
           <Paper p="xs" py={4}>
@@ -138,133 +241,126 @@ export const NumberFormatForm: React.FC<{
             >
               Example
             </div>
-            {formatNumber(testNumber || 0, valuesWithDefaults as NumberFormat)}
+            {formatNumber(TEST_NUMBER || 0, {
+              ...format,
+              numericUnit:
+                format.numericUnit ??
+                (format.output
+                  ? DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output]
+                  : undefined),
+            })}
           </Paper>
         </div>
 
-        {valuesWithDefaults.output !== 'time' && (
+        {format.output !== 'time' && format.output !== 'duration' && (
           <div>
             <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
-            <Slider
-              mb="xl"
-              min={0}
-              max={10}
-              label={value => `Decimals: ${value}`}
-              marks={[
-                { value: 0, label: '0' },
-                { value: 10, label: '10' },
-              ]}
-              value={values.mantissa}
-              onChange={value => {
-                setValue('mantissa', value);
-              }}
+            <Controller
+              control={control}
+              key="numberFormat.mantissa"
+              name="numberFormat.mantissa"
+              render={({ field: { value, onChange } }) => (
+                <Slider
+                  mb="xl"
+                  min={0}
+                  max={10}
+                  label={val => `Decimals: ${val}`}
+                  marks={[
+                    { value: 0, label: '0' },
+                    { value: 10, label: '10' },
+                  ]}
+                  value={value ?? 2}
+                  onChange={onChange}
+                />
+              )}
             />
           </div>
         )}
+
         <Stack gap="xs">
-          {values.output === 'byte' ? (
-            <MCheckbox
-              size="xs"
-              label="Decimal base"
-              description="Use 1KB = 1000 bytes"
-              {...register('decimalBytes')}
+          {format.output === 'byte' && !format.numericUnit ? (
+            <Controller
+              control={control}
+              key="numberFormat.decimalBytes"
+              name="numberFormat.decimalBytes"
+              render={({ field: { value, onChange, ...field } }) => {
+                return (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Decimal base"
+                    description="Use 1KB = 1000 bytes"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                );
+              }}
             />
-          ) : values.output === 'time' ? (
-            <NativeSelect
-              size="sm"
-              label="Input unit"
-              {...register('factor', {
-                setValueAs: value => parseFloat(value),
-              })}
-              data={[
-                { value: '1', label: 'Seconds' },
-                { value: '0.001', label: 'Milliseconds' },
-              ]}
+          ) : format.output === 'time' || format.output === 'duration' ? (
+            <Controller
+              control={control}
+              key="numberFormat.factor"
+              name="numberFormat.factor"
+              render={({ field: { value, onChange, ...field } }) => {
+                const options = [
+                  { value: '1', label: 'Seconds' },
+                  { value: '0.001', label: 'Milliseconds' },
+                  { value: '0.000001', label: 'Microseconds' },
+                  { value: '0.000000001', label: 'Nanoseconds' },
+                ];
+
+                const stringValue =
+                  options.find(option => parseFloat(option.value) === value)
+                    ?.value ?? '1';
+
+                return (
+                  <NativeSelect
+                    {...field}
+                    size="sm"
+                    label="Input unit"
+                    value={stringValue}
+                    onChange={e => onChange(parseFloat(e.target.value))}
+                    data={options}
+                  />
+                );
+              }}
             />
-          ) : (
+          ) : !hasNumericUnit(format.output ?? '') ? (
             <>
-              <MCheckbox
-                size="xs"
-                label="Separate thousands"
-                description="For example: 1,234,567"
-                {...register('thousandSeparated')}
+              <Controller
+                control={control}
+                key="numberFormat.thousandSeparated"
+                name="numberFormat.thousandSeparated"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Separate thousands"
+                    description="For example: 1,234,567"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                )}
               />
-              <MCheckbox
-                size="xs"
-                label="Large number format"
-                description="For example: 1.2m"
-                {...register('average')}
+              <Controller
+                control={control}
+                key="numberFormat.average"
+                name="numberFormat.average"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Large number format"
+                    description="For example: 1.2m"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                )}
               />
             </>
-          )}
-        </Stack>
-        <Stack gap="xs" mt="xs">
-          <Button type="submit" onClick={handleSubmit(onApply)}>
-            Apply
-          </Button>
-          <Button onClick={onClose} variant="default">
-            Cancel
-          </Button>
+          ) : null}
         </Stack>
       </Stack>
-    </>
-  );
-};
-
-const TEST_NUMBER = 1234;
-
-export const NumberFormatInput: React.FC<{
-  value?: NumberFormat;
-  onChange: (value?: NumberFormat) => void;
-}> = ({ value, onChange }) => {
-  const [opened, { open, close }] = useDisclosure(false);
-  const example = React.useMemo(
-    () => formatNumber(TEST_NUMBER, value),
-    [value],
-  );
-
-  const handleApply = React.useCallback(
-    (value?: NumberFormat) => {
-      onChange(value);
-      close();
-    },
-    [onChange, close],
-  );
-
-  return (
-    <>
-      <Drawer
-        opened={opened}
-        onClose={close}
-        title="Number format"
-        position="right"
-        padding="lg"
-        zIndex={100000}
-      >
-        <NumberFormatForm value={value} onApply={handleApply} onClose={close} />
-      </Drawer>
-      <Button.Group>
-        <Button
-          onClick={open}
-          size="compact-sm"
-          color="dark"
-          variant="default"
-          leftSection={value?.output && FORMAT_ICONS[value.output]}
-        >
-          {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
-        </Button>
-        {value?.output && (
-          <Button
-            size="compact-sm"
-            color="dark"
-            variant="default"
-            px="xs"
-            onClick={() => handleApply(undefined)}
-          >
-            <IconX size={14} />
-          </Button>
-        )}
-      </Button.Group>
     </>
   );
 };

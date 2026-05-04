@@ -7,12 +7,12 @@ export interface CsvColumn {
   displayName: string;
 }
 
-export interface CsvExportOptions {
+interface CsvExportOptions {
   maxRows?: number;
   groupColumnName?: string;
 }
 
-export interface CsvExportResult {
+interface CsvExportResult {
   csvData: Record<string, any>[];
   maxRows: number;
   isDataEmpty: boolean;

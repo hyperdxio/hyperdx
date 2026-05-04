@@ -1,47 +1,49 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  TableConnection,
-  tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  ChartConfigWithDateRange,
-  DisplayType,
-  TSource,
+  BuilderChartConfigWithDateRange,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex } from '@mantine/core';
-import { ActionIcon } from '@mantine/core';
-import { Paper } from '@mantine/core';
-import { Center } from '@mantine/core';
-import { Text } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  Box,
+  Flex,
+  Tooltip,
+  useMantineColorScheme,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconSettings } from '@tabler/icons-react';
 
+import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
 import { getDurationMsExpression } from '@/source';
+import type { NumberFormat } from '@/types';
 
+import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
-import DBHeatmapChart from '../DBHeatmapChart';
-import { SQLInlineEditorControlled } from '../SQLInlineEditor';
-
-const Schema = z.object({
-  value: z.string().trim().min(1),
-  count: z.string().trim().optional(),
-});
+import DBHeatmapChart, {
+  ColorLegend,
+  darkPalette,
+  type HeatmapScaleType,
+  lightPalette,
+  toHeatmapChartConfig,
+} from '../DBHeatmapChart';
 
 export function DBSearchHeatmapChart({
   chartConfig,
   source,
   isReady,
+  onAddFilter,
 }: {
-  chartConfig: ChartConfigWithDateRange;
-  source: TSource;
+  chartConfig: BuilderChartConfigWithDateRange;
+  source: TTraceSource;
   isReady: boolean;
+  onAddFilter?: AddFilterFn;
 }) {
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
+    scaleType: parseAsString.withDefault('log'),
     // Heatmap selection coordinates
     xMin: parseAsFloat,
     xMax: parseAsFloat,
@@ -49,67 +51,134 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  const scaleType = (fields.scaleType ?? 'log') as HeatmapScaleType;
+  const [settingsOpened, settingsHandlers] = useDisclosure(false);
+  const { colorScheme } = useMantineColorScheme();
+  const palette = colorScheme === 'light' ? lightPalette : darkPalette;
+
+  const heatmapSettingsDefaults = useMemo(
+    () => ({
+      value: fields.value,
+      count: fields.count ?? 'count()',
+      scaleType,
+    }),
+    [fields.value, fields.count, scaleType],
+  );
+
+  // After applying a filter, clear the heatmap selection so the delta chart
+  // resets instead of staying in comparison mode.
+  const handleAddFilterAndClearSelection = useCallback<
+    NonNullable<AddFilterFn>
+  >(
+    (property, value, action) => {
+      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+      onAddFilter?.(property, value, action);
+    },
+    [onAddFilter, setFields],
+  );
+
+  // Clear the heatmap selection when the time range changes. The visual
+  // rectangle goes away on its own (uPlot re-initializes with new data),
+  // but without this the xMin/xMax/yMin/yMax URL params would linger and
+  // the delta chart would keep running its comparison query against the
+  // new time range.
+  const fromMs = chartConfig.dateRange[0].getTime();
+  const toMs = chartConfig.dateRange[1].getTime();
+  const prevDateRangeRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${fromMs}-${toMs}`;
+    if (prevDateRangeRef.current != null && prevDateRangeRef.current !== key) {
+      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+    }
+    prevDateRangeRef.current = key;
+  }, [fromMs, toMs, setFields]);
 
   return (
     <Flex
       direction="column"
       w="100%"
-      style={{ overflow: 'hidden' }}
+      style={{ overflow: 'hidden', height: '100%' }}
       ref={setContainer}
     >
-      <Box mx="lg" mt="xs" mb={0}>
-        <DBSearchHeatmapForm
-          connection={tcFromSource(source)}
-          defaultValues={{
-            value: fields.value,
-            count: fields.count,
-          }}
-          parentRef={container}
-          onSubmit={data => {
-            setFields({
-              value: data.value,
-              count: data.count,
-            });
-          }}
-        />
-      </Box>
       <div
         style={{
-          minHeight: 210,
-          maxHeight: 210,
+          minHeight: 260,
+          maxHeight: 260,
           width: '100%',
           position: 'relative',
+          paddingLeft: 4,
+          paddingRight: 4,
         }}
       >
         <DBHeatmapChart
-          config={{
-            ...chartConfig,
-            select: [
-              {
-                aggFn: 'heatmap',
-                valueExpression: fields.value,
-                countExpression: fields.count || undefined,
-              },
-            ],
-            granularity: 'auto',
-            displayType: DisplayType.Heatmap,
-          }}
+          config={
+            toHeatmapChartConfig({
+              ...chartConfig,
+              select: [
+                {
+                  valueExpression: fields.value,
+                  countExpression: fields.count || undefined,
+                  heatmapScaleType: scaleType,
+                },
+              ],
+              numberFormat:
+                fields.value === getDurationMsExpression(source)
+                  ? ({
+                      output: 'duration',
+                      factor: 0.001,
+                    } satisfies NumberFormat)
+                  : undefined,
+            }).heatmapConfig
+          }
           enabled={isReady}
+          scaleType={scaleType}
           onFilter={(xMin, xMax, yMin, yMax) => {
-            // Simply store the coordinates - DBDeltaChart will handle the logic
-            setFields({
-              xMin,
-              xMax,
-              yMin,
-              yMax,
-            });
+            setFields({ xMin, xMax, yMin, yMax });
+          }}
+          onClearFilter={() => {
+            setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
           }}
         />
+        {/* Gear icon overlaid on chart top-right */}
+        <Tooltip label="Display settings">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={settingsHandlers.open}
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              zIndex: 2,
+            }}
+          >
+            <IconSettings size={16} />
+          </ActionIcon>
+        </Tooltip>
       </div>
-      {fields.xMin != null &&
-      fields.xMax != null &&
-      fields.yMin != null &&
-      fields.yMax != null ? (
+      <HeatmapSettingsDrawer
+        opened={settingsOpened}
+        onClose={settingsHandlers.close}
+        connection={tcFromSource(source)}
+        parentRef={container}
+        defaultValues={heatmapSettingsDefaults}
+        onSubmit={data => {
+          // Changing value/count/scale changes what the y-axis represents,
+          // so drop any existing selection — a rectangle drawn against the
+          // old axis doesn't map cleanly to the new one.
+          setFields({
+            value: data.value,
+            count: data.count,
+            scaleType: data.scaleType,
+            xMin: null,
+            xMax: null,
+            yMin: null,
+            yMax: null,
+          });
+          settingsHandlers.close();
+        }}
+      />
+      <Box style={{ flex: 1, minHeight: 0 }}>
         <DBDeltaChart
           config={{
             ...chartConfig,
@@ -120,85 +189,13 @@ export function DBSearchHeatmapChart({
           xMax={fields.xMax}
           yMin={fields.yMin}
           yMax={fields.yMax}
+          onAddFilter={
+            onAddFilter ? handleAddFilterAndClearSelection : undefined
+          }
+          spanIdExpression={source.spanIdExpression}
+          legendPrefix={<ColorLegend colors={palette} />}
         />
-      ) : (
-        <Paper shadow="xs" p="xl" h="100%">
-          <Center mih={100} h="100%">
-            <Text size="sm">
-              Please highlight an outlier range in the heatmap to view the delta
-              chart.
-            </Text>
-          </Center>
-        </Paper>
-      )}
+      </Box>
     </Flex>
-  );
-}
-
-function DBSearchHeatmapForm({
-  connection,
-  defaultValues,
-  parentRef,
-  onSubmit,
-}: {
-  connection: TableConnection;
-  parentRef?: HTMLElement | null;
-  defaultValues: z.infer<typeof Schema>;
-  onSubmit: (v: z.infer<typeof Schema>) => void;
-}) {
-  const form = useForm({
-    resolver: zodResolver(Schema),
-    defaultValues,
-  });
-
-  return (
-    <form
-      onSubmit={form.handleSubmit(onSubmit)}
-      style={{ position: 'relative' }}
-    >
-      <Flex m="0" mb="xs" align="stretch" gap="xs">
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="value"
-            size="xs"
-            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-            placeholder="SQL expression"
-            language="sql"
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Value"
-            error={form.formState.errors.value?.message}
-            rules={{ required: true }}
-          />
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="count"
-            placeholder="SQL expression"
-            language="sql"
-            size="xs"
-            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Count"
-            error={form.formState.errors.count?.message}
-            rules={{ required: true }}
-          />
-        </div>
-        <ActionIcon
-          w="40px"
-          variant="outline"
-          type="submit"
-          h="auto"
-          title="Run"
-        >
-          <IconPlayerPlay />
-        </ActionIcon>
-      </Flex>
-    </form>
   );
 }

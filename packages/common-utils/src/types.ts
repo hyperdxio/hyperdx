@@ -9,6 +9,8 @@ export enum MetricsDataType {
   ExponentialHistogram = 'exponential histogram',
 }
 
+export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -16,6 +18,7 @@ export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
   Table = 'table',
+  Pie = 'pie',
   Number = 'number',
   Search = 'search',
   Heatmap = 'heatmap',
@@ -74,12 +77,17 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
   .object({
     aggFn: z.union([
-      AggregateFunctionSchema,
-      AggregateFunctionWithCombinatorsSchema,
+      z.literal('quantile'),
+      z.literal('quantileMerge'),
+      z.literal('histogram'),
+      z.literal('histogramMerge'),
     ]),
+    level: z.number(),
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
@@ -89,12 +97,9 @@ export const RootValueExpressionSchema = z
   .or(
     z.object({
       aggFn: z.union([
-        z.literal('quantile'),
-        z.literal('quantileMerge'),
-        z.literal('histogram'),
-        z.literal('histogramMerge'),
+        AggregateFunctionSchema,
+        AggregateFunctionWithCombinatorsSchema,
       ]),
-      level: z.number(),
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
@@ -132,6 +137,9 @@ export const DerivedColumnSchema = z.intersection(
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
     metricNameSql: z.string().optional(),
+    // Heatmap-specific fields (optional, only used when displayType is Heatmap)
+    countExpression: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -154,6 +162,8 @@ export const ChSqlSchema = z.object({
   params: z.record(z.string(), z.any()),
 });
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -245,19 +255,22 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
-// Base webhook interface (matches backend IWebhook but with JSON-serialized types)
-export interface IWebhook {
-  _id: string;
-  createdAt: string;
-  name: string;
-  service: WebhookService;
-  updatedAt: string;
-  url?: string;
-  description?: string;
-  queryParams?: Record<string, string>;
-  headers?: Record<string, string>;
-  body?: string;
-}
+// Base webhook schema (matches backend IWebhook but with JSON-serialized types)
+// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
+export const WebhookSchema = z.object({
+  _id: z.string(),
+  createdAt: z.string(),
+  name: z.string(),
+  service: z.nativeEnum(WebhookService),
+  updatedAt: z.string(),
+  url: z.string().optional(),
+  description: z.string().optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
+});
+
+export type IWebhook = z.infer<typeof WebhookSchema>;
 
 // Webhook API response type (excludes team field for security)
 export type WebhookApiData = Omit<IWebhook, 'team'>;
@@ -268,7 +281,17 @@ export type WebhookApiData = Omit<IWebhook, 'team'>;
 export enum AlertThresholdType {
   ABOVE = 'above',
   BELOW = 'below',
+  ABOVE_EXCLUSIVE = 'above_exclusive',
+  BELOW_OR_EQUAL = 'below_or_equal',
+  EQUAL = 'equal',
+  NOT_EQUAL = 'not_equal',
+  BETWEEN = 'between',
+  NOT_BETWEEN = 'not_between',
 }
+
+export const isRangeThresholdType = (type: string): boolean =>
+  type === AlertThresholdType.BETWEEN ||
+  type === AlertThresholdType.NOT_BETWEEN;
 
 export enum AlertState {
   ALERT = 'ALERT',
@@ -276,6 +299,21 @@ export enum AlertState {
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
 }
+
+export enum AlertErrorType {
+  QUERY_ERROR = 'QUERY_ERROR',
+  WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  INVALID_ALERT = 'INVALID_ALERT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export const AlertErrorSchema = z.object({
+  timestamp: z.union([z.string(), z.date()]),
+  type: z.nativeEnum(AlertErrorType),
+  message: z.string(),
+});
+
+export type AlertError = z.infer<typeof AlertErrorSchema>;
 
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
@@ -294,6 +332,17 @@ export const AlertIntervalSchema = z.union([
 ]);
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
+
+export const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '6h': 360,
+  '12h': 720,
+  '1d': 1440,
+};
 
 export const zAlertChannelType = z.literal('webhook');
 
@@ -316,11 +365,98 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertBaseSchema = z.object({
+export const validateAlertScheduleOffsetMinutes = (
+  alert: {
+    interval: AlertInterval;
+    scheduleOffsetMinutes?: number;
+    scheduleStartAt?: string | Date | null;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
+  const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
+
+  if (alert.scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'scheduleOffsetMinutes must be 0 when scheduleStartAt is provided',
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+
+  if (scheduleOffsetMinutes >= intervalMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `scheduleOffsetMinutes must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+};
+
+export const validateAlertThresholdMax = (
+  alert: {
+    thresholdType: AlertThresholdType;
+    threshold: number;
+    thresholdMax?: number;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (isRangeThresholdType(alert.thresholdType)) {
+    if (alert.thresholdMax == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'thresholdMax is required for between/not_between threshold types',
+        path: ['thresholdMax'],
+      });
+    } else if (alert.thresholdMax < alert.threshold) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'thresholdMax must be greater than or equal to threshold',
+        path: ['thresholdMax'],
+      });
+    }
+  }
+};
+
+const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
+const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
+
+export const scheduleStartAtSchema = z
+  .union([z.string().datetime(), z.null()])
+  .optional()
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() <= Date.now() + MAX_SCHEDULE_START_AT_FUTURE_MS,
+    {
+      message: 'scheduleStartAt must be within 1 year from now',
+    },
+  )
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() >= Date.now() - MAX_SCHEDULE_START_AT_PAST_MS,
+    {
+      message: 'scheduleStartAt must be within 10 years in the past',
+    },
+  );
+
+export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
-  threshold: z.number().int().min(1),
+  scheduleOffsetMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_SCHEDULE_OFFSET_MINUTES)
+    .optional(),
+  scheduleStartAt: scheduleStartAtSchema,
+  threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
@@ -334,57 +470,41 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const ChartAlertBaseSchema = AlertBaseSchema.extend({
-  threshold: z.number().positive(),
+// Keep AlertBaseSchema as a ZodObject for backwards compatibility with
+// external consumers that call object helpers like .extend()/.pick()/.omit().
+export const AlertBaseSchema = AlertBaseObjectSchema;
+
+const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+).superRefine(validateAlertThresholdMax);
+
+export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
+  threshold: z.number(),
 });
 
+const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+).superRefine(validateAlertThresholdMax);
+
 export const AlertSchema = z.union([
-  z.intersection(AlertBaseSchema, zSavedSearchAlert),
-  z.intersection(ChartAlertBaseSchema, zTileAlert),
+  z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
 
-export type AlertHistory = {
-  counts: number;
-  createdAt: string;
-  lastValues: { startTime: string; count: number }[];
-  state: AlertState;
-};
-
-// --------------------------
-// SAVED SEARCH
-// --------------------------
-export const SavedSearchSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  select: z.string(),
-  where: z.string(),
-  whereLanguage: SearchConditionLanguageSchema,
-  source: z.string(),
-  tags: z.array(z.string()),
-  orderBy: z.string().optional(),
-  alerts: z.array(AlertSchema).optional(),
+export const AlertHistorySchema = z.object({
+  counts: z.number(),
+  createdAt: z.string(),
+  lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
+  state: z.nativeEnum(AlertState),
 });
 
-export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+export type AlertHistory = z.infer<typeof AlertHistorySchema>;
 
 // --------------------------
-// DASHBOARDS
+// FILTERS
 // --------------------------
-export const NumberFormatSchema = z.object({
-  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
-  mantissa: z.number().optional(),
-  thousandSeparated: z.boolean().optional(),
-  average: z.boolean().optional(),
-  decimalBytes: z.boolean().optional(),
-  factor: z.number().optional(),
-  currencySymbol: z.string().optional(),
-  unit: z.string().optional(),
-});
-
-export type NumberFormat = z.infer<typeof NumberFormatSchema>;
-
 export const SqlAstFilterSchema = z.object({
   type: z.literal('sql_ast'),
   operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
@@ -404,28 +524,215 @@ export const FilterSchema = z.union([
 
 export type Filter = z.infer<typeof FilterSchema>;
 
-export const _ChartConfigSchema = z.object({
+// --------------------------
+// SAVED SEARCH
+// --------------------------
+export const SavedSearchSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  select: z.string(),
+  where: z.string(),
+  whereLanguage: SearchConditionLanguageSchema,
+  source: z.string(),
+  tags: z.array(z.string()),
+  orderBy: z.string().optional(),
+  filters: z.array(FilterSchema).optional(),
+  alerts: z.array(AlertSchema).optional(),
+});
+
+export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+
+const PopulatedUserSchema = z
+  .object({ email: z.string(), name: z.string().optional() })
+  .optional();
+
+export const SavedSearchListApiResponseSchema = SavedSearchSchema.omit({
+  alerts: true,
+}).extend({
+  alerts: z
+    .array(
+      AlertSchema.and(
+        z.object({
+          createdBy: PopulatedUserSchema,
+        }),
+      ),
+    )
+    .optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  createdBy: PopulatedUserSchema,
+  updatedBy: PopulatedUserSchema,
+});
+
+export type SavedSearchListApiResponse = z.infer<
+  typeof SavedSearchListApiResponseSchema
+>;
+
+// --------------------------
+// PINNED FILTERS
+// --------------------------
+export const PinnedFiltersValueSchema = z
+  .record(
+    z.string().max(1024),
+    z.array(z.union([z.string().max(1024), z.boolean()])).max(50),
+  )
+  .refine(val => Object.keys(val).length <= 100, {
+    message: 'Too many filter keys (max 100)',
+  });
+export type PinnedFiltersValue = z.infer<typeof PinnedFiltersValueSchema>;
+
+export const PinnedFilterSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  fields: z.array(z.string().max(1024)).max(100),
+  filters: PinnedFiltersValueSchema,
+});
+export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
+
+// --------------------------
+// DASHBOARDS
+// --------------------------
+export enum NumericUnit {
+  // Data
+  BytesIEC = 'bytes_iec',
+  BytesSI = 'bytes_si',
+  BitsIEC = 'bits_iec',
+  BitsSI = 'bits_si',
+  Kibibytes = 'kibibytes',
+  Kilobytes = 'kilobytes',
+  Mebibytes = 'mebibytes',
+  Megabytes = 'megabytes',
+  Gibibytes = 'gibibytes',
+  Gigabytes = 'gigabytes',
+  Tebibytes = 'tebibytes',
+  Terabytes = 'terabytes',
+  Pebibytes = 'pebibytes',
+  Petabytes = 'petabytes',
+  // Data Rate
+  PacketsSec = 'packets_sec',
+  BytesSecIEC = 'bytes_sec_iec',
+  BytesSecSI = 'bytes_sec_si',
+  BitsSecIEC = 'bits_sec_iec',
+  BitsSecSI = 'bits_sec_si',
+  KibibytesSec = 'kibibytes_sec',
+  KibibitsSec = 'kibibits_sec',
+  KilobytesSec = 'kilobytes_sec',
+  KilobitsSec = 'kilobits_sec',
+  MebibytesSec = 'mebibytes_sec',
+  MebibitsSec = 'mebibits_sec',
+  MegabytesSec = 'megabytes_sec',
+  MegabitsSec = 'megabits_sec',
+  GibibytesSec = 'gibibytes_sec',
+  GibibitsSec = 'gibibits_sec',
+  GigabytesSec = 'gigabytes_sec',
+  GigabitsSec = 'gigabits_sec',
+  TebibytesSec = 'tebibytes_sec',
+  TebibitsSec = 'tebibits_sec',
+  TerabytesSec = 'terabytes_sec',
+  TerabitsSec = 'terabits_sec',
+  PebibytesSec = 'pebibytes_sec',
+  PebibitsSec = 'pebibits_sec',
+  PetabytesSec = 'petabytes_sec',
+  PetabitsSec = 'petabits_sec',
+  // Throughput
+  Cps = 'cps',
+  Ops = 'ops',
+  Rps = 'rps',
+  ReadsSec = 'reads_sec',
+  Wps = 'wps',
+  Iops = 'iops',
+  Cpm = 'cpm',
+  Opm = 'opm',
+  RpmReads = 'rpm_reads',
+  Wpm = 'wpm',
+}
+
+export const NumberFormatSchema = z.object({
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'duration',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.nativeEnum(NumericUnit).optional(),
+  mantissa: z.number().int().optional(),
+  thousandSeparated: z.boolean().optional(),
+  average: z.boolean().optional(),
+  decimalBytes: z.boolean().optional(),
+  factor: z.number().optional(),
+  currencySymbol: z.string().optional(),
+  unit: z.string().optional(),
+});
+
+export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+
+const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string().min(1) }),
+  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+]);
+export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
+
+const OnClickSearchSchema = z.object({
+  type: z.literal('search'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
+
+export const OnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
+
+export const OnClickSchema = z.discriminatedUnion('type', [
+  OnClickSearchSchema,
+  OnClickDashboardSchema,
+]);
+export type OnClick = z.infer<typeof OnClickSchema>;
+
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
+/**
+ * Schema describing settings which are shared between Raw SQL
+ * chart configs and Structured ChartBuilder chart configs
+ **/
+const SharedChartSettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+  compareToPreviousPeriod: z.boolean().optional(),
+  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
+  alignDateRangeToGranularity: z.boolean().optional(),
+  onClick: OnClickSchema.optional(),
+});
+
+export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
-  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+  sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
-  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
-  compareToPreviousPeriod: z.boolean().optional(),
   source: z.string().optional(),
+  groupByColumnsOnLeft: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
-// It needs to be a separate, named schema to avoid use ot z.lazy(...),
+// It needs to be a separate, named schema to avoid use of z.lazy(...),
 // use of which allows for type mistakes to make it past linting.
 export const CteChartConfigSchema = z.intersection(
   _ChartConfigSchema.partial({ timestampValueExpression: true }),
@@ -438,7 +745,7 @@ export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
-export const ChartConfigSchema = z.intersection(
+const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
   z
     .object({
@@ -464,6 +771,33 @@ export const ChartConfigSchema = z.intersection(
     .partial(),
 );
 
+export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
+
+/** Base schema for Raw SQL chart configs */
+const RawSqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
+  configType: z.literal('sql'),
+  sqlTemplate: z.string(),
+  connection: z.string(),
+  source: z.string().optional(),
+});
+
+/** Schema describing Raw SQL chart configs with runtime-only fields */
+const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
+  filters: z.array(FilterSchema).optional(),
+  from: z
+    .object({ databaseName: z.string(), tableName: z.string() })
+    .optional(),
+  implicitColumnExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
+});
+
+export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
+
+export const ChartConfigSchema = z.union([
+  BuilderChartConfigSchema,
+  RawSqlChartConfigSchema,
+]);
+
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
 
 export type DateRange = {
@@ -473,29 +807,38 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
+export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
 
-export type ChartConfigWithOptTimestamp = Omit<
-  ChartConfigWithDateRange,
+export type BuilderChartConfigWithOptTimestamp = Omit<
+  BuilderChartConfigWithDateRange,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 };
+
+export type ChartConfigWithOptTimestamp =
+  | BuilderChartConfigWithOptTimestamp
+  | RawSqlConfigWithDateRange;
+
 // For non-time-based searches (ex. grab 1 row)
-export type ChartConfigWithOptDateRange = Omit<
-  ChartConfig,
+export type BuilderChartConfigWithOptDateRange = Omit<
+  BuilderChartConfig,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
-export const SavedChartConfigSchema = z
+export type ChartConfigWithOptDateRange =
+  | BuilderChartConfigWithOptDateRange
+  | (RawSqlChartConfig & Partial<DateRange>);
+
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
+const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
-    name: z.string(),
+    name: z.string().optional(),
     source: z.string(),
-    alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
-    ]),
   })
   .extend(
     _ChartConfigSchema.omit({
@@ -510,6 +853,40 @@ export const SavedChartConfigSchema = z
     }).shape,
   );
 
+const BuilderSavedChartConfigSchema =
+  BuilderSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
+export type BuilderSavedChartConfig = z.infer<
+  typeof BuilderSavedChartConfigSchema
+>;
+
+const RawSqlSavedChartConfigWithoutAlertSchema =
+  RawSqlBaseChartConfigSchema.extend({
+    name: z.string().optional(),
+  });
+
+const RawSqlSavedChartConfigSchema =
+  RawSqlSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
+export const SavedChartConfigSchema = z.union([
+  BuilderSavedChartConfigSchema,
+  RawSqlSavedChartConfigSchema,
+]);
+
+export type RawSqlSavedChartConfig = z.infer<
+  typeof RawSqlSavedChartConfigSchema
+>;
+
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
 export const TileSchema = z.object({
@@ -519,12 +896,39 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
+  containerId: z.string().optional(),
+  // For tiles inside a tab container: which tab this tile belongs to
+  tabId: z.string().optional(),
 });
+
 export const TileTemplateSchema = TileSchema.extend({
-  config: TileSchema.shape.config.omit({ alert: true }),
+  config: z.union([
+    BuilderSavedChartConfigWithoutAlertSchema,
+    RawSqlSavedChartConfigWithoutAlertSchema,
+  ]),
 });
 
 export type Tile = z.infer<typeof TileSchema>;
+
+export const DashboardContainerTabSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+});
+
+export const DashboardContainerSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  collapsed: z.boolean(),
+  // Whether the group can be collapsed (default true)
+  collapsible: z.boolean().optional(),
+  // Whether to show a border around the group (default true)
+  bordered: z.boolean().optional(),
+  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
+  // Tiles reference a specific tab via tabId.
+  tabs: z.array(DashboardContainerTabSchema).optional(),
+});
+
+export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -535,6 +939,8 @@ export const DashboardFilterSchema = z.object({
   expression: z.string().min(1),
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+  where: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -549,12 +955,46 @@ export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
+export function addDuplicateTileIdIssues(
+  tiles: { id?: string }[],
+  ctx: z.RefinementCtx,
+  options?: { messageSuffix?: string },
+) {
+  const suffix = options?.messageSuffix ?? '';
+  const seen = new Set<string>();
+  for (let i = 0; i < tiles.length; i++) {
+    const id = tiles[i].id;
+    if (!id) continue;
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate tile ID: ${id}${suffix}`,
+        path: [i, 'id'],
+      });
+    }
+    seen.add(id);
+  }
+}
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
   filters: z.array(DashboardFilterSchema).optional(),
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
+  savedFilterValues: z.array(FilterSchema).optional(),
+  containers: z
+    .array(DashboardContainerSchema)
+    .refine(
+      containers => {
+        const ids = containers.map(c => c.id);
+        return new Set(ids).size === ids.length;
+      },
+      { message: 'Container IDs must be unique' },
+    )
+    .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
@@ -563,9 +1003,12 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
   tags: true,
 }).extend({
   version: z.string().min(1),
-  tiles: z.array(TileTemplateSchema),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  tiles: z.array(TileTemplateSchema).superRefine(addDuplicateTileIdIssues),
   filters: z.array(DashboardFilterSchema).optional(),
 });
+export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),
@@ -573,6 +1016,11 @@ export const ConnectionSchema = z.object({
   host: z.string(),
   username: z.string(),
   password: z.string().optional(),
+  hyperdxSettingPrefix: z
+    .string()
+    .regex(/^[a-z0-9_]+$/i)
+    .optional()
+    .nullable(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -583,10 +1031,24 @@ export const TeamClickHouseSettingsSchema = z.object({
   queryTimeout: z.number().optional(),
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
+  filterKeysFetchLimit: z.number().optional(),
 });
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
+
+export const TeamSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    allowedAuthMethods: z.array(z.literal('password')).optional(),
+    apiKey: z.string(),
+    hookId: z.string(),
+    collectorAuthenticationEnforced: z.boolean(),
+  })
+  .merge(TeamClickHouseSettingsSchema);
+
+export type Team = z.infer<typeof TeamSchema>;
 
 // --------------------------
 // TABLE SOURCES
@@ -602,8 +1064,18 @@ export enum SourceKind {
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
+const QuerySettingsSchema = z
+  .array(z.object({ setting: z.string().min(1), value: z.string().min(1) }))
+  .max(10);
+
+export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
+
+const RequiredTimestampColumnSchema = z
+  .string()
+  .min(1, 'Timestamp Column is required');
+
 // Base schema with fields common to all source types
-const SourceBaseSchema = z.object({
+export const BaseSourceSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
@@ -613,11 +1085,9 @@ const SourceBaseSchema = z.object({
     tableName: z.string().min(1, 'Table is required'),
   }),
   disabled: z.boolean().optional(),
+  querySettings: QuerySettingsSchema.optional(),
+  timestampValueExpression: RequiredTimestampColumnSchema,
 });
-
-const RequiredTimestampColumnSchema = z
-  .string()
-  .min(1, 'Timestamp Column is required');
 
 const HighlightedAttributeExpressionsSchema = z.array(
   z.object({
@@ -661,13 +1131,11 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 // Log source form schema
-const LogSourceAugmentation = {
+export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
-  defaultTableSelectExpression: z.string({
-    message: 'Default Table Select Expression is required',
-  }),
-  timestampValueExpression: RequiredTimestampColumnSchema,
-
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
@@ -680,20 +1148,30 @@ const LogSourceAugmentation = {
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
+  /**
+   * @deprecated Application-side SQL predicate AND'd into every query against
+   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
+   * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
+   *
+   * Existing values are still honored at query time; new sources should not
+   * set it. The Sources settings UI form input is disabled.
+   */
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
-};
+  orderByExpression: z.string().optional(),
+});
 
 // Trace source form schema
-const TraceSourceAugmentation = {
+export const TraceSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Trace),
-  defaultTableSelectExpression: z.string().optional(),
-  timestampValueExpression: RequiredTimestampColumnSchema,
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
 
   // Required fields for traces
   durationExpression: z.string().min(1, 'Duration Expression is required'),
@@ -707,6 +1185,7 @@ const TraceSourceAugmentation = {
   spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
 
   // Optional fields for traces
+  sampleRateExpression: z.string().optional(),
   logSourceId: z.string().optional().nullable(),
   sessionSourceId: z.string().optional(),
   metricSourceId: z.string().optional(),
@@ -717,27 +1196,32 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  displayedTimestampValueExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
-};
+  orderByExpression: z.string().optional(),
+});
 
 // Session source form schema
-const SessionSourceAugmentation = {
+export const SessionSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Session),
 
   // Required fields for sessions
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
     .min(1, 'Correlated Trace Source is required'),
-};
+
+  // Optional fields for sessions
+  resourceAttributesExpression: z.string().optional(),
+});
 
 // Metric source form schema
-const MetricSourceAugmentation = {
+export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
-  // override from SourceBaseSchema
+  // override from BaseSourceSchema
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string(),
@@ -745,84 +1229,379 @@ const MetricSourceAugmentation = {
 
   // Metric tables - at least one should be provided
   metricTables: MetricTableSchema,
-  timestampValueExpression: RequiredTimestampColumnSchema,
   resourceAttributesExpression: z
     .string()
     .min(1, 'Resource Attributes is required'),
 
   // Optional fields for metrics
+  serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
-};
+});
 
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
-  SourceBaseSchema.extend(LogSourceAugmentation),
-  SourceBaseSchema.extend(TraceSourceAugmentation),
-  SourceBaseSchema.extend(SessionSourceAugmentation),
-  SourceBaseSchema.extend(MetricSourceAugmentation),
+  LogSourceSchema,
+  TraceSourceSchema,
+  SessionSourceSchema,
+  MetricSourceSchema,
 ]);
-export type TSourceUnion = z.infer<typeof SourceSchema>;
+export type TSource = z.infer<typeof SourceSchema>;
 
-// This function exists to perform schema validation with omission of a certain
-// value. It is not possible to do on the discriminatedUnion directly
-export function sourceSchemaWithout(
-  omissions: { [k in keyof z.infer<typeof SourceBaseSchema>]?: true } = {},
-) {
-  // TODO: Make these types work better if possible
-  return z.discriminatedUnion('kind', [
-    SourceBaseSchema.omit(omissions).extend(LogSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(TraceSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(SessionSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(MetricSourceAugmentation),
-  ]);
+export const SourceSchemaNoId = z.discriminatedUnion('kind', [
+  LogSourceSchema.omit({ id: true }),
+  TraceSourceSchema.omit({ id: true }),
+  SessionSourceSchema.omit({ id: true }),
+  MetricSourceSchema.omit({ id: true }),
+]);
+export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
+
+// Per-kind source types extracted from the Zod discriminated union
+export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
+export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
+export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
+export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+
+// Type guards for narrowing TSource by kind
+export function isLogSource(source: TSource): source is TLogSource {
+  return source.kind === SourceKind.Log;
+}
+export function isTraceSource(source: TSource): source is TTraceSource {
+  return source.kind === SourceKind.Trace;
+}
+export function isSessionSource(source: TSource): source is TSessionSource {
+  return source.kind === SourceKind.Session;
+}
+export function isMetricSource(source: TSource): source is TMetricSource {
+  return source.kind === SourceKind.Metric;
+}
+export function isSearchableSource(source: TSource): boolean {
+  return isLogSource(source) || isTraceSource(source);
 }
 
-// Helper types for better union flattening
-type AllKeys<T> = T extends any ? keyof T : never;
-// This is Claude Opus's explanation of this type magic to extract the required
-// parameters:
-//
-// 1. [K in keyof T]-?:
-//   Maps over all keys in T. The -? removes the optional modifier, making all
-//   properties required in this mapped type
-// 2. {} extends Pick<T, K> ? never : K
-//   Pick<T, K> creates a type with just property K from T.
-//   {} extends Pick<T, K> checks if an empty object can satisfy the picked property.
-//   If the property is optional, {} can extend it (returns never)
-//   If the property is required, {} cannot extend it (returns K)
-// 3. [keyof T]
-//    Indexes into the mapped type to get the union of all non-never values
-type NonOptionalKeysPresentInEveryUnionBranch<T> = {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
-}[keyof T];
-
-// Helper to check if a key is required in ALL branches of the union
-type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
-  ? K extends NonOptionalKeysPresentInEveryUnionBranch<T>
-    ? true
-    : false
-  : never;
-
-// This type gathers the Required Keys across the discriminated union TSourceUnion
-// and keeps them as required in a non-unionized type, and also gathers all possible
-// optional keys from the union branches and brings them into one unified flattened type.
-// This is done to maintain compatibility with the legacy zod schema.
-type FlattenUnion<T> = {
-  // If a key is required in all branches of a union, make it a required key
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? K
-    : never]: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
-} & {
-  // If a key is not required in all branches of a union, make it an optional
-  // key and join the possible types
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? never
-    : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+type SourceLikeForSampleWeight = {
+  kind: SourceKind;
+  sampleRateExpression?: string | null;
 };
-type TSourceWithoutDefaults = FlattenUnion<z.infer<typeof SourceSchema>>;
 
-// Type representing a TSourceWithoutDefaults object which has been augmented with default values
-export type TSource = TSourceWithoutDefaults & {
-  timestampValueExpression: string;
-};
+/** Trace sample rate expression for chart sampleWeightExpression when set. */
+export function getSampleWeightExpression(
+  source: SourceLikeForSampleWeight,
+): string | undefined {
+  return source.kind === SourceKind.Trace && source.sampleRateExpression
+    ? source.sampleRateExpression
+    : undefined;
+}
+
+/** For object spread: { ...pickSampleWeightExpressionProps(source) } */
+export function pickSampleWeightExpressionProps(
+  source: SourceLikeForSampleWeight,
+): { sampleWeightExpression: string } | undefined {
+  const w = getSampleWeightExpression(source);
+  return w ? { sampleWeightExpression: w } : undefined;
+}
+
+export const AssistantLineTableConfigSchema = z.object({
+  displayType: z.enum([DisplayType.Line, DisplayType.Table]),
+  markdown: z.string().optional(),
+  select: z
+    .array(
+      z.object({
+        // TODO: Change percentile to fixed functions
+        aggregationFunction: AggregateFunctionSchema.describe(
+          'SQL-like function to aggregate the property by',
+        ),
+        property: z
+          .string()
+          .describe('Property or column to be aggregated (ex. Duration)'),
+        condition: z
+          .string()
+          .optional()
+          .describe(
+            "SQL filter condition to filter on ex. `SeverityText = 'error'`",
+          ),
+      }),
+    )
+    .describe('Array of data series or columns to chart for the user'),
+  groupBy: z
+    .string()
+    .optional()
+    .describe('Group by column or properties for the chart'),
+  timeRange: z
+    .string()
+    .default('Past 1h')
+    .describe('Time range of data to query for like "Past 1h", "Past 24h"'),
+});
+
+// Base fields common to all three shapes
+const AIBaseSchema = z.object({
+  from: SelectSQLStatementSchema.shape.from,
+  source: z.string(),
+  connection: z.string(),
+  where: SearchConditionSchema.optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+  timestampValueExpression: z.string(),
+  dateRange: z.tuple([z.string(), z.string()]), // keep as string tuple (ISO recommended)
+  name: z.string().optional(),
+  markdown: z.string().optional(),
+});
+
+// SEARCH
+const AISearchQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Search),
+    select: z.string(),
+    groupBy: z.string().optional(),
+    limit: z
+      .object({
+        limit: z.number().int().positive(),
+      })
+      .optional(),
+  })
+  .merge(
+    AIBaseSchema.required({
+      where: true,
+    }),
+  );
+
+// TABLE
+const AITableQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Table),
+    // Use your DerivedColumnSchema so aggFn/valueExpression/conditions are validated consistently
+    select: z.array(DerivedColumnSchema).min(1),
+    groupBy: z.string().optional(),
+    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+    limit: LimitSchema.optional(),
+  })
+  .merge(AIBaseSchema);
+
+// LINE
+const AILineQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Line),
+    select: z.array(DerivedColumnSchema).min(1),
+    groupBy: z.string().optional(),
+    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+    limit: LimitSchema.optional(),
+  })
+  .merge(AIBaseSchema);
+
+export type AILineTableResponse =
+  | z.infer<typeof AILineQuerySchema>
+  | z.infer<typeof AITableQuerySchema>;
+
+// Union that covers all 3 objects
+export const AssistantResponseConfig = z.discriminatedUnion('displayType', [
+  AISearchQuerySchema,
+  AITableQuerySchema,
+  AILineQuerySchema,
+]);
+
+export type AssistantResponseConfigSchema = z.infer<
+  typeof AssistantResponseConfig
+>;
+
+// --------------------------
+// API RESPONSE SCHEMAS
+// --------------------------
+
+// Alerts
+export const AlertsPageItemSchema = z.object({
+  _id: z.string(),
+  interval: AlertIntervalSchema,
+  scheduleOffsetMinutes: z.number().optional(),
+  scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
+  threshold: z.number(),
+  thresholdMax: z.number().optional(),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  channel: z.object({ type: z.string().optional().nullable() }),
+  state: z.nativeEnum(AlertState).optional(),
+  source: z.nativeEnum(AlertSource).optional(),
+  dashboardId: z.string().optional(),
+  savedSearchId: z.string().optional(),
+  tileId: z.string().optional(),
+  name: z.string().nullish(),
+  message: z.string().nullish(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  history: z.array(AlertHistorySchema),
+  dashboard: z
+    .object({
+      _id: z.string(),
+      name: z.string(),
+      updatedAt: z.string(),
+      tags: z.array(z.string()),
+      tiles: z.array(
+        z.object({
+          id: z.string(),
+          config: z.object({ name: z.string().optional() }),
+        }),
+      ),
+    })
+    .optional(),
+  savedSearch: z
+    .object({
+      _id: z.string(),
+      createdAt: z.string(),
+      name: z.string(),
+      updatedAt: z.string(),
+      tags: z.array(z.string()),
+    })
+    .optional(),
+  createdBy: z
+    .object({
+      email: z.string(),
+      name: z.string().optional(),
+    })
+    .optional(),
+  silenced: z
+    .object({
+      by: z.string(),
+      at: z.string(),
+      until: z.string(),
+    })
+    .optional(),
+  executionErrors: z.array(AlertErrorSchema).optional(),
+});
+
+export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
+
+export const AlertsApiResponseSchema = z.object({
+  data: z.array(AlertsPageItemSchema),
+});
+
+export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
+
+export const AlertApiResponseSchema = z.object({
+  data: AlertsPageItemSchema,
+});
+
+export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
+
+// Webhooks
+export const WebhooksApiResponseSchema = z.object({
+  data: z.array(WebhookSchema),
+});
+
+export type WebhooksApiResponse = z.infer<typeof WebhooksApiResponseSchema>;
+
+export const WebhookCreateApiResponseSchema = z.object({
+  data: WebhookSchema,
+});
+
+export type WebhookCreateApiResponse = z.infer<
+  typeof WebhookCreateApiResponseSchema
+>;
+
+export const WebhookUpdateApiResponseSchema = z.object({
+  data: WebhookSchema,
+});
+
+export type WebhookUpdateApiResponse = z.infer<
+  typeof WebhookUpdateApiResponseSchema
+>;
+
+export const WebhookTestApiResponseSchema = z.object({
+  message: z.string(),
+});
+
+export type WebhookTestApiResponse = z.infer<
+  typeof WebhookTestApiResponseSchema
+>;
+
+// Team
+export const TeamApiResponseSchema = z.object({
+  _id: z.string(),
+  allowedAuthMethods: z.array(z.literal('password')).optional(),
+  apiKey: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+export type TeamApiResponse = z.infer<typeof TeamApiResponseSchema>;
+
+export const TeamMemberSchema = z.object({
+  _id: z.string(),
+  email: z.string(),
+  name: z.string().optional(),
+  hasPasswordAuth: z.boolean(),
+  isCurrentUser: z.boolean(),
+  groupName: z.string().optional(),
+});
+
+export type TeamMember = z.infer<typeof TeamMemberSchema>;
+
+export const TeamMembersApiResponseSchema = z.object({
+  data: z.array(TeamMemberSchema),
+});
+
+export type TeamMembersApiResponse = z.infer<
+  typeof TeamMembersApiResponseSchema
+>;
+
+export const TeamInvitationSchema = z.object({
+  _id: z.string(),
+  createdAt: z.string(),
+  email: z.string(),
+  name: z.string().optional(),
+  url: z.string(),
+});
+
+export type TeamInvitation = z.infer<typeof TeamInvitationSchema>;
+
+export const TeamInvitationsApiResponseSchema = z.object({
+  data: z.array(TeamInvitationSchema),
+});
+
+export type TeamInvitationsApiResponse = z.infer<
+  typeof TeamInvitationsApiResponseSchema
+>;
+
+export const TeamTagsApiResponseSchema = z.object({
+  data: z.array(z.string()),
+});
+
+export type TeamTagsApiResponse = z.infer<typeof TeamTagsApiResponseSchema>;
+
+export const UpdateClickHouseSettingsApiResponseSchema =
+  TeamClickHouseSettingsSchema.partial();
+
+export type UpdateClickHouseSettingsApiResponse = z.infer<
+  typeof UpdateClickHouseSettingsApiResponseSchema
+>;
+
+export const RotateApiKeyApiResponseSchema = z.object({
+  newApiKey: z.string(),
+});
+
+export type RotateApiKeyApiResponse = z.infer<
+  typeof RotateApiKeyApiResponseSchema
+>;
+
+// Installation
+export const InstallationApiResponseSchema = z.object({
+  isTeamExisting: z.boolean(),
+});
+
+export type InstallationApiResponse = z.infer<
+  typeof InstallationApiResponseSchema
+>;
+
+// Me
+export const MeApiResponseSchema = z.object({
+  accessKey: z.string(),
+  createdAt: z.string(),
+  email: z.string(),
+  id: z.string(),
+  name: z.string(),
+  team: TeamSchema.pick({
+    id: true,
+    name: true,
+    allowedAuthMethods: true,
+    apiKey: true,
+  }).merge(TeamClickHouseSettingsSchema),
+  usageStatsEnabled: z.boolean(),
+  aiAssistantEnabled: z.boolean(),
+});
+
+export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;

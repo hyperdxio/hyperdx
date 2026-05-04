@@ -6,7 +6,7 @@ import * as config from '@/config';
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import Team from '@/models/team';
+import Team, { type ITeam, type TeamDocument } from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
@@ -57,9 +57,20 @@ export function getAllTeams(fields?: string[]) {
   return Team.find({}, fields);
 }
 
-export function getTeam(id?: string | ObjectId, fields?: string[]) {
+export function getTeam<const F extends readonly (keyof ITeam)[]>(
+  id: string | ObjectId,
+  fields: F,
+): mongoose.Query<
+  mongoose.HydratedDocument<Pick<ITeam, F[number]>> | null,
+  any
+>;
+export function getTeam(
+  id: string | ObjectId,
+): mongoose.Query<TeamDocument | null, any>;
+export function getTeam(id: string | ObjectId, fields?: readonly string[]) {
   if (config.IS_LOCAL_APP_MODE) {
-    return LOCAL_APP_TEAM;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return LOCAL_APP_TEAM as any;
   }
 
   return Team.findOne({}, fields);

@@ -1,50 +1,54 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import cx from 'classnames';
-import { add } from 'date-fns';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { add, differenceInSeconds } from 'date-fns';
 import {
+  convertGranularityToSeconds,
+  getAlignedDateRange,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
-  Button,
-  Code,
+  Divider,
   Group,
-  Modal,
   Popover,
   Portal,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import {
-  IconArrowsDiagonal,
-  IconChartBar,
-  IconChartLine,
-  IconSearch,
-} from '@tabler/icons-react';
+import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
   AGG_FNS,
   buildEventsSearchUrl,
   ChartKeyJoiner,
-  convertGranularityToSeconds,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
-  getPreviousPeriodOffsetSeconds,
   PreviousPeriodSuffix,
+  shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useSource } from '@/source';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResolvedNumberFormat, useSource } from '@/source';
 
-import { SQLPreview } from './ChartSQLPreview';
+import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
+import DateRangeIndicator from './charts/DateRangeIndicator';
+import DisplaySwitcher from './charts/DisplaySwitcher';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 type ActiveClickPayload = {
   x: number;
@@ -139,58 +143,54 @@ function ActiveTimeTooltip({
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
         >
-          {validPayloads.length <= 1 ? (
-            // Fallback scenario if limited data is available
+          <Stack gap="xs" style={{ maxHeight: '220px', overflowY: 'auto' }}>
             <Link
               data-testid="chart-view-events-link"
-              href={
-                buildSearchUrl(
-                  validPayloads?.[0]?.dataKey,
-                  validPayloads?.[0]?.value,
-                ) ?? '/search'
-              }
+              href={buildSearchUrl() ?? '/search'}
               onClick={onDismiss}
             >
               <Group gap="xs">
                 <IconSearch size={16} />
-                View Events
+                View All Events
               </Group>
             </Link>
-          ) : (
-            <Stack gap="xs" style={{ maxHeight: '170px', overflowY: 'auto' }}>
-              <Text c="gray.5" size="xs">
-                View Events for:
-              </Text>
-              {validPayloads.map((payload, idx) => {
-                const seriesUrl = buildSearchUrl(
-                  payload.dataKey,
-                  payload.value,
-                );
-                return (
-                  <Tooltip
-                    key={idx}
-                    label={payload.name}
-                    withArrow
-                    color="gray"
-                    position="right"
-                  >
-                    <Link
-                      data-testid={`chart-view-events-link-${payload.dataKey}`}
-                      href={seriesUrl ?? '/search'}
-                      onClick={onDismiss}
+            {validPayloads.length > 1 && (
+              <>
+                <Divider />
+                <Text c="gray.5" size="xs">
+                  Filter by group:
+                </Text>
+                {validPayloads.map((payload, idx) => {
+                  const seriesUrl = buildSearchUrl(
+                    payload.dataKey,
+                    payload.value,
+                  );
+                  return (
+                    <Tooltip
+                      key={idx}
+                      label={payload.name}
+                      withArrow
+                      color="gray"
+                      position="right"
                     >
-                      <Group gap="xs">
-                        <IconSearch size={12} />
-                        <Text size="xs" truncate flex="1">
-                          {payload.name}
-                        </Text>
-                      </Group>
-                    </Link>
-                  </Tooltip>
-                );
-              })}
-            </Stack>
-          )}
+                      <Link
+                        data-testid={`chart-view-events-link-${payload.dataKey}`}
+                        href={seriesUrl ?? '/search'}
+                        onClick={onDismiss}
+                      >
+                        <Group gap="xs">
+                          <IconSearch size={12} />
+                          <Text size="xs" truncate flex="1">
+                            {payload.name}
+                          </Text>
+                        </Group>
+                      </Link>
+                    </Tooltip>
+                  );
+                })}
+              </>
+            )}
+          </Stack>
         </Popover.Dropdown>
       </Popover>
     </>
@@ -214,6 +214,12 @@ type DBTimeChartComponentProps = {
   sourceId?: string;
   /** Names of series that should not be shown in the chart */
   hiddenSeries?: string[];
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
+  showDateRangeIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 };
 
 function DBTimeChartComponent({
@@ -231,8 +237,48 @@ function DBTimeChartComponent({
   showLegend = true,
   sourceId,
   hiddenSeries,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
+  showDateRangeIndicator = true,
+  errorVariant,
 }: DBTimeChartComponentProps) {
-  const [isErrorExpanded, errorExpansion] = useDisclosure(false);
+  const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const handleToggleSeries = useCallback(
+    (seriesName: string, isShiftKey?: boolean) => {
+      setSelectedSeriesSet(prev => {
+        const newSet = new Set(prev);
+
+        if (isShiftKey) {
+          // Shift-click: add to selection
+          if (newSet.has(seriesName)) {
+            newSet.delete(seriesName);
+          } else {
+            newSet.add(seriesName);
+          }
+        } else {
+          // Regular click: toggle selection
+          if (newSet.has(seriesName) && newSet.size === 1) {
+            // If this is the only selected item, clear selection (show all)
+            newSet.clear();
+          } else {
+            // Otherwise, select only this one
+            newSet.clear();
+            newSet.add(seriesName);
+          }
+        }
+
+        return newSet;
+      });
+    },
+    [],
+  );
+
+  const originalDateRange = config.dateRange;
   const {
     displayType: displayTypeProp,
     dateRange,
@@ -244,6 +290,13 @@ function DBTimeChartComponent({
     () => convertToTimeChartConfig(config),
     [config],
   );
+
+  // Determine whether the config can be optimized with an MV, to determine whether
+  // to show the MV optimization indicator and date range indicator in the toolbar
+  const builderQueriedConfig: BuilderChartConfigWithDateRange | undefined =
+    isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined;
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
@@ -266,17 +319,32 @@ function DBTimeChartComponent({
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
+    const previousPeriodDateRange =
+      queriedConfig.alignDateRangeToGranularity === false
+        ? getPreviousDateRange(originalDateRange)
+        : getAlignedDateRange(
+            getPreviousDateRange(originalDateRange),
+            granularity,
+          );
+
     return {
       ...queriedConfig,
-      dateRange: getPreviousDateRange(dateRange),
+      dateRange: previousPeriodDateRange,
     };
-  }, [queriedConfig, dateRange]);
+  }, [queriedConfig, originalDateRange, granularity]);
 
   const previousPeriodOffsetSeconds = useMemo(() => {
     return config.compareToPreviousPeriod
-      ? getPreviousPeriodOffsetSeconds(dateRange)
+      ? differenceInSeconds(
+          dateRange[0],
+          previousPeriodChartConfig.dateRange[0],
+        )
       : undefined;
-  }, [dateRange, config.compareToPreviousPeriod]);
+  }, [
+    config.compareToPreviousPeriod,
+    dateRange,
+    previousPeriodChartConfig.dateRange,
+  ]);
 
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
     useQueriedChartConfig(previousPeriodChartConfig, {
@@ -286,21 +354,21 @@ function DBTimeChartComponent({
       enableQueryChunking: true,
     });
 
-  useEffect(() => {
-    if (!isError && isErrorExpanded) {
-      errorExpansion.close();
-    }
-  }, [isError, isErrorExpanded, errorExpansion]);
-
   const isLoadingOrPlaceholder =
     isLoading ||
     isPreviousPeriodLoading ||
     !data?.isComplete ||
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
-  const { data: source } = useSource({ id: sourceId });
+
+  const { data: source } = useSource({
+    id: sourceId || config.source,
+  });
+
+  const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const {
+    error: resultFormattingError,
     graphResults,
     timestampColumn,
     groupColumns,
@@ -309,6 +377,7 @@ function DBTimeChartComponent({
     lineData,
   } = useMemo(() => {
     const defaultResponse = {
+      error: null,
       graphResults: [],
       timestampColumn: undefined,
       lineData: [],
@@ -322,20 +391,28 @@ function DBTimeChartComponent({
     }
 
     try {
-      return formatResponseForTimeChart({
+      const formatResult = formatResponseForTimeChart({
         currentPeriodResponse: data,
         previousPeriodResponse: config.compareToPreviousPeriod
           ? previousPeriodData
           : undefined,
         dateRange,
         granularity,
-        generateEmptyBuckets: fillNulls !== false,
+        generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
         source,
         hiddenSeries,
+        previousPeriodOffsetSeconds,
       });
-    } catch (e) {
+      return {
+        ...defaultResponse,
+        ...formatResult,
+      };
+    } catch (e: unknown) {
       console.error(e);
-      return defaultResponse;
+      return {
+        ...defaultResponse,
+        error: e,
+      };
     }
   }, [
     data,
@@ -347,6 +424,7 @@ function DBTimeChartComponent({
     config.compareToPreviousPeriod,
     previousPeriodData,
     hiddenSeries,
+    previousPeriodOffsetSeconds,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
@@ -360,13 +438,16 @@ function DBTimeChartComponent({
     }
   }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
-  const handleSetDisplayType = (type: DisplayType) => {
-    if (setDisplayType) {
-      setDisplayType(type);
-    } else {
-      setDisplayTypeLocal(type);
-    }
-  };
+  const handleSetDisplayType = useCallback(
+    (type: DisplayType) => {
+      if (setDisplayType) {
+        setDisplayType(type);
+      } else {
+        setDisplayTypeLocal(type);
+      }
+    },
+    [setDisplayType],
+  );
 
   useEffect(() => {
     if (config.compareToPreviousPeriod) {
@@ -397,7 +478,12 @@ function DBTimeChartComponent({
 
   const buildSearchUrl = useCallback(
     (seriesKey?: string, seriesValue?: number) => {
-      if (clickedActiveLabelDate == null || source == null) {
+      // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
+      if (
+        clickedActiveLabelDate == null ||
+        source == null ||
+        isRawSqlChartConfig(config)
+      ) {
         return null;
       }
 
@@ -516,166 +602,143 @@ function DBTimeChartComponent({
     ],
   );
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError ? (
-    <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Button
-        className="mx-auto"
-        variant="subtle"
-        color="red"
-        onClick={() => errorExpansion.open()}
-      >
-        <Group gap="xxs">
-          <IconArrowsDiagonal size={16} />
-          See Error Details
-        </Group>
-      </Button>
-      <Modal
-        opened={isErrorExpanded}
-        onClose={() => errorExpansion.close()}
-        title="Error Details"
-      >
-        <Group align="start">
-          <Text size="sm" ta="center">
-            Error Message:
-          </Text>
-          <Code
-            block
-            style={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {error.message}
-          </Code>
-          {error instanceof ClickHouseQueryError && (
-            <>
-              <Text my="sm" size="sm" ta="center">
-                Sent Query:
-              </Text>
-              <SQLPreview data={error?.query} />
-            </>
-          )}
-        </Group>
-      </Modal>
-    </div>
-  ) : graphResults.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <div
-      // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        flexGrow: 1,
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          top: 0,
-        }}
-      >
-        <ActiveTimeTooltip
-          activeClickPayload={activeClickPayload}
-          buildSearchUrl={buildSearchUrl}
-          onDismiss={() => setActiveClickPayload(undefined)}
-        />
-        {/* {totalGroups > groupKeys.length ? (
-                <div
-                  className="bg-muted px-3 py-2 rounded fs-8"
-                  style={{
-                    zIndex: 5,
-                    position: 'absolute',
-                    top: 0,
-                    left: 50,
-                    visibility: 'visible',
-                  }}
-                  title={`Only the top ${groupKeys.length} groups are shown, ${
-                    totalGroups - groupKeys.length
-                  } groups are hidden. Try grouping by a different field.`}
-                >
-                  <span className="text-muted-hover text-decoration-none fs-8">
-                    <IconAlertTriangle size={14} style={{ display: 'inline' }} /> Only top{' '}
-                    {groupKeys.length} groups shown
-                  </span>
-                </div>
-                ) : null*/}
-        {showDisplaySwitcher && (
-          <div
-            className="bg-muted px-2 py-1 rounded fs-8"
-            style={{
-              zIndex: 5,
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              visibility: 'visible',
-            }}
-          >
-            <Tooltip label="Display as Line Chart">
-              <ActionIcon
-                size="xs"
-                me={2}
-                className={cx({
-                  'text-success': displayType === 'line',
-                  'text-muted-hover': displayType !== 'line',
-                })}
-                onClick={() => handleSetDisplayType(DisplayType.Line)}
-              >
-                <IconChartLine />
-              </ActionIcon>
-            </Tooltip>
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
 
-            <Tooltip
-              label={
-                config.compareToPreviousPeriod
-                  ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                  : 'Display as Bar Chart'
-              }
-            >
-              <ActionIcon
-                size="xs"
-                className={cx({
-                  'text-success': displayType === 'stacked_bar',
-                  'text-muted-hover': displayType !== 'stacked_bar',
-                })}
-                disabled={config.compareToPreviousPeriod}
-                onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
-              >
-                <IconChartBar />
-              </ActionIcon>
-            </Tooltip>
-          </div>
-        )}
-        <MemoChart
-          dateRange={dateRange}
-          displayType={displayType}
-          graphResults={graphResults}
-          isClickActive={activeClickPayload}
-          lineData={lineData}
-          isLoading={isLoadingOrPlaceholder}
-          logReferenceTimestamp={logReferenceTimestamp}
-          numberFormat={config.numberFormat}
-          onTimeRangeSelect={onTimeRangeSelect}
-          referenceLines={referenceLines}
-          setIsClickActive={setActiveClickPayloadIfSourceAvailable}
-          showLegend={showLegend}
-          timestampKey={timestampColumn?.name}
-          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-time-chart-mv-indicator"
+          config={builderQueriedConfig}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+    const isAlignedToChartGranularity =
+      queriedConfig.alignDateRangeToGranularity !== false;
+
+    if (
+      showDateRangeIndicator &&
+      (mvDateRange || isAlignedToChartGranularity)
+    ) {
+      const mvGranularity = isAlignedToChartGranularity
+        ? undefined
+        : mvOptimizationData?.explanations.find(e => e.success)?.mvConfig
+            .minGranularity;
+
+      allToolbarItems.push(
+        <DateRangeIndicator
+          key="db-time-chart-date-range-indicator"
+          originalDateRange={config.dateRange}
+          effectiveDateRange={mvDateRange || queriedConfig.dateRange}
+          mvGranularity={mvGranularity}
+        />,
+      );
+    }
+
+    if (showDisplaySwitcher) {
+      allToolbarItems.push(
+        <DisplaySwitcher
+          key="db-time-chart-display-switcher"
+          value={displayType}
+          onChange={handleSetDisplayType}
+          options={[
+            {
+              value: DisplayType.Line,
+              label: 'Display as Line Chart',
+              icon: <IconChartLine />,
+            },
+            {
+              value: DisplayType.StackedBar,
+              label: config.compareToPreviousPeriod
+                ? 'Bar Chart Unavailable When Comparing to Previous Period'
+                : 'Display as Bar Chart',
+              icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+          ]}
+        />,
+      );
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    builderQueriedConfig,
+    config,
+    displayType,
+    handleSetDisplayType,
+    showDisplaySwitcher,
+    source,
+    toolbarPrefix,
+    toolbarSuffix,
+    showMVOptimizationIndicator,
+    showDateRangeIndicator,
+    mvOptimizationData,
+    queriedConfig,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError ? (
+        <ChartErrorState error={error} variant={errorVariant} />
+      ) : resultFormattingError ? (
+        <ChartErrorState
+          variant={errorVariant}
+          error={
+            resultFormattingError instanceof Error
+              ? resultFormattingError
+              : new Error(String(resultFormattingError))
+          }
         />
-      </div>
-    </div>
+      ) : graphResults.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <>
+          <ActiveTimeTooltip
+            activeClickPayload={activeClickPayload}
+            buildSearchUrl={buildSearchUrl}
+            onDismiss={() => setActiveClickPayload(undefined)}
+          />
+          <MemoChart
+            dateRange={dateRange}
+            displayType={displayType}
+            graphResults={graphResults}
+            isClickActive={activeClickPayload}
+            lineData={lineData}
+            isLoading={isLoadingOrPlaceholder}
+            logReferenceTimestamp={logReferenceTimestamp}
+            numberFormat={resolvedNumberFormat}
+            onTimeRangeSelect={onTimeRangeSelect}
+            referenceLines={referenceLines}
+            setIsClickActive={setActiveClickPayloadIfSourceAvailable}
+            showLegend={showLegend}
+            timestampKey={timestampColumn?.name}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            selectedSeriesNames={selectedSeriesSet}
+            onToggleSeries={handleToggleSeries}
+            granularity={granularity}
+            dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
+          />
+        </>
+      )}
+    </ChartContainer>
   );
 }
 

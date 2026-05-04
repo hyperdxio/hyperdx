@@ -1,18 +1,26 @@
 import { useMemo } from 'react';
+import { omit } from 'lodash';
 import ms from 'ms';
-import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  ClickHouseSettings,
+  ResponseJSON,
+  Row,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   TSource,
@@ -26,12 +34,15 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
+import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { omit } from '@/utils';
 import {
+  DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
   generateTimeWindowsDescending,
+  ONE_MIN_WINDOW,
   TimeWindow,
 } from '@/utils/searchWindows';
 
@@ -69,19 +80,27 @@ type TData = {
 type QueryMeta = {
   queryClient: QueryClient;
   hasPreviousQueries: boolean;
+  windowDurationsSeconds: number[];
   metadata: Metadata;
-  source?: TSource;
+  optimizedConfig?: ChartConfigWithOptTimestamp;
+  source: TSource | undefined;
 };
 
 // Get time window from page param
 function getTimeWindowFromPageParam(
   config: ChartConfigWithOptTimestamp,
   pageParam: TPageParam,
+  windowDurationsSeconds: number[],
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
-  const windows = isFirstOrderByAscending(config.orderBy)
-    ? generateTimeWindowsAscending(startDate, endDate)
-    : generateTimeWindowsDescending(startDate, endDate);
+  const windows =
+    isBuilderChartConfig(config) && isFirstOrderByAscending(config.orderBy)
+      ? generateTimeWindowsAscending(startDate, endDate, windowDurationsSeconds)
+      : generateTimeWindowsDescending(
+          startDate,
+          endDate,
+          windowDurationsSeconds,
+        );
   const window = windows[pageParam.windowIndex];
   if (window == null) {
     throw new Error('Invalid time window for page param');
@@ -94,15 +113,17 @@ function getNextPageParam(
   lastPage: TQueryFnData | null,
   allPages: TQueryFnData[],
   config: ChartConfigWithOptTimestamp,
+  windowDurationsSeconds: number[],
 ): TPageParam | undefined {
-  if (lastPage == null) {
+  // Pagination is not supported for raw SQL tables since they may not be ordered at all.
+  if (lastPage == null || isRawSqlChartConfig(config)) {
     return undefined;
   }
 
   const [startDate, endDate] = config.dateRange;
   const windows = isFirstOrderByAscending(config.orderBy)
-    ? generateTimeWindowsAscending(startDate, endDate)
-    : generateTimeWindowsDescending(startDate, endDate);
+    ? generateTimeWindowsAscending(startDate, endDate, windowDurationsSeconds)
+    : generateTimeWindowsDescending(startDate, endDate, windowDurationsSeconds);
   const currentWindow = lastPage.window;
 
   // Calculate total results from all pages in current window
@@ -123,7 +144,8 @@ function getNextPageParam(
   }
 
   // If no more results in current window, move to next window (if windowing is being used)
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
   if (shouldUseWindowing && nextWindowIndex < windows.length) {
     return {
@@ -145,8 +167,14 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, source } =
-    meta as QueryMeta;
+  const {
+    queryClient,
+    windowDurationsSeconds,
+    metadata,
+    hasPreviousQueries,
+    optimizedConfig,
+    source,
+  } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -158,20 +186,13 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const clickhouseClient = getClickhouseClient({ queryTimeout });
 
   const rawConfig = queryKey[1];
-  const config = source?.materializedViews?.length
-    ? await tryOptimizeConfigWithMaterializedView(
-        rawConfig,
-        metadata,
-        clickhouseClient,
-        signal,
-        source,
-      )
-    : rawConfig;
+  const config = optimizedConfig ?? rawConfig;
 
   // Get the time window for this page
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const timeWindow = shouldUseWindowing
-    ? getTimeWindowFromPageParam(config, pageParam)
+    ? getTimeWindowFromPageParam(config, pageParam, windowDurationsSeconds)
     : {
         startTime: config.dateRange[0],
         endTime: config.dateRange[1],
@@ -180,21 +201,49 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       };
 
   // Create config with windowed date range
-  const windowedConfig = {
-    ...config,
-    dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
-    limit: {
-      limit: config.limit?.limit,
-      offset: pageParam.offset,
-    },
-  };
+  const windowedConfig = isBuilderChartConfig(config)
+    ? {
+        ...config,
+        dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
+        limit: {
+          limit: config.limit?.limit,
+          offset: pageParam.offset,
+        },
+      }
+    : config;
 
-  const query = await renderChartConfig(windowedConfig, metadata);
+  const query = await renderChartConfig(
+    windowedConfig,
+    metadata,
+    source?.querySettings,
+  );
 
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
   if (abortController && queryTimeout) {
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
+  }
+
+  const clickHouseSettings: ClickHouseSettings = {};
+  if (isRawSqlChartConfig(config)) {
+    // Readonly = 2 means the query is readonly but can still specify query settings.
+    clickHouseSettings.readonly = '2';
+
+    const existingMaxResultRowsSetting = await metadata.getSetting({
+      settingName: 'max_result_rows',
+      connectionId: config.connection,
+    });
+
+    const maxResultRows =
+      existingMaxResultRowsSetting != null &&
+      Number(existingMaxResultRowsSetting) > 0
+        ? Math.min(Number(existingMaxResultRowsSetting), MAX_TABLE_ROWS)
+        : MAX_TABLE_ROWS;
+
+    // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
+    // and instead just return the first max_result_rows rows.
+    clickHouseSettings.max_result_rows = String(maxResultRows);
+    clickHouseSettings.result_overflow_mode = 'break';
   }
 
   const resultSet =
@@ -204,6 +253,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       format: 'JSONCompactEachRowWithNamesAndTypes',
       abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
+      clickhouse_settings: clickHouseSettings,
     });
 
   const stream = resultSet.stream();
@@ -388,10 +438,12 @@ export default function useOffsetPaginatedQuery(
     isLive,
     enabled = true,
     queryKeyPrefix = '',
+    enableSmallFirstWindow,
   }: {
     isLive?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
+    enableSmallFirstWindow?: boolean;
   } = {},
 ) {
   const { data: meData, isLoading: isLoadingMe } = api.useMe();
@@ -405,7 +457,19 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
+  const windowDurationsSeconds = DEFAULT_TIME_WINDOWS_SECONDS.slice();
+  if (enableSmallFirstWindow) {
+    windowDurationsSeconds.unshift(ONE_MIN_WINDOW);
+  }
+
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
+      placeholderData: undefined,
+    });
+
+  const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
 
@@ -429,16 +493,24 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled: enabled && !isLoadingMe && !isLoadingSource,
+    enabled:
+      enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
-      return getNextPageParam(lastPage, allPages, config);
+      return getNextPageParam(
+        lastPage,
+        allPages,
+        config,
+        windowDurationsSeconds,
+      );
     },
     staleTime: Infinity, // TODO: Pick a correct time
     meta: {
       queryClient,
       hasPreviousQueries,
+      windowDurationsSeconds,
       metadata,
+      optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
     } satisfies QueryMeta,
     queryFn,
@@ -456,7 +528,7 @@ export default function useOffsetPaginatedQuery(
     data: flattenedData,
     fetchNextPage,
     hasNextPage,
-    isFetching: isFetching || isLoadingMe || isLoadingSource,
-    isLoading: isLoading || isLoadingMe || isLoadingSource,
+    isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
+    isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
   };
 }

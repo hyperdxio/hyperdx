@@ -2,47 +2,74 @@ import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select, SelectProps } from '@mantine/core';
 
+export enum SelectControlledSpecialValues {
+  CreateNewValue = '_create_new_value',
+  EditValue = '_edit_value',
+}
+
 export type SelectControlledProps = SelectProps &
   UseControllerProps<any> & {
     onCreate?: () => void;
+    onEdit?: () => void;
     allowDeselect?: boolean;
   };
 
 export default function SelectControlled(props: SelectControlledProps) {
-  const { field, fieldState } = useController(props);
-  const { onCreate, allowDeselect = true, ...restProps } = props;
+  const {
+    field: {
+      value: fieldValue,
+      onChange: fieldOnChange,
+      onBlur: fieldOnBlur,
+      name: fieldName,
+      ref: fieldRef,
+    },
+    fieldState,
+  } = useController(props);
+  const { onCreate, onEdit, allowDeselect = true, ...restProps } = props;
 
-  // This is needed as mantine does not clear the select
-  // if the value is not in the data after
-  // if it was previously in the data (ex. data was deleted)
-  const selected = props.data?.find(d =>
-    typeof d === 'string'
-      ? d === field.value
-      : 'value' in d
-        ? d.value === field.value
-        : true,
-  );
+  // Mantine does not clear the select if the value is removed from data
+  // after it was previously present (ex. data was deleted)
+  const selected = props.data?.some(d => {
+    if (typeof d === 'string') return d === fieldValue;
+    if ('value' in d) return d.value === fieldValue;
+    if ('items' in d) {
+      return d.items.some(item =>
+        typeof item === 'string'
+          ? item === fieldValue
+          : item.value === fieldValue,
+      );
+    }
+    return false;
+  });
 
   const onChange = useCallback(
     (value: string | null) => {
-      if (value === '_create_new_value' && onCreate != null) {
+      if (
+        value === SelectControlledSpecialValues.CreateNewValue &&
+        onCreate != null
+      ) {
         onCreate();
+      } else if (
+        value === SelectControlledSpecialValues.EditValue &&
+        onEdit != null
+      ) {
+        onEdit();
       } else if (value !== null || allowDeselect) {
-        field.onChange(value);
+        fieldOnChange(value);
       }
     },
-    [field, onCreate, allowDeselect],
+    [fieldOnChange, onCreate, onEdit, allowDeselect],
   );
 
   return (
     <Select
       {...restProps}
       error={fieldState.error?.message}
-      value={selected == null ? null : field.value}
+      value={selected ? fieldValue : null}
       onChange={onChange}
-      onBlur={field.onBlur}
-      name={field.name}
-      ref={field.ref}
+      onBlur={fieldOnBlur}
+      name={fieldName}
+      ref={fieldRef}
     />
   );
 }

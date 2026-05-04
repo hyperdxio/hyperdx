@@ -1,35 +1,37 @@
 import cx from 'classnames';
-import { Button, Group, Text } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconGripVertical,
-} from '@tabler/icons-react';
+import { Group, Text, UnstyledButton } from '@mantine/core';
+import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
-import styles from '../Table.module.scss';
+import { DBRowTableIconButton } from './DBRowTableIconButton';
+
+import headerStyles from './TableHeader.module.scss';
 
 export default function TableHeader({
   isLast,
   header,
   lastItemButtons,
+  onRemoveColumn,
 }: {
   isLast: boolean;
   header: Header<any, any>;
   lastItemButtons?: React.ReactNode;
+  onRemoveColumn?: () => void;
 }) {
   'use no memo'; // todo: table headers arent being resized properly with the react compiler
   return (
     <th
-      className="overflow-hidden"
+      className={cx('overflow-hidden', {
+        [headerStyles.headerCellWithAction]: !!onRemoveColumn,
+      })}
       key={header.id}
       colSpan={header.colSpan}
       style={{
         width: header.getSize() === UNDEFINED_WIDTH ? '100%' : header.getSize(),
-        // Allow unknown width columns to shrink to 0
         minWidth: header.getSize() === UNDEFINED_WIDTH ? 0 : header.getSize(),
+        textAlign: 'left',
       }}
     >
       <Group wrap="nowrap" gap={0} align="center">
@@ -38,14 +40,10 @@ export default function TableHeader({
             {flexRender(header.column.columnDef.header, header.getContext())}
           </Text>
         ) : (
-          <Button
-            size="xxs"
-            p={1}
-            variant="subtle"
-            color="gray"
+          <UnstyledButton
+            className={headerStyles.sortButton}
             onClick={header.column.getToggleSortingHandler()}
             flex="1"
-            justify="space-between"
             data-testid="raw-log-table-sort-button"
           >
             <>
@@ -77,26 +75,33 @@ export default function TableHeader({
                 </div>
               )}
             </>
-          </Button>
+          </UnstyledButton>
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
-          {header.column.getCanResize() && !isLast && (
-            <div
-              onMouseDown={header.getResizeHandler()}
-              onTouchStart={header.getResizeHandler()}
-              className={cx(
-                `resizer ${styles.cursorColResize}`,
-                header.column.getIsResizing() && 'isResizing',
-              )}
-            >
-              <IconGripVertical size={12} />
+          {onRemoveColumn && (
+            <div className={headerStyles.headerRemoveButton}>
+              <DBRowTableIconButton
+                onClick={onRemoveColumn}
+                title="Remove column"
+                variant="copy"
+                iconSize={10}
+              >
+                <IconX size={10} />
+              </DBRowTableIconButton>
             </div>
           )}
           {isLast && (
-            <Group gap={2} wrap="nowrap">
+            <Group gap={2} wrap="nowrap" align="center">
               {lastItemButtons}
             </Group>
+          )}
+          {header.column.getCanResize() && (
+            <div
+              onMouseDown={header.getResizeHandler()}
+              onTouchStart={header.getResizeHandler()}
+              className={headerStyles.resizer}
+            />
           )}
         </Group>
       </Group>

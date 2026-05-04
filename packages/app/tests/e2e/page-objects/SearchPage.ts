@@ -7,10 +7,14 @@ import { Locator, Page } from '@playwright/test';
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
+import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModalComponent';
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 
+type SaveSearchModalProps = {
+  update: boolean;
+};
 export class SearchPage {
   readonly page: Page;
   readonly table: TableComponent;
@@ -19,19 +23,21 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly savedSearchNameTitle: Locator;
+  readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
-  readonly editSourceMenuItem: Locator;
+  private readonly alertsButtonLocator: Locator;
 
   // Page-specific locators
   private readonly searchForm: Locator;
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
+  private readonly languageSelect: Locator;
+  private readonly updateSearchButton: Locator;
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
-  private readonly sourceSettingsMenu: Locator;
-  private readonly createNewSourceMenuItem: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
     this.page = page;
@@ -46,28 +52,33 @@ export class SearchPage {
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
+    this.alertModal = new SearchPageAlertModalComponent(page);
+    this.alertsButtonLocator = page.getByTestId('alerts-button');
+    this.savedSearchNameTitle = page.locator(
+      '[data-testid="saved-search-name"]',
+    );
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
     this.searchInput = page.getByTestId('search-input');
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
-    this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
-    this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
+    this.updateSearchButton = page.getByTestId('update-search-button');
+    const whereLanguageSwitch = page.getByTestId('where-language-switch');
+    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
+      name: 'Query language',
+    });
+    this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
+    this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
-    this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
-    this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
-    this.createNewSourceMenuItem = page.getByTestId(
-      'create-new-source-menu-item',
-    );
-  }
-
-  get sourceMenu() {
-    return this.sourceSettingsMenu;
   }
 
   get createNewSourceItem() {
-    return this.createNewSourceMenuItem;
+    return this.page.getByRole('option', { name: 'Create New Source' });
+  }
+
+  get editSourcesItem() {
+    return this.page.getByRole('option', { name: 'Edit Sources' });
   }
 
   /**
@@ -87,8 +98,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSettingsMenu.click();
-    await this.editSourceMenuItem.click();
+    await this.sourceSelector.click();
+    await this.editSourcesItem.click();
   }
 
   async sourceModalShowOptionalFields() {
@@ -105,6 +116,7 @@ export class SearchPage {
    */
   async performSearch(query: string) {
     await this.searchInput.fill(query);
+    await this.page.keyboard.press('Escape');
     await this.searchButton.click();
     await this.page.waitForLoadState('networkidle');
     // Wait for new results to populate
@@ -122,6 +134,7 @@ export class SearchPage {
    * Switch to SQL mode
    */
   async switchToSQLMode() {
+    await this.languageSelect.click();
     await this.sqlTab.click();
   }
 
@@ -129,6 +142,7 @@ export class SearchPage {
    * Switch to Lucene mode
    */
   async switchToLuceneMode() {
+    await this.languageSelect.click();
     await this.luceneTab.click();
   }
 
@@ -169,9 +183,35 @@ export class SearchPage {
   /**
    * Open save search modal
    */
-  async openSaveSearchModal() {
-    await this.saveSearchButton.scrollIntoViewIfNeeded();
-    await this.saveSearchButton.click();
+  async openSaveSearchModal(options: SaveSearchModalProps = { update: false }) {
+    const button = options.update
+      ? this.updateSearchButton
+      : this.saveSearchButton;
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+  }
+
+  /**
+   * Click "Save as New Search" from the action bar menu on an existing saved search.
+   * Opens the save search modal in "create" mode for duplicating the current search.
+   */
+  async clickSaveAsNew() {
+    // Click the action bar menu trigger (three dots icon next to the saved search name)
+    await this.page.getByTestId('search-page-action-bar').click();
+    await this.page
+      .getByRole('menuitem', { name: 'Save as New Search' })
+      .click();
+  }
+
+  /**
+   * Open the alerts creation modal for the current saved search
+   */
+  async openAlertsModal() {
+    await this.alertsButtonLocator.click();
+  }
+
+  get alertsButton() {
+    return this.alertsButtonLocator;
   }
 
   /**
@@ -189,12 +229,30 @@ export class SearchPage {
   }
 
   /**
+   * Get ORDER BY editor (CodeMirror)
+   */
+  getOrderByEditor() {
+    return this.page.locator('.cm-content').nth(1);
+  }
+
+  /**
    * Set custom SELECT columns
    */
   async setCustomSELECT(selectStatement: string) {
     const selectEditor = this.getSELECTEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
     await this.page.keyboard.type(selectStatement);
+  }
+
+  /**
+   * Set custom ORDER BY clause
+   */
+  async setCustomOrderBy(orderByStatement: string) {
+    const orderByEditor = this.getOrderByEditor();
+    await orderByEditor.click({ clickCount: 3 }); // Select all
+    await this.page.keyboard.type(orderByStatement);
+    // CLoses Autocomplete Modal if open
+    await this.page.keyboard.press('Escape');
   }
 
   /**

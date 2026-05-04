@@ -3,8 +3,9 @@ import {
   Field,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
+import { NOW } from '@/config';
 import {
   deduplicate2dArray,
   useJsonColumns,
@@ -18,9 +19,6 @@ export interface ILanguageFormatter {
   formatFieldLabel: (f: Field) => string;
   formatKeyValPair: (key: string, value: string) => string;
 }
-
-// Defined outside of the component to fix rerenders
-const NOW = Date.now();
 
 export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
@@ -66,6 +64,7 @@ export function useAutoCompleteOptions(
   }, [formatter, fields, additionalSuggestions]);
 
   // searchField is used for the purpose of checking if a key is valid and key values should be fetched
+  // TODO: Come back and refactor how this works - it's not great and wouldn't catch a person copy-pasting some text
   const [searchField, setSearchField] = useState<Field | null>(null);
   // check if any search field matches
   useEffect(() => {
@@ -102,25 +101,27 @@ export function useAutoCompleteOptions(
   );
 
   // hooks to get key values
-  const chartConfigs: ChartConfigWithDateRange[] = toArray(tableConnection).map(
-    ({ databaseName, tableName, connectionId }) => ({
-      connection: connectionId,
-      from: {
-        databaseName,
-        tableName,
-      },
-      timestampValueExpression: '',
-      select: '',
-      where: '',
-      // TODO: Pull in date for query as arg
-      // just assuming 1/2 day is okay to query over right now
-      dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
-    }),
-  );
+  const chartConfigs: BuilderChartConfigWithDateRange[] = toArray(
+    tableConnection,
+  ).map(({ databaseName, tableName, connectionId }) => ({
+    connection: connectionId,
+    from: {
+      databaseName,
+      tableName,
+    },
+    timestampValueExpression: '',
+    select: '',
+    where: '',
+    // TODO: Pull in date for query as arg
+    // just assuming 1/2 day is okay to query over right now
+    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
+  }));
+
   const { data: keyVals } = useMultipleGetKeyValues({
     chartConfigs,
     keys: searchKeys,
   });
+
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {

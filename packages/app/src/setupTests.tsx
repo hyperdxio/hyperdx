@@ -4,6 +4,7 @@ import { TextDecoder, TextEncoder } from 'util';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { render } from '@testing-library/react';
+import structuredClone from '@ungap/structured-clone';
 
 import '@testing-library/jest-dom';
 global.TextEncoder = TextEncoder as any;
@@ -34,6 +35,11 @@ global.renderWithMantine = (ui: React.ReactElement) => {
     </MantineProvider>,
   );
 };
+
+if (!globalThis.structuredClone) {
+  // @ts-expect-error this is a correct polyfill
+  globalThis.structuredClone = structuredClone;
+}
 
 declare global {
   function renderWithMantine(ui: React.ReactElement): ReturnType<typeof render>;

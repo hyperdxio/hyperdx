@@ -1,5 +1,179 @@
 # @hyperdx/common-utils
 
+## 0.18.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- e2fc25da: feat: Add custom table onClick behavior
+- 7665fbe1: refactor: Unify section/group into single Group with collapsible/bordered options
+
+## 0.18.0
+
+### Minor Changes
+
+- 5885d479: Introduces Shared Filters, enabling teams to pin and surface common filters across all members.
+
+### Patch Changes
+
+- 418f70c5: Add Drain log template mining library (ported from browser-drain)
+- 1fada918: feat: Support alerts on Raw SQL Number Charts
+- 7953c028: feat: Add between-type alert thresholds
+- d3a61f9b: feat: Add additional alert threshold types
+- cc714f90: fix: Skip rendering empty SQL dashboard filter
+- 085f3074: feat: Implement alerting for Raw SQL-based dashboard tiles
+- 3c057720: feat: Show alert execution errors in the UI
+- 6ff1ba60: feat: Add alert history + ack to alert editor
+
+## 0.17.1
+
+### Patch Changes
+
+- 24767c58: fix: Ensure correct bounds for date-based timestampValueExpr
+
+## 0.17.0
+
+### Minor Changes
+
+- a15122b3: feat: new team setting for number of filters to fetch
+- 941d0450: feat: support sample-weighted aggregations for sampled trace data
+
+### Patch Changes
+
+- 518bda7d: feat: Add dashboard template gallery
+- 4e54d850: fix: show Map sub-fields in facet panel for non-LowCardinality value types
+- 53ba1e39: feat: Add favoriting for dashboards and saved searches
+- b7581db8: feat: Add more chart display units
+- 48a8d32b: fix: Fixed bug preventing clicking into rows with nullable date types (and other misc type) columns.
+- a55b151e: fix: render clickhouse keywords properly in codemirror
+- 308da30b: feat: Add $\_\_sourceTable macro
+- e5c7fdf9: feat: Add saved searches listing page
+
+## 0.16.2
+
+### Patch Changes
+
+- 4f7dd9ef: fix: Correctly detect text index with quoted tokenizer argument
+- 275dc941: feat: Add conditions to Dashboard filters; Support filter multi-select
+- 6936ef8e: fix: Enable materialized column optimization for expression alias CTEs
+
+## 0.16.1
+
+### Patch Changes
+
+- 2fab76bf: fix: Keep toStartOf\* time filter bounds inclusive when dateRangeEndInclusive is false, preventing data from being dropped past hour/minute boundaries in time histograms
+- e18f88c8: feat: Set enable_full_text_index=1 when available
+- e09c8c0e: fix: query settings length validation
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 74d92594: feat: Support fetching table metadata for Distributed tables
+- 1d83bebb: feat: Add support for dashboard filters on Raw SQL Charts
+- ce850647: fix: change sources to discriminated union
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 243e3baa: feat: Support fetching distributed table metadata with cluster()
+- 4cee5d69: feat: Support ClickHouse datasource plugin macros in Raw SQL chart configs
+
+## 0.16.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- 3bc5abbf: fix: Reject wrapped toStartOf expressions in parseToStartOfFunction to prevent invalid SQL generation
+- 1e6fcf1c: feat: Add raw sql line charts
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+
+## 0.15.0
+
+### Minor Changes
+
+- cd2b7a76: fix: revert use_top_k_dynamic_filtering setting for issues with ORDER BY rand()
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- 34c9afeb: feat: Add list webhooks API
+
+## 0.14.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+## 0.13.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+
+## 0.12.3
+
+### Patch Changes
+
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+
+## 0.12.2
+
+### Patch Changes
+
+- b6c34b13: fix: Handling non-monotonic sums
+
+## 0.12.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+
+## 0.12.0
+
+### Minor Changes
+
+- f44923ba: feat: Add auto-detecting and creating OTel sources during onboarding
+
+## 0.11.1
+
+### Patch Changes
+
+- 6aa3ac6f: fix: Fix missing negation in binary lucene expressions
+- b8ab312a: chore: improve Team typing
+
+## 0.11.0
+
+### Minor Changes
+
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- 1cf8cebb: feat: Support JSON Sessions
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- 79398be7: chore: Standardize granularities
+- 00854da8: feat: Add support for searching with bloom_filter(tokens()) indexes
+- f98fc519: perf: Query filter values from MVs
+- f20fac30: feat: force usage of the map key index with lucene rendered queries
+- 4a856173: feat: Add hasAllTokens for text index support
+
+## 0.10.2
+
+### Patch Changes
+
+- ab7645de: feat: Add a minimum date to MV configuration
+- ebaebc14: feat: Use materialized views in alert execution
+- 725dbc2f: feat: Align line/bar chart date ranges to chart granularity
+- 0c16a4b3: feat: Align date ranges to MV Granularity
+
 ## 0.10.1
 
 ### Patch Changes

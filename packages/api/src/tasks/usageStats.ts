@@ -1,6 +1,10 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';
@@ -30,8 +34,10 @@ const logger = pino({
 function extractTableNames(source: SourceDocument): string[] {
   const tables: string[] = [];
   if (source.kind === SourceKind.Metric) {
+    // Cast to TMetricSource to access metricTables after kind narrowing
+    const metricSource = source;
     for (const key of Object.values(MetricsDataType)) {
-      const metricTable = source.metricTables?.[key];
+      const metricTable = metricSource.metricTables?.[key];
       if (!metricTable) continue;
       tables.push(metricTable);
     }

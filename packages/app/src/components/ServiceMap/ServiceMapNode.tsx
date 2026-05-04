@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { Handle, Node, NodeProps, NodeToolbar, Position } from '@xyflow/react';
 
@@ -11,7 +11,7 @@ import styles from './ServiceMap.module.scss';
 
 export type ServiceMapNodeData = ServiceAggregation & {
   dateRange: [Date, Date];
-  source: TSource;
+  source: TTraceSource;
   maxErrorPercentage: number;
   isSingleTrace?: boolean;
 };

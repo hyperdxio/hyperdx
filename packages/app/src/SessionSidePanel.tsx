@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Button } from '@mantine/core';
-import { Drawer } from '@mantine/core';
+import { ActionIcon, Button, Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
 
@@ -23,29 +23,20 @@ export default function SessionSidePanel({
   sessionId,
   session,
   dateRange,
-  where,
   whereLanguage,
+  onLanguageChange,
   onClose,
-  onPropertyAddClick,
-  generateSearchUrl,
-  generateChartUrl,
   zIndex = 100,
 }: {
-  traceSource: TSource;
-  sessionSource: TSource;
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
   sessionId: string;
   session: Session;
   dateRange: DateRange['dateRange'];
   where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
+  onLanguageChange?: (lang: 'sql' | 'lucene') => void;
   onClose: () => void;
-  onPropertyAddClick?: (name: string, value: string) => void;
-  generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
-  generateChartUrl: (config: {
-    aggFn: string;
-    field: string;
-    groupBy: string[];
-  }) => string;
   zIndex?: number;
 }) {
   // Keep track of sub-drawers so we can disable closing this root drawer
@@ -61,15 +52,12 @@ export default function SessionSidePanel({
     },
   );
 
-  // console.log({ logId: sessionId, subDrawerOpen });
-  const maxTime =
-    session != null ? new Date(session?.maxTimestamp) : new Date();
-  // const minTime =
-  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
-  const timeAgo = formatDistanceToNowStrictShort(maxTime);
-  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
-  //   .toISOString()
-  //   .slice(11, 19);
+  const timeAgo = useMemo(() => {
+    const maxTime =
+      // eslint-disable-next-line no-restricted-syntax
+      session != null ? new Date(session?.maxTimestamp) : new Date();
+    return formatDistanceToNowStrictShort(maxTime);
+  }, [session]);
 
   return (
     <Drawer
@@ -92,7 +80,10 @@ export default function SessionSidePanel({
       className="border-start"
     >
       <ZIndexContext.Provider value={zIndex}>
-        <div className="d-flex flex-column h-100">
+        <div
+          className="d-flex flex-column h-100"
+          data-testid="session-side-panel"
+        >
           <div>
             <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
               <div style={{ width: '50%', maxWidth: 500 }}>
@@ -122,7 +113,7 @@ export default function SessionSidePanel({
                   }}
                 >
                   <Button
-                    variant="default"
+                    variant="secondary"
                     size="sm"
                     leftSection={<IconLink size={14} />}
                     style={{ fontSize: '12px' }}
@@ -130,14 +121,9 @@ export default function SessionSidePanel({
                     Share Session
                   </Button>
                 </CopyToClipboard>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={onClose}
-                  style={{ padding: '4px 8px' }}
-                >
+                <ActionIcon variant="secondary" size="md" onClick={onClose}>
                   <IconX size={14} />
-                </Button>
+                </ActionIcon>
               </div>
             </div>
           </div>
@@ -149,12 +135,9 @@ export default function SessionSidePanel({
               start={dateRange[0]}
               end={dateRange[1]}
               rumSessionId={sessionId}
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              generateChartUrl={generateChartUrl}
               setDrawerOpen={setSubDrawerOpen}
-              where={where}
               whereLanguage={whereLanguage}
+              onLanguageChange={onLanguageChange}
             />
           ) : null}
         </div>

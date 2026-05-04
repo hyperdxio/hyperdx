@@ -1,22 +1,38 @@
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { add, min, sub } from 'date-fns';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  convertDateRangeToGranularityString,
+  Granularity,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Alert,
+  Anchor,
   Box,
   Card,
   Group,
+  Modal,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Text,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
-import { getEventBody, useSource } from '@/source';
+import { TableSourceForm } from '@/components/Sources/SourceForm';
+import { IS_LOCAL_MODE } from '@/config';
+import { useSource } from '@/source';
 
 import {
-  convertDateRangeToGranularityString,
-  Granularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -33,7 +49,7 @@ const InfraSubpanelGroup = ({
   where,
 }: {
   fieldPrefix: string;
-  metricSource: TSource;
+  metricSource: TMetricSource;
   timestamp: any;
   title: string;
   where: string;
@@ -49,6 +65,7 @@ const InfraSubpanelGroup = ({
     }[range];
     return [
       sub(new Date(timestamp), duration),
+      // eslint-disable-next-line no-restricted-syntax
       min([add(new Date(timestamp), duration), new Date()]),
     ];
   }, [timestamp, range]);
@@ -65,7 +82,7 @@ const InfraSubpanelGroup = ({
   }, [size]);
 
   const granularity = useMemo<Granularity>(() => {
-    return convertDateRangeToGranularityString(dateRange, 60);
+    return convertDateRangeToGranularityString(dateRange);
   }, [dateRange]);
 
   return (
@@ -98,12 +115,10 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        <Card p="md" data-testid="cpu-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            CPU Usage (%)
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="cpu-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="CPU Usage (%)"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -130,12 +145,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="memory-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Memory Used
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="memory-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Memory Used"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -162,12 +175,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="disk-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Disk Available
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="disk-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Disk Available"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -201,14 +212,22 @@ const InfraSubpanelGroup = ({
 
 export default ({
   rowData,
-  rowId,
   source,
 }: {
   rowData?: Record<string, any>;
-  rowId: string | undefined | null;
   source: TSource;
 }) => {
-  const { data: metricSource } = useSource({ id: source.metricSourceId });
+  const [editModalOpened, { open: openEditModal, close: closeEditModal }] =
+    useDisclosure(false);
+
+  const metricSourceId =
+    isLogSource(source) || isTraceSource(source)
+      ? source.metricSourceId
+      : undefined;
+  const { data: metricSource, isLoading: isLoadingMetricSource } = useSource({
+    id: metricSourceId,
+    kinds: [SourceKind.Metric],
+  });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
@@ -217,6 +236,39 @@ export default ({
 
   return (
     <Stack my="md" gap={40}>
+      {!metricSource && !isLoadingMetricSource && (
+        <>
+          <Alert color="yellow" title="No correlated metric source">
+            <Text size="sm">
+              {metricSourceId
+                ? `The correlated metric source for "${source.name}" could not be found.`
+                : `Source "${source.name}" does not have a correlated metric source.`}{' '}
+              Infrastructure metrics can be displayed when a metric source is
+              configured in{' '}
+              {IS_LOCAL_MODE ? (
+                <Anchor component="button" onClick={openEditModal}>
+                  Source Settings
+                </Anchor>
+              ) : (
+                <Anchor component={Link} href="/team">
+                  Team Settings
+                </Anchor>
+              )}
+              .
+            </Text>
+          </Alert>
+          {IS_LOCAL_MODE && (
+            <Modal
+              size="xl"
+              opened={editModalOpened}
+              onClose={closeEditModal}
+              title="Edit Source"
+            >
+              <TableSourceForm sourceId={source.id} />
+            </Modal>
+          )}
+        </>
+      )}
       {podUid && (
         <div>
           {metricSource && (
@@ -228,9 +280,9 @@ export default ({
               metricSource={metricSource}
             />
           )}
-          {source && (
+          {source && source.kind === SourceKind.Log && (
             <Card p="md" mt="xl">
-              <Card.Section p="md" py="xs" withBorder>
+              <Card.Section p="md" py="xs">
                 Pod Timeline
               </Card.Section>
               <Card.Section>
@@ -248,7 +300,7 @@ export default ({
                         add(new Date(timestamp), { days: 1 }),
                       ]}
                       anchorEvent={{
-                        label: <div className="text-success">This Event</div>,
+                        label: <div className="text-brand">This Event</div>,
                         timestamp: new Date(timestamp).toISOString(),
                       }}
                     />

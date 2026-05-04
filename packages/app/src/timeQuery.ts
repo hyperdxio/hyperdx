@@ -34,7 +34,7 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
+const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], {
     isUTC,
     format: 'normal',
@@ -51,6 +51,7 @@ function isInputTimeQueryLive(inputTimeQuery: string) {
 }
 
 export function parseRelativeTimeQuery(interval: number) {
+  // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [subMilliseconds(end, interval), end];
 }
@@ -62,7 +63,7 @@ export function parseTimeQuery(
   return parseTimeRangeInput(timeQuery, isUTC);
 }
 
-export function parseValidTimeRange(
+function parseValidTimeRange(
   timeQuery: string,
   isUTC: boolean,
 ): [Date, Date] | undefined {
@@ -242,11 +243,13 @@ export function useTimeQuery({
       liveTailTimeRange == null &&
       tempLiveTailTimeRange == null &&
       !isInputTimeQueryLive(inputTimeQuery) &&
+      // eslint-disable-next-line react-hooks/refs
       inputTimeQueryDerivedTimeQueryRef.current != null
     ) {
       // Use the input time query, allows users to specify relative time ranges
       // via url ex. /logs?tq=Last+30+minutes
       // return inputTimeQueryDerivedTimeQuery as [Date, Date];
+      // eslint-disable-next-line react-hooks/refs
       return inputTimeQueryDerivedTimeQueryRef.current;
     } else if (
       isReady &&
@@ -258,6 +261,7 @@ export function useTimeQuery({
     ) {
       // If we haven't set a live tail time range yet, but we're ready and should be in live tail, let's just return one right now
       // this is due to the first interval of live tail not kicking in until 2 seconds after our first render
+      // eslint-disable-next-line no-restricted-syntax
       const end = startOfSecond(new Date());
       const newLiveTailTimeRange: [Date, Date] = [
         sub(end, { minutes: 15 }),
@@ -267,6 +271,7 @@ export function useTimeQuery({
     } else {
       // We're not ready yet, safe to return anything.
       // Downstream querying components need to be disabled on isReady
+      // eslint-disable-next-line no-restricted-syntax
       return [new Date(), new Date()];
     }
   }, [
@@ -290,6 +295,7 @@ export function useTimeQuery({
     );
   }, [isReady, isLiveEnabled, timeRangeQuery, inputTimeQuery]);
   const refreshLiveTailTimeRange = () => {
+    // eslint-disable-next-line no-restricted-syntax
     const end = startOfSecond(new Date());
     setLiveTailTimeRange([sub(end, { minutes: 15 }), end]);
   };
@@ -339,6 +345,7 @@ export function useTimeQuery({
     ],
   );
 
+  // eslint-disable-next-line react-hooks/refs
   return {
     isReady, // Don't search until we know what we want to do
     isLive,
@@ -526,6 +533,7 @@ export function useNewTimeQuery({
 }
 
 export function getLiveTailTimeRange(): [Date, Date] {
+  // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [sub(end, { minutes: 15 }), end];
 }

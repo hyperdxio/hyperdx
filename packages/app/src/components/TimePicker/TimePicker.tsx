@@ -43,13 +43,38 @@ const modeAtom = atomWithStorage<TimePickerMode>(
   TimePickerMode.Range,
 );
 
-const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
+const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
-const DateInputCmp = (props: DateInputProps) => (
+/** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
+const toDate = (v: Date | string | null): Date | null =>
+  v == null ? null : v instanceof Date ? v : new Date(v);
+
+/**
+ * Wrapper around Mantine v9 DateInput that bridges the Date ↔ string gap.
+ * Mantine v9 DateInput expects/emits string values, but the TimePickerForm
+ * stores Date objects (used by date-fns). This wrapper converts in both
+ * directions: value (Date → string) and onChange (string → Date).
+ *
+ * `withTime` is required: by default DateInput strips the time part and
+ * normalizes values to midnight, even when `valueFormat` includes time
+ * tokens. Setting `withTime` preserves HH:mm:ss so manually-typed times
+ * survive blur/commit.
+ */
+type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
+  value?: Date | null;
+  onChange?: (value: Date | null) => void;
+};
+
+const DateInputCmp = ({
+  value,
+  onChange: onChangeProp,
+  ...props
+}: DateInputCmpProps) => (
   <DateInput
     size="xs"
     highlightToday
+    withTime
     placeholder={DATE_INPUT_PLACEHOLDER}
     valueFormat={DATE_INPUT_FORMAT}
     variant="filled"
@@ -60,6 +85,8 @@ const DateInputCmp = (props: DateInputProps) => (
       }
     }}
     {...props}
+    value={value instanceof Date ? value.toISOString() : (value ?? null)}
+    onChange={v => onChangeProp?.(toDate(v))}
   />
 );
 
@@ -78,6 +105,7 @@ const TimePickerComponent = ({
   showLive = false,
   isLiveMode = false,
   defaultRelativeTimeMode = false,
+  width = 350,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -87,6 +115,7 @@ const TimePickerComponent = ({
   showLive?: boolean;
   isLiveMode?: boolean;
   defaultRelativeTimeMode?: boolean;
+  width?: number | string;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -96,6 +125,7 @@ const TimePickerComponent = ({
 
   useHotkeys('d', () => toggle(), { preventDefault: true }, [toggle]);
 
+  // eslint-disable-next-line no-restricted-syntax
   const today = React.useMemo(() => new Date(), []);
 
   const relativeTimeOptions = React.useMemo(() => {
@@ -173,7 +203,8 @@ const TimePickerComponent = ({
     if (!form.isValid() || !opened) {
       return;
     }
-    const { startDate, endDate } = form.values;
+    const startDate = toDate(form.values.startDate);
+    const endDate = toDate(form.values.endDate);
     if (mode === TimePickerMode.Range) {
       handleSearch([startDate, endDate]);
       close();
@@ -191,7 +222,8 @@ const TimePickerComponent = ({
 
   const handleMove = React.useCallback(
     (d: Duration) => {
-      const { startDate, endDate } = form.values;
+      const startDate = toDate(form.values.startDate);
+      const endDate = toDate(form.values.endDate);
       const from = startDate && add(startDate, d);
       const to = endDate && add(endDate, d);
       handleSearch([from, to]);
@@ -223,7 +255,7 @@ const TimePickerComponent = ({
           data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
-              <IconBolt size={16} className="text-success" />
+              <IconBolt size={16} className="text-brand" />
             ) : (
               <IconCalendarFilled size={16} />
             )
@@ -231,7 +263,7 @@ const TimePickerComponent = ({
           styles={{
             input: {
               color: isLiveMode
-                ? 'var(--color-text-success)'
+                ? 'var(--color-text-brand)'
                 : 'var(--color-text)',
             },
           }}
@@ -247,7 +279,7 @@ const TimePickerComponent = ({
           onClick={toggle}
           placeholder="Time Range"
           size="sm"
-          w={350}
+          w={width}
           onKeyDown={e => {
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
               onSubmit?.(e.target.value);
@@ -292,8 +324,7 @@ const TimePickerComponent = ({
             <Button
               data-testid="time-picker-1h-back"
               size="compact-xs"
-              color="gray"
-              variant="light"
+              variant="secondary"
               onClick={handleMove.bind(null, { hours: -1 })}
               disabled={isLiveMode || isRelative}
             >
@@ -302,8 +333,7 @@ const TimePickerComponent = ({
             <Button
               data-testid="time-picker-1h-forward"
               size="compact-xs"
-              color="gray"
-              variant="light"
+              variant="secondary"
               onClick={handleMove.bind(null, { hours: 1 })}
               disabled={isLiveMode || isRelative}
             >
@@ -367,15 +397,12 @@ const TimePickerComponent = ({
                     form.values.startDate &&
                     form.values.endDate
                   ) {
+                    const start = toDate(form.values.startDate)!;
+                    const end = toDate(form.values.endDate)!;
                     const midpoint = new Date(
-                      (form.values.startDate.getTime() +
-                        form.values.endDate.getTime()) /
-                        2,
+                      (start.getTime() + end.getTime()) / 2,
                     );
-                    const halfRangeMs =
-                      (form.values.endDate.getTime() -
-                        form.values.startDate.getTime()) /
-                      2;
+                    const halfRangeMs = (end.getTime() - start.getTime()) / 2;
 
                     // Find the closest duration option
                     const halfRangeMinutes = halfRangeMs / (1000 * 60);
@@ -455,7 +482,7 @@ const TimePickerComponent = ({
               <Button
                 data-testid="time-picker-apply"
                 size="compact-sm"
-                variant="light"
+                variant="primary"
                 disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >

@@ -1,65 +1,14 @@
-import { z } from 'zod';
 import {
   Alert,
-  AlertHistory,
-  ChartConfig,
-  DashboardSchema,
+  AlertsPageItem as _AlertsPageItem,
+  BuilderChartConfig,
   Filter,
   NumberFormat as _NumberFormat,
-  SavedSearchSchema,
-  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
 
-export type Team = {
-  allowedAuthMethods: any[];
-  apiKey?: string;
-  name: string;
-  users: {
-    email: string;
-    hasPasswordAuth: boolean;
-    isCurrentUser: boolean;
-    name: string;
-  }[];
-  _id: string;
-};
-
-export type KeyValuePairs = {
-  'bool.names': string[];
-  'bool.values': number[];
-  'number.names': string[];
-  'number.values': number[];
-  'string.names': string[];
-  'string.values': string[];
-};
-
-export type LogStreamModel = KeyValuePairs & {
-  _host?: string;
-  _namespace?: string;
-  _platform: string;
-  _service?: string;
-  _source: string; // raw log
-  body: string;
-  id: string;
-  observed_timestamp: number;
-  severity_number: number;
-  severity_text: string;
-  span_id?: string;
-  timestamp: string;
-  trace_id?: string;
-};
-
-export type AlertsPageItem = Alert & {
-  _id: string;
-  history: AlertHistory[];
-  dashboard?: ServerDashboard;
-  savedSearch?: SavedSearch;
-  createdBy?: {
-    email: string;
-    name?: string;
-  };
-};
+export type AlertsPageItem = _AlertsPageItem;
 
 export type AlertWithCreatedBy = Alert & {
   createdBy?: {
@@ -68,38 +17,13 @@ export type AlertWithCreatedBy = Alert & {
   };
 };
 
-export type SavedSearch = z.infer<typeof SavedSearchSchema>;
-
-export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
-  alerts?: AlertWithCreatedBy[];
-};
-
 export type SearchConfig = {
   select?: string | null;
   source?: string | null;
-  where?: ChartConfig['where'] | null;
-  whereLanguage?: ChartConfig['whereLanguage'] | null;
+  where?: BuilderChartConfig['where'] | null;
+  whereLanguage?: BuilderChartConfig['whereLanguage'] | null;
   filters?: Filter[] | null;
   orderBy?: string | null;
-};
-
-export type ServerDashboard = z.infer<typeof DashboardSchema>;
-
-export type Session = {
-  errorCount: string;
-  maxTimestamp: string;
-  minTimestamp: string;
-  rrwebEventCount: string;
-  sessionCount: string;
-  sessionId: string;
-  teamId: string;
-  teamName: string;
-  userEmail: string;
-  userName: string;
-};
-
-export type Dictionary<T> = {
-  [key: string]: T;
 };
 
 export type StacktraceFrame = {
@@ -203,45 +127,6 @@ export type TableChartSeries = {
   color?: string;
 } & SeriesDBDataSource;
 
-export type ChartSeries =
-  | TimeChartSeries
-  | TableChartSeries
-  | ({
-      table: SourceTable;
-      type: 'histogram';
-      field: string | undefined;
-      where: string;
-    } & SeriesDBDataSource)
-  | ({
-      type: 'search';
-      fields: string[];
-      where: string;
-    } & SeriesDBDataSource)
-  | ({
-      type: 'number';
-      table: SourceTable;
-      aggFn: AggFn;
-      field: string | undefined;
-      where: string;
-      numberFormat?: NumberFormat;
-      color?: string;
-    } & SeriesDBDataSource)
-  | {
-      type: 'markdown';
-      content: string;
-    };
-
-export type Chart = {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  series: ChartSeries[];
-  seriesReturnType: 'ratio' | 'column';
-};
-
 // https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/documentation.md#k8spodphase
 export enum KubePhase {
   Pending = 1,
@@ -252,7 +137,11 @@ export enum KubePhase {
 }
 
 export type NextApiConfigResponseData = {
-  apiKey: string;
+  apiKey?: string;
   collectorUrl: string;
+  collectorTracesUrl?: string;
+  collectorMetricsUrl?: string;
+  collectorLogsUrl?: string;
   serviceName: string;
+  appVersion?: string;
 };

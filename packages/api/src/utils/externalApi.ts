@@ -1,248 +1,326 @@
-// @ts-nocheck TODO: Fix When Restoring Alerts
-import { z } from 'zod';
-
-import { AlertDocument } from '@/models/alert';
-import type { IDashboard } from '@/models/dashboard';
 import {
-  chartSchema,
-  externalChartSchema,
-  externalChartSchemaWithId,
-  histogramChartSeriesSchema,
-  markdownChartSeriesSchema,
-  numberChartSeriesSchema,
-  searchChartSeriesSchema,
-  tableChartSeriesSchema,
-  timeChartSeriesSchema,
-} from '@/utils/zod';
+  AlertErrorType,
+  AlertThresholdType,
+  BuilderSavedChartConfig,
+  DashboardFilter,
+  DisplayType,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
+import { omit } from 'lodash';
 
-export const translateExternalSeriesToInternalSeries = (
-  s: z.infer<typeof externalChartSchema>['series'][number],
-) => {
-  const {
-    type,
-    dataSource,
-    where,
-    whereLanguage,
-    metricName,
-    metricDataType,
-    ...rest
-  } = s;
+import type { ObjectId } from '@/models';
+import {
+  AlertChannel,
+  AlertDocument,
+  AlertInterval,
+  AlertState,
+  IAlert,
+} from '@/models/alert';
+import type { DashboardDocument } from '@/models/dashboard';
+import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
+import { ExternalDashboardFilterWithId } from '@/utils/zod';
 
-  // Determine common properties first
-  const table = dataSource === 'metrics' ? 'metrics' : 'logs';
-  const commonWhere = where ?? '';
-  const commonWhereLanguage = whereLanguage ?? 'lucene';
-
-  switch (type) {
-    case 'time': {
-      const { aggFn, level, field, groupBy, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for time chart');
-      }
-      const series: z.infer<typeof timeChartSeriesSchema> = {
-        type: 'time',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        groupBy: groupBy ?? [],
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'table': {
-      const { aggFn, level, field, groupBy, sortOrder, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for table chart');
-      }
-      const series: z.infer<typeof tableChartSeriesSchema> = {
-        type: 'table',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        groupBy: groupBy ?? [],
-        sortOrder: sortOrder ?? 'desc',
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'number': {
-      const { aggFn, level, field, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for number chart');
-      }
-      const series: z.infer<typeof numberChartSeriesSchema> = {
-        type: 'number',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'histogram': {
-      const { aggFn, level, field } = rest;
-      const series: z.infer<typeof histogramChartSeriesSchema> = {
-        type: 'histogram',
-        table,
-        level,
-        aggFn,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        field: field ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'search': {
-      const { fields } = rest;
-      const series: z.infer<typeof searchChartSeriesSchema> = {
-        type: 'search',
-        fields: fields ?? [],
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-      };
-      return series;
-    }
-    case 'markdown': {
-      const { content } = rest;
-      const series: z.infer<typeof markdownChartSeriesSchema> = {
-        type: 'markdown',
-        content: content ?? '',
-      };
-      return series;
-    }
-    default: {
-      // Ensure exhaustive check at compile time
-      const _exhaustiveCheck: never = type;
-      throw new Error(`Invalid chart type: ${_exhaustiveCheck}`);
+/** Returns a new object containing only the truthy, requested keys from the original object */
+const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
+  const result: Partial<T> = {};
+  for (const key of keys) {
+    if (obj[key]) {
+      result[key] = obj[key];
     }
   }
+  return result;
 };
 
-export const translateExternalChartToInternalChart = (
-  chartInput: z.infer<typeof externalChartSchemaWithId>,
-): z.infer<typeof chartSchema> => {
-  const { id, x, name, y, w, h, series, asRatio } = chartInput;
+export function translateExternalChartToTileConfig(
+  chart: SeriesTile,
+): DashboardDocument['tiles'][number] {
+  const { id, name, x, y, w, h, series, asRatio } = chart;
+
+  if (series.length === 0) {
+    throw new Error('Chart must have at least one series');
+  }
+
+  // API validation ensures all series have the same type
+  const firstSeries = series[0];
+
+  // Determine the sourceId and displayType based on series type
+  let sourceId: string =
+    firstSeries.type === 'markdown' ? '' : firstSeries.sourceId;
+  let select: BuilderSavedChartConfig['select'] = '';
+  let displayType: BuilderSavedChartConfig['displayType'];
+  let groupBy: BuilderSavedChartConfig['groupBy'] = '';
+  let where: BuilderSavedChartConfig['where'] = '';
+  let whereLanguage: BuilderSavedChartConfig['whereLanguage'] = 'lucene';
+  let orderBy: BuilderSavedChartConfig['orderBy'] = '';
+  let markdown: BuilderSavedChartConfig['markdown'] = '';
+  let numberFormat: BuilderSavedChartConfig['numberFormat'] = undefined;
+
+  switch (firstSeries.type) {
+    case 'time': {
+      displayType =
+        firstSeries.displayType === 'stacked_bar'
+          ? DisplayType.StackedBar
+          : DisplayType.Line;
+
+      // Convert time series to select array
+      select = series.map(s => {
+        if (s.type !== 'time') {
+          throw new Error('All series in a time chart must be time series');
+        }
+
+        // Take the first numberFormat found among series
+        if (s.numberFormat && !numberFormat) {
+          numberFormat = s.numberFormat;
+        }
+
+        return {
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(s, ['alias', 'aggFn', 'level', 'metricName']),
+          ...(s.metricDataType ? { metricType: s.metricDataType } : {}),
+          valueExpression: s.field ?? '',
+          aggCondition: s.where ?? '',
+          aggConditionLanguage: s.whereLanguage ?? 'lucene',
+        };
+      });
+
+      groupBy = firstSeries.groupBy.join(',');
+      break;
+    }
+
+    case 'table': {
+      displayType = DisplayType.Table;
+
+      // Convert table series to select array
+      select = series.map(s => {
+        if (s.type !== 'table') {
+          throw new Error('All series in a table chart must be table series');
+        }
+
+        // Take the first numberFormat found among series
+        if (s.numberFormat && !numberFormat) {
+          numberFormat = s.numberFormat;
+        }
+
+        return {
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(s, ['alias', 'aggFn', 'level', 'metricName']),
+          ...(s.metricDataType ? { metricType: s.metricDataType } : {}),
+          valueExpression: s.field ?? '',
+          aggCondition: s.where ?? '',
+          aggConditionLanguage: s.whereLanguage ?? 'lucene',
+        };
+      });
+
+      groupBy = firstSeries.groupBy.join(',');
+
+      if (firstSeries.sortOrder && firstSeries.field) {
+        orderBy = [
+          {
+            valueExpression: firstSeries.field,
+            ordering: firstSeries.sortOrder === 'desc' ? 'DESC' : 'ASC',
+          },
+        ];
+      }
+
+      break;
+    }
+
+    case 'number': {
+      displayType = DisplayType.Number;
+      numberFormat = firstSeries.numberFormat;
+
+      // Number chart uses only the first series
+      select = [
+        {
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(firstSeries, [
+            'alias',
+            'aggFn',
+            'level',
+            'metricName',
+          ]),
+          ...(firstSeries.metricDataType
+            ? { metricType: firstSeries.metricDataType }
+            : {}),
+          valueExpression: firstSeries.field ?? '',
+          aggCondition: firstSeries.where ?? '',
+          aggConditionLanguage: firstSeries.whereLanguage ?? 'lucene',
+        },
+      ];
+
+      break;
+    }
+
+    case 'search': {
+      displayType = DisplayType.Search;
+      // Search chart uses fields as a comma-separated string
+      select = firstSeries.fields.join(', ');
+      where = firstSeries.where ?? '';
+      whereLanguage = firstSeries.whereLanguage ?? 'lucene';
+      break;
+    }
+
+    case 'markdown': {
+      displayType = DisplayType.Markdown;
+      sourceId = 'markdown'; // Markdown charts don't have a sourceId, so we use a placeholder
+      markdown = firstSeries.content;
+      break;
+    }
+
+    default: {
+      // Ensure exhaustive check at compile time
+      const _exhaustiveCheck: never = firstSeries;
+      throw new Error(`Invalid chart: ${_exhaustiveCheck}`);
+    }
+  }
+
+  const seriesReturnType = asRatio ? 'ratio' : 'column';
+
+  const config: SavedChartConfig = {
+    // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+    ...pickIfTruthy(
+      {
+        groupBy,
+        orderBy,
+        markdown,
+        seriesReturnType,
+        numberFormat,
+      },
+      ['groupBy', 'orderBy', 'markdown', 'seriesReturnType', 'numberFormat'],
+    ),
+    name,
+    source: sourceId,
+    displayType,
+    select,
+    where,
+    whereLanguage,
+  };
+
   return {
     id,
-    name,
     x,
     y,
     w,
     h,
-    seriesReturnType: asRatio ? 'ratio' : 'column',
-    series: series.map(s => translateExternalSeriesToInternalSeries(s)),
+    config,
   };
-};
+}
 
-const translateChartDocumentToExternalChart = (
-  chart: z.infer<typeof chartSchema>,
-): z.infer<typeof externalChartSchemaWithId> => {
-  const { id, x, name, y, w, h, series, seriesReturnType } = chart;
+export function translateFilterToExternalFilter(
+  filter: DashboardFilter,
+): ExternalDashboardFilterWithId {
   return {
-    id,
-    name,
-    x,
-    y,
-    w,
-    h,
-    asRatio: seriesReturnType === 'ratio',
-    series: series.map(s => {
-      const {
-        type,
-        table,
-        aggFn,
-        level,
-        field,
-        where,
-        groupBy,
-        sortOrder,
-        content,
-        numberFormat,
-      } = s;
-
-      return {
-        type,
-        dataSource: table === 'metrics' ? 'metrics' : 'events',
-        aggFn,
-        level,
-        field,
-        where,
-        groupBy,
-        sortOrder,
-        content,
-        numberFormat,
-      };
-    }),
+    ...omit(filter, 'source'),
+    sourceId: filter.source.toString(),
   };
-};
+}
 
-export type ExternalDashboard = {
-  id: string;
-  name: string;
-  tiles: ExternalChart[];
-  tags?: string[];
-};
-
-export type ExternalDashboardRequest = {
-  name: string;
-  tiles: ExternalChart[];
-  tags?: string[];
-};
-
-export function translateDashboardDocumentToExternalDashboard(
-  dashboard: Pick<IDashboard, '_id' | 'name' | 'tiles' | 'tags'>,
-): ExternalDashboard {
+export function translateExternalFilterToFilter(
+  filter: ExternalDashboardFilterWithId,
+): DashboardFilter {
   return {
-    id: dashboard._id.toString(),
-    name: dashboard.name,
-    tiles: dashboard.tiles,
-    tags: dashboard.tags || [],
+    ...omit(filter, 'sourceId'),
+    source: filter.sourceId,
   };
 }
 
 // Alert related types and transformations
 export type ExternalAlert = {
   id: string;
-  name: string | null;
-  message: string | null;
+  name?: string | null;
+  message?: string | null;
   threshold: number;
-  interval: string;
-  thresholdType: string;
-  source: string;
-  state: string;
-  channel: any;
-  team: string;
+  thresholdMax?: number;
+  interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
+  thresholdType: AlertThresholdType;
+  source?: string;
+  state: AlertState;
+  channel: AlertChannel;
+  teamId: string;
   tileId?: string;
-  dashboard?: string;
-  savedSearch?: string;
+  dashboardId?: string;
+  savedSearchId?: string;
   groupBy?: string;
-  silenced?: any;
-  createdAt: string;
-  updatedAt: string;
+  silenced?: {
+    by?: string;
+    at: string;
+    until: string;
+  };
+  executionErrors?: {
+    timestamp: string;
+    type: AlertErrorType;
+    message: string;
+  }[];
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+type AlertDocumentObject = IAlert & { _id: ObjectId };
+
+function hasCreatedAt(
+  alert: AlertDocumentObject,
+): alert is AlertDocument & { createdAt: Date } {
+  return 'createdAt' in alert && alert.createdAt instanceof Date;
+}
+
+function hasUpdatedAt(
+  alert: AlertDocumentObject,
+): alert is AlertDocument & { updatedAt: Date } {
+  return 'updatedAt' in alert && alert.updatedAt instanceof Date;
+}
+
+function transformScheduleStartAt(
+  scheduleStartAt: unknown,
+): ExternalAlert['scheduleStartAt'] {
+  if (scheduleStartAt === null) {
+    return null;
+  }
+
+  if (scheduleStartAt === undefined) {
+    return undefined;
+  }
+
+  if (scheduleStartAt instanceof Date) {
+    return scheduleStartAt.toISOString();
+  }
+
+  return typeof scheduleStartAt === 'string' ? scheduleStartAt : undefined;
+}
+
+function transformSilencedToExternalSilenced(
+  silenced: AlertDocumentObject['silenced'],
+): ExternalAlert['silenced'] {
+  return silenced
+    ? {
+        by: silenced.by?.toString(),
+        at: silenced.at.toISOString(),
+        until: silenced.until.toISOString(),
+      }
+    : undefined;
+}
+
+function transformErrorsToExternalErrors(
+  errors: AlertDocumentObject['executionErrors'],
+): ExternalAlert['executionErrors'] {
+  return errors?.map(err => ({
+    timestamp:
+      err.timestamp instanceof Date
+        ? err.timestamp.toISOString()
+        : String(err.timestamp),
+    type: err.type,
+    message: err.message,
+  }));
+}
 
 export function translateAlertDocumentToExternalAlert(
   alert: AlertDocument,
 ): ExternalAlert {
   // Convert to plain object if it's a Mongoose document
-  const alertObj = alert.toJSON ? alert.toJSON() : { ...alert };
+  const alertObj: AlertDocumentObject = alert.toJSON
+    ? alert.toJSON()
+    : { ...alert };
 
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
@@ -250,19 +328,29 @@ export function translateAlertDocumentToExternalAlert(
     name: alertObj.name,
     message: alertObj.message,
     threshold: alertObj.threshold,
+    thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,
+    ...(alertObj.scheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,
+    }),
+    scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,
     channel: alertObj.channel,
-    team: alertObj.team.toString(),
+    teamId: alertObj.team.toString(),
     tileId: alertObj.tileId,
-    dashboard: alertObj.dashboard?.toString(),
-    savedSearch: alertObj.savedSearch?.toString(),
+    dashboardId: alertObj.dashboard?.toString(),
+    savedSearchId: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
-    silenced: alertObj.silenced,
-    createdAt: alertObj.createdAt.toISOString(),
-    updatedAt: alertObj.updatedAt.toISOString(),
+    silenced: transformSilencedToExternalSilenced(alertObj.silenced),
+    executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
+    createdAt: hasCreatedAt(alertObj)
+      ? alertObj.createdAt.toISOString()
+      : undefined,
+    updatedAt: hasUpdatedAt(alertObj)
+      ? alertObj.updatedAt.toISOString()
+      : undefined,
   };
 
   return result;

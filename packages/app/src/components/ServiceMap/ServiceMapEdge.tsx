@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import {
   BaseEdge,
   Edge,
@@ -13,7 +13,7 @@ export type ServiceMapEdgeData = {
   totalRequests: number;
   errorPercentage: number;
   dateRange: [Date, Date];
-  source: TSource;
+  source: TTraceSource;
   serviceName: string;
   isSingleTrace?: boolean;
 };

@@ -1,9 +1,9 @@
-export type FontConfig = {
+type FontConfig = {
   variable: string;
   fallback: string;
 };
 
-export const FONT_CONFIG: Record<string, FontConfig> = {
+const FONT_CONFIG: Record<string, FontConfig> = {
   'IBM Plex Mono': {
     variable: 'var(--font-ibm-plex-mono)',
     fallback: 'monospace',
@@ -22,7 +22,7 @@ export const FONT_CONFIG: Record<string, FontConfig> = {
   },
 };
 
-export const DEFAULT_FONT_CONFIG = FONT_CONFIG.Inter;
+const DEFAULT_FONT_CONFIG = FONT_CONFIG.Inter;
 
 // Derived maps for convenience
 export const FONT_VAR_MAP = Object.entries(FONT_CONFIG).reduce(
@@ -42,7 +42,6 @@ export const MANTINE_FONT_MAP = Object.entries(FONT_CONFIG).reduce(
 );
 
 export const DEFAULT_FONT_VAR = DEFAULT_FONT_CONFIG.variable;
-export const DEFAULT_MANTINE_FONT = `${DEFAULT_FONT_CONFIG.variable}, ${DEFAULT_FONT_CONFIG.fallback}`;
 
 // UI options for font selection
 export const OPTIONS_FONTS = [

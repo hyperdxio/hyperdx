@@ -8,8 +8,12 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
+  AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  isRangeThresholdType,
+  pickSampleWeightExpressionProps,
+  SourceKind,
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -22,12 +26,15 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState, AlertThresholdType } from '@/models/alert';
+import { AlertSource, AlertState } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import { doesExceedThreshold } from '@/tasks/checkAlerts';
+import {
+  computeAliasWithClauses,
+  doesExceedThreshold,
+} from '@/tasks/checkAlerts';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -36,6 +43,58 @@ import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
+
+const describeThresholdViolation = (
+  thresholdType: AlertThresholdType,
+): string => {
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return 'meets or exceeds';
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return 'exceeds';
+    case AlertThresholdType.BELOW:
+      return 'falls below';
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return 'falls to or below';
+    case AlertThresholdType.EQUAL:
+      return 'equals';
+    case AlertThresholdType.NOT_EQUAL:
+      return 'does not equal';
+    case AlertThresholdType.BETWEEN:
+      return 'falls between';
+    case AlertThresholdType.NOT_BETWEEN:
+      return 'falls outside';
+  }
+};
+
+const describeThresholdResolution = (
+  thresholdType: AlertThresholdType,
+): string => {
+  switch (thresholdType) {
+    case AlertThresholdType.ABOVE:
+      return 'falls below';
+    case AlertThresholdType.ABOVE_EXCLUSIVE:
+      return 'falls to or below';
+    case AlertThresholdType.BELOW:
+      return 'meets or exceeds';
+    case AlertThresholdType.BELOW_OR_EQUAL:
+      return 'exceeds';
+    case AlertThresholdType.EQUAL:
+      return 'does not equal';
+    case AlertThresholdType.NOT_EQUAL:
+      return 'equals';
+    case AlertThresholdType.BETWEEN:
+      return 'falls outside';
+    case AlertThresholdType.NOT_BETWEEN:
+      return 'falls between';
+  }
+};
+
+const describeThreshold = (alert: AlertInput): string => {
+  return isRangeThresholdType(alert.thresholdType)
+    ? `${alert.threshold} and ${alert.thresholdMax ?? '?'}`
+    : `${alert.threshold}`;
+};
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
@@ -67,6 +126,7 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
+  isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
   startTime: Date;
@@ -114,7 +174,7 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-export const notifyChannel = async ({
+const notifyChannel = async ({
   channel,
   message,
 }: {
@@ -272,7 +332,7 @@ export const handleSendGenericWebhook = async (
       },
       'Failed to compile generic webhook body',
     );
-    return;
+    throw new Error('Failed to build webhook request body', { cause: e });
   }
 
   try {
@@ -294,6 +354,8 @@ export const handleSendGenericWebhook = async (
       },
       'Failed to send generic webhook message',
     );
+    // rethrow so that it can be recorded in alert errors
+    throw e;
   }
 };
 
@@ -370,14 +432,10 @@ export const buildAlertMessageTemplateTitle = ({
     const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
-          doesExceedThreshold(alert.thresholdType, alert.threshold, value)
-            ? alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'exceeds'
-              : 'falls below'
-            : alert.thresholdType === AlertThresholdType.ABOVE
-              ? 'falls below'
-              : 'exceeds'
-        } ${alert.threshold}`;
+          doesExceedThreshold(alert, value)
+            ? describeThresholdViolation(alert.thresholdType)
+            : describeThresholdResolution(alert.thresholdType)
+        } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   }
 
@@ -418,7 +476,7 @@ const getPopulatedChannel = (
   channelType: AlertChannelType,
   channelIdOrNamePrefix: string,
   teamWebhooksById: Map<string, IWebhook>,
-): PopulatedAlertChannel | undefined => {
+): PopulatedAlertChannel => {
   switch (channelType) {
     case 'webhook': {
       const webhook =
@@ -432,13 +490,15 @@ const getPopulatedChannel = (
           },
           'webhook not found',
         );
-        return undefined;
+        throw new Error(
+          `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
+        );
       }
       return { type: 'webhook', channel: webhook };
     }
     default: {
       logger.error({ channelType }, 'Unsupported alert channel type');
-      return undefined;
+      throw new Error('Unsupported alert destination');
     }
   }
 };
@@ -527,11 +587,6 @@ export const renderAlertTemplate = async ({
         const startTime = view.startTime.getTime();
         const endTime = view.endTime.getTime();
 
-        // Generate eventId with explicit distinction between grouped and non-grouped alerts
-        // to prevent collisions between empty group names and non-grouped alerts
-        const isGroupedAlert = Boolean(
-          alert.groupBy && alert.groupBy.trim() !== '',
-        );
         const eventId = objectHash({
           alertId: alert.id,
           channel: {
@@ -539,9 +594,8 @@ export const renderAlertTemplate = async ({
             id: channel.channel._id.toString(),
           },
           // Explicitly track if this is a grouped alert
-          isGrouped: isGroupedAlert,
-          // Only include groupId if this is actually a grouped alert with a non-empty group value
-          ...(isGroupedAlert && group ? { groupId: group } : {}),
+          isGrouped: view.isGroupedAlert,
+          ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
         await notifyChannel({
@@ -581,17 +635,25 @@ ${targetTemplate}`;
     if (source == null) {
       throw new Error(`Source ID is ${alert.source} but source is null`);
     }
+    if (source.kind !== SourceKind.Log && source.kind !== SourceKind.Trace) {
+      throw new Error(
+        `Expecting SourceKind 'trace' or 'log', got ${source.kind}`,
+      );
+    }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
+    const resolvedSelect =
+      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
       connection: '', // no need for the connection id since clickhouse client is already initialized
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
+      select: resolvedSelect,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
+      ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {
@@ -602,7 +664,19 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
-      const query = await renderChartConfig(chartConfig, metadata);
+      const aliasWith = await computeAliasWithClauses(
+        savedSearch,
+        source,
+        metadata,
+      );
+      if (aliasWith) {
+        chartConfig.with = aliasWith;
+      }
+      const query = await renderChartConfig(
+        chartConfig,
+        metadata,
+        source.querySettings,
+      );
       const raw = await clickhouseClient
         .query<'CSV'>({
           query: query.sql,
@@ -629,11 +703,7 @@ ${targetTemplate}`;
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} lines found, expected ${
-      alert.thresholdType === AlertThresholdType.ABOVE
-        ? 'less than'
-        : 'greater than'
-    } ${alert.threshold} lines\n${timeRangeMessage}
+${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
@@ -645,14 +715,10 @@ ${truncatedResults}
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${formattedValue} ${
-      doesExceedThreshold(alert.thresholdType, alert.threshold, value)
-        ? alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'exceeds'
-          : 'falls below'
-        : alert.thresholdType === AlertThresholdType.ABOVE
-          ? 'falls below'
-          : 'exceeds'
-    } ${alert.threshold}\n${timeRangeMessage}
+      doesExceedThreshold(alert, value)
+        ? describeThresholdViolation(alert.thresholdType)
+        : describeThresholdResolution(alert.thresholdType)
+    } ${describeThreshold(alert)}\n${timeRangeMessage}
 ${targetTemplate}`;
   }
 

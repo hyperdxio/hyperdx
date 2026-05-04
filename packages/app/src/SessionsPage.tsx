@@ -12,31 +12,33 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  Alert,
+  Anchor,
   Box,
   Button,
-  Center,
+  Code,
   Flex,
   Group,
-  Stack,
-  Text,
+  Paper,
+  Stepper,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
-  IconInfoCircleFilled,
   IconPlayerPlay,
   IconRefresh,
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import EmptyState from '@/components/EmptyState';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
-import WhereLanguageControlled from './components/WhereLanguageControlled';
+import OnboardingModal from './components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from './components/SearchInput/SearchWhereInput';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
@@ -53,9 +55,6 @@ function SessionCard({
   numEvents,
   onClick,
   sessionId,
-  teamId,
-  teamName,
-  userName,
 }: {
   email: string;
   maxTime: Date;
@@ -64,9 +63,6 @@ function SessionCard({
   numEvents: number;
   onClick: () => void;
   sessionId: string;
-  teamId: string;
-  teamName: string;
-  userName: string;
 }) {
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
   const durationStr = new Date(maxTime.getTime() - minTime.getTime())
@@ -109,6 +105,7 @@ function SessionCardList({
   isSessionLoading?: boolean;
   onClick: (session: Session) => void;
 }) {
+  const brandName = useBrandDisplayName();
   const parentRef = useRef<HTMLDivElement>(null);
 
   // The virtualizer
@@ -135,7 +132,7 @@ function SessionCardList({
             search syntax issues.
           </div>
           <div className="text-muted mt-3">
-            Add new data sources by setting up a HyperDX integration.
+            Add new data sources by setting up a {brandName} integration.
           </div>
           <Button
             component="a"
@@ -144,7 +141,7 @@ function SessionCardList({
             target="_blank"
             href="/docs/install/browser"
           >
-            Install HyperDX Browser Integration
+            Install {brandName} Browser Integration
           </Button>
         </div>
       )}
@@ -173,10 +170,7 @@ function SessionCardList({
               minTimestamp,
               sessionCount,
               sessionId,
-              teamId,
-              teamName,
               userEmail,
-              userName,
             } = row;
             return (
               <div
@@ -195,9 +189,6 @@ function SessionCardList({
                   <SessionCard
                     sessionId={sessionId}
                     email={userEmail}
-                    userName={userName}
-                    teamName={teamName}
-                    teamId={teamId}
                     numEvents={Number(sessionCount)}
                     numErrors={Number(errorCount)}
                     maxTime={new Date(maxTimestamp)}
@@ -224,12 +215,14 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 export default function SessionsPage() {
+  const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 
   const { control, setValue, handleSubmit } = useForm({
     values: {
       where: appliedConfig.where,
-      whereLanguage: appliedConfig.whereLanguage,
+      whereLanguage:
+        appliedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
       source: appliedConfig.sessionSource,
     },
   });
@@ -239,10 +232,12 @@ export default function SessionsPage() {
   const sourceId = useWatch({ control, name: 'source' });
   const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
     id: sourceId,
+    kinds: [SourceKind.Session],
   });
 
   const { data: traceTrace } = useSource({
     id: sessionSource?.traceSourceId,
+    kinds: [SourceKind.Trace],
   });
 
   // Get all sources and select the first session type source by default
@@ -293,33 +288,6 @@ export default function SessionsPage() {
     }
   }, [sourceId, appliedConfig.sessionSource, onSubmit]);
 
-  // FIXME: fix the url
-  const generateSearchUrl = useCallback(
-    (newQuery?: string, newTimeRange?: [Date, Date]) => {
-      const qparams = new URLSearchParams({
-        q: '',
-      });
-      return `/search?${qparams.toString()}`;
-    },
-    [],
-  );
-
-  // FIXME: fix the url
-  const generateChartUrl = useCallback(
-    ({ aggFn, field, where, groupBy }: any) => {
-      return `/chart?series=${encodeURIComponent(
-        JSON.stringify({
-          type: 'time',
-          aggFn,
-          field,
-          where,
-          groupBy,
-        }),
-      )}`;
-    },
-    [],
-  );
-
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
     {
       sid: withDefault(StringParam, undefined),
@@ -366,7 +334,7 @@ export default function SessionsPage() {
 
   const { data: tableData, isLoading: isSessionsLoading } = useSessions({
     dateRange: searchedTimeRange,
-    sessionSource: sessionSource,
+    sessionSource,
     traceSource: traceTrace,
     // TODO: if selectedSession is not null, we should filter by that session id
     where: appliedConfig.where as SearchCondition,
@@ -377,10 +345,15 @@ export default function SessionsPage() {
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
-    <div className="SessionsPage" data-testid="sessions-page">
+    <div
+      className="SessionsPage"
+      data-testid="sessions-page"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
-        <title>Client Sessions - HyperDX</title>
+        <title>Client Sessions - {brandName}</title>
       </Head>
+      <OnboardingModal />
       {selectedSession != null &&
         traceTrace != null &&
         sessionSource != null &&
@@ -395,20 +368,14 @@ export default function SessionsPage() {
             onClose={() => {
               setSelectedSession(undefined);
             }}
-            generateSearchUrl={generateSearchUrl}
-            generateChartUrl={({ aggFn, field, groupBy }) =>
-              generateChartUrl({
-                aggFn,
-                field,
-                groupBy,
-                where: `rum_session_id:"${selectedSession.id}"`,
-              })
-            }
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}
+            onLanguageChange={lang =>
+              setAppliedConfig(prev => ({ ...prev, whereLanguage: lang }))
+            }
           />
         )}
-      <Box p="sm">
+      <Box p="sm" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <form
           data-testid="sessions-search-form"
           onSubmit={e => {
@@ -424,45 +391,13 @@ export default function SessionsPage() {
                 name="source"
                 allowedSourceKinds={[SourceKind.Session]}
               />
-              <WhereLanguageControlled
-                name="whereLanguage"
+              <SearchWhereInput
+                tableConnection={tcFromSource(traceTrace)}
                 control={control}
-                sqlInput={
-                  <Box style={{ width: '50%', flexGrow: 1 }}>
-                    <SQLInlineEditorControlled
-                      tableConnection={tcFromSource(traceTrace)}
-                      onSubmit={onSubmit}
-                      control={control}
-                      name="where"
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      onLanguageChange={lang =>
-                        setValue('whereLanguage', lang, {
-                          shouldDirty: true,
-                        })
-                      }
-                      language="sql"
-                      label="WHERE"
-                      enableHotkey
-                      allowMultiline={true}
-                    />
-                  </Box>
-                }
-                luceneInput={
-                  <SearchInputV2
-                    tableConnection={tcFromSource(traceTrace)}
-                    control={control}
-                    onSubmit={onSubmit}
-                    name="where"
-                    onLanguageChange={lang =>
-                      setValue('whereLanguage', lang, {
-                        shouldDirty: true,
-                      })
-                    }
-                    language="lucene"
-                    placeholder="Search your events w/ Lucene ex. column:foo"
-                    enableHotkey
-                  />
-                }
+                name="where"
+                onSubmit={onSubmit}
+                enableHotkey
+                width="50%"
               />
               <TimePicker
                 inputValue={displayedTimeInputValue}
@@ -471,8 +406,14 @@ export default function SessionsPage() {
                   onSearch(range);
                 }}
               />
-              <Button variant="outline" type="submit" px="sm">
-                <IconPlayerPlay size={16} />
+              <Button
+                variant="primary"
+                type="submit"
+                px="sm"
+                leftSection={<IconPlayerPlay size={16} />}
+                style={{ flexShrink: 0 }}
+              >
+                Run
               </Button>
             </Group>
           </Flex>
@@ -485,18 +426,14 @@ export default function SessionsPage() {
           </Group>
         ) : (
           <>
-            {sessionSource && sessionSource.kind !== SourceKind.Session && (
-              <Alert
-                icon={<IconInfoCircleFilled size={16} />}
-                color="gray"
-                py="xs"
-                mt="md"
-              >
-                Please select a valid session source
-              </Alert>
-            )}
             {!sessions.length ? (
-              <SessionSetupInstructions />
+              <Flex
+                align="center"
+                justify="center"
+                style={{ flex: 1, minHeight: 0 }}
+              >
+                <SessionSetupInstructions />
+              </Flex>
             ) : (
               <div style={{ minHeight: 0 }} className="mt-4">
                 <SessionCardList
@@ -518,46 +455,66 @@ export default function SessionsPage() {
 SessionsPage.getLayout = withAppNav;
 
 function SessionSetupInstructions() {
+  const brandName = useBrandDisplayName();
   return (
-    <>
-      <Stack w={500} mx="auto" mt="xl" gap="xxs">
-        <IconDeviceLaptop size={32} className="text-muted" />
-        <Text c="gray" fw={500} size="xs">
-          Instructions
-        </Text>
-        <Text c="gray">
-          You can set up Session Replays when the HyperDX Otel Collector is
-          used.
-        </Text>
-        <Text c="gray" fw={500} mt="sm">
-          1. Create a new source with <strong>Session</strong> type
-        </Text>
-        <Text c="dimmed" size="xs">
-          Go to Team Settings, click <strong>Add Source</strong> under Sources
-          section, and select <strong>Session</strong> as the source type.
-        </Text>
-        <Text c="gray" fw={500} mt="sm">
-          2. Choose the <strong>hyperdx_sessions</strong> table
-        </Text>
-        <Text c="dimmed" size="xs">
-          Select the <strong>hyperdx_sessions</strong> table from the dropdown,
-          and select the corresponding trace source.
-        </Text>
-
-        <Text c="gray" fw={500} mt="sm">
-          3. Start recording sessions
-        </Text>
-        <Text c="dimmed" size="xs">
-          Install the{' '}
-          <a
-            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
-            target="_blank"
-          >
-            HyperDX Browser Integration
-          </a>{' '}
-          to start recording sessions.
-        </Text>
-      </Stack>
-    </>
+    <EmptyState
+      icon={<IconDeviceLaptop size={32} />}
+      title="Set up session replays"
+      description={
+        <>
+          Follow these steps to start recording and viewing session replays with
+          the {brandName} Otel Collector.
+        </>
+      }
+      maw={600}
+    >
+      <Paper withBorder radius="md" p="xl">
+        <Stepper active={-1} orientation="vertical" size="md">
+          <Stepper.Step
+            label={
+              <>
+                Create a new source with <Code>Session</Code> type
+              </>
+            }
+            description={
+              <>
+                Go to Team Settings, click <Code>Add Source</Code> under Sources
+                section, and select <Code>Session</Code> as the source type.
+              </>
+            }
+          />
+          <Stepper.Step
+            label={
+              <>
+                Choose the <Code>hyperdx_sessions</Code> table
+              </>
+            }
+            description={
+              <>
+                Select the <Code>hyperdx_sessions</Code> table from the
+                dropdown, and select the corresponding trace source.
+              </>
+            }
+          />
+          <Stepper.Step
+            label="Start recording sessions"
+            description={
+              <>
+                Install the{' '}
+                <Anchor
+                  href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="xs"
+                >
+                  {brandName} Browser Integration
+                </Anchor>{' '}
+                to start recording sessions.
+              </>
+            }
+          />
+        </Stepper>
+      </Paper>
+    </EmptyState>
   );
 }

@@ -4,6 +4,7 @@ import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
+import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
@@ -20,15 +21,17 @@ const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
+  aliasWith,
   hideHeader = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  aliasWith?: WithClause[];
   hideHeader?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId });
+  const { data } = useRowData({ source, rowId, aliasWith });
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 
@@ -50,7 +53,10 @@ export function RowOverviewPanel({
 
   const jsonColumns = getJSONColumnNames(data?.meta);
 
-  const eventAttributesExpr = source.eventAttributesExpression;
+  const eventAttributesExpr =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+      ? source.eventAttributesExpression
+      : undefined;
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
@@ -142,7 +148,7 @@ export function RowOverviewPanel({
     let parsedStacktrace = stacktrace ?? '[]';
     try {
       parsedStacktrace = JSON.parse(stacktrace);
-    } catch (e) {
+    } catch {
       // do nothing
     }
 
@@ -189,6 +195,7 @@ export function RowOverviewPanel({
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             severityText={firstRow?.__hdx_severity_text}
+            rowData={firstRow}
           />
         </Box>
       )}

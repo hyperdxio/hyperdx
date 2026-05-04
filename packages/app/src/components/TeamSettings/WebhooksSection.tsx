@@ -10,6 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
 import api from '../../api';
+import { useBrandDisplayName } from '../../theme/ThemeProvider';
 import { useConfirm } from '../../useConfirm';
 import {
   getWebhookServiceConfig,
@@ -28,6 +29,7 @@ function DeleteWebhookButton({
   webhookName: string;
   onSuccess: VoidFunction;
 }) {
+  const brandName = useBrandDisplayName();
   const confirm = useConfirm();
   const deleteWebhook = api.useDeleteWebhook();
 
@@ -36,6 +38,7 @@ function DeleteWebhookButton({
       await confirm(
         `Are you sure you want to delete ${webhookName} webhook?`,
         'Delete',
+        { variant: 'danger' },
       )
     ) {
       try {
@@ -50,7 +53,8 @@ function DeleteWebhookButton({
         const message =
           (e instanceof HTTPError
             ? (await e.response.json())?.message
-            : null) || 'Something went wrong. Please contact HyperDX team.';
+            : null) ||
+          `Something went wrong. Please contact ${brandName} team.`;
         notifications.show({
           message,
           color: 'red',
@@ -62,9 +66,8 @@ function DeleteWebhookButton({
 
   return (
     <Button
-      color="red"
       size="compact-xs"
-      variant="outline"
+      variant="danger"
       onClick={handleDelete}
       loading={deleteWebhook.isPending}
     >
@@ -101,7 +104,13 @@ export default function WebhooksSection() {
 
       <Stack>
         {groupedWebhooks.length === 0 ? (
-          <Text size="sm" c="dimmed" ta="center" py="xl">
+          <Text
+            data-testid="webhooks-empty-state"
+            size="sm"
+            c="dimmed"
+            ta="center"
+            py="xl"
+          >
             No webhooks configured yet
           </Text>
         ) : (
@@ -187,7 +196,11 @@ export default function WebhooksSection() {
       </Stack>
 
       {!isAddWebhookModalOpen ? (
-        <Button variant="outline" color="gray.4" onClick={openWebhookModal}>
+        <Button
+          data-testid="add-webhook-section-button"
+          variant="secondary"
+          onClick={openWebhookModal}
+        >
           Add Webhook
         </Button>
       ) : (

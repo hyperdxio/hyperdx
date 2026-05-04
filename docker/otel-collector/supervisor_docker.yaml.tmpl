@@ -23,8 +23,8 @@ agent:
 {{- if getenv "CUSTOM_OTELCOL_CONFIG_FILE" }}
     - {{ getenv "CUSTOM_OTELCOL_CONFIG_FILE" }}
 {{- end }}
-  args:
 {{- if getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
+  args:
     - {{ getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
 {{- end }}
 

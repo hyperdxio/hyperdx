@@ -4,6 +4,9 @@ import {
   makeSavedSearchAlertInput,
 } from '@/fixtures';
 import Alert from '@/models/alert';
+import { SavedSearch } from '@/models/savedSearch';
+import User from '@/models/user';
+import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_SAVED_SEARCH = {
   name: 'error',
@@ -17,9 +20,26 @@ const MOCK_SAVED_SEARCH = {
 
 describe('savedSearch router', () => {
   const server = getServer();
+  let agent: Awaited<ReturnType<typeof getLoggedInAgent>>['agent'];
+  let team: Awaited<ReturnType<typeof getLoggedInAgent>>['team'];
+  let user: Awaited<ReturnType<typeof getLoggedInAgent>>['user'];
+  let webhook: WebhookDocument;
 
   beforeAll(async () => {
     await server.start();
+  });
+
+  beforeEach(async () => {
+    const result = await getLoggedInAgent(server);
+    agent = result.agent;
+    team = result.team;
+    user = result.user;
+    webhook = await Webhook.create({
+      name: 'Test Webhook',
+      service: WebhookService.Slack,
+      url: 'https://hooks.slack.com/test',
+      team: team._id,
+    });
   });
 
   afterEach(async () => {
@@ -31,7 +51,6 @@ describe('savedSearch router', () => {
   });
 
   it('can create a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -41,7 +60,6 @@ describe('savedSearch router', () => {
   });
 
   it('cannot create a saved search with empty name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     await agent
       .post('/saved-search')
       .send({ ...MOCK_SAVED_SEARCH, name: ' ' }) // Trimmed string will be empty and invalid
@@ -49,7 +67,6 @@ describe('savedSearch router', () => {
   });
 
   it('can update a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -62,7 +79,6 @@ describe('savedSearch router', () => {
   });
 
   it('cannot update a saved search with empty name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -74,7 +90,6 @@ describe('savedSearch router', () => {
   });
 
   it('can update a saved search with undefined name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -87,7 +102,6 @@ describe('savedSearch router', () => {
   });
 
   it('can get saved searches', async () => {
-    const { agent } = await getLoggedInAgent(server);
     await agent.post('/saved-search').send(MOCK_SAVED_SEARCH).expect(200);
     const savedSearches = await agent.get('/saved-search').expect(200);
     expect(savedSearches.body.length).toBe(1);
@@ -95,7 +109,6 @@ describe('savedSearch router', () => {
   });
 
   it('can delete a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -106,6 +119,7 @@ describe('savedSearch router', () => {
       .send(
         makeSavedSearchAlertInput({
           savedSearchId: savedSearch.body._id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -115,9 +129,67 @@ describe('savedSearch router', () => {
     expect(await Alert.findById(alert.body.data._id)).toBeNull();
   });
 
-  it('sets createdBy on alerts created from a saved search and populates it in list', async () => {
-    const { agent, user } = await getLoggedInAgent(server);
+  it('sets createdBy and updatedBy on create and populates them in GET', async () => {
+    const created = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
 
+    // GET all saved searches
+    const savedSearches = await agent.get('/saved-search').expect(200);
+    const savedSearch = savedSearches.body.find(
+      s => s._id === created.body._id,
+    );
+    expect(savedSearch.createdBy).toMatchObject({ email: user.email });
+    expect(savedSearch.updatedBy).toMatchObject({ email: user.email });
+  });
+
+  it('populates updatedBy with a different user after DB update', async () => {
+    const created = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
+
+    // Create a second user on the same team
+    const secondUser = await User.create({
+      email: 'second@test.com',
+      name: 'Second User',
+      team: team._id,
+    });
+
+    // Simulate a different user updating the saved search
+    await SavedSearch.findByIdAndUpdate(created.body._id, {
+      updatedBy: secondUser._id,
+    });
+
+    const savedSearches = await agent.get('/saved-search').expect(200);
+    const savedSearch = savedSearches.body.find(
+      s => s._id === created.body._id,
+    );
+    expect(savedSearch.createdBy).toMatchObject({ email: user.email });
+    expect(savedSearch.updatedBy).toMatchObject({
+      email: 'second@test.com',
+    });
+  });
+
+  it('updates updatedBy when updating a saved search via API', async () => {
+    const created = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
+
+    await agent
+      .patch(`/saved-search/${created.body._id}`)
+      .send({ name: 'updated name' })
+      .expect(200);
+
+    // Verify updatedBy is still set in the DB
+    const dbRecord = await SavedSearch.findById(created.body._id);
+    expect(dbRecord?.updatedBy?.toString()).toBe(user._id.toString());
+    expect(dbRecord?.createdBy?.toString()).toBe(user._id.toString());
+  });
+
+  it('sets createdBy on alerts created from a saved search and populates it in list', async () => {
     // Create a saved search
     const savedSearch = await agent
       .post('/saved-search')
@@ -130,6 +202,7 @@ describe('savedSearch router', () => {
       .send(
         makeSavedSearchAlertInput({
           savedSearchId: savedSearch.body._id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);

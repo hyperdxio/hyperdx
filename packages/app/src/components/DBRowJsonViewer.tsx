@@ -30,18 +30,25 @@ import {
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
-function buildJSONExtractStringQuery(
+type JSONExtractFn =
+  | 'JSONExtractString'
+  | 'JSONExtractFloat'
+  | 'JSONExtractBool';
+
+export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
+  jsonColumns: string[] = [],
+  jsonExtractFn: JSONExtractFn = 'JSONExtractString',
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
   if (nestedPath.length === 0) {
     return null; // No nested path to extract
   }
 
-  const baseColumn = parsedJsonRootPath[parsedJsonRootPath.length - 1];
+  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-  return `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+  return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
 
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -75,22 +82,172 @@ function filterObjectRecursively(obj: any, filter: string): any {
   return result;
 }
 
-const viewerOptionsAtom = atomWithStorage('hdx_json_viewer_options', {
-  normallyExpanded: true,
-  lineWrap: true,
-  tabulate: true,
-});
+function filterBlankValuesRecursively(value: any): any {
+  if (value === null || value === '') {
+    return undefined;
+  }
 
-function HyperJsonMenu() {
+  if (Array.isArray(value)) {
+    const filtered = value
+      .map(filterBlankValuesRecursively)
+      .filter(v => v !== undefined);
+
+    return filtered.length > 0 ? filtered : undefined;
+  }
+
+  if (typeof value === 'object') {
+    const result: Record<string, any> = {};
+
+    for (const [key, v] of Object.entries(value)) {
+      const filtered = filterBlankValuesRecursively(v);
+      if (filtered !== undefined) {
+        result[key] = filtered;
+      }
+    }
+
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+
+  return value;
+}
+
+type ViewerOptions = {
+  normallyExpanded: boolean;
+  whiteSpace?: 'pre' | 'pre-wrap';
+  tabulate: boolean;
+  filterBlanks: boolean;
+};
+
+const VIEWER_OPTIONS_KEY = 'hdx_json_viewer_options';
+
+const DEFAULT_VIEWER_OPTIONS: ViewerOptions = {
+  normallyExpanded: true,
+  whiteSpace: 'pre-wrap',
+  tabulate: true,
+  filterBlanks: false,
+};
+
+/**
+ * Migrates old `lineWrap` boolean to `whiteSpace` enum.
+ *
+ * Old behavior was inverted:
+ *   lineWrap: true  → white-space: pre (no wrapping) — was the default
+ *   lineWrap: false → word-break: break-all (wrapping, but collapsed whitespace)
+ *
+ * New behavior:
+ *   whiteSpace: 'pre'      → preserve formatting, no wrapping
+ *   whiteSpace: 'pre-wrap'  → preserve formatting + wrap long lines
+ *   whiteSpace: undefined   → use default ('pre-wrap'), or future team default
+ */
+/** @internal Exported for testing only */
+export function migrateViewerOptions(
+  stored: string | null,
+): ViewerOptions | null {
+  if (!stored) return null;
+  try {
+    const parsed = JSON.parse(stored);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+
+    if ('lineWrap' in parsed) {
+      const { lineWrap, ...rest } = parsed;
+      const migrated: ViewerOptions = {
+        ...DEFAULT_VIEWER_OPTIONS,
+        ...rest,
+        // Old lineWrap: true meant no-wrap (was default) → undefined (inherit default)
+        // Old lineWrap: false meant user wanted wrapping → 'pre-wrap'
+        whiteSpace: lineWrap === false ? 'pre-wrap' : undefined,
+      };
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(VIEWER_OPTIONS_KEY, JSON.stringify(migrated));
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+      return migrated;
+    }
+
+    return parsed as ViewerOptions;
+  } catch {
+    return null;
+  }
+}
+
+// Custom storage adapter to migrate old `lineWrap` boolean to `whiteSpace` enum
+// on first read, before React renders (avoids flash of wrong state).
+const viewerOptionsStorage = {
+  getItem: (key: string, initialValue: ViewerOptions): ViewerOptions => {
+    if (typeof window === 'undefined') return initialValue;
+    try {
+      const stored = localStorage.getItem(key);
+      return migrateViewerOptions(stored) ?? initialValue;
+    } catch {
+      return initialValue;
+    }
+  },
+  setItem: (key: string, value: ViewerOptions): void => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  },
+};
+
+const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
+  VIEWER_OPTIONS_KEY,
+  DEFAULT_VIEWER_OPTIONS,
+  viewerOptionsStorage,
+);
+
+function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
+  const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
   return (
     <Group>
+      {rowData != null && (
+        <UnstyledButton
+          onClick={() => {
+            window.navigator.clipboard.writeText(
+              typeof rowData === 'string'
+                ? rowData
+                : JSON.stringify(rowData, null, 2),
+            );
+            notifications.show({
+              color: 'green',
+              message: `Value copied to clipboard`,
+            });
+          }}
+          variant="copy"
+          title={'Copy row as JSON'}
+        >
+          <IconCopy size={14} />
+        </UnstyledButton>
+      )}
       <UnstyledButton
         color="gray"
+        data-testid="json-viewer-wrap-toggle"
         onClick={() =>
-          setJsonOptions({ ...jsonOptions, lineWrap: !jsonOptions.lineWrap })
+          setJsonOptions({
+            ...jsonOptions,
+            whiteSpace: effectiveWhiteSpace === 'pre-wrap' ? 'pre' : 'pre-wrap',
+          })
         }
+        style={{
+          opacity: effectiveWhiteSpace === 'pre-wrap' ? 1 : 0.5,
+        }}
       >
         <IconTextWrap size={14} />
       </UnstyledButton>
@@ -138,6 +295,23 @@ function HyperJsonMenu() {
           >
             Tabulate
           </Menu.Item>
+          <Menu.Item
+            lh="1"
+            py={8}
+            rightSection={
+              jsonOptions.filterBlanks ? (
+                <IconCheck size={14} className="ps-2" />
+              ) : null
+            }
+            onClick={() =>
+              setJsonOptions({
+                ...jsonOptions,
+                filterBlanks: !jsonOptions.filterBlanks,
+              })
+            }
+          >
+            Hide blank values
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
     </Group>
@@ -146,7 +320,7 @@ function HyperJsonMenu() {
 
 export function DBRowJsonViewer({
   data,
-  jsonColumns = [],
+  jsonColumns,
 }: {
   data: any;
   jsonColumns?: string[];
@@ -161,6 +335,7 @@ export function DBRowJsonViewer({
 
   const [filter, setFilter] = useState<string>('');
   const [debouncedFilter] = useDebouncedValue(filter, 100);
+  const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   const rowData = useMemo(() => {
     if (!data) {
@@ -168,14 +343,17 @@ export function DBRowJsonViewer({
     }
 
     // remove internal aliases (keys that start with __hdx_)
-    Object.keys(data).forEach(key => {
-      if (key.startsWith('__hdx_')) {
-        delete data[key];
-      }
-    });
+    let cleanedData = Object.fromEntries(
+      Object.entries(data).filter(entry => !entry[0].startsWith('__hdx_')),
+    );
 
-    return filterObjectRecursively(data, debouncedFilter);
-  }, [data, debouncedFilter]);
+    // Apply blank value filter if enabled
+    if (jsonOptions.filterBlanks) {
+      cleanedData = filterBlankValuesRecursively(cleanedData);
+    }
+
+    return filterObjectRecursively(cleanedData, debouncedFilter);
+  }, [data, debouncedFilter, jsonOptions.filterBlanks]);
 
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
@@ -207,9 +385,10 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
@@ -250,10 +429,21 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
+
+              if (typeof value === 'number') {
+                jsonExtractFn = 'JSONExtractFloat';
+              } else if (typeof value === 'boolean') {
+                jsonExtractFn = 'JSONExtractBool';
+              }
+
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
+                jsonExtractFn,
               );
+
               if (jsonQuery) {
                 searchFieldPath = jsonQuery;
               }
@@ -291,9 +481,10 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonColumns,
               );
               if (jsonQuery) {
                 chartFieldPath = jsonQuery;
@@ -317,9 +508,10 @@ export function DBRowJsonViewer({
 
         // Handle parsed JSON from string columns using JSONExtractString
         if (isInParsedJson && parsedJsonRootPath) {
-          const jsonQuery = buildJSONExtractStringQuery(
+          const jsonQuery = buildJSONExtractQuery(
             keyPath,
             parsedJsonRootPath,
+            jsonColumns,
           );
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
@@ -418,8 +610,6 @@ export function DBRowJsonViewer({
     ],
   );
 
-  const jsonOptions = useAtomValue(viewerOptionsAtom);
-
   return (
     <div className="flex-grow-1 overflow-auto">
       <Box py="xs">
@@ -436,17 +626,12 @@ export function DBRowJsonViewer({
             leftSection={<IconSearch size={16} />}
           />
           {filter && (
-            <Button
-              variant="filled"
-              color="gray"
-              size="xs"
-              onClick={() => setFilter('')}
-            >
+            <Button variant="secondary" size="xs" onClick={() => setFilter('')}>
               Clear
             </Button>
           )}
           <div className="flex-grow-1" />
-          <HyperJsonMenu />
+          <HyperJsonMenu rowData={rowData} />
         </Group>
       </Box>
       <Paper bg="transparent" mt="sm">

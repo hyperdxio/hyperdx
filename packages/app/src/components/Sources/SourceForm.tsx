@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -8,17 +14,17 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
-  sourceSchemaWithout,
+  SourceSchema,
+  SourceSchemaNoId,
   TSource,
-  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Box,
   Button,
   Center,
@@ -35,8 +41,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconCheck,
   IconCirclePlus,
   IconHelpCircle,
   IconSettings,
@@ -44,18 +52,21 @@ import {
 } from '@tabler/icons-react';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
+import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
-  isValidSessionsTable,
   useCreateSource,
   useDeleteSource,
   useSource,
   useSources,
   useUpdateSource,
 } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   inferMaterializedViewConfig,
   MV_AGGREGATE_FUNCTIONS,
@@ -66,9 +77,77 @@ import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
+import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
-import { SQLInlineEditorControlled } from '../SQLInlineEditor';
+
+type CorrelationField =
+  | 'logSourceId'
+  | 'traceSourceId'
+  | 'sessionSourceId'
+  | 'metricSourceId';
+
+function getCorrelationFieldValue(
+  source: TSource,
+  field: CorrelationField,
+): string | undefined {
+  switch (field) {
+    case 'logSourceId':
+      if (source.kind === SourceKind.Trace)
+        return source.logSourceId ?? undefined;
+      if (source.kind === SourceKind.Metric)
+        return source.logSourceId ?? undefined;
+      return undefined;
+    case 'traceSourceId':
+      if (source.kind === SourceKind.Log)
+        return source.traceSourceId ?? undefined;
+      if (source.kind === SourceKind.Session) return source.traceSourceId;
+      return undefined;
+    case 'sessionSourceId':
+      if (source.kind === SourceKind.Trace)
+        return source.sessionSourceId ?? undefined;
+      return undefined;
+    case 'metricSourceId':
+      if (source.kind === SourceKind.Log)
+        return source.metricSourceId ?? undefined;
+      if (source.kind === SourceKind.Trace)
+        return source.metricSourceId ?? undefined;
+      return undefined;
+  }
+}
+
+function setCorrelationFieldValue(
+  source: TSource,
+  field: CorrelationField,
+  value: string | undefined,
+): TSource {
+  switch (source.kind) {
+    case SourceKind.Log:
+      if (field === 'traceSourceId' || field === 'metricSourceId') {
+        return { ...source, [field]: value };
+      }
+      return source;
+    case SourceKind.Trace:
+      if (
+        field === 'logSourceId' ||
+        field === 'sessionSourceId' ||
+        field === 'metricSourceId'
+      ) {
+        return { ...source, [field]: value };
+      }
+      return source;
+    case SourceKind.Session:
+      if (field === 'traceSourceId') {
+        return { ...source, traceSourceId: value ?? '' };
+      }
+      return source;
+    case SourceKind.Metric:
+      if (field === 'logSourceId') {
+        return { ...source, [field]: value };
+      }
+      return source;
+  }
+}
 
 const DEFAULT_DATABASE = 'default';
 
@@ -85,7 +164,12 @@ const OTEL_CLICKHOUSE_EXPRESSIONS = {
 
 const CORRELATION_FIELD_MAP: Record<
   SourceKind,
-  Record<string, { targetKind: SourceKind; targetField: keyof TSource }[]>
+  Partial<
+    Record<
+      CorrelationField,
+      { targetKind: SourceKind; targetField: CorrelationField }[]
+    >
+  >
 > = {
   [SourceKind.Log]: {
     metricSourceId: [
@@ -169,6 +253,188 @@ function FormRow({
   );
 }
 
+type HighlightedAttributeRowProps = Omit<TableModelProps, 'setValue'> & {
+  id: string;
+  index: number;
+  databaseName: string;
+  name:
+    | 'highlightedTraceAttributeExpressions'
+    | 'highlightedRowAttributeExpressions';
+  tableName: string;
+  connectionId: string;
+  removeHighlightedAttribute: (index: number) => void;
+};
+
+function HighlightedAttributeRow({
+  id,
+  index,
+  control,
+  databaseName,
+  name,
+  tableName,
+  connectionId,
+  removeHighlightedAttribute,
+}: HighlightedAttributeRowProps) {
+  const expressionInput = useWatch({
+    control,
+    name: `${name}.${index}.sqlExpression`,
+  });
+
+  const aliasInput = useWatch({
+    control,
+    name: `${name}.${index}.alias`,
+  });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
+
+  const {
+    data: explainData,
+    error: explainError,
+    isLoading: explainLoading,
+  } = useExplainQuery(
+    {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
+      where: '',
+    },
+
+    {
+      enabled: !!explainParams?.expression,
+    },
+  );
+
+  const runExpression = () => {
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  };
+
+  const isExpressionValid = !!explainData?.length;
+  const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
+
+  return (
+    <React.Fragment key={id}>
+      <Grid.Col span={3} pe={0}>
+        <div
+          style={{ display: 'contents' }}
+          data-name={`${name}.${index}.sqlExpression`}
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name={`${name}.${index}.sqlExpression`}
+            disableKeywordAutocomplete
+            placeholder="ResourceAttributes['http.host']"
+          />
+        </div>
+      </Grid.Col>
+      <Grid.Col span={2} ps="xs">
+        <Flex align="center" gap="sm">
+          <Text c="gray">AS</Text>
+          <SQLInlineEditorControlled
+            control={control}
+            name={`${name}.${index}.alias`}
+            placeholder="Optional Alias"
+            disableKeywordAutocomplete
+          />
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!expressionInput || explainLoading}
+              onClick={runExpression}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color="gray"
+            onClick={() => removeHighlightedAttribute(index)}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Flex>
+      </Grid.Col>
+
+      {shouldShowResult && (
+        <Grid.Col span={5} pe={0} pt={0}>
+          {isExpressionValid && (
+            <Text c="green" size="xs">
+              Expression is valid.
+            </Text>
+          )}
+          {isExpressionInvalid && (
+            <ErrorCollapse
+              summary="Expression is invalid"
+              details={explainError?.message}
+            />
+          )}
+        </Grid.Col>
+      )}
+
+      <Grid.Col span={3} pe={0}>
+        <InputControlled
+          control={control}
+          name={`${name}.${index}.luceneExpression`}
+          placeholder="ResourceAttributes.http.host (Optional) "
+        />
+      </Grid.Col>
+      <Grid.Col span={1} pe={0}>
+        <Text me="sm" mt={6}>
+          <Tooltip
+            label={
+              'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
+            }
+            color="dark"
+            c="white"
+            multiline
+            maw={600}
+          >
+            <IconHelpCircle size={14} className="cursor-pointer" />
+          </Tooltip>
+        </Text>
+      </Grid.Col>
+    </React.Fragment>
+  );
+}
+
 function HighlightedAttributeExpressionsFormRow({
   control,
   name,
@@ -201,77 +467,36 @@ function HighlightedAttributeExpressionsFormRow({
   return (
     <FormRow label={label} helpText={helpText}>
       <Grid columns={5}>
-        {highlightedAttributes.map((field, index) => (
-          <React.Fragment key={field.id}>
-            <Grid.Col span={3} pe={0}>
-              <SQLInlineEditorControlled
-                tableConnection={{
-                  databaseName,
-                  tableName,
-                  connectionId,
-                }}
-                control={control}
-                name={`${name}.${index}.sqlExpression`}
-                disableKeywordAutocomplete
-                placeholder="ResourceAttributes['http.host']"
-              />
-            </Grid.Col>
-            <Grid.Col span={2} ps="xs">
-              <Flex align="center" gap="sm">
-                <Text c="gray">AS</Text>
-                <SQLInlineEditorControlled
-                  control={control}
-                  name={`${name}.${index}.alias`}
-                  placeholder="Optional Alias"
-                  disableKeywordAutocomplete
-                />
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={() => removeHighlightedAttribute(index)}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Flex>
-            </Grid.Col>
-            <Grid.Col span={3} pe={0}>
-              <InputControlled
-                control={control}
-                name={`${name}.${index}.luceneExpression`}
-                placeholder="ResourceAttributes.http.host (Optional) "
-              />
-            </Grid.Col>
-            <Grid.Col span={1} pe={0}>
-              <Text me="sm" mt={6}>
-                <Tooltip
-                  label={
-                    'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
-                  }
-                  color="dark"
-                  c="white"
-                  multiline
-                  maw={600}
-                >
-                  <IconHelpCircle size={14} className="cursor-pointer" />
-                </Tooltip>
-              </Text>
-            </Grid.Col>
-          </React.Fragment>
+        {highlightedAttributes.map(({ id }, index) => (
+          <HighlightedAttributeRow
+            key={id}
+            {...{
+              id,
+              index,
+              name,
+              control,
+              databaseName,
+              tableName,
+              connectionId,
+              removeHighlightedAttribute,
+            }}
+          />
         ))}
       </Grid>
       <Button
-        variant="default"
+        variant="secondary"
         size="sm"
-        color="gray"
         className="align-self-start"
         mt={highlightedAttributes.length ? 'sm' : 'md'}
         onClick={() => {
-          appendHighlightedAttribute({
-            sqlExpression: '',
-            luceneExpression: '',
-            alias: '',
-          });
+          appendHighlightedAttribute(
+            {
+              sqlExpression: '',
+              luceneExpression: '',
+              alias: '',
+            },
+            { shouldFocus: false },
+          );
         }}
       >
         <IconCirclePlus size={14} className="me-2" />
@@ -301,14 +526,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
   return (
     <Stack gap="md">
       <FormRow
-        label={
-          <Group>
-            Materialized Views
-            <Badge size="sm" radius="sm" color="gray">
-              Beta
-            </Badge>
-          </Group>
-        }
+        label="Materialized Views"
         helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
       >
         <Stack gap="md">
@@ -323,7 +541,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           ))}
 
           <Button
-            variant="default"
+            variant="secondary"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -353,6 +571,7 @@ function MaterializedViewFormSection({
   onRemove,
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
+  const brandName = useBrandDisplayName();
   const connection = useWatch({ control, name: `connection` });
   const sourceDatabaseName = useWatch({
     control,
@@ -444,7 +663,7 @@ function MaterializedViewFormSection({
           <Text size="xs" fw={500} mb={4}>
             Minimum Date
             <Tooltip
-              label="(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then HyperDX will assume that the materialized view contains data for all dates for which the source table contains data."
+              label={`(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then ${brandName} will assume that the materialized view contains data for all dates for which the source table contains data.`}
               color="dark"
               c="white"
               multiline
@@ -461,7 +680,9 @@ function MaterializedViewFormSection({
                 {...field}
                 value={field.value ? new Date(field.value) : undefined}
                 onChange={dateStr =>
-                  field.onChange(dateStr ? dateStr.toISOString() : null)
+                  field.onChange(
+                    dateStr ? new Date(dateStr).toISOString() : null,
+                  )
                 }
                 clearable
                 highlightToday
@@ -545,6 +766,8 @@ function AggregatedColumnsFormSection({
   const fromTableName = useWatch({ control, name: 'from.tableName' });
   const prevMvTableNameRef = useRef(mvTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -570,6 +793,7 @@ function AggregatedColumnsFormSection({
                 tableName: fromTableName,
                 connectionId: connection,
               },
+              metadata,
             );
 
             if (config) {
@@ -604,6 +828,7 @@ function AggregatedColumnsFormSection({
     mvIndex,
     replaceAggregates,
     setValue,
+    metadata,
   ]);
 
   return (
@@ -632,7 +857,7 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -732,8 +957,117 @@ function AggregatedColumnRow({
 // OR traceModel.logModel = 'log_id_blah'
 // custom always points towards the url param
 
-export function LogTableModelForm(props: TableModelProps) {
+function OrderByFormRow({
+  control,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  control: Control<TSource>;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}) {
+  const orderByInput = useWatch({
+    control,
+    name: 'orderByExpression',
+  });
+
+  const [explainExpression, setExplainExpression] = useState<string>();
+
+  const setExplainExpressionDebounced = useDebouncedCallback((expr: string) => {
+    setExplainExpression(expr);
+  }, 1_000);
+
+  useDidUpdate(() => {
+    setExplainExpressionDebounced(orderByInput ?? '');
+  }, [orderByInput]);
+
+  const {
+    data: explainData,
+    error: explainError,
+    isLoading: explainLoading,
+  } = useExplainQuery(
+    {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      select: '*',
+      where: '',
+      orderBy: explainExpression,
+    },
+    {
+      enabled: !!explainExpression,
+    },
+  );
+
+  const runValidation = () => {
+    setExplainExpression(orderByInput ?? '');
+  };
+
+  const isExpressionValid = !!explainData?.length;
+  const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainExpression === (orderByInput ?? '') &&
+    !!explainExpression &&
+    (isExpressionValid || isExpressionInvalid);
+
+  return (
+    <>
+      <FormRow
+        label="Default Order By"
+        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default. (This can be customized per search later)"
+      >
+        <Flex align="center" gap="sm">
+          <Box flex={1}>
+            <SQLInlineEditorControlled
+              tableConnection={{
+                databaseName,
+                tableName,
+                connectionId,
+              }}
+              control={control}
+              name="orderByExpression"
+              placeholder="e.g. Timestamp DESC"
+              disableKeywordAutocomplete
+            />
+          </Box>
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!orderByInput || explainLoading}
+              onClick={runValidation}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Flex>
+        {shouldShowResult && (
+          <Box>
+            {isExpressionValid && (
+              <Text c="green" size="xs">
+                Expression is valid.
+              </Text>
+            )}
+            {isExpressionInvalid && (
+              <ErrorCollapse
+                summary="Expression is invalid"
+                details={explainError?.message}
+              />
+            )}
+          </Box>
+        )}
+      </FormRow>
+    </>
+  );
+}
+
+function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -886,13 +1220,13 @@ export function LogTableModelForm(props: TableModelProps) {
         <Divider />
         <FormRow
           label={'Correlated Metric Source'}
-          helpText="HyperDX Source for metrics associated with logs. Optional"
+          helpText={`${brandName} Source for metrics associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="metricSourceId" />
         </FormRow>
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with logs. Optional"
+          helpText={`${brandName} Source for traces associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
@@ -923,21 +1257,6 @@ export function LogTableModelForm(props: TableModelProps) {
         </FormRow>
 
         <Divider />
-        {/* <FormRow
-          label={'Unique Row ID Expression'}
-          helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
-        >
-          <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="uniqueRowIdExpression"
-            placeholder="Timestamp, ServiceName, Body"
-          />
-        </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
             tableConnection={{
@@ -980,13 +1299,21 @@ export function LogTableModelForm(props: TableModelProps) {
         />
         <Divider />
         <MaterializedViewsFormSection {...props} />
+        <Divider />
+        <OrderByFormRow
+          control={control}
+          databaseName={databaseName}
+          tableName={tableName}
+          connectionId={connectionId}
+        />
       </Stack>
     </>
   );
 }
 
-export function TraceTableModelForm(props: TableModelProps) {
+function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1130,19 +1457,19 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <FormRow
         label={'Correlated Log Source'}
-        helpText="HyperDX Source for logs associated with traces. Optional"
+        helpText={`${brandName} Source for logs associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="logSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Session Source'}
-        helpText="HyperDX Source for sessions associated with traces. Optional"
+        helpText={`${brandName} Source for sessions associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="sessionSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Metric Source'}
-        helpText="HyperDX Source for metrics associated with traces. Optional"
+        helpText={`${brandName} Source for metrics associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="metricSourceId" />
       </FormRow>
@@ -1207,6 +1534,21 @@ export function TraceTableModelForm(props: TableModelProps) {
         />
       </FormRow>
       <FormRow
+        label={'Sample Rate Expression'}
+        helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation -- exact values may differ slightly. Leave empty if spans are not sampled."
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="sampleRateExpression"
+          placeholder="SampleRate"
+        />
+      </FormRow>
+      <FormRow
         label={'Span Events Expression'}
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >
@@ -1266,11 +1608,19 @@ export function TraceTableModelForm(props: TableModelProps) {
       />
       <Divider />
       <MaterializedViewsFormSection {...props} />
+      <Divider />
+      <OrderByFormRow
+        control={control}
+        databaseName={databaseName}
+        tableName={tableName}
+        connectionId={connectionId}
+      />
     </Stack>
   );
 }
 
-export function SessionTableModelForm({ control }: TableModelProps) {
+function SessionTableModelForm({ control }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1278,44 +1628,42 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   });
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
-  const prevTableNameRef = useRef(tableName);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        if (tableName && tableName !== prevTableNameRef.current) {
-          prevTableNameRef.current = tableName;
-          const isValid = await isValidSessionsTable({
-            databaseName,
-            tableName,
-            connectionId,
-          });
-
-          if (!isValid) {
-            notifications.show({
-              color: 'red',
-              message: `${tableName} is not a valid Sessions schema.`,
-            });
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        notifications.show({
-          color: 'red',
-          message: e.message,
-        });
-      }
-    })();
-  }, [tableName, databaseName, connectionId]);
 
   return (
     <>
       <Stack gap="sm">
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with sessions. Required"
+          helpText={`${brandName} Source for traces associated with sessions. Required`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
+        </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+          />
+        </FormRow>
+        <FormRow label={'Resource Attributes Expression'}>
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="resourceAttributesExpression"
+            placeholder="ResourceAttributes"
+          />
         </FormRow>
       </Stack>
     </>
@@ -1323,11 +1671,12 @@ export function SessionTableModelForm({ control }: TableModelProps) {
 }
 
 interface TableModelProps {
-  control: Control<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  setValue: UseFormSetValue<TSource>;
 }
 
-export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+function MetricTableModelForm({ control, setValue }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1336,6 +1685,8 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const connectionId = useWatch({ control, name: 'connection' });
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
+
+  const metadata = useMetadataWithSettings();
 
   useEffect(() => {
     for (const [_key, _value] of Object.entries(OTEL_CLICKHOUSE_EXPRESSIONS)) {
@@ -1362,6 +1713,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
                 tableName: newValue as string,
                 connectionId,
                 metricType: metricType as MetricsDataType,
+                metadata,
               });
               if (!isValid) {
                 notifications.show({
@@ -1381,7 +1733,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         });
       }
     })();
-  }, [metricTables, databaseName, connectionId]);
+  }, [metricTables, databaseName, connectionId, metadata]);
 
   return (
     <>
@@ -1393,7 +1745,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
             helpText={
               metricType === MetricsDataType.ExponentialHistogram ||
               metricType === MetricsDataType.Summary
-                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by HyperDX`
+                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by ${brandName}`
                 : `Table containing ${metricType.toLowerCase()} metrics data`
             }
           >
@@ -1407,7 +1759,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         ))}
         <FormRow
           label={'Correlated Log Source'}
-          helpText="HyperDX Source for logs associated with metrics. Optional"
+          helpText={`${brandName} Source for logs associated with metrics. Optional`}
         >
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>
@@ -1421,8 +1773,8 @@ function TableModelForm({
   setValue,
   kind,
 }: {
-  control: Control<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  setValue: UseFormSetValue<TSource>;
   kind: SourceKind;
 }) {
   switch (kind) {
@@ -1442,7 +1794,7 @@ export function TableSourceForm({
   onSave,
   onCreate,
   isNew = false,
-  defaultName,
+  defaultName = '',
   onCancel,
 }: {
   sourceId?: string;
@@ -1454,40 +1806,9 @@ export function TableSourceForm({
 }) {
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
-  const updateSourceMutation = useUpdateSource();
-
-  const handleDisabledToggle = useCallback(
-    (newDisabledValue: boolean) => {
-      if (!source || isNew) return;
-
-      updateSourceMutation.mutate(
-        {
-          source: {
-            ...source,
-            disabled: newDisabledValue,
-          },
-        },
-        {
-          onSuccess: () => {
-            notifications.show({
-              color: 'green',
-              message: `Source ${newDisabledValue ? 'disabled' : 'enabled'} successfully`,
-            });
-          },
-          onError: error => {
-            notifications.show({
-              color: 'red',
-              message: `Failed to ${newDisabledValue ? 'disable' : 'enable'} source - ${error.message}`,
-            });
-          },
-        },
-      );
-    },
-    [source, isNew, updateSourceMutation],
-  );
 
   const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
-    useForm<TSourceUnion>({
+    useForm<TSource>({
       defaultValues: {
         kind: SourceKind.Log,
         name: defaultName,
@@ -1496,9 +1817,9 @@ export function TableSourceForm({
           databaseName: 'default',
           tableName: '',
         },
+        querySettings: source?.querySettings,
       },
-      // TODO: HDX-1768 remove type assertion
-      values: source as TSourceUnion,
+      values: source,
       resetOptions: {
         keepDirtyValues: true,
         keepErrors: true,
@@ -1527,6 +1848,8 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -1543,6 +1866,8 @@ export function TableSourceForm({
               tableName:
                 watchedKind !== SourceKind.Metric ? watchedTableName : '',
               connectionId: watchedConnection,
+              kind: watchedKind,
+              metadata,
             });
             if (Object.keys(config).length > 0) {
               notifications.show({
@@ -1569,6 +1894,7 @@ export function TableSourceForm({
     watchedDatabaseName,
     watchedKind,
     resetField,
+    metadata,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -1611,28 +1937,28 @@ export function TableSourceForm({
 
       // Check each field for changes
       const changedFields: Array<{
-        name: keyof TSourceUnion;
+        name: CorrelationField;
         value: string | undefined;
       }> = [];
 
       if (logSourceId !== prevLogSourceIdRef.current) {
         prevLogSourceIdRef.current = logSourceId;
         changedFields.push({
-          name: 'logSourceId' as keyof TSourceUnion,
+          name: 'logSourceId',
           value: logSourceId ?? undefined,
         });
       }
       if (traceSourceId !== prevTraceSourceIdRef.current) {
         prevTraceSourceIdRef.current = traceSourceId;
         changedFields.push({
-          name: 'traceSourceId' as keyof TSourceUnion,
+          name: 'traceSourceId',
           value: traceSourceId ?? undefined,
         });
       }
       if (metricSourceId !== prevMetricSourceIdRef.current) {
         prevMetricSourceIdRef.current = metricSourceId;
         changedFields.push({
-          name: 'metricSourceId' as keyof TSourceUnion,
+          name: 'metricSourceId',
           value: metricSourceId ?? undefined,
         });
       }
@@ -1642,7 +1968,7 @@ export function TableSourceForm({
       ) {
         prevSessionTraceSourceIdRef.current = sessionTraceSourceId;
         changedFields.push({
-          name: 'traceSourceId' as keyof TSourceUnion,
+          name: 'traceSourceId',
           value: sessionTraceSourceId ?? undefined,
         });
       }
@@ -1651,14 +1977,15 @@ export function TableSourceForm({
         name: fieldName,
         value: newTargetSourceId,
       } of changedFields) {
-        if (!(fieldName in correlationFields)) continue;
-
         const targetConfigs = correlationFields[fieldName];
+        if (!targetConfigs) continue;
 
         for (const { targetKind, targetField } of targetConfigs) {
           // Find the previously linked source if any
           const previouslyLinkedSource = sources.find(
-            s => s.kind === targetKind && s[targetField] === currentSourceId,
+            s =>
+              s.kind === targetKind &&
+              getCorrelationFieldValue(s, targetField) === currentSourceId,
           );
 
           // If there was a previously linked source and it's different from the new one, unlink it
@@ -1667,10 +1994,11 @@ export function TableSourceForm({
             previouslyLinkedSource.id !== newTargetSourceId
           ) {
             await updateSource.mutateAsync({
-              source: {
-                ...previouslyLinkedSource,
-                [targetField]: undefined,
-              } as TSource,
+              source: setCorrelationFieldValue(
+                previouslyLinkedSource,
+                targetField,
+                undefined,
+              ),
             });
           }
 
@@ -1679,12 +2007,13 @@ export function TableSourceForm({
             const targetSource = sources.find(s => s.id === newTargetSourceId);
             if (targetSource && targetSource.kind === targetKind) {
               // Only update if the target field is empty to avoid overwriting existing correlations
-              if (!targetSource[targetField]) {
+              if (!getCorrelationFieldValue(targetSource, targetField)) {
                 await updateSource.mutateAsync({
-                  source: {
-                    ...targetSource,
-                    [targetField]: currentSourceId,
-                  } as TSource,
+                  source: setCorrelationFieldValue(
+                    targetSource,
+                    targetField,
+                    currentSourceId,
+                  ),
                 });
               }
             }
@@ -1703,15 +2032,31 @@ export function TableSourceForm({
     updateSource,
   ]);
 
-  const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
-    (error: z.ZodError<TSourceUnion>) => {
-      const errors = error.errors;
+    ({ errors }: z.ZodError<TSource>, eventName: 'create' | 'save') => {
+      const notificationMsgs: string[] = [];
+
+      // eslint-disable-next-line no-console
+      console.debug(
+        // HDX-3148
+        `[${eventName}] SourceForm validation error`,
+        JSON.stringify(errors),
+      );
+
       for (const err of errors) {
         const errorPath: string = err.path.join('.');
-        // TODO: HDX-1768 get rid of this type assertion if possible
+        // react-hook-form requires a static path type; dynamic errorPath needs assertion
         setError(errorPath as any, { ...err });
+
+        const message =
+          // HDX-3148
+          err.message === 'Required'
+            ? `${errorPath}: ${err.message}`
+            : err.message;
+
+        notificationMsgs.push(message);
       }
+
       notifications.show({
         color: 'red',
         message: (
@@ -1719,9 +2064,9 @@ export function TableSourceForm({
             <Text size="sm">
               <b>Failed to create source</b>
             </Text>
-            {errors.map((err, i) => (
+            {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
-                ✖ {err.message}
+                ✖ {message}
               </Text>
             ))}
           </Stack>
@@ -1734,15 +2079,14 @@ export function TableSourceForm({
   const _onCreate = useCallback(() => {
     clearErrors();
     handleSubmit(async data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'create');
         return;
       }
 
       createSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: parseResult.data },
         {
           onSuccess: async newSource => {
             // Handle bidirectional linking for new sources
@@ -1751,7 +2095,10 @@ export function TableSourceForm({
               for (const [fieldName, targetConfigs] of Object.entries(
                 correlationFields,
               )) {
-                const targetSourceId = (newSource as any)[fieldName];
+                const targetSourceId = getCorrelationFieldValue(
+                  newSource,
+                  fieldName as CorrelationField,
+                );
                 if (targetSourceId) {
                   for (const { targetKind, targetField } of targetConfigs) {
                     const targetSource = sources.find(
@@ -1759,12 +2106,15 @@ export function TableSourceForm({
                     );
                     if (targetSource && targetSource.kind === targetKind) {
                       // Only update if the target field is empty to avoid overwriting existing correlations
-                      if (!targetSource[targetField]) {
+                      if (
+                        !getCorrelationFieldValue(targetSource, targetField)
+                      ) {
                         await updateSource.mutateAsync({
-                          source: {
-                            ...targetSource,
-                            [targetField]: newSource.id,
-                          } as TSource,
+                          source: setCorrelationFieldValue(
+                            targetSource,
+                            targetField,
+                            newSource.id,
+                          ),
                         });
                       }
                     }
@@ -1791,7 +2141,6 @@ export function TableSourceForm({
   }, [
     clearErrors,
     handleError,
-    sourceFormSchema,
     handleSubmit,
     createSource,
     onCreate,
@@ -1802,14 +2151,13 @@ export function TableSourceForm({
   const _onSave = useCallback(() => {
     clearErrors();
     handleSubmit(data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: parseResult.data },
         {
           onSuccess: () => {
             onSave?.();
@@ -1827,14 +2175,7 @@ export function TableSourceForm({
         },
       );
     })();
-  }, [
-    handleSubmit,
-    updateSource,
-    onSave,
-    clearErrors,
-    handleError,
-    sourceFormSchema,
-  ]);
+  }, [handleSubmit, updateSource, onSave, clearErrors, handleError]);
 
   const databaseName = useWatch({
     control,
@@ -1846,6 +2187,12 @@ export function TableSourceForm({
     name: 'connection',
     defaultValue: source?.connection,
   });
+
+  const {
+    fields: querySettingFields,
+    append: appendSetting,
+    remove: removeSetting,
+  } = useFieldArray({ control, name: 'querySettings' });
 
   return (
     <div
@@ -1866,11 +2213,7 @@ export function TableSourceForm({
                 <Switch
                   size="sm"
                   checked={!value}
-                  onChange={(event) => {
-                    const newDisabledValue = !event.currentTarget.checked;
-                    onChange(newDisabledValue);
-                    handleDisabledToggle(newDisabledValue);
-                  }}
+                  onChange={event => onChange(!event.currentTarget.checked)}
                   label={value ? 'Disabled' : 'Enabled'}
                 />
               )}
@@ -1929,6 +2272,66 @@ export function TableSourceForm({
             />
           </FormRow>
         )}
+        <FormRow
+          label={
+            <Anchor
+              href="https://clickhouse.com/docs/operations/settings/settings"
+              size="sm"
+              target="_blank"
+            >
+              Query Settings
+            </Anchor>
+          }
+          helpText="Query-level Session Settings that will be added to each query for this source."
+        >
+          <Grid columns={11}>
+            {querySettingFields.map((field, index) => (
+              <Fragment key={field.id}>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Setting"
+                    control={control}
+                    name={`querySettings.${index}.setting`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Value"
+                    control={control}
+                    name={`querySettings.${index}.value`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1} ps={0}>
+                  <Flex align="center" justify="center" gap="sm" h="100%">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Remove setting"
+                      onClick={() => removeSetting(index)}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Flex>
+                </Grid.Col>
+              </Fragment>
+            ))}
+          </Grid>
+          <Button
+            variant="secondary"
+            size="sm"
+            color="gray"
+            mt="md"
+            disabled={querySettingFields.length >= 10}
+            onClick={() => {
+              if (querySettingFields.length < 10) {
+                appendSetting({ setting: '', value: '' });
+              }
+            }}
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add Setting
+          </Button>
+        </FormRow>
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
       <Group justify="flex-end" mt="lg">

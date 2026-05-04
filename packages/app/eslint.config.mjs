@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import storybook from 'eslint-plugin-storybook';
 import nextPlugin from '@next/eslint-plugin-next';
-import reactPlugin from 'eslint-plugin-react';
+import eslintReactPlugin from '@eslint-react/eslint-plugin';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
@@ -10,6 +10,76 @@ import prettierPlugin from 'eslint-plugin-prettier/recommended';
 import playwrightPlugin from 'eslint-plugin-playwright';
 import reactHookFormPlugin from 'eslint-plugin-react-hook-form';
 import { fixupPluginRules } from '@eslint/compat';
+
+// Kept separate so test overrides can drop just the date rules while keeping
+// the UI style rules (bi-icons, Button/ActionIcon variants).
+const UI_SYNTAX_RESTRICTIONS = [
+  // Temporary rule to enforce use of @tabler/icons-react instead of bi bi-icons
+  // Will remove after we've updated all icons and let some PRs merge.
+  {
+    selector: 'Literal[value=/\\bbi-\\b/i]',
+    message: 'Please update to use @tabler/icons-react instead',
+  },
+  // Enforce custom Button/ActionIcon variants (see agent_docs/code_style.md)
+  // NOTE: Icon-only Buttons should use ActionIcon instead - this requires manual review
+  // as ESLint cannot detect children content patterns
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="filled"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="light"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="filled"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+  {
+    selector:
+      'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="outline"]',
+    message:
+      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+  },
+];
+
+const DATE_SYNTAX_RESTRICTIONS = [
+  {
+    selector:
+      'CallExpression[callee.object.name="Date"][callee.property.name="now"]',
+    message:
+      'Date.now() can cause unnecessary re-renders. Import NOW from @/config for a stable reference, or wrap in useMemo/useCallback for values that must be current.',
+  },
+  {
+    selector: 'NewExpression[callee.name="Date"][arguments.length=0]',
+    message:
+      'new Date() can cause unnecessary re-renders. Use new Date(NOW) for a stable reference, or wrap in useMemo/useCallback for values that must be current.',
+  },
+];
 
 export default [
   js.configs.recommended,
@@ -21,6 +91,7 @@ export default [
       'next-env.d.ts',
       'playwright-report/**',
       '.next/**',
+      '.next-e2e/**',
       '.storybook/**',
       'node_modules/**',
       'out/**',
@@ -33,6 +104,7 @@ export default [
       '**/*.config.mjs',
       'eslint.config.mjs',
       'public/__ENV.js',
+      'public/pyodide/**',
       'global-setup.js',
       'scripts/**',
     ],
@@ -41,14 +113,39 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@next/next': nextPlugin,
-      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
       'react-hook-form': fixupPluginRules(reactHookFormPlugin), // not compatible with eslint 9 yet
+      ...eslintReactPlugin.configs.recommended.plugins,
     },
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
+      ...reactHooksPlugin.configs.recommended.rules,
+      ...eslintReactPlugin.configs['recommended-type-checked'].rules,
+      
+      // Non-default react-hooks rules
+      'react-hooks/set-state-in-render': 'error',
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
+      
+      // Disable rules from @eslint-react that have equivalent rules enabled in eslint-plugin-react-hooks
+      '@eslint-react/rules-of-hooks': 'off',
+      '@eslint-react/component-hook-factories': 'off',
+      '@eslint-react/exhaustive-deps': 'off',
+      '@eslint-react/error-boundaries': 'off',
+      '@eslint-react/immutability': 'off',
+      '@eslint-react/purity': 'off',
+      '@eslint-react/refs': 'off',
+      '@eslint-react/set-state-in-effect': 'off',
+      '@eslint-react/set-state-in-render': 'off',
+      '@eslint-react/no-nested-component-definitions': 'off',
+      '@eslint-react/no-nested-lazy-component-declarations': 'off',
+      '@eslint-react/unsupported-syntax': 'off',
+      '@eslint-react/use-memo': 'off',
+      
+      'react-hook-form/no-use-watch': 'error',
+      '@eslint-react/no-unstable-default-props': 'error',
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-empty-function': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -56,13 +153,12 @@ export default [
       '@typescript-eslint/no-unsafe-type-assertion': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
         },
       ],
-      'react/display-name': 'off',
       'simple-import-sort/exports': 'error',
       'simple-import-sort/imports': [
         'error',
@@ -77,18 +173,12 @@ export default [
           ],
         },
       ],
-      // Temporary rule to enforce use of @tabler/icons-react instead of bi bi-icons
-      // Will remove after we've updated all icons and let some PRs merge.
       'no-restricted-syntax': [
         'error',
-        {
-          selector: 'Literal[value=/\\bbi-\\b/i]',
-          message: 'Please update to use @tabler/icons-react instead',
-        },
+        ...UI_SYNTAX_RESTRICTIONS,
+        ...DATE_SYNTAX_RESTRICTIONS,
       ],
-      'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
-      'react-hook-form/no-use-watch': 'error',
     },
     languageOptions: {
       parser: tseslint.parser,
@@ -132,6 +222,14 @@ export default [
     },
   },
   {
+    files: ['src/**/__tests__/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      // Drop date rules — new Date() / Date.now() are fine in tests
+      'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
+      '@eslint-react/component-hook-factories': 'off',
+    },
+  },
+  {
     files: ['tests/e2e/**/*.{ts,js}'],
     ...playwrightPlugin.configs['flat/recommended'],
     rules: {
@@ -141,6 +239,8 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
       'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
+      // Drop date rules — Date.now() is fine in e2e tests for unique IDs/timestamps
+      'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
     },
   },
   ...storybook.configs['flat/recommended'],

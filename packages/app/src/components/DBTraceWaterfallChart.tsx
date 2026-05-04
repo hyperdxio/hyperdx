@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -8,7 +9,9 @@ import {
   ChartConfigWithDateRange,
   SelectList,
   SourceKind,
+  TLogSource,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -18,8 +21,11 @@ import {
   Code,
   Divider,
   Group,
+  Kbd,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -27,18 +33,27 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useResizable from '@/hooks/useResizable';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
+  getEventBody,
   getSpanEventBody,
 } from '@/source';
-import TimelineChart from '@/TimelineChart';
 import { useFormatTime } from '@/useFormatTime';
+import {
+  getChartColorError,
+  getChartColorErrorHighlight,
+  getChartColorSuccess,
+  getChartColorSuccessHighlight,
+  getChartColorWarning,
+  getChartColorWarningHighlight,
+} from '@/utils';
 import {
   getHighlightedAttributesFromData,
   getSelectExpressionsForHighlightedAttributes,
@@ -69,6 +84,10 @@ export type SpanRow = {
   __hdx_hidden?: boolean | 1 | 0;
 };
 
+type TimestampedRow = {
+  Timestamp: string;
+};
+
 function textColor(condition: { isError: boolean; isWarn: boolean }): string {
   const { isError, isWarn } = condition;
   if (isError) return 'text-danger';
@@ -80,10 +99,24 @@ function barColor(condition: {
   isError: boolean;
   isWarn: boolean;
   isHighlighted: boolean;
+  type: string | undefined;
 }) {
-  const { isError, isWarn, isHighlighted } = condition;
-  if (isError) return isHighlighted ? '#FF6E6E' : '#F53749';
-  if (isWarn) return isHighlighted ? '#FFE38A' : '#FFC107';
+  const { isError, isWarn, isHighlighted, type } = condition;
+
+  if (isError)
+    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
+
+  if (isWarn)
+    return isHighlighted
+      ? getChartColorWarningHighlight()
+      : getChartColorWarning();
+
+  if (type === SourceKind.Log) {
+    return isHighlighted
+      ? getChartColorSuccessHighlight()
+      : getChartColorSuccess();
+  }
+
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
@@ -91,33 +124,44 @@ function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
   } else if (tableModel?.kind === SourceKind.Log) {
-    return (
-      (tableModel.bodyExpression || tableModel.implicitColumnExpression) ?? ''
-    );
+    return getEventBody(tableModel) ?? '';
   } else {
     return '';
   }
 }
 
 function getConfig(
-  source: TSource,
+  source: TTraceSource | TLogSource,
   traceId: string,
   hiddenRowExpression?: string,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
-    Duration: source.durationExpression
-      ? getDurationSecondsExpression(source)
-      : '',
+    Duration:
+      source.kind === SourceKind.Trace && source.durationExpression
+        ? getDurationSecondsExpression(source)
+        : '',
     TraceId: source.traceIdExpression ?? '',
     SpanId: source.spanIdExpression ?? '',
-    ParentSpanId: source.parentSpanIdExpression ?? '',
-    StatusCode: source.statusCodeExpression ?? '',
+    ParentSpanId:
+      source.kind === SourceKind.Trace
+        ? (source.parentSpanIdExpression ?? '')
+        : '',
+    StatusCode:
+      source.kind === SourceKind.Trace
+        ? (source.statusCodeExpression ?? '')
+        : '',
     ServiceName: source.serviceNameExpression ?? '',
-    SeverityText: source.severityTextExpression ?? '',
+    SeverityText:
+      source.kind === SourceKind.Log
+        ? (source.severityTextExpression ?? '')
+        : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
-    SpanEvents: source.spanEventsValueExpression ?? '',
+    SpanEvents:
+      source.kind === SourceKind.Trace
+        ? (source.spanEventsValueExpression ?? '')
+        : '',
   };
 
   // Aliases for trace attributes must be added here to ensure
@@ -229,9 +273,9 @@ function getConfig(
   const config = {
     select,
     from: source.from,
-    timestampValueExpression: alias.Timestamp,
-    where: `${alias.TraceId} = '${traceId}'`,
-    limit: { limit: 10000 },
+    timestampValueExpression: source.timestampValueExpression,
+    where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
+    limit: { limit: 50000 },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -266,7 +310,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
 }: {
-  tableSource: TSource;
+  tableSource: TTraceSource | TLogSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
@@ -305,7 +349,7 @@ export function useEventsAroundFocus({
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
 
-  const rowWhere = useRowWhere({ meta, aliasMap: alias });
+  const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
@@ -314,21 +358,28 @@ export function useEventsAroundFocus({
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
     ].map(cd => {
+      // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
+      // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
+      const rowWhereResult = getRowWhere(
+        omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
+      );
+
       return {
         // Keep all fields available for display
         ...cd,
         // Added for typing
+        Timestamp: cd?.Timestamp,
         SpanId: cd?.SpanId,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
-        // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
-        // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
-        id: rowWhere(
-          omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
-        ),
+        id: rowWhereResult.where,
+        // Don't pass aliasWith for trace waterfall chart - the WHERE clause already uses
+        // raw column expressions (e.g., SpanName='value'), and the aliasMap creates
+        // redundant WITH clauses like (Timestamp) AS Timestamp that interfere with queries.
+        aliasWith: [],
       };
     });
-  }, [afterSpanData, beforeSpanData, meta, rowWhere, type]);
+  }, [afterSpanData, beforeSpanData, meta, getRowWhere, type]);
 
   return {
     rows,
@@ -336,6 +387,37 @@ export function useEventsAroundFocus({
     isFetching,
     error,
   };
+}
+
+export function getDescendantIds(node: {
+  id?: string;
+  children?: Array<{ id?: string; children?: any[] }>;
+}): string[] {
+  const ids: string[] = [];
+
+  if (!node.children?.length) {
+    return ids;
+  }
+
+  for (const child of node.children) {
+    if (child.id) {
+      ids.push(child.id);
+    }
+
+    ids.push(...getDescendantIds(child));
+  }
+
+  return ids;
+}
+
+function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
+  useEffect(() => onShown, [onShown]);
+
+  return (
+    <>
+      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
+    </>
+  );
 }
 
 // TODO: Optimize with ts lookup tables
@@ -348,19 +430,25 @@ export function DBTraceWaterfallChartContainer({
   onClick,
   highlightedRowWhere,
   initialRowHighlightHint,
+  emptyState,
 }: {
-  traceTableSource: TSource;
-  logTableSource: TSource | null;
+  traceTableSource: TTraceSource;
+  logTableSource: TLogSource | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
-  onClick?: (rowWhere: { id: string; type: string }) => void;
+  onClick?: (rowWhere: {
+    id: string;
+    type: string;
+    aliasWith: WithClause[];
+  }) => void;
   highlightedRowWhere?: string | null;
   initialRowHighlightHint?: {
     timestamp: string;
     spanId: string;
     body: string;
   };
+  emptyState?: ReactNode;
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
   const formatTime = useFormatTime();
@@ -422,21 +510,24 @@ export function DBTraceWaterfallChartContainer({
   const isFetching = traceIsFetching || logIsFetching;
   const error = traceError || logError;
 
-  const rows: any[] = useMemo(
-    () => [...traceRowsData, ...logRowsData],
-    [traceRowsData, logRowsData],
-  );
+  const rows: any[] = useMemo(() => {
+    const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
+      ...traceRowsData,
+      ...logRowsData,
+    ];
+    nextRows.sort((a, b) => {
+      const aDate = TimestampNano.fromString(a.Timestamp);
+      const bDate = TimestampNano.fromString(b.Timestamp);
+      const secDiff = aDate.getTimeT() - bDate.getTimeT();
+      if (secDiff === 0) {
+        return aDate.getNano() - bDate.getNano();
+      } else {
+        return secDiff;
+      }
+    });
 
-  rows.sort((a, b) => {
-    const aDate = TimestampNano.fromString(a.Timestamp);
-    const bDate = TimestampNano.fromString(b.Timestamp);
-    const secDiff = aDate.getTimeT() - bDate.getTimeT();
-    if (secDiff === 0) {
-      return aDate.getNano() - bDate.getNano();
-    } else {
-      return secDiff;
-    }
-  });
+    return nextRows;
+  }, [traceRowsData, logRowsData]);
 
   const highlightedAttributeValues = useMemo(() => {
     const visibleTraceRowsData = traceRowsData?.filter(
@@ -491,6 +582,7 @@ export function DBTraceWaterfallChartContainer({
         onClick?.({
           id: rows[initialRowHighlightIndex].id,
           type: rows[initialRowHighlightIndex].type ?? '',
+          aliasWith: rows[initialRowHighlightIndex].aliasWith,
         });
       }
     }
@@ -502,7 +594,12 @@ export function DBTraceWaterfallChartContainer({
   // 3. Spans, with multiple root nodes (ex. somehow disjoint traces fe/be)
 
   // Parse out a DAG of spans
-  type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
+  type Node = SpanRow & {
+    id: string;
+    parentId: string;
+    children: SpanRow[];
+    aliasWith: WithClause[];
+  };
   const validSpanIDs = useMemo(() => {
     return new Set(
       traceRowsData // only spans in traces can define valid span ids
@@ -510,113 +607,135 @@ export function DBTraceWaterfallChartContainer({
         .map(row => row.SpanId) ?? [],
     );
   }, [traceRowsData]);
-  const rootNodes: Node[] = [];
-  const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
-  const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
-
-  for (const result of rows ?? []) {
-    const { type, SpanId, ParentSpanId } = result;
-    // ignore everything without spanId
-    if (!SpanId) continue;
-
-    // log have duplicate span id, tag it with -log
-    const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
-    const nodeParentSpanId =
-      type === SourceKind.Log ? SpanId : ParentSpanId || '';
-
-    const curNode = {
-      ...result,
-      children: [],
-    };
-
-    if (type === SourceKind.Trace) {
-      // Check if this is the first node with this SpanId
-      if (!spanIdMap.has(nodeSpanId)) {
-        // First occurrence - this becomes the canonical node for this SpanId
-        spanIdMap.set(nodeSpanId, result.id);
-
-        // Check if there's a placeholder parent waiting for this SpanId
-        const placeholderId = `placeholder-${nodeSpanId}`;
-        const placeholder = nodesMap.get(placeholderId);
-        if (placeholder) {
-          // Inherit children from placeholder
-          curNode.children = placeholder.children || [];
-          // Remove placeholder
-          nodesMap.delete(placeholderId);
-        }
-      }
-      // Always add to nodesMap with unique result.id
-      nodesMap.set(result.id, curNode);
-    }
-
-    // root if: is trace event, and (has no parent or parent id is not valid)
-    const isRootNode =
-      type === SourceKind.Trace &&
-      (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
-
-    if (isRootNode) {
-      rootNodes.push(curNode);
-    } else {
-      // Look up parent by SpanId
-      const parentResultId = spanIdMap.get(nodeParentSpanId);
-      let parentNode = parentResultId
-        ? nodesMap.get(parentResultId)
-        : undefined;
-
-      if (!parentNode) {
-        // Parent doesn't exist yet, create placeholder
-        const placeholderId = `placeholder-${nodeParentSpanId}`;
-        parentNode = nodesMap.get(placeholderId);
-        if (!parentNode) {
-          parentNode = { children: [] } as any;
-          nodesMap.set(placeholderId, parentNode);
-        }
-      }
-
-      parentNode.children.push(curNode);
-    }
-  }
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
 
+  const { nodesMap, flattenedNodes } = useMemo(() => {
+    const rootNodes: Node[] = [];
+    const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
+    const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
+
+    for (const result of rows ?? []) {
+      const { type, SpanId, ParentSpanId } = result;
+      // ignore everything without spanId
+      if (!SpanId) continue;
+
+      // log have duplicate span id, tag it with -log
+      const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
+      const nodeParentSpanId =
+        type === SourceKind.Log ? SpanId : ParentSpanId || '';
+
+      const curNode = {
+        ...result,
+        children: [],
+      };
+
+      if (type === SourceKind.Trace) {
+        // Check if this is the first node with this SpanId
+        if (!spanIdMap.has(nodeSpanId)) {
+          // First occurrence - this becomes the canonical node for this SpanId
+          spanIdMap.set(nodeSpanId, result.id);
+
+          // Check if there's a placeholder parent waiting for this SpanId
+          const placeholderId = `placeholder-${nodeSpanId}`;
+          const placeholder = nodesMap.get(placeholderId);
+          if (placeholder) {
+            // Inherit children from placeholder
+            curNode.children = placeholder.children || [];
+            // Remove placeholder
+            nodesMap.delete(placeholderId);
+          }
+        }
+        // Always add to nodesMap with unique result.id
+        nodesMap.set(result.id, curNode);
+      }
+
+      // root if: is trace event, and (has no parent or parent id is not valid)
+      const isRootNode =
+        type === SourceKind.Trace &&
+        (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
+
+      if (isRootNode) {
+        rootNodes.push(curNode);
+      } else {
+        // Look up parent by SpanId
+        const parentResultId = spanIdMap.get(nodeParentSpanId);
+        let parentNode = parentResultId
+          ? nodesMap.get(parentResultId)
+          : undefined;
+
+        if (!parentNode) {
+          // Parent doesn't exist yet, create placeholder
+          const placeholderId = `placeholder-${nodeParentSpanId}`;
+          parentNode = nodesMap.get(placeholderId);
+          if (!parentNode) {
+            parentNode = { children: [] } as any;
+            nodesMap.set(placeholderId, parentNode);
+          }
+        }
+
+        parentNode.children.push(curNode);
+      }
+    }
+
+    type NodeWithLevel = Node & { level: number };
+    // flatten the rootnode dag into an array via in-order traversal
+    const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
+      // Filter out hidden nodes, but still traverse their (non-hidden) descendants
+      if (!node.__hdx_hidden) {
+        arr.push({
+          level,
+          ...node,
+        });
+      }
+
+      // Filter out collapsed nodes
+      if (collapsedIds.has(node.id)) {
+        return;
+      }
+      node?.children?.forEach((child: any) => traverse(child, arr, level + 1));
+    };
+
+    const flattenedNodes: NodeWithLevel[] = [];
+    if (rootNodes.length > 0) {
+      rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
+    }
+
+    return { nodesMap, flattenedNodes };
+  }, [collapsedIds, rows, validSpanIDs]);
+
   const toggleCollapse = useCallback(
-    (id: string) => {
+    (id: string, event: React.MouseEvent) => {
+      event.stopPropagation(); // prevent collapsing from selecting row
+
       setCollapsedIds(prev => {
         const newSet = new Set(prev);
-        if (newSet.has(id)) {
+        const isCollapsed = newSet.has(id);
+
+        if (isCollapsed) {
           newSet.delete(id);
         } else {
           newSet.add(id);
         }
+
+        if (event.altKey) {
+          const node = nodesMap.get(id);
+          if (node?.children?.length) {
+            const descendantIds = getDescendantIds(node);
+            if (isCollapsed) {
+              descendantIds.forEach(descId => newSet.delete(descId));
+            } else {
+              descendantIds.forEach(descId => newSet.add(descId));
+            }
+          }
+        }
+
         return newSet;
       });
     },
-    [setCollapsedIds],
+    [nodesMap],
   );
-
-  type NodeWithLevel = Node & { level: number };
-  // flatten the rootnode dag into an array via in-order traversal
-  const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
-    // Filter out hidden nodes, but still traverse their (non-hidden) descendants
-    if (!node.__hdx_hidden) {
-      arr.push({
-        level,
-        ...node,
-      });
-    }
-
-    // Filter out collapsed nodes
-    if (collapsedIds.has(node.id)) {
-      return;
-    }
-    node?.children?.forEach((child: any) => traverse(child, arr, level + 1));
-  };
-
-  const flattenedNodes: NodeWithLevel[] = [];
-  if (rootNodes.length > 0) {
-    rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
-  }
 
   const spanCount = flattenedNodes.length;
   const errorCount = flattenedNodes.filter(
@@ -639,145 +758,200 @@ export function DBTraceWaterfallChartContainer({
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
 
-  const timelineRows = flattenedNodes.map((result, i) => {
-    const tookMs = (result.Duration || 0) * 1000;
-    const startOffset = new Date(result.Timestamp).getTime();
-    const start = startOffset - minOffset;
-    const end = start + tookMs;
+  const [collapseTooltipShown, { open: setCollapseTooltipShown }] =
+    useDisclosure(false);
 
-    const { Body: _body, ServiceName: serviceName, id, type } = result;
-    let body = `${_body}`;
-    try {
-      body = typeof _body === 'string' ? _body : JSON.stringify(_body);
-    } catch (e) {
-      console.warn("DBTraceWaterfallChart: Couldn't JSON stringify Body", e);
-    }
+  const timelineRows = useMemo(
+    () =>
+      flattenedNodes.map((result, i) => {
+        const tookMs = (result.Duration || 0) * 1000;
+        const startOffset = new Date(result.Timestamp).getTime();
+        const start = startOffset - minOffset;
+        const end = start + tookMs;
 
-    // Extract HTTP-related logic
-    const eventAttributes = result.SpanAttributes || {};
-    const hasHttpAttributes =
-      eventAttributes['http.url'] || eventAttributes['http.method'];
-    const httpUrl = eventAttributes['http.url'];
+        const {
+          Body: _body,
+          ServiceName: serviceName,
+          id,
+          type,
+          aliasWith,
+        } = result;
+        let body = `${_body}`;
+        try {
+          body = typeof _body === 'string' ? _body : JSON.stringify(_body);
+        } catch (e) {
+          console.warn(
+            "DBTraceWaterfallChart: Couldn't JSON stringify Body",
+            e,
+          );
+        }
 
-    const displayText =
-      hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
+        // Extract HTTP-related logic
+        const eventAttributes = result.SpanAttributes || {};
+        const hasHttpAttributes =
+          eventAttributes['http.url'] || eventAttributes['http.method'];
+        const httpUrl = eventAttributes['http.url'];
 
-    // Process span events into markers (only if showSpanEvents is enabled)
-    const markers =
-      showSpanEvents && result.SpanEvents
-        ? result.SpanEvents.map(spanEvent => ({
-            timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
-            name: spanEvent.Name,
-            attributes: spanEvent.Attributes || {},
-          }))
-        : [];
+        const displayText =
+          hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
 
-    // Extract status logic
-    // TODO: Legacy schemas will have STATUS_CODE_ERROR
-    // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-    const isError =
-      result.StatusCode == 'Error' || result.SeverityText === 'error';
-    const status = result.StatusCode || result.SeverityText;
-    const isWarn = result.SeverityText === 'warn';
-    const isHighlighted = highlightedRowWhere === id;
+        // Process span events into markers (only if showSpanEvents is enabled)
+        const markers =
+          showSpanEvents && result.SpanEvents
+            ? result.SpanEvents.map(spanEvent => ({
+                timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
+                name: spanEvent.Name,
+                attributes: spanEvent.Attributes || {},
+              }))
+            : [];
 
-    return {
-      id,
-      type,
-      label: (
-        <div
-          className={`${textColor({ isError, isWarn })} ${
-            isHighlighted && styles.traceTimelineLabelHighlighted
-          } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
-          role="button"
-          onClick={() => {
-            onClick?.({ id, type: type ?? '' });
-          }}
-        >
-          <div className="d-flex align-items-center" style={{ height: 24 }}>
-            {Array.from({ length: result.level }).map((_, index) => (
-              <div
-                key={index}
-                style={{
-                  borderLeft: '1px solid var(--color-border)',
-                  marginLeft: 7,
-                  width: 8,
-                  minWidth: 8,
-                  maxWidth: 8,
-                  flexGrow: 1,
-                  flexShrink: 0,
-                  height: '100%',
-                }}
-              ></div>
-            ))}
-            <Center
-              style={{
-                opacity: result.children.length > 0 ? 1 : 0,
-              }}
+        // Extract status logic
+        // TODO: Legacy schemas will have STATUS_CODE_ERROR
+        // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
+        const isError =
+          result.StatusCode == 'Error' || result.SeverityText === 'error';
+        const status = result.StatusCode || result.SeverityText;
+        const isWarn = result.SeverityText === 'warn';
+        const isHighlighted = highlightedRowWhere === id;
+
+        return {
+          id,
+          type,
+          aliasWith,
+          label: (
+            <div
+              className={`${textColor({ isError, isWarn })} ${
+                isHighlighted && styles.traceTimelineLabelHighlighted
+              } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
+              role="button"
               onClick={() => {
-                toggleCollapse(id);
+                onClick?.({ id, type: type ?? '', aliasWith });
               }}
             >
-              {collapsedIds.has(id) ? (
-                <IconChevronRight size={16} className="me-1 text-muted-hover" />
-              ) : (
-                <IconChevronDown size={16} className="me-1 text-muted-hover" />
-              )}{' '}
-            </Center>
-            {!isFilterActive && (
-              <Text span size="xxs" me="xs" pt="2px">
-                {result.children.length > 0
-                  ? `(${result.children.length})`
-                  : ''}
-              </Text>
-            )}
+              <div className="d-flex align-items-center" style={{ height: 24 }}>
+                {Array.from({ length: result.level }).map((_, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      borderLeft: '1px solid var(--color-border)',
+                      marginLeft: 7,
+                      width: 8,
+                      minWidth: 8,
+                      maxWidth: 8,
+                      flexGrow: 1,
+                      flexShrink: 0,
+                      height: '100%',
+                    }}
+                  ></div>
+                ))}
 
-            <Group gap={0} wrap="nowrap">
-              {type === SourceKind.Log ? (
-                <IconLogs
-                  size={14}
-                  className="align-middle me-2"
-                  aria-label="Correlated Log Line"
-                />
-              ) : null}
-              <Text
-                size="xxs"
-                truncate="end"
-                // style={{ width: 200 }}
-                span
-                // onClick={() => {
-                //   toggleCollapse(id);
-                // }}
-                title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
-                role="button"
-              >
-                {serviceName ? `${serviceName} | ` : ''}
-                {displayText}
-              </Text>
-            </Group>
-          </div>
-        </div>
-      ),
-      style: {
-        // paddingTop: 1,
-        marginTop: i === 0 ? 32 : 0,
-      },
-      isActive: isHighlighted,
-      events: [
-        {
-          id,
-          start,
-          end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
-          color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span>{displayText}</span>,
-          minWidthPerc: 1,
-          isError,
-          markers,
-        },
-      ],
-    };
-  });
+                <Tooltip
+                  disabled={!result.children.length || collapseTooltipShown}
+                  closeDelay={500}
+                  label={
+                    <CollapseTooltipLabel onShown={setCollapseTooltipShown} />
+                  }
+                  withArrow
+                >
+                  <Center
+                    style={{
+                      opacity: result.children.length > 0 ? 1 : 0,
+                    }}
+                    onClick={
+                      result.children.length > 0
+                        ? e => {
+                            toggleCollapse(id, e);
+                          }
+                        : undefined
+                    }
+                  >
+                    {collapsedIds.has(id) ? (
+                      <IconChevronRight
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    ) : (
+                      <IconChevronDown
+                        size={16}
+                        className="me-1 text-muted-hover"
+                      />
+                    )}{' '}
+                  </Center>
+                </Tooltip>
+
+                {!isFilterActive && (
+                  <Text span size="xxs" me="xs" pt="2px">
+                    {result.children.length > 0
+                      ? `(${result.children.length})`
+                      : ''}
+                  </Text>
+                )}
+
+                <Group gap={0} wrap="nowrap">
+                  {type === SourceKind.Log ? (
+                    <IconLogs
+                      size={14}
+                      className="align-middle me-2"
+                      aria-label="Correlated Log Line"
+                    />
+                  ) : null}
+                  <Text
+                    size="xxs"
+                    truncate="end"
+                    span
+                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                    role="button"
+                  >
+                    {serviceName ? `${serviceName} | ` : ''}
+                    {displayText}
+                  </Text>
+                </Group>
+              </div>
+            </div>
+          ),
+          style: {
+            // paddingTop: 1,
+            marginTop: i === 0 ? 32 : 0,
+          },
+          isActive: isHighlighted,
+          events: [
+            {
+              id,
+              type,
+              aliasWith,
+              start,
+              end,
+              tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
+              color: 'var(--color-text-inverted)',
+              backgroundColor: barColor({
+                isError,
+                isWarn,
+                isHighlighted,
+                type,
+              }),
+              body: <span>{displayText}</span>,
+              minWidthPerc: 1,
+              isError,
+              markers,
+              showDuration: type !== SourceKind.Log,
+            },
+          ],
+        };
+      }),
+    [
+      collapsedIds,
+      flattenedNodes,
+      formatTime,
+      highlightedRowWhere,
+      isFilterActive,
+      minOffset,
+      onClick,
+      showSpanEvents,
+      toggleCollapse,
+      collapseTooltipShown,
+      setCollapseTooltipShown,
+    ],
+  );
   // TODO: Highlighting support
   const initialScrollRowIndex = flattenedNodes.findIndex(v => {
     return v.id === highlightedRowWhere;
@@ -867,7 +1041,7 @@ export function DBTraceWaterfallChartContainer({
           )}
         </span>
       </Group>
-      {!isFetching && !error && (
+      {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
       <div
@@ -898,29 +1072,29 @@ export function DBTraceWaterfallChartContainer({
             An unknown error occurred. <ContactSupportText />
           </div>
         ) : flattenedNodes.length === 0 ? (
-          <div className="my-3">No matching spans or logs found</div>
+          (emptyState ?? (
+            <div className="my-3">No matching spans or logs found</div>
+          ))
         ) : (
-          <>
-            <TimelineChart
-              style={{
-                overflowY: 'auto',
-                maxHeight: `${heightPx}px`,
-              }}
-              scale={1}
-              setScale={() => {}}
-              rowHeight={22}
-              labelWidth={300}
-              onClick={ts => {
-                // onTimeClick(ts + startedAt);
-              }}
-              onEventClick={event => {
-                onClick?.({ id: event.id, type: event.type ?? '' });
-              }}
-              cursors={[]}
-              rows={timelineRows}
-              initialScrollRowIndex={initialScrollRowIndex}
-            />
-          </>
+          <TimelineChart
+            maxHeight={heightPx}
+            rowHeight={22}
+            labelWidth={300}
+            onEventClick={(event: {
+              id: string;
+              type?: string;
+              aliasWith?: WithClause[];
+            }) => {
+              onClick?.({
+                id: event.id,
+                type: event.type ?? '',
+                aliasWith: event.aliasWith ?? [],
+              });
+            }}
+            cursors={[]}
+            rows={timelineRows}
+            initialScrollRowIndex={initialScrollRowIndex}
+          />
         )}
       </div>
       <Divider

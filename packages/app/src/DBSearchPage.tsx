@@ -1,8 +1,8 @@
 import {
   FormEvent,
   FormEventHandler,
+  Fragment,
   memo,
-  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -13,10 +13,10 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import router from 'next/router';
+import { formatDistanceToNow } from 'date-fns';
 import {
   parseAsBoolean,
   parseAsInteger,
-  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -27,28 +27,32 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
+  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isTraceSource,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Card,
-  Center,
   Code,
   Flex,
   Grid,
   Group,
-  Menu,
   Modal,
   Paper,
   Select,
@@ -63,11 +67,11 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToRight,
   IconBolt,
-  IconCirclePlus,
   IconPlayerPlay,
   IconPlus,
-  IconSettings,
+  IconStack2,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
@@ -75,20 +79,25 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import EmptyState from '@/components/EmptyState';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -100,12 +109,8 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import SearchInputV2 from '@/SearchInputV2';
-import {
-  getFirstTimestampValueExpression,
-  useSource,
-  useSources,
-} from '@/source';
+import { getEventBody, useSource, useSources } from '@/source';
+import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -117,6 +122,7 @@ import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
+import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
@@ -125,13 +131,19 @@ import {
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
+  buildDirectTraceWhereClause,
+  getDefaultDirectTraceDateRange,
+} from './utils/directTrace';
+import {
+  parseAsJsonEncoded,
   parseAsSortingStateString,
-  parseAsStringWithNewLines,
+  parseAsStringEncoded,
 } from './utils/queryParsers';
-import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
+import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
+import { FormatTime } from './useFormatTime';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
 
@@ -142,7 +154,7 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '10000', label: '10s' },
   { value: '30000', label: '30s' },
 ];
-const DEFAULT_REFRESH_FREQUENCY = 4000;
+const DEFAULT_REFRESH_FREQUENCY = 10000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
@@ -169,17 +181,19 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+const QUERY_KEY_PREFIX = 'search';
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string; disabled?: boolean }[] | undefined,
   lastSelectedSourceId: string | undefined,
 ): string {
   if (!sources || sources.length === 0) return '';
-  
+
   // Filter out disabled sources
   const enabledSources = sources.filter(s => !s.disabled);
   if (enabledSources.length === 0) return '';
-  
+
   if (
     lastSelectedSourceId &&
     enabledSources.some(s => s.id === lastSelectedSourceId)
@@ -187,59 +201,6 @@ export function getDefaultSourceId(
     return lastSelectedSourceId;
   }
   return enabledSources[0].id;
-}
-
-function SourceEditMenu({
-  setModalOpen,
-  setModelFormExpanded,
-}: {
-  setModalOpen: (val: SetStateAction<boolean>) => void;
-  setModelFormExpanded: (val: SetStateAction<boolean>) => void;
-}) {
-  return (
-    <Menu withArrow position="bottom-start">
-      <Menu.Target>
-        <ActionIcon
-          data-testid="source-settings-menu"
-          variant="subtle"
-          size="sm"
-          title="Edit Source"
-        >
-          <Text size="xs">
-            <IconSettings size={14} />
-          </Text>
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>Sources</Menu.Label>
-        <Menu.Item
-          data-testid="create-new-source-menu-item"
-          leftSection={<IconCirclePlus size={14} />}
-          onClick={() => setModalOpen(true)}
-        >
-          Create New Source
-        </Menu.Item>
-        {IS_LOCAL_MODE ? (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            onClick={() => setModelFormExpanded(v => !v)}
-          >
-            Edit Source
-          </Menu.Item>
-        ) : (
-          <Menu.Item
-            data-testid="edit-sources-menu-item"
-            leftSection={<IconSettings size={14} />}
-            component={Link}
-            href="/team"
-          >
-            Edit Sources
-          </Menu.Item>
-        )}
-      </Menu.Dropdown>
-    </Menu>
-  );
 }
 
 function SourceEditModal({
@@ -284,9 +245,16 @@ function ResumeLiveTailButton({
 }: {
   handleResumeLiveTail: () => void;
 }) {
+  const { themeName } = useAppTheme();
+  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
+
   return (
-    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
-      <IconBolt size={14} className="text-success me-2" />
+    <Button
+      size="compact-xs"
+      variant={variant}
+      onClick={handleResumeLiveTail}
+      leftSection={<IconBolt size={14} />}
+    >
       Resume Live Tail
     </Button>
   );
@@ -300,12 +268,53 @@ function SearchSubmitButton({
   return (
     <Button
       data-testid="search-submit-button"
-      variant="outline"
+      variant={isFormStateDirty ? 'primary' : 'secondary'}
       type="submit"
-      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
+      leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
     >
-      <IconPlayerPlay size={16} />
+      Run
     </Button>
+  );
+}
+
+function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
+  return (
+    <Tooltip label="Show filters" position="bottom">
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        onClick={onExpand}
+        aria-label="Show filters"
+      >
+        <IconArrowBarToRight size={14} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function SearchResultsCountGroup({
+  isFilterSidebarCollapsed,
+  onExpandFilters,
+  histogramTimeChartConfig,
+  enableParallelQueries,
+}: {
+  isFilterSidebarCollapsed: boolean;
+  onExpandFilters: () => void;
+  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  enableParallelQueries?: boolean;
+}) {
+  return (
+    <Group gap={4} align="center">
+      {isFilterSidebarCollapsed && (
+        <ExpandFiltersButton onExpand={onExpandFilters} />
+      )}
+      <SearchTotalCountChart
+        config={histogramTimeChartConfig}
+        queryKeyPrefix={QUERY_KEY_PREFIX}
+        enableParallelQueries={enableParallelQueries}
+      />
+    </Group>
   );
 }
 
@@ -326,7 +335,7 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" mb={4}>
+    <Text size="xs">
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
@@ -393,10 +402,17 @@ function SaveSearchModalComponent({
   const createSavedSearch = useCreateSavedSearch();
   const updateSavedSearch = useUpdateSavedSearch();
 
+  const { data: sourceObj } = useSource({
+    id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
+  const effectiveSelect =
+    searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
+
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    handleSubmit(({ name }) => {
+    handleSubmit(async ({ name }) => {
       if (isUpdate) {
         if (savedSearchId == null) {
           throw new Error('savedSearchId is required for update');
@@ -406,40 +422,60 @@ function SaveSearchModalComponent({
           {
             id: savedSearchId,
             name,
-            select: searchedConfig.select ?? '',
+            select: effectiveSelect,
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: tags,
           },
           {
             onSuccess: () => {
               onClose();
             },
-          },
-        );
-      } else {
-        createSavedSearch.mutate(
-          {
-            name,
-            select: searchedConfig.select ?? '',
-            where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-            source: searchedConfig.source ?? '',
-            orderBy: searchedConfig.orderBy ?? '',
-            tags: tags,
-          },
-          {
-            onSuccess: savedSearch => {
-              router.push(`/search/${savedSearch.id}${window.location.search}`);
-              onClose();
+            onError: error => {
+              console.error('Error updating saved search:', error);
+              notifications.show({
+                color: 'red',
+                title: 'Error',
+                message:
+                  'An error occurred while updating your saved search. Please try again.',
+              });
             },
           },
         );
+      } else {
+        try {
+          const savedSearch = await createSavedSearch.mutateAsync({
+            name,
+            select: effectiveSelect,
+            where: searchedConfig.where ?? '',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+            source: searchedConfig.source ?? '',
+            orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
+            tags: tags,
+          });
+
+          router.push(`/search/${savedSearch.id}${window.location.search}`);
+          onClose();
+        } catch (error) {
+          console.error('Error creating saved search:', error);
+          notifications.show({
+            color: 'red',
+            title: 'Error',
+            message:
+              'An error occurred while saving your search. Please try again.',
+          });
+        }
       }
     })();
   };
+
+  const isPending = createSavedSearch.isPending || updateSavedSearch.isPending;
 
   const { data: chartConfig } = useSearchedConfigToChartConfig(searchedConfig);
 
@@ -479,7 +515,23 @@ function SaveSearchModalComponent({
               <Text size="xs" mb="xs" mt="sm">
                 ORDER BY
               </Text>
-              <Text size="xs">{chartConfig.orderBy}</Text>
+              <Text size="xs">{`${chartConfig.orderBy ?? ''}`}</Text>
+              {searchedConfig.filters && searchedConfig.filters.length > 0 && (
+                <>
+                  <Text size="xs" mb="xs" mt="sm">
+                    FILTERS
+                  </Text>
+                  <Stack gap="xs">
+                    {searchedConfig.filters.map((filter, idx) => (
+                      <Text key={idx} size="xs" c="dimmed">
+                        {filter.type === 'sql_ast'
+                          ? `${filter.left} ${filter.operator} ${filter.right}`
+                          : filter.condition}
+                      </Text>
+                    ))}
+                  </Stack>
+                </>
+              )}
             </Card>
           ) : (
             <Text>Loading Chart Config...</Text>
@@ -503,8 +555,7 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="light"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                   rightSection={
                     <ActionIcon
@@ -526,8 +577,7 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="outline"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
@@ -538,10 +588,10 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="outline"
-            color="green"
+            variant="primary"
             type="submit"
             disabled={!formState.isValid}
+            loading={isPending}
           >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
@@ -577,6 +627,7 @@ function useLiveUpdate({
   const [refreshOnVisible, setRefreshOnVisible] = useState(false);
 
   const refresh = useCallback(() => {
+    // eslint-disable-next-line no-restricted-syntax
     onTimeRangeSelect(new Date(Date.now() - interval), new Date(), null);
   }, [onTimeRangeSelect, interval]);
 
@@ -627,46 +678,36 @@ function useLiveUpdate({
   ]);
 }
 
-function useSearchedConfigToChartConfig({
-  select,
-  source,
-  whereLanguage,
-  where,
-  filters,
-  orderBy,
-}: SearchConfig) {
+/**
+ * Takes in a input search config (user edited search config) and a default search config (saved search or source default config)
+ * and returns a chart config.
+ */
+function useSearchedConfigToChartConfig(
+  { select, source, whereLanguage, where, filters, orderBy }: SearchConfig,
+  defaultSearchConfig?: Partial<SearchConfig>,
+) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
   return useMemo(() => {
     if (sourceObj != null) {
+      const resolvedOrderBy =
+        orderBy || defaultSearchConfig?.orderBy || defaultOrderBy;
+
+      const chartConfig = buildSearchChartConfig(sourceObj, {
+        where,
+        whereLanguage,
+        filters,
+        select: select || defaultSearchConfig?.select || null,
+        displayType: DisplayType.Search,
+        ...(resolvedOrderBy != null ? { orderBy: resolvedOrderBy } : {}),
+      });
+
       return {
-        data: {
-          select: select || (sourceObj.defaultTableSelectExpression ?? ''),
-          from: sourceObj.from,
-          source: sourceObj.id,
-          ...(sourceObj.tableFilterExpression != null
-            ? {
-                filters: [
-                  {
-                    type: 'sql' as const,
-                    condition: sourceObj.tableFilterExpression,
-                  },
-                  ...(filters ?? []),
-                ],
-              }
-            : {}),
-          ...(filters != null ? { filters } : {}),
-          where: where ?? '',
-          whereLanguage: whereLanguage ?? 'sql',
-          timestampValueExpression: sourceObj.timestampValueExpression,
-          implicitColumnExpression: sourceObj.implicitColumnExpression,
-          connection: sourceObj.connection,
-          displayType: DisplayType.Search,
-          orderBy: orderBy || defaultOrderBy,
-        },
+        data: chartConfig,
       };
     }
 
@@ -676,6 +717,7 @@ function useSearchedConfigToChartConfig({
     isLoading,
     select,
     filters,
+    defaultSearchConfig,
     where,
     whereLanguage,
     defaultOrderBy,
@@ -683,109 +725,85 @@ function useSearchedConfigToChartConfig({
   ]);
 }
 
+const implicitDateTimePrefixes = [
+  'toStartOf',
+  'toUnixTimestamp',
+  'toDateTime',
+  'Timestamp',
+] as const;
+
 function optimizeDefaultOrderBy(
   timestampExpr: string,
   displayedTimestampExpr: string | undefined,
   sortingKey: string | undefined,
 ) {
-  const defaultModifier = 'DESC';
-  const firstTimestampValueExpression =
-    getFirstTimestampValueExpression(timestampExpr ?? '') ?? '';
-  const defaultOrderByItems = [firstTimestampValueExpression];
-  const trimmedDisplayedTimestampExpr = displayedTimestampExpr?.trim();
+  const orderByArr: string[] = [];
 
-  if (
-    trimmedDisplayedTimestampExpr &&
-    trimmedDisplayedTimestampExpr !== firstTimestampValueExpression
-  ) {
-    defaultOrderByItems.push(trimmedDisplayedTimestampExpr);
+  const timestampExprParts = splitAndTrimWithBracket(timestampExpr);
+  const keys = splitAndTrimWithBracket(sortingKey ?? '');
+  keys.push(...timestampExprParts);
+  if (displayedTimestampExpr) {
+    keys.push(displayedTimestampExpr.trim());
   }
-
-  const fallbackOrderBy =
-    defaultOrderByItems.length > 1
-      ? `(${defaultOrderByItems.join(', ')}) ${defaultModifier}`
-      : `${defaultOrderByItems[0]} ${defaultModifier}`;
-
-  if (!sortingKey) return fallbackOrderBy;
-
-  const orderByArr = [];
-  const sortKeys = splitAndTrimWithBracket(sortingKey);
-  for (let i = 0; i < sortKeys.length; i++) {
-    const sortKey = sortKeys[i];
+  for (const key of keys) {
     if (
-      sortKey.includes('toStartOf') &&
-      sortKey.includes(firstTimestampValueExpression)
+      !orderByArr.includes(key) &&
+      (implicitDateTimePrefixes.some(v => key.startsWith(v)) ||
+        timestampExprParts.includes(key) ||
+        displayedTimestampExpr?.trim() === key)
     ) {
-      orderByArr.push(sortKey);
-    } else if (
-      sortKey === firstTimestampValueExpression ||
-      (sortKey.startsWith('toUnixTimestamp') &&
-        sortKey.includes(firstTimestampValueExpression)) ||
-      (sortKey.startsWith('toDateTime') &&
-        sortKey.includes(firstTimestampValueExpression))
-    ) {
-      if (orderByArr.length === 0) {
-        // fallback if the first sort key is the timestamp sort key
-        return fallbackOrderBy;
-      } else {
-        orderByArr.push(sortKey);
-        break;
-      }
-    } else if (sortKey === trimmedDisplayedTimestampExpr) {
-      orderByArr.push(sortKey);
+      orderByArr.push(key);
     }
   }
 
-  // If we can't find an optimized order by, use the fallback/default
-  if (orderByArr.length === 0) {
-    return fallbackOrderBy;
-  }
-
-  if (
-    trimmedDisplayedTimestampExpr &&
-    !orderByArr.includes(trimmedDisplayedTimestampExpr)
-  ) {
-    orderByArr.push(trimmedDisplayedTimestampExpr);
-  }
-
   return orderByArr.length > 1
-    ? `(${orderByArr.join(', ')}) ${defaultModifier}`
-    : `${orderByArr[0]} ${defaultModifier}`;
+    ? `(${orderByArr.join(', ')}) DESC`
+    : `${orderByArr[0]} DESC`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
-  const { data: source } = useSource({ id: sourceID });
+  const { data: source } = useSource({
+    id: sourceID,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
   // When source changes, make sure select and orderby fields are set to default
-  return useMemo(
-    () =>
-      optimizeDefaultOrderBy(
-        source?.timestampValueExpression ?? '',
-        source?.displayedTimestampValueExpression,
-        tableMetadata?.sorting_key,
-      ),
-    [source, tableMetadata],
-  );
+  return useMemo(() => {
+    // If no source, return undefined so that the orderBy is not set incorrectly
+    if (!source) return undefined;
+    const trimmedOrderBy = source.orderByExpression?.trim();
+    if (trimmedOrderBy) return trimmedOrderBy;
+    return optimizeDefaultOrderBy(
+      source?.timestampValueExpression ?? '',
+      source.displayedTimestampValueExpression,
+      tableMetadata?.sorting_key,
+    );
+  }, [source, tableMetadata]);
 }
 
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsStringEncoded,
+  select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsJsonEncoded<Filter[]>(),
+  orderBy: parseAsStringEncoded,
 };
 
-function DBSearchPage() {
+export function DBSearchPage() {
+  const brandName = useBrandDisplayName();
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [directTraceId, setDirectTraceId] = useQueryState(
+    'traceId',
+    parseAsStringEncoded,
+  );
 
   const { data: savedSearch } = useSavedSearch(
     { id: `${savedSearchId}` },
@@ -801,7 +819,16 @@ function DBSearchPage() {
   );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
+  const directTraceSource =
+    directTraceId != null && searchedSource?.kind === SourceKind.Trace
+      ? searchedSource
+      : undefined;
+  const chartSourceId =
+    directTraceId != null && !directTraceSource
+      ? ''
+      : (searchedConfig.source ?? '');
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -810,11 +837,6 @@ function DBSearchPage() {
       'delta',
       'pattern',
     ]).withDefault('results'),
-  );
-
-  const [outlierSqlCondition, setOutlierSqlCondition] = useQueryState(
-    'outlierSqlCondition',
-    parseAsString,
   );
 
   const [isLive, setIsLive] = useQueryState(
@@ -827,6 +849,9 @@ function DBSearchPage() {
       setIsLive(false);
     }
   }, [analysisMode, setIsLive]);
+
+  const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
+    useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
 
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
@@ -846,37 +871,59 @@ function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const {
-    control,
-    setValue,
-    reset,
-    handleSubmit,
-    getValues,
-    formState,
-    setError,
-    resetField,
-  } = useForm<SearchConfigFromSchema>({
-    values: {
-      select: searchedConfig.select || '',
-      where: searchedConfig.where || '',
-      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source: searchedConfig.source || defaultSourceId,
-      filters: searchedConfig.filters ?? [],
-      orderBy: searchedConfig.orderBy ?? '',
-    },
-    resetOptions: {
-      keepDirtyValues: true,
-      keepErrors: true,
-    },
-    resolver: zodResolver(SearchConfigSchema),
-  });
+  const { control, setValue, reset, handleSubmit, formState } =
+    useForm<SearchConfigFromSchema>({
+      values: {
+        select: searchedConfig.select || '',
+        where: searchedConfig.where || '',
+        whereLanguage:
+          searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+        source:
+          searchedConfig.source ||
+          (savedSearchId || directTraceId ? '' : defaultSourceId),
+        filters: searchedConfig.filters ?? [],
+        orderBy: searchedConfig.orderBy ?? '',
+      },
+      resetOptions: {
+        keepDirtyValues: true,
+        keepErrors: true,
+      },
+      resolver: zodResolver(SearchConfigSchema),
+    });
 
   const inputSource = useWatch({ name: 'source', control });
+
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
+
+  // The default search config to use when the user hasn't changed the search config
+  const defaultSearchConfig = useMemo(() => {
+    let _savedSearch = savedSearch;
+    // Ensure to not use the saved search if the saved search id is not the same as the current saved search id
+    if (!savedSearchId || savedSearch?.id !== savedSearchId) {
+      _savedSearch = undefined;
+    }
+    // Ensure to not use the saved search if the input source is not the same as the saved search source
+    if (inputSource !== savedSearch?.source) {
+      _savedSearch = undefined;
+    }
+    return {
+      select:
+        _savedSearch?.select ??
+        (searchedSource?.kind === SourceKind.Log ||
+        searchedSource?.kind === SourceKind.Trace
+          ? searchedSource.defaultTableSelectExpression
+          : undefined),
+      where: _savedSearch?.where ?? '',
+      whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
+      source: _savedSearch?.source,
+      filters: _savedSearch?.filters ?? [],
+      orderBy: _savedSearch?.orderBy || defaultOrderBy,
+    };
+  }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
+
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
-
-  const defaultOrderBy = useDefaultOrderBy(inputSource);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -899,7 +946,8 @@ function DBSearchPage() {
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
-        whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
+        whereLanguage:
+          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -914,33 +962,38 @@ function DBSearchPage() {
     const isSearchConfigEmpty =
       !source && !where && !select && !whereLanguage && !filters?.length;
 
-    if (isSearchConfigEmpty) {
-      // Landed on saved search (if we just landed on a searchId route)
-      if (
-        savedSearch != null && // Make sure saved search data is loaded
-        savedSearch.id === savedSearchId // Make sure we've loaded the correct saved search
-      ) {
-        setSearchedConfig({
-          source: savedSearch.source,
-          where: savedSearch.where,
-          select: savedSearch.select,
-          whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
-          orderBy: savedSearch.orderBy ?? '',
-        });
-        return;
-      }
+    // Landed on saved search (if we just landed on a searchId route)
+    if (
+      savedSearch != null && // Make sure saved search data is loaded
+      savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
+      isSearchConfigEmpty // Only populate if URL doesn't have explicit config
+    ) {
+      setSearchedConfig({
+        source: savedSearch.source,
+        where: savedSearch.where,
+        select: savedSearch.select,
+        whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
+        filters: savedSearch.filters ?? [],
+        orderBy: savedSearch.orderBy ?? '',
+      });
+      return;
+    }
 
-      // Landed on a new search - ensure we have a source selected
-      if (savedSearchId == null && defaultSourceId) {
-        setSearchedConfig({
-          source: defaultSourceId,
-          where: '',
-          select: '',
-          whereLanguage: 'lucene',
-          orderBy: '',
-        });
-        return;
-      }
+    if (savedSearchId == null && directTraceId != null && !source) {
+      return;
+    }
+
+    // Landed on a new search - ensure we have a source selected
+    if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
+      setSearchedConfig({
+        source: defaultSourceId,
+        where: '',
+        select: '',
+        whereLanguage: getStoredLanguage() ?? 'lucene',
+        filters: [],
+        orderBy: '',
+      });
+      return;
     }
   }, [
     savedSearch,
@@ -948,6 +1001,7 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
+    directTraceId,
     sources,
   ]);
 
@@ -1028,17 +1082,18 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user is in a saved search, prefer the saved search's select if available
+        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
+          setValue('select', '');
+          setValue('orderBy', '');
+          // Clear all search filters only when switching to a different source
+          searchFilters.clearAllFilters();
+          // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
+          setValue('orderBy', savedSearch?.orderBy ?? '');
+          // Don't clear filters - we're loading from saved search
         }
-        // Clear all search filters
-        searchFilters.clearAllFilters();
       }
     }
   }, [
@@ -1069,9 +1124,28 @@ function DBSearchPage() {
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
+  const chartSearchConfig = useMemo(
+    () => ({
+      select: searchedConfig.select ?? '',
+      source: chartSourceId,
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+      filters: searchedConfig.filters ?? [],
+      orderBy: searchedConfig.orderBy ?? '',
+    }),
+    [
+      chartSourceId,
+      searchedConfig.filters,
+      searchedConfig.orderBy,
+      searchedConfig.select,
+      searchedConfig.where,
+      searchedConfig.whereLanguage,
+    ],
+  );
 
   const { data: chartConfig, isLoading: isChartConfigLoading } =
-    useSearchedConfigToChartConfig(searchedConfig);
+    useSearchedConfigToChartConfig(chartSearchConfig, defaultSearchConfig);
 
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
@@ -1126,9 +1200,11 @@ function DBSearchPage() {
             name: savedSearch.name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: newTags,
           },
           {
@@ -1156,8 +1232,6 @@ function DBSearchPage() {
   );
 
   const [newSourceModalOpened, setNewSourceModalOpened] = useState(false);
-
-  const QUERY_KEY_PREFIX = 'search';
 
   const isAnyQueryFetching =
     useIsFetching({
@@ -1209,8 +1283,6 @@ function DBSearchPage() {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
 
-  const { data: me } = api.useMe();
-
   // Callback to handle when rows are expanded - kick user out of live tail
   const onExpandedRowsChange = useCallback(
     (hasExpandedRows: boolean) => {
@@ -1241,15 +1313,15 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = useMemo(
-    () =>
-      splitAndTrimWithBracket(
-        dbSqlRowTableConfig?.select ??
-          searchedSource?.defaultTableSelectExpression ??
-          '',
-      ),
-    [dbSqlRowTableConfig?.select, searchedSource?.defaultTableSelectExpression],
-  );
+  const displayedColumns = useMemo(() => {
+    // `select` is typed as `string | DerivedColumn[]` upstream, but in the
+    // search page we always supply a string. Guard for type safety.
+    const rawSelect =
+      dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '';
+    return splitAndTrimWithBracket(
+      typeof rawSelect === 'string' ? rawSelect : '',
+    );
+  }, [dbSqlRowTableConfig?.select, defaultSearchConfig.select]);
 
   const toggleColumn = useCallback(
     (column: string) => {
@@ -1314,32 +1386,71 @@ function DBSearchPage() {
 
   const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
     useDisclosure();
+  const directTraceRangeAppliedRef = useRef<string | null>(null);
+  const directTraceFilterAppliedRef = useRef<string | null>(null);
 
-  // Add this effect to trigger initial search when component mounts
+  useEffect(() => {
+    if (!isReady || !directTraceId) {
+      directTraceRangeAppliedRef.current = null;
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has('from') && searchParams.has('to')) {
+      return;
+    }
+
+    if (directTraceRangeAppliedRef.current === directTraceId) {
+      return;
+    }
+
+    directTraceRangeAppliedRef.current = directTraceId;
+    setIsLive(false);
+    const [start, end] = getDefaultDirectTraceDateRange();
+    onTimeRangeSelect(start, end, null);
+  }, [directTraceId, isReady, onTimeRangeSelect, setIsLive]);
+
+  useEffect(() => {
+    if (!directTraceId || !directTraceSource) {
+      directTraceFilterAppliedRef.current = null;
+      return;
+    }
+
+    const nextKey = `${directTraceSource.id}:${directTraceId}`;
+    if (directTraceFilterAppliedRef.current === nextKey) {
+      return;
+    }
+
+    directTraceFilterAppliedRef.current = nextKey;
+    setIsLive(false);
+    setSearchedConfig({
+      source: directTraceSource.id,
+      where: buildDirectTraceWhereClause(
+        directTraceSource.traceIdExpression,
+        directTraceId,
+      ),
+      whereLanguage: 'sql',
+      filters: [],
+    });
+  }, [directTraceId, directTraceSource, setIsLive, setSearchedConfig]);
+
   useEffect(() => {
     if (isReady && queryReady && !isChartConfigLoading) {
       // Only trigger if we haven't searched yet (no time range in URL)
       const searchParams = new URLSearchParams(window.location.search);
-      if (!searchParams.has('from') && !searchParams.has('to')) {
+      if (
+        directTraceId == null &&
+        !searchParams.has('from') &&
+        !searchParams.has('to')
+      ) {
         onSearch('Live Tail');
       }
     }
-  }, [isReady, queryReady, isChartConfigLoading, onSearch]);
+  }, [directTraceId, isReady, queryReady, isChartConfigLoading, onSearch]);
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = useMemo(
-    () =>
-      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-        name: key,
-        sql: {
-          sql: value,
-          params: {},
-        },
-        isSubquery: false,
-      })),
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1372,6 +1483,9 @@ function DBSearchPage() {
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
       eventTableSelect: searchedConfig.select,
+      // In live mode, when the end date is aligned to the granularity, the end date does
+      // not change on every query, resulting in cached data being re-used.
+      alignDateRangeToGranularity: !isLive,
       ...variableConfig,
     };
   }, [
@@ -1380,6 +1494,7 @@ function DBSearchPage() {
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
+    isLive,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -1398,10 +1513,10 @@ function DBSearchPage() {
       setSearchedConfig({
         orderBy: sort
           ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
-          : defaultOrderBy,
+          : defaultSearchConfig.orderBy,
       });
     },
-    [setIsLive, defaultOrderBy, setSearchedConfig],
+    [setIsLive, defaultSearchConfig.orderBy, setSearchedConfig],
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
@@ -1420,7 +1535,7 @@ function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,
@@ -1499,22 +1614,68 @@ function DBSearchPage() {
     },
     [setIsLive, setInterval, onTimeRangeSelect],
   );
+  const directTraceFocusDate = useMemo(
+    () =>
+      new Date(
+        (searchedTimeRange[0].getTime() + searchedTimeRange[1].getTime()) / 2,
+      ),
+    [searchedTimeRange],
+  );
+
+  const onDirectTraceSourceChange = useCallback(
+    (sourceId: string | null) => {
+      setIsLive(false);
+      if (sourceId == null) {
+        directTraceFilterAppliedRef.current = null;
+        setSearchedConfig({
+          source: null,
+          where: '',
+          whereLanguage: getStoredLanguage() ?? 'lucene',
+          filters: [],
+        });
+        return;
+      }
+
+      const nextSource = sources?.find(
+        (source): source is Extract<TSource, { kind: SourceKind.Trace }> =>
+          source.id === sourceId && isTraceSource(source),
+      );
+      if (!nextSource || !directTraceId) {
+        return;
+      }
+
+      setSearchedConfig({
+        source: nextSource.id,
+        where: buildDirectTraceWhereClause(
+          nextSource.traceIdExpression,
+          directTraceId,
+        ),
+        whereLanguage: 'sql',
+        filters: [],
+      });
+    },
+    [directTraceId, setIsLive, setSearchedConfig, sources],
+  );
+
+  const closeDirectTraceSidePanel = useCallback(() => {
+    setDirectTraceId(null);
+  }, [setDirectTraceId]);
 
   const clearSaveSearchModalState = useCallback(
     () => setSaveSearchModalState(undefined),
     [setSaveSearchModalState],
   );
 
-  const onLanguageChange = useCallback(
-    (lang: 'sql' | 'lucene') =>
-      setValue('whereLanguage', lang, {
-        shouldDirty: true,
-      }),
-    [setValue],
-  );
-
   const onModelFormExpandClose = useCallback(() => {
     setModelFormExpanded(false);
+  }, [setModelFormExpanded]);
+
+  const onEditSources = useCallback(() => {
+    if (IS_LOCAL_MODE) {
+      setModelFormExpanded(v => !v);
+    } else {
+      router.push('/team');
+    }
   }, [setModelFormExpanded]);
 
   const setNewSourceModalClosed = useCallback(
@@ -1539,7 +1700,7 @@ function DBSearchPage() {
     >
       <Head>
         <title>
-          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - HyperDX
+          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
         </title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1551,6 +1712,94 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
+      {savedSearch && (
+        <Stack mt="lg" mx="xs">
+          <Group justify="space-between">
+            <Breadcrumbs fz="sm">
+              <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
+                Saved Searches
+              </Anchor>
+              <Text fz="sm" c="dimmed" maw={400} truncate="end">
+                {savedSearch.name}
+              </Text>
+            </Breadcrumbs>
+            <Text size="xs" c="dimmed" lh={1}>
+              {savedSearch.createdBy && (
+                <span>
+                  Created by{' '}
+                  {savedSearch.createdBy.name || savedSearch.createdBy.email}.{' '}
+                </span>
+              )}
+              {savedSearch.updatedAt && (
+                <Tooltip
+                  label={
+                    <>
+                      <FormatTime
+                        value={savedSearch.updatedAt}
+                        format="short"
+                      />
+                      {savedSearch.updatedBy
+                        ? ` by ${savedSearch.updatedBy.name || savedSearch.updatedBy.email}`
+                        : ''}
+                    </>
+                  }
+                >
+                  <span>{`Updated ${formatDistanceToNow(new Date(savedSearch.updatedAt), { addSuffix: true })}.`}</span>
+                </Tooltip>
+              )}
+            </Text>
+          </Group>
+          <Group justify="space-between" align="flex-end">
+            <div data-testid="saved-search-name">
+              <EditablePageName
+                key={savedSearch.id}
+                name={savedSearch?.name ?? 'Untitled Search'}
+                onSave={editedName => {
+                  updateSavedSearch.mutate({
+                    id: savedSearch.id,
+                    name: editedName,
+                  });
+                }}
+              />
+            </div>
+
+            <Group gap="xs">
+              <FavoriteButton
+                resourceType="savedSearch"
+                resourceId={savedSearch.id}
+              />
+              <Tags
+                allowCreate
+                values={savedSearch.tags || []}
+                onChange={handleUpdateTags}
+              >
+                <Button
+                  data-testid="tags-button"
+                  variant="secondary"
+                  size="xs"
+                  style={{ flexShrink: 0 }}
+                >
+                  <IconTags size={14} className="me-1" />
+                  {savedSearch.tags?.length || 0}
+                </Button>
+              </Tags>
+
+              <SearchPageActionBar
+                onClickDeleteSavedSearch={() => {
+                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                    onSuccess: () => {
+                      router.push('/search/list');
+                    },
+                  });
+                }}
+                onClickSaveAsNew={() => {
+                  setSaveSearchModalState('create');
+                }}
+              />
+            </Group>
+          </Group>
+        </Stack>
+      )}
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
@@ -1558,34 +1807,29 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap">
-            <SourceSelectControlled
-              key={`${savedSearchId}`}
-              size="xs"
-              control={control}
-              name="source"
-              onCreate={openNewSourceModal}
-              allowedSourceKinds={ALLOWED_SOURCE_KINDS}
-              data-testid="source-selector"
-              sourceSchemaPreview={sourceSchemaPreview}
-            />
-            <SourceEditMenu
-              setModalOpen={setNewSourceModalOpened}
-              setModelFormExpanded={setModelFormExpanded}
-            />
-          </Group>
-          <Box style={{ minWidth: 100, flexGrow: 1 }}>
+          <SourceSelectControlled
+            key={`${savedSearchId}`}
+            size="xs"
+            control={control}
+            name="source"
+            onCreate={openNewSourceModal}
+            onEdit={onEditSources}
+            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+            data-testid="source-selector"
+            sourceSchemaPreview={sourceSchemaPreview}
+            style={{ minWidth: 150 }}
+          />
+          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
               control={control}
               name="select"
-              defaultValue={inputSourceObj?.defaultTableSelectExpression}
-              placeholder={
-                inputSourceObj?.defaultTableSelectExpression || 'SELECT Columns'
-              }
+              defaultValue={defaultSearchConfig.select}
+              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
+              allowMultiline
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1593,83 +1837,48 @@ function DBSearchPage() {
               tableConnection={inputSourceTableConnection}
               control={control}
               name="orderBy"
-              defaultValue={defaultOrderBy}
+              defaultValue={defaultSearchConfig.orderBy}
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
             />
           </Box>
-          {!IS_LOCAL_MODE && (
-            <>
-              {!savedSearchId ? (
-                <Button
-                  data-testid="save-search-button"
-                  variant="default"
-                  size="xs"
-                  onClick={onSaveSearch}
-                  style={{ flexShrink: 0 }}
-                >
-                  Save
-                </Button>
-              ) : (
-                <Button
-                  data-testid="update-search-button"
-                  variant="default"
-                  size="xs"
-                  onClick={() => {
-                    setSaveSearchModalState('update');
-                  }}
-                  style={{ flexShrink: 0 }}
-                >
-                  Update
-                </Button>
-              )}
-              {!IS_LOCAL_MODE && (
-                <Button
-                  data-testid="alerts-button"
-                  variant="default"
-                  size="xs"
-                  onClick={openAlertModal}
-                  style={{ flexShrink: 0 }}
-                >
-                  Alerts
-                </Button>
-              )}
-              {!!savedSearch && (
-                <>
-                  <Tags
-                    allowCreate
-                    values={savedSearch.tags || []}
-                    onChange={handleUpdateTags}
-                  >
-                    <Button
-                      data-testid="tags-button"
-                      variant="default"
-                      px="xs"
-                      size="xs"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <IconTags size={14} className="me-1" />
-                      {savedSearch.tags?.length || 0}
-                    </Button>
-                  </Tags>
-
-                  <SearchPageActionBar
-                    onClickDeleteSavedSearch={() => {
-                      deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                        onSuccess: () => {
-                          router.push('/search');
-                        },
-                      });
-                    }}
-                    onClickRenameSavedSearch={() => {
-                      setSaveSearchModalState('update');
-                    }}
-                  />
-                </>
-              )}
-            </>
-          )}
+          <>
+            {!savedSearchId ? (
+              <Button
+                data-testid="save-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={onSaveSearch}
+                style={{ flexShrink: 0 }}
+              >
+                Save
+              </Button>
+            ) : (
+              <Button
+                data-testid="update-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={() => {
+                  setSaveSearchModalState('update');
+                }}
+                style={{ flexShrink: 0 }}
+              >
+                Update
+              </Button>
+            )}
+            {!IS_LOCAL_MODE && (
+              <Button
+                data-testid="alerts-button"
+                variant="secondary"
+                size="xs"
+                onClick={openAlertModal}
+                style={{ flexShrink: 0 }}
+              >
+                Alerts
+              </Button>
+            )}
+          </>
         </Flex>
         <SourceEditModal
           opened={modelFormExpanded}
@@ -1681,104 +1890,92 @@ function DBSearchPage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm">
-          <WhereLanguageControlled
-            name="whereLanguage"
+        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
+          <SearchWhereInput
+            tableConnection={inputSourceTableConnection}
             control={control}
-            sqlInput={
-              <Box style={{ width: '75%', flexGrow: 1 }}>
-                <SQLInlineEditorControlled
-                  tableConnection={inputSourceTableConnection}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={onLanguageChange}
-                  language="sql"
-                  onSubmit={onSubmit}
-                  label="WHERE"
-                  queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              </Box>
-            }
-            luceneInput={
-              <SearchInputV2
-                tableConnection={tcFromSource(inputSourceObj)}
-                control={control}
-                name="where"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
-                onSubmit={onSubmit}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-                enableHotkey
-                data-testid="search-input"
-              />
-            }
+            name="where"
+            onSubmit={onSubmit}
+            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+            enableHotkey
+            data-testid="search-input"
+            minWidth="min(600px, 100%)"
           />
-          <TimePicker
-            data-testid="time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onTimePickerSearch}
-            onRelativeSearch={onTimePickerRelativeSearch}
-            showLive={analysisMode === 'results'}
-            isLiveMode={isLive}
-            // Default to relative time mode if the user has made changes to interval and reloaded.
-            defaultRelativeTimeMode={
-              isLive && interval !== LIVE_TAIL_DURATION_MS
-            }
-          />
-          {isLive && (
-            <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                value={String(refreshFrequency)}
-                onChange={value =>
-                  setRefreshFrequency(value ? parseInt(value, 10) : null)
-                }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
-              />
-            </Tooltip>
-          )}
-          <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          <Flex
+            gap="sm"
+            style={{ flex: '0 1 500px', minWidth: 0 }}
+            align="center"
+          >
+            <TimePicker
+              data-testid="time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onTimePickerSearch}
+              onRelativeSearch={onTimePickerRelativeSearch}
+              showLive={analysisMode === 'results'}
+              isLiveMode={isLive}
+              // Default to relative time mode if the user has made changes to interval and reloaded.
+              defaultRelativeTimeMode={
+                isLive && interval !== LIVE_TAIL_DURATION_MS
+              }
+              width="100%"
+            />
+            {isLive && (
+              <Tooltip label="Live tail refresh interval">
+                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                  <Select
+                    size="sm"
+                    w="100%"
+                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                    value={String(refreshFrequency)}
+                    onChange={value =>
+                      setRefreshFrequency(value ? parseInt(value, 10) : null)
+                    }
+                    allowDeselect={false}
+                    comboboxProps={{
+                      withinPortal: true,
+                      zIndex: 1000,
+                    }}
+                  />
+                </Box>
+              </Tooltip>
+            )}
+            <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+          </Flex>
         </Flex>
+        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
           opened={saveSearchModalState != null}
           onClose={clearSaveSearchModalState}
-          // @ts-ignore FIXME: Do some sort of validation?
           searchedConfig={searchedConfig}
           isUpdate={saveSearchModalState === 'update'}
           savedSearchId={savedSearchId}
         />
       )}
+      <DirectTraceSidePanel
+        opened={directTraceId != null}
+        traceId={directTraceId ?? ''}
+        traceSourceId={directTraceSource?.id ?? null}
+        dateRange={searchedTimeRange}
+        focusDate={directTraceFocusDate}
+        onClose={closeDirectTraceSidePanel}
+        onSourceChange={onDirectTraceSourceChange}
+      />
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
         className="bg-body"
       >
         {!queryReady ? (
-          <Paper shadow="xs" p="xl" h="100%">
-            <Center mih={100} h="100%">
-              <Text size="sm">
-                Please start by selecting a database, table, and timestamp
-                column above to view data.
-              </Text>
-            </Center>
-          </Paper>
+          <EmptyState
+            h="100%"
+            icon={<IconStack2 size={32} />}
+            title="No data to display"
+            description="Select a source and click the play button to query data."
+          />
         ) : (
           <>
             <div
@@ -1788,27 +1985,43 @@ function DBSearchPage() {
                 height: '100%',
               }}
             >
-              <ErrorBoundary message="Unable to render search filters">
-                <DBSearchPageFilters
-                  denoiseResults={denoiseResults}
-                  setDenoiseResults={setDenoiseResults}
-                  isLive={isLive}
-                  analysisMode={analysisMode}
-                  setAnalysisMode={setAnalysisMode}
-                  chartConfig={filtersChartConfig}
-                  sourceId={inputSourceObj?.id}
-                  showDelta={!!searchedSource?.durationExpression}
-                  {...searchFilters}
-                />
-              </ErrorBoundary>
+              {!isFilterSidebarCollapsed && (
+                <ErrorBoundary message="Unable to render search filters">
+                  <DBSearchPageFilters
+                    denoiseResults={denoiseResults}
+                    setDenoiseResults={setDenoiseResults}
+                    isLive={isLive}
+                    analysisMode={analysisMode}
+                    setAnalysisMode={setAnalysisMode}
+                    chartConfig={filtersChartConfig}
+                    sourceId={inputSourceObj?.id}
+                    showDelta={
+                      !!(searchedSource?.kind === SourceKind.Trace
+                        ? searchedSource.durationExpression
+                        : undefined)
+                    }
+                    onColumnToggle={toggleColumn}
+                    displayedColumns={displayedColumns}
+                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    {...searchFilters}
+                  />
+                </ErrorBoundary>
+              )}
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px">
+                  <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
-                      <Group justify="space-between" style={{ width: '100%' }}>
-                        <SearchTotalCountChart
-                          config={histogramTimeChartConfig}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        style={{ width: '100%' }}
+                      >
+                        <SearchResultsCountGroup
+                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                          onExpandFilters={() =>
+                            setIsFilterSidebarCollapsed(false)
+                          }
+                          histogramTimeChartConfig={histogramTimeChartConfig}
                         />
                         <SearchNumRows
                           config={{
@@ -1820,63 +2033,75 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box className={searchPageStyles.timeChartContainer}>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
+                          showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
                       </Box>
                     )}
-                    <PatternTable
-                      source={searchedSource}
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      bodyValueExpression={
-                        searchedSource?.bodyExpression ??
-                        chartConfig.implicitColumnExpression ??
-                        ''
-                      }
-                      totalCountConfig={histogramTimeChartConfig}
-                      totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
-                    />
+                    <Box flex="1" mih="0" px="sm">
+                      <PatternTable
+                        source={searchedSource}
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                        }}
+                        bodyValueExpression={
+                          searchedSource
+                            ? (getEventBody(searchedSource) ?? '')
+                            : (chartConfig.implicitColumnExpression ?? '')
+                        }
+                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                      />
+                    </Box>
                   </Flex>
                 )}
-              {analysisMode === 'delta' && searchedSource != null && (
-                <DBSearchHeatmapChart
-                  chartConfig={{
-                    ...chartConfig,
-                    dateRange: searchedTimeRange,
-                    with: aliasWith,
-                  }}
-                  isReady={isReady}
-                  source={searchedSource}
-                />
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {analysisMode === 'results' &&
-                  chartConfig &&
-                  histogramTimeChartConfig && (
+              {analysisMode === 'delta' &&
+                searchedSource != null &&
+                isTraceSource(searchedSource) && (
+                  <DBSearchHeatmapChart
+                    chartConfig={{
+                      ...chartConfig,
+                      dateRange: searchedTimeRange,
+                      with: aliasWith,
+                    }}
+                    isReady={isReady}
+                    source={searchedSource}
+                    onAddFilter={searchFilters.setFilterValue}
+                  />
+                )}
+              {analysisMode === 'results' && (
+                <Flex direction="column" mih="0" miw={0}>
+                  {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
+                          align="center"
                           style={{ width: '100%' }}
                         >
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          <SearchResultsCountGroup
+                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
+                            onExpandFilters={() =>
+                              setIsFilterSidebarCollapsed(false)
+                            }
+                            histogramTimeChartConfig={histogramTimeChartConfig}
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
-                              analysisMode === 'results' &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
                                   handleResumeLiveTail={handleResumeLiveTail}
@@ -1893,13 +2118,18 @@ function DBSearchPage() {
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box className={searchPageStyles.timeChartContainer}>
+                        <Box
+                          className={searchPageStyles.timeChartContainer}
+                          mih="0"
+                        >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}
                             config={histogramTimeChartConfig}
                             enabled={isReady}
                             showDisplaySwitcher={false}
+                            showMVOptimizationIndicator={false}
+                            showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             enableParallelQueries
@@ -1908,109 +2138,95 @@ function DBSearchPage() {
                       )}
                     </>
                   )}
-                {hasQueryError && queryError ? (
-                  <>
-                    <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                      {whereSuggestions && whereSuggestions.length > 0 && (
-                        <Box mb="xl">
-                          <Text size="lg">
-                            <b>Query Helper</b>
+                  {hasQueryError && queryError ? (
+                    <>
+                      <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                        {whereSuggestions && whereSuggestions.length > 0 && (
+                          <Box mb="xl">
+                            <Text size="lg">
+                              <b>Query Helper</b>
+                            </Text>
+                            <Grid>
+                              {whereSuggestions!.map(s => (
+                                <Fragment key={s.corrected()}>
+                                  <Grid.Col span={10}>
+                                    <Text>{s.userMessage('where')}</Text>
+                                  </Grid.Col>
+                                  <Grid.Col span={2}>
+                                    <Button
+                                      onClick={() =>
+                                        setValue('where', s.corrected())
+                                      }
+                                    >
+                                      Accept
+                                    </Button>
+                                  </Grid.Col>
+                                </Fragment>
+                              ))}
+                            </Grid>
+                          </Box>
+                        )}
+                        <Box mt="sm">
+                          <Text my="sm" size="sm">
+                            Error encountered for query with inputs:
                           </Text>
-                          <Grid>
-                            {whereSuggestions!.map(s => (
-                              <>
-                                <Grid.Col span={10}>
-                                  <Text>{s.userMessage('where')}</Text>
-                                </Grid.Col>
-                                <Grid.Col span={2}>
-                                  <Button
-                                    onClick={() =>
-                                      setValue('where', s.corrected())
-                                    }
-                                  >
-                                    Accept
-                                  </Button>
-                                </Grid.Col>
-                              </>
-                            ))}
-                          </Grid>
-                        </Box>
-                      )}
-                      <Box mt="sm">
-                        <Text my="sm" size="sm">
-                          Error encountered for query with inputs:
-                        </Text>
-                        <Paper
-                          flex="auto"
-                          p={'sm'}
-                          shadow="none"
-                          radius="sm"
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <Grid>
-                            <Grid.Col span={2}>
-                              <Text>SELECT</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.select as string}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>ORDER BY</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.orderBy}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>
-                                {chartConfig.whereLanguage === 'lucene'
-                                  ? 'Searched For'
-                                  : 'WHERE'}
-                              </Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              {chartConfig.whereLanguage === 'lucene' ? (
-                                <CodeMirror
-                                  indentWithTab={false}
-                                  value={chartConfig.where}
-                                  theme="dark"
-                                  basicSetup={{
-                                    lineNumbers: false,
-                                    foldGutter: false,
-                                    highlightActiveLine: false,
-                                    highlightActiveLineGutter: false,
-                                  }}
-                                  editable={false}
+                          <Paper
+                            flex="auto"
+                            p={'sm'}
+                            shadow="none"
+                            radius="sm"
+                            style={{ overflow: 'hidden' }}
+                          >
+                            <Grid>
+                              <Grid.Col span={2}>
+                                <Text>SELECT</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.select as string}`}
+                                  formatData={false}
                                 />
-                              ) : (
-                                <SQLPreview data={`${chartConfig.where}`} />
-                              )}
-                            </Grid.Col>
-                          </Grid>
-                        </Paper>
-                      </Box>
-                      <Box mt="lg">
-                        <Text my="sm" size="sm">
-                          Error Message:
-                        </Text>
-                        <Code
-                          block
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                          }}
-                        >
-                          {queryError.message}
-                        </Code>
-                      </Box>
-                      {queryError instanceof ClickHouseQueryError && (
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>ORDER BY</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.orderBy}`}
+                                  formatData={false}
+                                />
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>
+                                  {chartConfig.whereLanguage === 'lucene'
+                                    ? 'Searched For'
+                                    : 'WHERE'}
+                                </Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                {chartConfig.whereLanguage === 'lucene' ? (
+                                  <CodeMirror
+                                    indentWithTab={false}
+                                    value={chartConfig.where}
+                                    theme="dark"
+                                    basicSetup={{
+                                      lineNumbers: false,
+                                      foldGutter: false,
+                                      highlightActiveLine: false,
+                                      highlightActiveLineGutter: false,
+                                    }}
+                                    editable={false}
+                                  />
+                                ) : (
+                                  <SQLPreview data={`${chartConfig.where}`} />
+                                )}
+                              </Grid.Col>
+                            </Grid>
+                          </Paper>
+                        </Box>
                         <Box mt="lg">
                           <Text my="sm" size="sm">
-                            Original Query:
+                            Error Message:
                           </Text>
                           <Code
                             block
@@ -2018,38 +2234,57 @@ function DBSearchPage() {
                               whiteSpace: 'pre-wrap',
                             }}
                           >
-                            <SQLPreview data={queryError.query} formatData />
+                            {queryError.message}
                           </Code>
                         </Box>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {chartConfig &&
-                      searchedConfig.source &&
-                      dbSqlRowTableConfig &&
-                      analysisMode === 'results' && (
-                        <DBSqlRowTableWithSideBar
-                          context={rowTableContext}
-                          config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source}
-                          onSidebarOpen={onSidebarOpen}
-                          onExpandedRowsChange={onExpandedRowsChange}
-                          enabled={isReady}
-                          isLive={isLive ?? true}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onScroll={onTableScroll}
-                          onError={handleTableError}
-                          denoiseResults={denoiseResults}
-                          collapseAllRows={collapseAllRows}
-                          onSortingChange={onSortingChange}
-                          initialSortBy={initialSortBy}
-                        />
-                      )}
-                  </>
-                )}
-              </div>
+                        {queryError instanceof ClickHouseQueryError && (
+                          <Box mt="lg">
+                            <Text my="sm" size="sm">
+                              Original Query:
+                            </Text>
+                            <Code
+                              block
+                              style={{
+                                whiteSpace: 'pre-wrap',
+                              }}
+                            >
+                              <SQLPreview
+                                data={queryError.query}
+                                formatData
+                                enableLineWrapping
+                              />
+                            </Code>
+                          </Box>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <Box flex="1" mih="0" px="sm">
+                      {chartConfig &&
+                        searchedConfig.source &&
+                        dbSqlRowTableConfig && (
+                          <DBSqlRowTableWithSideBar
+                            context={rowTableContext}
+                            config={dbSqlRowTableConfig}
+                            sourceId={searchedConfig.source}
+                            onSidebarOpen={onSidebarOpen}
+                            onExpandedRowsChange={onExpandedRowsChange}
+                            enabled={isReady}
+                            isLive={isLive ?? true}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onScroll={onTableScroll}
+                            onError={handleTableError}
+                            denoiseResults={denoiseResults}
+                            collapseAllRows={collapseAllRows}
+                            onSortingChange={onSortingChange}
+                            initialSortBy={initialSortBy}
+                            enableSmallFirstWindow
+                          />
+                        )}
+                    </Box>
+                  )}
+                </Flex>
+              )}
             </div>
           </>
         )}

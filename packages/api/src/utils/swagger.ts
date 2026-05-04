@@ -28,6 +28,18 @@ export const swaggerOptions = {
         name: 'Alerts',
         description: 'Endpoints for managing monitoring alerts',
       },
+      {
+        name: 'Charts',
+        description: 'Endpoints for querying chart data',
+      },
+      {
+        name: 'Sources',
+        description: 'Endpoints for managing data sources',
+      },
+      {
+        name: 'Webhooks',
+        description: 'Endpoints for managing webhooks',
+      },
     ],
     components: {
       securitySchemes: {

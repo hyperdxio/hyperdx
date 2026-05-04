@@ -50,24 +50,6 @@ export class Api404Error extends BaseError {
   }
 }
 
-export class Api401Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.UNAUTHORIZED, true, 'Unauthorized');
-  }
-}
-
-export class Api403Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.FORBIDDEN, true, 'Forbidden');
-  }
-}
-
-export class Api409Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.CONFLICT, true, 'Conflict');
-  }
-}
-
 export const isOperationalError = (error: Error) => {
   if (error instanceof BaseError) {
     return error.isOperational;

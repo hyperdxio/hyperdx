@@ -1,7 +1,11 @@
 import React, { act } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  UseQueryResult,
+} from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import useOffsetPaginatedQuery from '../useOffsetPaginatedQuery';
@@ -27,6 +31,28 @@ jest.mock('@hyperdx/app/src/metadata', () => ({
   getMetadata: jest.fn(),
 }));
 
+// Mock useMetadataWithSettings
+jest.mock('@/hooks/useMetadata', () => ({
+  useMetadataWithSettings: jest.fn(),
+}));
+
+// Mock useSource
+jest.mock('@/source', () => ({
+  useSource: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  }),
+}));
+
+// Mock the useMVOptimizationExplanation hook
+jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isPlaceholderData: false,
+  }),
+}));
+
 // Mock the renderChartConfig function
 jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),
@@ -35,6 +61,13 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import {
+  MVOptimizationExplanationResult,
+  useMVOptimizationExplanation,
+} from '@/hooks/useMVOptimizationExplanation';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -68,6 +101,7 @@ describe('useOffsetPaginatedQuery', () => {
   let mockClickhouseClient: any;
   let mockStream: any;
   let mockReader: any;
+  let mockMetadata: { getSetting: jest.Mock };
 
   beforeEach(() => {
     // Reset mocks
@@ -115,6 +149,12 @@ describe('useOffsetPaginatedQuery', () => {
       sql: 'SELECT * FROM traces',
       params: {},
     });
+
+    // Mock metadata with getSetting returning null by default
+    mockMetadata = {
+      getSetting: jest.fn().mockResolvedValue(null),
+    };
+    jest.mocked(useMetadataWithSettings).mockReturnValue(mockMetadata as any);
   });
 
   describe('Time Window Generation', () => {
@@ -145,11 +185,11 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // Should have data from the first 6-hour window (working backwards from end date)
+      // Should have data from the first 15-min window (working backwards from end date)
       expect(result.current.data).toBeDefined();
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-01T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-01T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-02T00:00:00Z'), // endDate
@@ -185,14 +225,14 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // Should have data from the first 6-hour window (working forwards from start date)
+      // Should have data from the first 15-min window (working forwards from start date)
       expect(result.current.data).toBeDefined();
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
         new Date('2024-01-01T00:00:00Z'), // startDate
       );
       expect(result.current.data?.window.endTime).toEqual(
-        new Date('2024-01-01T06:00:00Z'), // endDate + 6h
+        new Date('2024-01-01T00:15:00Z'), // endDate + 15m
       );
       expect(result.current.data?.window.direction).toEqual('ASC');
     });
@@ -432,7 +472,7 @@ describe('useOffsetPaginatedQuery', () => {
       // Verify we're in the first window
       expect(result.current.data?.window.windowIndex).toBe(0);
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-01T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-01T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-02T00:00:00Z'), // endDate
@@ -468,9 +508,9 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      // First window: 6h (working backwards from end date)
+      // First window: 15-min (working backwards from end date)
       expect(result.current.data?.window.startTime).toEqual(
-        new Date('2024-01-02T18:00:00Z'), // endDate - 6h
+        new Date('2024-01-02T23:45:00Z'), // endDate - 15m
       );
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-03T00:00:00Z'), // endDate
@@ -741,6 +781,365 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result2.current.isLoading).toBe(false));
       expect(result2.current.data?.data[0].message).toBe('config2 log');
+    });
+  });
+
+  describe('RawSqlChartConfig', () => {
+    it('should execute raw SQL query without time windowing and not paginate', async () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+        connection: 'conn-1',
+        displayType: undefined,
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      };
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['status', 'count()'] },
+            { json: () => ['String', 'UInt64'] },
+            { json: () => ['error', 42] },
+            { json: () => ['info', 100] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Raw SQL config should be passed through to renderChartConfig unchanged
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(renderChartConfig).mock.calls[0][0]).toMatchObject({
+        configType: 'sql',
+        sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+      });
+
+      // Should have data
+      expect(result.current.data?.data).toHaveLength(2);
+      expect(result.current.data?.data[0]).toEqual({
+        status: 'error',
+        'count()': 42,
+      });
+
+      // Pagination is disabled for raw SQL
+      expect(result.current.hasNextPage).toBe(false);
+    });
+  });
+
+  describe('ClickHouse Settings (readonly and max_result_rows)', () => {
+    const rawSqlConfig = {
+      configType: 'sql' as const,
+      sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+      connection: 'conn-1',
+      displayType: undefined,
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-02T00:00:00Z'),
+      ] as [Date, Date],
+    };
+
+    const mockRawSqlRead = () => {
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['status', 'count()'] },
+            { json: () => ['String', 'UInt64'] },
+            { json: () => ['error', 42] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+    };
+
+    it('should set readonly=2, result_overflow_mode=break, and max_result_rows=MAX_TABLE_ROWS when no existing setting', async () => {
+      mockMetadata.getSetting.mockResolvedValue(null);
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBe('2');
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+      expect(clickhouseSettings.result_overflow_mode).toBe('break');
+    });
+
+    it('should use MAX_TABLE_ROWS when existingMaxResultRowsSetting is 0', async () => {
+      mockMetadata.getSetting.mockResolvedValue('0');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+    });
+
+    it('should use existingMaxResultRowsSetting when it is less than MAX_TABLE_ROWS', async () => {
+      mockMetadata.getSetting.mockResolvedValue('5000');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('5000');
+    });
+
+    it('should cap max_result_rows at MAX_TABLE_ROWS when existingMaxResultRowsSetting exceeds it', async () => {
+      mockMetadata.getSetting.mockResolvedValue('50000');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+    });
+
+    it('should query getSetting with the correct settingName and connectionId', async () => {
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockMetadata.getSetting).toHaveBeenCalledWith({
+        settingName: 'max_result_rows',
+        connectionId: 'conn-1',
+      });
+    });
+
+    it('should not set readonly or max_result_rows for builder configs', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBeUndefined();
+      expect(clickhouseSettings.max_result_rows).toBeUndefined();
+      expect(clickhouseSettings.result_overflow_mode).toBeUndefined();
+
+      // getSetting should not be called for builder configs
+      expect(mockMetadata.getSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('MV Optimization Integration', () => {
+    it('should optimize queries using MVs when possible', async () => {
+      const config = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'avg',
+          },
+        ],
+      });
+
+      const optimizedConfig = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'avg__Duration',
+            aggFn: 'avgMerge',
+          },
+        ],
+      });
+
+      // Mock MV optimization to return an optimized config
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig,
+          explanations: [],
+        },
+        isLoading: false,
+        isPlaceholderData: false,
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      // Mock the reader to return data
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'avg_duration'] },
+            { json: () => ['DateTime', 'Float64'] },
+            { json: () => ['2024-01-01T01:00:00Z', 123.45] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Verify the query was executed with the optimized config
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(
+        jest
+          .mocked(renderChartConfig)
+          .mock.calls.every(
+            call =>
+              isBuilderChartConfig(call[0]) &&
+              call[0].from.tableName === 'metrics_rollup_1m',
+          ),
+      ).toBeTruthy();
+
+      // Verify data was returned successfully
+      expect(result.current.data?.data).toHaveLength(1);
+    });
+
+    it('should not execute query while useMVOptimizationExplanation is in loading state', async () => {
+      const config = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'avg',
+          },
+        ],
+      });
+
+      const optimizedConfig = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'avg__Duration',
+            aggFn: 'avgMerge',
+          },
+        ],
+      });
+
+      // Mock MV optimization to be in loading state
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: undefined,
+        isLoading: true, // MV optimization is still loading
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      // Wait a bit to ensure query doesn't execute
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify the query is still in loading state because MV optimization is loading
+      expect(result.current.isLoading).toBe(true);
+
+      // Verify that renderChartConfig was NOT called because MV optimization is still loading
+      expect(renderChartConfig).not.toHaveBeenCalled();
+
+      // Now mock the MV optimization to finish loading
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig: optimizedConfig,
+          explanations: [],
+        },
+        isLoading: false, // MV optimization finished loading
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      // Mock the reader to return data
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'avg_duration'] },
+            { json: () => ['DateTime', 'Float64'] },
+            { json: () => ['2024-01-01T01:00:00Z', 123.45] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      // Force a re-render to pick up the new mock value
+      const { result: result2 } = renderHook(
+        () => useOffsetPaginatedQuery(config),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result2.current.isLoading).toBe(false));
+
+      // Verify the query was executed with the optimized config after MV optimization finished
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(
+        jest
+          .mocked(renderChartConfig)
+          .mock.calls.every(
+            call =>
+              isBuilderChartConfig(call[0]) &&
+              call[0].from.tableName === 'metrics_rollup_1m',
+          ),
+      ).toBeTruthy();
+
+      expect(result2.current.data?.data).toHaveLength(1);
     });
   });
 });

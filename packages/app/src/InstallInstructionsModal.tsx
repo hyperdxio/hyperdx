@@ -52,7 +52,7 @@ export default function InstallInstructionModal({
   show: boolean;
   onHide: () => void;
 }) {
-  const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const { data: team } = api.useTeam();
 
   return (
     <Modal
@@ -183,7 +183,7 @@ export default function InstallInstructionModal({
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
         <div className="mt-4">
-          <Button variant="default" onClick={() => onHide()}>
+          <Button variant="secondary" onClick={() => onHide()}>
             Cancel
           </Button>
         </div>

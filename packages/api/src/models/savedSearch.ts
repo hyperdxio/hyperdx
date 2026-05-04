@@ -1,6 +1,5 @@
 import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
 type ObjectId = mongoose.Types.ObjectId;
@@ -10,6 +9,10 @@ export interface ISavedSearch
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
+  createdBy?: ObjectId;
+  updatedBy?: ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export const SavedSearch = mongoose.model<ISavedSearch>(
@@ -33,6 +36,17 @@ export const SavedSearch = mongoose.model<ISavedSearch>(
         ref: 'Source',
       },
       tags: [String],
+      filters: [{ type: mongoose.Schema.Types.Mixed }],
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+      },
     },
     {
       toJSON: { virtuals: true },

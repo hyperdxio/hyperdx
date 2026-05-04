@@ -6,6 +6,7 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
     return null;
   }
 
+  // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
   const parsedDate = parsed.date();
 
@@ -58,6 +59,7 @@ export function parseTimeRangeInput(
       ? parsedTimeResults[0]
       : parsedTimeResults[1];
   const start = normalizeParsedDate(parsedTimeResult.start);
+  // eslint-disable-next-line no-restricted-syntax
   const end = normalizeParsedDate(parsedTimeResult.end) || new Date();
   if (end && start && end < start) {
     // For date range strings that omit years, the chrono parser will infer the year

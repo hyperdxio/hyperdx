@@ -18,11 +18,12 @@ import { notifications } from '@mantine/notifications';
 import { IconLock, IconUserPlus } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 export default function TeamMembersSection() {
+  const brandName = useBrandDisplayName();
   const hasAdminAccess = true;
 
-  const { data: team } = api.useTeam();
   const {
     data: members,
     isLoading: isLoadingMembers,
@@ -85,8 +86,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
 
                     autoClose: 5000,
                   });
@@ -94,7 +94,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }
@@ -143,8 +143,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
 
                     autoClose: 5000,
                   });
@@ -152,7 +151,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }
@@ -187,15 +186,14 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
                     autoClose: 5000,
                   });
                 });
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }
@@ -206,16 +204,16 @@ export default function TeamMembersSection() {
   };
 
   return (
-    <Box id="team_members">
-      <Text size="md">Team</Text>
+    <Box id="team_members" data-testid="team-members-section">
+      <Text size="md">Team Members</Text>
       <Divider my="md" />
-
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">
             <div className="fs-7">Team Members</div>
             <Button
-              variant="light"
+              data-testid="invite-member-button"
+              variant="primary"
               leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
             >
@@ -228,7 +226,7 @@ export default function TeamMembersSection() {
             <Table.Tbody>
               {!isLoadingMembers &&
                 Array.isArray(members?.data) &&
-                members?.data.map((member: any) => (
+                members?.data.map(member => (
                   <Table.Tr key={member.email}>
                     <Table.Td>
                       <div>
@@ -251,16 +249,6 @@ export default function TeamMembersSection() {
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      {team.shouldEnforceRBAC && !member.groupName && (
-                        <Badge
-                          variant="light"
-                          color="red"
-                          fw="normal"
-                          tt="none"
-                        >
-                          Not Assigned to Group
-                        </Badge>
-                      )}
                       {member.groupName && (
                         <Badge
                           variant="light"
@@ -277,8 +265,7 @@ export default function TeamMembersSection() {
                         <Group justify="flex-end" gap="8">
                           <Button
                             size="compact-sm"
-                            variant="light"
-                            color="red"
+                            variant="danger"
                             onClick={() =>
                               setDeleteTeamMemberConfirmationModalData({
                                 mode: 'team',
@@ -295,8 +282,8 @@ export default function TeamMembersSection() {
                   </Table.Tr>
                 ))}
               {!isLoadingInvitations &&
-                Array.isArray(invitations.data) &&
-                invitations.data.map((invitation: any) => (
+                Array.isArray(invitations?.data) &&
+                invitations.data.map(invitation => (
                   <Table.Tr key={invitation.email} className="mt-2">
                     <Table.Td>
                       <span className="text-white fw-bold fs-7">
@@ -308,7 +295,7 @@ export default function TeamMembersSection() {
                         Pending Invite
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
-                        <Button size="compact-xs" variant="default" ml="xs">
+                        <Button size="compact-xs" variant="secondary" ml="xs">
                           📋 Copy URL
                         </Button>
                       </CopyToClipboard>
@@ -318,8 +305,7 @@ export default function TeamMembersSection() {
                         <Group justify="flex-end" gap="8">
                           <Button
                             size="compact-sm"
-                            variant="light"
-                            color="red"
+                            variant="danger"
                             onClick={() =>
                               setDeleteTeamMemberConfirmationModalData({
                                 mode: 'teamInvite',
@@ -374,7 +360,8 @@ export default function TeamMembersSection() {
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
-              variant="default"
+              data-testid="cancel-delete-member"
+              variant="secondary"
               onClick={() =>
                 setDeleteTeamMemberConfirmationModalData({
                   mode: null,
@@ -386,8 +373,8 @@ export default function TeamMembersSection() {
               Cancel
             </Button>
             <Button
-              variant="outline"
-              color="red"
+              data-testid="confirm-delete-member"
+              variant="danger"
               onClick={() =>
                 deleteTeamMemberConfirmationModalData.id &&
                 onConfirmDeleteTeamMember(
@@ -422,6 +409,7 @@ function InviteTeamMemberForm({
     >
       <Stack>
         <TextInput
+          data-testid="invite-email-input"
           label="Email"
           name="email"
           type="email"
@@ -434,7 +422,12 @@ function InviteTeamMemberForm({
         <div className="fs-8">
           The invite link will automatically expire after 30 days.
         </div>
-        <Button variant="light" type="submit" disabled={!email || isSubmitting}>
+        <Button
+          data-testid="send-invite-button"
+          variant="primary"
+          type="submit"
+          disabled={!email || isSubmitting}
+        >
           Send Invite
         </Button>
       </Stack>

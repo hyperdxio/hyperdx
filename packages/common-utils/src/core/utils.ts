@@ -5,18 +5,31 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
+import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
 import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
+  BuilderChartConfig,
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptTimestamp,
+  Connection,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  DisplayType,
+  QuerySettings,
+  RawSqlChartConfig,
   SQLInterval,
   TileTemplateSchema,
-  TSourceUnion,
+  TSource,
 } from '@/types';
+
+import { SkipIndexMetadata, TableMetadata } from './metadata';
+
+/** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
+export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
 
 export const isBrowser: boolean =
   typeof window !== 'undefined' && typeof window.document !== 'undefined';
@@ -218,6 +231,10 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+/**
+ * To best support Pre-aggregation in Materialized Views, any new
+ * granularities should be multiples of all smaller granularities.
+ * */
 export enum Granularity {
   FifteenSecond = '15 second',
   ThirtySecond = '30 second',
@@ -251,7 +268,7 @@ export function hashCode(str: string) {
 
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
-  maxNumBuckets: number,
+  maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
@@ -266,9 +283,9 @@ export function convertDateRangeToGranularityString(
     return Granularity.OneMinute;
   } else if (granularitySizeSeconds <= 5 * 60) {
     return Granularity.FiveMinute;
-  } else if (granularitySizeSeconds <= 10 * 60) {
-    return Granularity.TenMinute;
   } else if (granularitySizeSeconds <= 15 * 60) {
+    // 10 minute granularity is skipped so that every auto-inferred granularity is a multiple
+    // of all smaller granularities, which makes it more likely that a materialized view can be used.
     return Granularity.FifteenMinute;
   } else if (granularitySizeSeconds <= 30 * 60) {
     return Granularity.ThirtyMinute;
@@ -447,29 +464,45 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 
 export function convertToDashboardTemplate(
   input: Dashboard,
-  sources: TSourceUnion[],
+  sources: TSource[],
+  connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
+    tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
   };
 
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
-    sources: TSourceUnion[],
+    sources: TSource[],
+    connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
-    // Extract name from source or default to '' if not found
-    tile.config.source = (
-      sources.find(source => source.id === tile.config.source) ?? { name: '' }
-    ).name;
+    // Extract name from source/connection or default to '' if not found
+    const tileConfig = tile.config;
+    if (isBuilderSavedChartConfig(tileConfig)) {
+      tileConfig.source = (
+        sources.find(source => source.id === tileConfig.source) ?? { name: '' }
+      ).name;
+    } else if (isRawSqlSavedChartConfig(tileConfig)) {
+      tileConfig.connection = (
+        connections.find(conn => conn.id === tileConfig.connection) ?? {
+          name: '',
+        }
+      ).name;
+      if (tileConfig.source) {
+        tileConfig.source =
+          sources.find(source => source.id === tileConfig.source)?.name ?? '';
+      }
+    }
     return tile;
   };
 
   const convertToFilterTemplate = (
     input: DashboardFilter,
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found
@@ -479,7 +512,7 @@ export function convertToDashboardTemplate(
   };
 
   for (const tile of input.tiles) {
-    output.tiles.push(convertToTileTemplate(tile, sources));
+    output.tiles.push(convertToTileTemplate(tile, sources, connections));
   }
 
   if (input.filters) {
@@ -487,6 +520,10 @@ export function convertToDashboardTemplate(
     for (const filter of input.filters ?? []) {
       output.filters.push(convertToFilterTemplate(filter, sources));
     }
+  }
+
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
   }
 
   return output;
@@ -498,7 +535,7 @@ export function convertToDashboardDocument(
   const output: DashboardWithoutId = {
     name: input.name,
     tiles: [],
-    tags: [],
+    tags: input.tags ?? [],
   };
 
   // expecting that input.tiles[0-n].config.source fields are already converted to ids
@@ -524,11 +561,15 @@ export function convertToDashboardDocument(
     }
   }
 
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
+  }
+
   return output;
 }
 
 export const getFirstOrderingItem = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ) => {
   if (!orderBy || orderBy.length === 0) return undefined;
 
@@ -549,7 +590,7 @@ export const removeTrailingDirection = (s: string) => {
 };
 
 export const isTimestampExpressionInFirstOrderBy = (
-  config: ChartConfigWithOptTimestamp,
+  config: BuilderChartConfigWithOptTimestamp,
 ) => {
   const firstOrderingItem = getFirstOrderingItem(config.orderBy);
   if (!firstOrderingItem || config.timestampValueExpression == null)
@@ -570,7 +611,7 @@ export const isTimestampExpressionInFirstOrderBy = (
 };
 
 export const isFirstOrderByAscending = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ): boolean => {
   const primaryOrderingItem = getFirstOrderingItem(orderBy);
 
@@ -600,6 +641,9 @@ export function parseToStartOfFunction(
   const toStartOfMatches = expr.match(/(toStartOf\w+)\s*\(/);
 
   if (toStartOfMatches) {
+    const prefix = expr.substring(0, toStartOfMatches.index!);
+    if (prefix.trim() !== '') return undefined;
+
     const [toStartOfSubstring, toStartOfFunction] = toStartOfMatches;
 
     const argsStartIndex =
@@ -662,3 +706,391 @@ export function optimizeTimestampValueExpression(
 
   return timestampValueExprs.join(', ');
 }
+
+export function getAlignedDateRange(
+  [originalStart, originalEnd]: [Date, Date],
+  granularity: SQLInterval,
+): [Date, Date] {
+  // Round the start time down to the previous interval boundary
+  const alignedStart = toStartOfInterval(originalStart, granularity);
+
+  // Round the end time up to the next interval boundary
+  let alignedEnd = toStartOfInterval(originalEnd, granularity);
+  if (alignedEnd.getTime() < originalEnd.getTime()) {
+    const intervalSeconds = convertGranularityToSeconds(granularity);
+    alignedEnd = fnsAdd(alignedEnd, { seconds: intervalSeconds });
+  }
+
+  return [alignedStart, alignedEnd];
+}
+
+export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
+  return (
+    range1[0].getTime() === range2[0].getTime() &&
+    range1[1].getTime() === range2[1].getTime()
+  );
+}
+
+/*
+  This function extracts the SETTINGS clause from the end(!) of the sql string.
+*/
+export function extractSettingsClauseFromEnd(
+  sqlInput: string,
+): [string, string | undefined] {
+  const sql = sqlInput.trim().endsWith(';')
+    ? sqlInput.trim().slice(0, -1)
+    : sqlInput.trim();
+
+  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+
+  if (settingsIndex === -1) {
+    return [sql, undefined] as const;
+  }
+
+  const settingsClause = sql.substring(settingsIndex).trim();
+  const remaining = sql.substring(0, settingsIndex).trim();
+
+  return [remaining, settingsClause] as const;
+}
+
+export function parseToNumber(input: string): number | undefined {
+  const trimmed = input.trim();
+
+  if (trimmed === '') {
+    return undefined;
+  }
+
+  const num = Number(trimmed);
+
+  return Number.isFinite(num) ? num : undefined;
+}
+
+export function joinQuerySettings(
+  querySettings: QuerySettings | undefined,
+): string | undefined {
+  if (!querySettings?.length) {
+    return undefined;
+  }
+
+  const emptyFiltered = querySettings.filter(
+    ({ setting, value }) => setting.length && value.length,
+  );
+
+  const formattedPairs = emptyFiltered.map(
+    ({ setting, value }) =>
+      `${setting} = ${parseToNumber(value) ?? `'${value}'`}`,
+  );
+
+  return formattedPairs.join(', ');
+}
+
+// A discriminated union type for different tokenizers above
+export type TextIndexTokenizer =
+  | { type: 'splitByNonAlpha' }
+  | { type: 'splitByString'; separators: string[] }
+  | { type: 'ngrams'; n: number }
+  | {
+      type: 'sparseGrams';
+      minLength: number;
+      maxLength: number;
+      minCutoffLength?: number;
+    }
+  | { type: 'array' };
+
+/**
+ * Parses the tokenizer and any associated tokenizer parameters from a text index type definition.
+ *
+ * Examples:
+ * - `text(tokenizer = splitByNonAlpha)` -> `{ type: 'splitByNonAlpha' }`
+ * - `text(tokenizer = splitByString([', ', '; ', '\n', '\\']))` -> `{ type: 'splitByString', separators: [', ', '; ', '\n', '\\'] }`
+ * - `text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5, 10))` -> `{ type: 'sparseGrams', minLength: 2, maxLength: 5, minCutoffLength: 10 }`
+ */
+export function parseTokenizerFromTextIndex({
+  typeFull,
+}: SkipIndexMetadata): TextIndexTokenizer | undefined {
+  const textPattern = /^\s*text\s*\((.+)\)\s*$/;
+  const match = typeFull.match(textPattern);
+  if (!match) {
+    console.error(`Invalid text index type ${typeFull}.`);
+    return undefined;
+  }
+
+  const argsString = match[1].trim();
+  const args = splitAndTrimWithBracket(argsString).map(arg => {
+    const [key, value] = arg.split('=').map(s => s.trim());
+    return { key, value };
+  });
+
+  const tokenizerArgRaw = args.find(arg => arg.key === 'tokenizer')?.value;
+
+  // Strip surrounding quotes if present (e.g., 'splitByNonAlpha' -> splitByNonAlpha)
+  const tokenizerArg = stripQuotes(tokenizerArgRaw ?? '');
+  if (!tokenizerArg) {
+    console.error(
+      `Invalid tokenizer argument in index type ${typeFull}: ${tokenizerArg}`,
+      argsString,
+      splitAndTrimWithBracket(argsString),
+    );
+    return undefined;
+  }
+
+  const tokenizerName = tokenizerArg.split('(')[0].trim();
+  const tokenizerArgsString = tokenizerArg
+    .substring(tokenizerArg.indexOf('(') + 1, tokenizerArg.lastIndexOf(')'))
+    .trim();
+
+  switch (tokenizerName) {
+    case 'splitByNonAlpha':
+      return { type: 'splitByNonAlpha' };
+
+    case 'array':
+      return { type: 'array' };
+
+    case 'ngrams': {
+      // Default n is 3
+      if (!tokenizerArgsString) {
+        return { type: 'ngrams', n: 3 };
+      }
+
+      return { type: 'ngrams', n: Number.parseInt(tokenizerArgsString, 10) };
+    }
+
+    case 'sparseGrams': {
+      const args = tokenizerArgsString
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => !!s);
+
+      const tokenizer: TextIndexTokenizer = {
+        type: 'sparseGrams',
+        minLength: 3,
+        maxLength: 10,
+      };
+
+      if (args.length >= 1) tokenizer.minLength = Number.parseInt(args[0], 10);
+      if (args.length >= 2) tokenizer.maxLength = Number.parseInt(args[1], 10);
+      if (args.length >= 3)
+        tokenizer.minCutoffLength = Number.parseInt(args[2], 10);
+
+      return tokenizer;
+    }
+
+    case 'splitByString': {
+      if (!tokenizerArgsString) {
+        // Default separator is space
+        return { type: 'splitByString', separators: [' '] };
+      }
+
+      const unescape = (str: string) => {
+        const escapeCharacters = [
+          { pattern: /\\a/g, replacement: 'a' },
+          { pattern: /\\b/g, replacement: 'b' },
+          { pattern: /\\e/g, replacement: 'e' },
+          { pattern: /\\f/g, replacement: '\f' },
+          { pattern: /\\n/g, replacement: '\n' },
+          { pattern: /\\r/g, replacement: '\r' },
+          { pattern: /\\t/g, replacement: '\t' },
+          { pattern: /\\v/g, replacement: '\v' },
+          { pattern: /\\0/g, replacement: '\0' },
+          { pattern: /\\\\/g, replacement: '\\' },
+          { pattern: /\\'/g, replacement: "'" },
+          { pattern: /\\"/g, replacement: '"' },
+          { pattern: /\\`/g, replacement: '`' },
+          { pattern: /\\\//g, replacement: '/' },
+          { pattern: /\\=/g, replacement: '=' },
+        ];
+
+        for (const { pattern, replacement } of escapeCharacters) {
+          str = str.replace(pattern, replacement);
+        }
+
+        return str;
+      };
+
+      const separatorsString = tokenizerArgsString.match(/\[(.*)\]/);
+      if (!separatorsString) {
+        // If no array is provided, default to space
+        return { type: 'splitByString', separators: [' '] };
+      }
+
+      const arrayContent = separatorsString[1];
+
+      // Split by commas outside of quotes
+      const separators: string[] = [];
+      let current = '';
+      let inQuote = false;
+      let quoteChar = '';
+
+      for (let i = 0; i < arrayContent.length; i++) {
+        const char = arrayContent[i];
+
+        if ((char === "'" || char === '"') && !inQuote) {
+          inQuote = true;
+          quoteChar = char;
+        } else if (char === quoteChar && inQuote) {
+          if (arrayContent[i - 1] !== '\\' || arrayContent[i - 2] === '\\') {
+            inQuote = false;
+            quoteChar = '';
+          }
+        } else if (char === ',' && !inQuote) {
+          const trimmed = current.trim();
+          if (trimmed) {
+            // Remove quotes and unescape characters
+            const value = trimmed.replace(/^['"]|['"]$/g, '');
+            const unescapedValue = unescape(value);
+            separators.push(unescapedValue);
+          }
+
+          current = '';
+          continue;
+        }
+
+        current += char;
+      }
+
+      // Add last separator
+      const trimmed = current.trim();
+      if (trimmed) {
+        const value = trimmed.replace(/^['"]|['"]$/g, '');
+        const unescapedValue = unescape(value);
+        separators.push(unescapedValue);
+      }
+
+      return { type: 'splitByString', separators };
+    }
+
+    default:
+      console.error(`Unknown tokenizer ${tokenizerName} in type ${typeFull}.`);
+      return undefined;
+  }
+}
+
+/**
+ * Converts an aliasMap (e.g. from chSqlToAliasMap) to an array of WITH clause entries.
+ * These WITH clauses define aliases as expressions (isSubquery: false),
+ * making them available in WHERE and other clauses.
+ */
+export function aliasMapToWithClauses(
+  aliasMap: Record<string, string | undefined> | undefined,
+): BuilderChartConfig['with'] {
+  if (!aliasMap) {
+    return undefined;
+  }
+
+  const withClauses = Object.entries(aliasMap)
+    .filter(
+      (entry): entry is [string, string] =>
+        entry[1] != null && entry[1].trim() !== '',
+    )
+    .map(([name, value]) => ({
+      name,
+      sql: {
+        sql: value,
+        params: {},
+      },
+      isSubquery: false,
+    }));
+
+  return withClauses.length > 0 ? withClauses : undefined;
+}
+
+const stripQuotes = (s: string) => s.replace(/^["'`]|["'`]$/g, '');
+
+/** Parses and returns the cluster, database, and table from the given distributed table metadata */
+export function getDistributedTableArgs(
+  tableMetadata: TableMetadata,
+): { cluster: string; database: string; table: string } | undefined {
+  const args = tableMetadata.engine_full.match(/Distributed\((.+)\)$/)?.[1];
+  const splitArgs = splitAndTrimWithBracket(args ?? '');
+
+  if (splitArgs.length < 3) {
+    console.error(
+      `Failed to parse engine arguments for Distributed table: ${tableMetadata.engine_full}`,
+    );
+    return undefined;
+  }
+
+  return {
+    cluster: stripQuotes(splitArgs[0]),
+    database: stripQuotes(splitArgs[1]),
+    table: stripQuotes(splitArgs[2]),
+  };
+}
+
+export function displayTypeSupportsRawSqlAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
+}
+
+export function displayTypeSupportsBuilderAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
+}
+
+export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  try {
+    if (!isRawSqlSavedChartConfig(chartConfig)) {
+      return { errors, warnings };
+    }
+
+    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+      errors.push(
+        `Display type ${chartConfig.displayType} does not support raw SQL alerts.`,
+      );
+    }
+
+    const sql = replaceMacros(chartConfig);
+
+    // Interval params are only required for time-series display types (Line, StackedBar).
+    // Number charts don't use interval bucketing.
+    if (isTimeSeriesDisplayType(chartConfig.displayType)) {
+      const hasInterval =
+        sql.includes(
+          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
+        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
+      if (!hasInterval) {
+        errors.push(
+          `SQL used for alerts must include an interval parameter or macro.`,
+        );
+      }
+    }
+
+    const hasTimeFilter =
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
+    if (!hasTimeFilter) {
+      warnings.push(
+        `SQL used for alerts should include start and end date parameters or macros.`,
+      );
+    }
+
+    return { errors, warnings };
+  } catch {
+    // replaceMacros will often fail as users type in the SQL template
+    return { errors, warnings };
+  }
+}
+
+export const isTimeSeriesDisplayType = (
+  displayType: DisplayType | undefined,
+): boolean => {
+  return (
+    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+  );
+};

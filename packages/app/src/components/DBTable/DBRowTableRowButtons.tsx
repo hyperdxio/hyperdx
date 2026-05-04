@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
-import DBRowTableIconButton from './DBRowTableIconButton';
+import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
+
+import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 
-export interface DBRowTableRowButtonsProps {
+interface DBRowTableRowButtonsProps {
   row: Record<string, any>;
-  getRowWhere: (row: Record<string, any>) => string;
+  getRowWhere: (row: Record<string, any>) => RowWhereResult;
   sourceId?: string;
   isWrapped: boolean;
   onToggleWrap: () => void;
 }
 
-export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
+const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   row,
   getRowWhere,
   sourceId,
@@ -27,14 +29,14 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
     try {
       // Filter out internal metadata fields that start with __ or are generated IDs
 
-      const { __hyperdx_id, ...cleanRow } = row;
+      const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
 
       // Parse JSON string fields to make them proper JSON objects
       const parsedRow = Object.entries(cleanRow).reduce(
         (acc, [key, value]) => {
           if (
-            (typeof value === 'string' && value.startsWith('{')) ||
-            value.startsWith('[')
+            typeof value === 'string' &&
+            (value.startsWith('{') || value.startsWith('['))
           ) {
             try {
               acc[key] = JSON.parse(value);
@@ -62,10 +64,10 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 
   const copyRowUrl = async () => {
     try {
-      const rowWhere = getRowWhere(row);
+      const rowWhereResult = getRowWhere(row);
       const currentUrl = new URL(window.location.href);
       // Add the row identifier as query parameters
-      currentUrl.searchParams.set('rowWhere', rowWhere);
+      currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
       if (sourceId) {
         currentUrl.searchParams.set('rowSource', sourceId);
       }

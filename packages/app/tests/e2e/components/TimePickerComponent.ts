@@ -63,9 +63,14 @@ export class TimePickerComponent {
 
   /**
    * Open the time picker dropdown
+   * Idempotent: if the popover is already open, does nothing.
+   * Clicking the input when the popover is already open would close it.
    */
   async open() {
+    const isOpen = await this.pickerPopover.isVisible();
+    if (isOpen) return;
     await this.page.waitForLoadState('networkidle');
+    await this.page.keyboard.press('Escape');
     await this.pickerInput.click();
     await this.pickerPopover.waitFor({ state: 'visible', timeout: 5000 });
   }
@@ -114,17 +119,22 @@ export class TimePickerComponent {
 
   /**
    * Select a time interval option by label (e.g., "Last 1 hour", "Last 6 hours", "Live Tail")
+   * Precondition: the time picker popover must already be open (call open() first).
    */
   async selectTimeInterval(label: string) {
-    // Wait for DOM to stabilize before clicking
-    await this.page.waitForLoadState('networkidle');
     // Scope button search within the popover to avoid matching buttons elsewhere on the page
     const intervalButton = this.pickerPopover.getByRole('button', {
       name: label,
     });
-    // Wait for the specific button to be visible before clicking
+    // Wait for the specific button to be visible before clicking.
+    // Avoid calling waitForLoadState('networkidle') here — the popover is
+    // already open from open(), and waiting for network idle can coincide
+    // with React re-renders of the popover content, causing the button to
+    // briefly detach from the DOM right before the click.
     await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
-    await intervalButton.click({ timeout: 5000 });
+    // Use a longer click timeout so Playwright can retry if the element
+    // briefly detaches due to an ongoing render cycle.
+    await intervalButton.click({ timeout: 10000 });
   }
 
   /**
@@ -167,14 +177,64 @@ export class TimePickerComponent {
   }
 
   /**
-   * Set a custom time range and apply
+   * Locator for the Start time / "Time" DateInput inside the picker popover.
+   * Both Start and End inputs share the same placeholder, so we disambiguate
+   * by ordinal. In Range mode this is the first DateInput; in Around mode
+   * the single DateInput is also the first (and only).
+   */
+  get startDateInput() {
+    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(0);
+  }
+
+  /**
+   * Locator for the End time DateInput. Only present in Range mode.
+   */
+  get endDateInput() {
+    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(1);
+  }
+
+  /**
+   * Switch the picker to "Time range" mode (two date inputs).
+   * Safe to call when already in Range mode (SegmentedControl is idempotent).
+   *
+   * Mantine's SegmentedControl visually hides the underlying radio inputs,
+   * so `getByRole('radio')` resolves to an element that Playwright considers
+   * not visible. Click the associated label instead — same pattern as
+   * ChartEditorComponent.switchToSqlMode().
+   */
+  async selectRangeMode() {
+    const rangeLabel = this.pickerPopover.locator(
+      '.mantine-SegmentedControl-label:has-text("Time range")',
+    );
+    await rangeLabel.waitFor({ state: 'visible', timeout: 5000 });
+    await rangeLabel.click();
+  }
+
+  /**
+   * Fill the Start time (or, in Around mode, the "Time") input with a
+   * datetime string. Uses fill() + Enter to trigger the component's blur
+   * handler, which commits the parsed value back to form state.
+   */
+  async fillStartDate(value: string) {
+    await this.startDateInput.fill(value);
+    await this.startDateInput.press('Enter');
+  }
+
+  /**
+   * Fill the End time input with a datetime string. Only valid in Range mode.
+   */
+  async fillEndDate(value: string) {
+    await this.endDateInput.fill(value);
+    await this.endDateInput.press('Enter');
+  }
+
+  /**
+   * Set a custom absolute time range via the Start/End inputs and apply.
+   * Assumes the popover is already open and relative mode is disabled.
    */
   async setCustomTimeRange(from: string, to: string) {
-    await this.open();
-    // This would need to be implemented based on actual UI
-    // Just a placeholder for the pattern
-    await this.page.getByTestId('custom-from').fill(from);
-    await this.page.getByTestId('custom-to').fill(to);
+    await this.fillStartDate(from);
+    await this.fillEndDate(to);
     await this.apply();
   }
 }

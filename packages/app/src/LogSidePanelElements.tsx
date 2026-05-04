@@ -1,8 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { format } from 'date-fns';
 import { JSONTree } from 'react-json-tree';
 import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
 import {
@@ -58,7 +57,7 @@ export const SectionWrapper: React.FC<
   React.PropsWithChildren<{ title?: React.ReactNode }>
 > = ({ children, title }) => (
   <div className={styles.panelSectionWrapper}>
-    {title && <div className={styles.panelSectionWrapperTitle}>{title}</div>}
+    {!!title && <div className={styles.panelSectionWrapperTitle}>{title}</div>}
     {children}
   </div>
 );
@@ -66,7 +65,7 @@ export const SectionWrapper: React.FC<
 /**
  * Stacktrace elements
  */
-export const StacktraceValue = ({
+const StacktraceValue = ({
   label,
   value,
 }: {
@@ -103,7 +102,7 @@ const StacktraceRowExpandButton = ({
   );
 };
 
-export const StacktraceRow = ({
+const StacktraceRow = ({
   row,
   table,
 }: {
@@ -124,7 +123,7 @@ export const StacktraceRow = ({
 
   const frame = row.original;
 
-  const { isLoading, enrichedFrame } = useSourceMappedFrame(frame);
+  const { isLoading, enrichedFrame } = useSourceMappedFrame();
 
   const augmentedFrame = enrichedFrame ?? frame;
   const hasContext = !!augmentedFrame.context_line;
@@ -205,7 +204,7 @@ export const StacktraceRow = ({
   );
 };
 
-export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
+const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
   {
     accessorKey: 'filename',
     cell: StacktraceRow,
@@ -256,7 +255,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
   );
 });
 
-export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
+const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   {
     accessorKey: 'category',
     header: 'Category',
@@ -339,7 +338,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   },
 ];
 
-export const useShowMoreRows = <T extends object>({
+const useShowMoreRows = <T extends object>({
   rows,
   maxRows = 5,
 }: {
@@ -444,7 +443,7 @@ export const NetworkBody = ({
         const parsed = JSON.parse(body);
         return parsed;
       }
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [body]);
@@ -520,7 +519,7 @@ export const LogSidePanelKbdShortcuts = () => {
   );
 };
 
-export const SourceMapsFtux = () => {
+const SourceMapsFtux = () => {
   const [isDismissed, setIsDismissed] = useLocalStorage(
     'sourceMapsFtuxDismissed',
     false,
@@ -544,7 +543,7 @@ export const SourceMapsFtux = () => {
         code.
       </Text>
       <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
-        <Button size="compact-xs" variant="light" mt="xs">
+        <Button size="compact-xs" variant="primary" mt="xs">
           See docs
         </Button>
       </Link>

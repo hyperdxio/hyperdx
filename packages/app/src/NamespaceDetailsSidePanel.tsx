@@ -1,23 +1,19 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Anchor,
   Badge,
-  Box,
   Card,
   Drawer,
   Flex,
   Grid,
-  ScrollArea,
   SegmentedControl,
   Text,
 } from '@mantine/core';
 
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -43,7 +39,7 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray">
+        <Text size="xs" c="gray">
           {label}
         </Text>
         <Text size="sm">{value}</Text>
@@ -59,12 +55,12 @@ const NamespaceDetails = ({
 }: {
   name: string;
   dateRange: [Date, Date];
-  metricSource?: TSource;
+  metricSource?: TMetricSource;
 }) => {
   const where = `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
+  const { data } = useQueriedChartConfig(
     convertV1ChartConfigToV2(
       {
         series: [
@@ -142,7 +138,7 @@ function NamespaceLogs({
   where,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
@@ -151,7 +147,7 @@ function NamespaceLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Namespace Logs & Spans
           <Flex gap="xs" align="center">
@@ -174,7 +170,7 @@ function NamespaceLogs({
                 passHref
                 legacyBehavior
               >
-                <Anchor size="xs" color="dimmed">
+                <Anchor size="xs" c="dimmed">
                   Search <IconExternalLink size={12} style={{ display: 'inline' }} />
                 </Anchor>
               </Link> 
@@ -230,8 +226,8 @@ export default function NamespaceDetailsSidePanel({
   metricSource,
   logSource,
 }: {
-  metricSource: TSource;
-  logSource: TSource;
+  metricSource: TMetricSource;
+  logSource: TLogSource;
 }) {
   const [namespaceName, setNamespaceName] = useQueryParam(
     'namespaceName',
@@ -280,6 +276,7 @@ export default function NamespaceDetailsSidePanel({
   const { data: logServiceNames } = useGetKeyValues(
     {
       chartConfig: {
+        source: logSource.id,
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`,
         whereLanguage: 'lucene',
@@ -359,18 +356,14 @@ export default function NamespaceDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespace-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -394,18 +387,14 @@ export default function NamespaceDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespace-details-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {

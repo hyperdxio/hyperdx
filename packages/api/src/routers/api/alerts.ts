@@ -1,22 +1,94 @@
+import type {
+  AlertApiResponse,
+  AlertsApiResponse,
+  AlertsPageItem,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import _ from 'lodash';
+import { pick } from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
+import { processRequest, validateRequest } from 'zod-express-middleware';
 
-import { getRecentAlertHistories } from '@/controllers/alertHistory';
+import {
+  getRecentAlertHistories,
+  getRecentAlertHistoriesBatch,
+} from '@/controllers/alertHistory';
 import {
   createAlert,
   deleteAlert,
   getAlertById,
+  getAlertEnhanced,
   getAlertsEnhanced,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
+import { IAlertHistory } from '@/models/alertHistory';
+import { PreSerialized, sendJson } from '@/utils/serialization';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
-router.get('/', async (req, res, next) => {
+type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
+
+const formatAlertResponse = (
+  alert: EnhancedAlert,
+  history: Omit<IAlertHistory, 'alert'>[],
+): PreSerialized<AlertsPageItem> => {
+  return {
+    history,
+    silenced: alert.silenced
+      ? {
+          by: alert.silenced.by?.email,
+          at: alert.silenced.at,
+          until: alert.silenced.until,
+        }
+      : undefined,
+    createdBy: alert.createdBy
+      ? pick(alert.createdBy, ['email', 'name'])
+      : undefined,
+    channel: pick(alert.channel, ['type']),
+    ...(alert.dashboard && {
+      dashboardId: alert.dashboard._id,
+      dashboard: {
+        tiles: alert.dashboard.tiles
+          .filter(tile => tile.id === alert.tileId)
+          .map(tile => ({
+            id: tile.id,
+            config: { name: tile.config.name },
+          })),
+        ...pick(alert.dashboard, ['_id', 'updatedAt', 'name', 'tags']),
+      },
+    }),
+    ...(alert.savedSearch && {
+      savedSearchId: alert.savedSearch._id,
+      savedSearch: pick(alert.savedSearch, [
+        '_id',
+        'createdAt',
+        'name',
+        'updatedAt',
+        'tags',
+      ]),
+    }),
+    ...pick(alert, [
+      '_id',
+      'interval',
+      'scheduleOffsetMinutes',
+      'scheduleStartAt',
+      'threshold',
+      'thresholdMax',
+      'thresholdType',
+      'state',
+      'source',
+      'tileId',
+      'createdAt',
+      'updatedAt',
+      'executionErrors',
+    ]),
+  };
+};
+
+type AlertsExpRes = express.Response<AlertsApiResponse>;
+router.get('/', async (req, res: AlertsExpRes, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -25,70 +97,63 @@ router.get('/', async (req, res, next) => {
 
     const alerts = await getAlertsEnhanced(teamId);
 
-    const data = await Promise.all(
-      alerts.map(async alert => {
-        const history = await getRecentAlertHistories({
-          alertId: new ObjectId(alert._id),
-          limit: 20,
-        });
-
-        return {
-          history,
-          silenced: alert.silenced
-            ? {
-                by: alert.silenced.by?.email,
-                at: alert.silenced.at,
-                until: alert.silenced.until,
-              }
-            : undefined,
-          createdBy: alert.createdBy
-            ? _.pick(alert.createdBy, ['email', 'name'])
-            : undefined,
-          channel: _.pick(alert.channel, ['type']),
-          ...(alert.dashboard && {
-            dashboardId: alert.dashboard._id,
-            dashboard: {
-              tiles: alert.dashboard.tiles
-                .filter(tile => tile.id === alert.tileId)
-                .map(tile => _.pick(tile, ['id', 'config.name'])),
-              ..._.pick(alert.dashboard, ['_id', 'name', 'updatedAt', 'tags']),
-            },
-          }),
-          ...(alert.savedSearch && {
-            savedSearchId: alert.savedSearch._id,
-            savedSearch: _.pick(alert.savedSearch, [
-              '_id',
-              'createdAt',
-              'name',
-              'updatedAt',
-              'tags',
-            ]),
-          }),
-          ..._.pick(alert, [
-            '_id',
-            'interval',
-            'threshold',
-            'thresholdType',
-            'state',
-            'source',
-            'tileId',
-            'createdAt',
-            'updatedAt',
-          ]),
-        };
-      }),
+    const historyMap = await getRecentAlertHistoriesBatch(
+      alerts.map(alert => ({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+      })),
+      20,
     );
-    res.json({
-      data,
+
+    const data = alerts.map(alert => {
+      const history = historyMap.get(alert._id.toString()) ?? [];
+      return formatAlertResponse(alert, history);
     });
+
+    sendJson(res, { data });
   } catch (e) {
     next(e);
   }
 });
 
+type AlertExpRes = express.Response<AlertApiResponse>;
+router.get(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res: AlertExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertEnhanced(req.params.id, teamId);
+      if (!alert) {
+        return res.sendStatus(404);
+      }
+
+      const history = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        limit: 20,
+      });
+
+      const data = formatAlertResponse(alert, history);
+
+      sendJson(res, { data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 router.post(
   '/',
-  validateRequest({ body: alertSchema }),
+  processRequest({ body: alertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -97,6 +162,7 @@ router.post(
     }
     try {
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
@@ -108,7 +174,7 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -122,6 +188,7 @@ router.put(
       }
       const { id } = req.params;
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });

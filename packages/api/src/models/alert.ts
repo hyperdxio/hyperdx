@@ -1,18 +1,25 @@
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertErrorType,
+  AlertThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
-
-export enum AlertThresholdType {
-  ABOVE = 'above',
-  BELOW = 'below',
-}
 
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+}
+
+export interface IAlertError {
+  timestamp: Date;
+  type: AlertErrorType;
+  message: string;
 }
 
 // follow 'ms' pkg formats
@@ -44,10 +51,14 @@ export interface IAlert {
   id: string;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: Date | null;
   source?: AlertSource;
   state: AlertState;
   team: ObjectId;
   threshold: number;
+  /** The upper bound for BETWEEN and NOT BETWEEN threshold types */
+  thresholdMax?: number;
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
@@ -69,6 +80,11 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Errors recorded during the most recent execution
+  executionErrors?: IAlertError[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type AlertDocument = mongoose.HydratedDocument<IAlert>;
@@ -79,6 +95,10 @@ const AlertSchema = new Schema<IAlert>(
       type: Number,
       required: true,
     },
+    thresholdMax: {
+      type: Number,
+      required: false,
+    },
     thresholdType: {
       type: String,
       enum: AlertThresholdType,
@@ -87,6 +107,29 @@ const AlertSchema = new Schema<IAlert>(
     interval: {
       type: String,
       required: true,
+    },
+    scheduleOffsetMinutes: {
+      type: Number,
+      min: 0,
+      // Maximum offset for daily windows (24h - 1 minute).
+      max: 1439,
+      validate: {
+        validator: function (this: IAlert, value: number | undefined) {
+          if (value == null) {
+            return true;
+          }
+
+          const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[this.interval];
+          return intervalMinutes == null || value < intervalMinutes;
+        },
+        message:
+          'scheduleOffsetMinutes must be less than the alert interval in minutes',
+      },
+      required: false,
+    },
+    scheduleStartAt: {
+      type: Date,
+      required: false,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
     state: {
@@ -158,6 +201,22 @@ const AlertSchema = new Schema<IAlert>(
         },
         required: false,
       },
+    },
+    executionErrors: {
+      type: [
+        {
+          _id: false,
+          timestamp: { type: Date, required: true },
+          type: {
+            type: String,
+            enum: AlertErrorType,
+            required: true,
+          },
+          message: { type: String, required: true },
+        },
+      ],
+      required: false,
+      default: undefined,
     },
   },
   {

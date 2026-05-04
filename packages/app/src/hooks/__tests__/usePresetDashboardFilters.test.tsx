@@ -108,6 +108,7 @@ describe('usePresetDashboardFilters', () => {
       filterValues: mockFilterValues,
       setFilterValue: mockSetFilterValue,
       filterQueries: mockFilterQueries,
+      setFilterQueries: jest.fn(),
     });
   });
 
@@ -123,6 +124,7 @@ describe('usePresetDashboardFilters', () => {
     expect(api.usePresetDashboardFilters).toHaveBeenCalledWith(
       PresetDashboard.Services,
       mockSourceId,
+      true,
     );
   });
 
@@ -140,6 +142,53 @@ describe('usePresetDashboardFilters', () => {
     );
 
     expect(result.current.filters).toEqual([]);
+  });
+
+  it('should pass the enabled status usePresetDashboardFilters when enabled is false', () => {
+    renderHook(() =>
+      usePresetDashboardFilters({
+        presetDashboard: mockPresetDashboard,
+        sourceId: mockSourceId,
+        enabled: false,
+      }),
+    );
+
+    expect(api.usePresetDashboardFilters).toHaveBeenCalledWith(
+      PresetDashboard.Services,
+      mockSourceId,
+      false,
+    );
+  });
+
+  it('should pass the enabled status usePresetDashboardFilters when enabled is true', () => {
+    renderHook(() =>
+      usePresetDashboardFilters({
+        presetDashboard: mockPresetDashboard,
+        sourceId: mockSourceId,
+        enabled: true,
+      }),
+    );
+
+    expect(api.usePresetDashboardFilters).toHaveBeenCalledWith(
+      PresetDashboard.Services,
+      mockSourceId,
+      true,
+    );
+  });
+
+  it('should pass the enabled status usePresetDashboardFilters when enabled is undefined', () => {
+    renderHook(() =>
+      usePresetDashboardFilters({
+        presetDashboard: mockPresetDashboard,
+        sourceId: mockSourceId,
+      }),
+    );
+
+    expect(api.usePresetDashboardFilters).toHaveBeenCalledWith(
+      PresetDashboard.Services,
+      mockSourceId,
+      true,
+    );
   });
 
   it('should pass filters to useDashboardFilters', () => {
@@ -368,6 +417,7 @@ describe('usePresetDashboardFilters', () => {
       expect(api.usePresetDashboardFilters).toHaveBeenCalledWith(
         PresetDashboard.Services,
         mockSourceId,
+        true,
       );
     });
 

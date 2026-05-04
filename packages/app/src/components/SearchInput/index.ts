@@ -1,0 +1,1 @@
+export { getStoredLanguage } from './SearchWhereInput';

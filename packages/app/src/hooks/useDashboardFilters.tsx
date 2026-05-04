@@ -1,24 +1,27 @@
 import { useCallback, useMemo } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 
 import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
+
+const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {
   const [filterQueries, setFilterQueries] = useQueryState(
     'filters',
-    parseAsJson<Filter[]>(),
+    filterQueriesParser,
   );
 
   const setFilterValue = useCallback(
-    (expression: string, value: string | null) => {
+    (expression: string, values: string[]) => {
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
-        if (value === undefined || value === null) {
+        if (values.length === 0) {
           delete filterValues[expression];
         } else {
           filterValues[expression] = {
-            included: new Set([value]),
+            included: new Set(values),
             excluded: new Set(),
           };
         }
@@ -58,6 +61,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     filterValues: valuesForExistingFilters,
     filterQueries: queriesForExistingFilters,
     setFilterValue,
+    setFilterQueries,
   };
 };
 

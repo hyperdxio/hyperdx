@@ -1,84 +1,45 @@
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
-import { Group, Select } from '@mantine/core';
+import { Group, MultiSelect } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
 
-import { useGetKeyValues } from './hooks/useMetadata';
+import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
 import { FilterState } from './searchFilters';
-import { useSource } from './source';
-import { getMetricTableName } from './utils';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
-  dateRange: [Date, Date];
-  onChange: (value: string | null) => void;
-  value?: string | null;
+  onChange: (values: string[]) => void;
+  value: string[];
+  values?: string[];
+  isLoading?: boolean;
 }
 
 const DashboardFilterSelect = ({
   filter,
-  dateRange,
   onChange,
   value,
+  values,
+  isLoading,
 }: DashboardFilterSelectProps) => {
-  const { data: source, isLoading: isSourceLoading } = useSource({
-    id: filter.source,
-  });
-
-  const { timestampValueExpression, connection } = source || {};
-
-  const databaseName = source?.from.databaseName;
-  const tableName =
-    source && getMetricTableName(source, filter.sourceMetricType);
-
-  const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(
-    {
-      chartConfig: {
-        dateRange,
-        timestampValueExpression: timestampValueExpression!,
-        connection: connection!,
-        from: {
-          databaseName: databaseName!,
-          tableName: tableName!,
-        }!,
-        where: '',
-        whereLanguage: 'sql',
-        select: '',
-      },
-      keys: [filter.expression],
-      disableRowLimit: true,
-      limit: 10000,
-    },
-    {
-      enabled:
-        !!timestampValueExpression &&
-        !!connection &&
-        !!tableName &&
-        !!databaseName,
-    },
-  );
-
-  const selectValues = keys?.[0]?.value
-    .map(value => String(value))
-    .sort()
-    .map(value => ({
-      value,
-      label: value,
-    }));
+  const selectValues = values?.toSorted().map(value => ({
+    value,
+    label: value,
+  }));
 
   return (
-    <Select
-      placeholder={filter.name}
-      value={value ?? null} // null clears the select, undefined makes the select uncontrolled
+    <MultiSelect
+      placeholder={value.length === 0 ? filter.name : undefined}
+      value={value}
       data={selectValues || []}
       searchable
       clearable
-      allowDeselect
       size="xs"
       maxDropdownHeight={280}
-      disabled={isSourceLoading || isKeyValuesLoading}
+      disabled={isLoading}
       variant="filled"
-      w={200}
+      w={250}
       limit={20}
       onChange={onChange}
+      data-testid={`dashboard-filter-select-${filter.name}`}
     />
   );
 };
@@ -86,7 +47,7 @@ const DashboardFilterSelect = ({
 interface DashboardFilterProps {
   filters: DashboardFilter[];
   filterValues: FilterState;
-  onSetFilterValue: (expression: string, value: string | null) => void;
+  onSetFilterValue: (expression: string, values: string[]) => void;
   dateRange: [Date, Date];
 }
 
@@ -96,20 +57,31 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
+  const { data: filterValuesById, isFetching } = useDashboardFilterValues({
+    filters,
+    dateRange,
+  });
+
   return (
-    <Group mt="sm">
-      {Object.values(filters).map(filter => (
-        <DashboardFilterSelect
-          key={filter.id}
-          filter={filter}
-          dateRange={dateRange}
-          onChange={value => onSetFilterValue(filter.expression, value)}
-          value={filterValues[filter.expression]?.included
-            .values()
-            .next()
-            .value?.toString()}
-        />
-      ))}
+    <Group mt="sm" align="start">
+      {Object.values(filters).map(filter => {
+        const queriedFilterValues = filterValuesById?.get(filter.id);
+        const included = filterValues[filter.expression]?.included;
+        const selectedValues = included
+          ? Array.from(included).map(v => v.toString())
+          : [];
+        return (
+          <DashboardFilterSelect
+            key={filter.id}
+            filter={filter}
+            isLoading={!queriedFilterValues}
+            onChange={values => onSetFilterValue(filter.expression, values)}
+            values={queriedFilterValues?.values}
+            value={selectedValues}
+          />
+        );
+      })}
+      {isFetching && <IconRefresh className="spin-animate" size={12} />}
     </Group>
   );
 };

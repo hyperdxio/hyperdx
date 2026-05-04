@@ -1,15 +1,17 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import cx from 'classnames';
 import { UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
   Getter,
   Row,
   Row as TableRow,
+  SortingFnOption,
   SortingState,
+  TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
 import { ColumnDef } from '@tanstack/react-table';
@@ -18,18 +20,26 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { CsvExportButton } from './components/CsvExportButton';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
+
+export type TableVariant = 'default' | 'muted';
+
+// Arbitrary limit to prevent OOM crashes for very large result sets. Most result sets should be paginated anyway.
+export const MAX_TABLE_ROWS = 10_000;
 
 export const Table = ({
   data,
   groupColumnName,
   columns,
-  getRowSearchLink,
+  onRowClick,
   tableBottom,
+  enableClientSideSorting = false,
   sorting,
   onSortingChange,
+  variant = 'default',
 }: {
   data: any[];
   columns: {
@@ -40,16 +50,28 @@ export const Table = ({
     numberFormat?: NumberFormat;
     columnWidthPercent?: number;
     visible?: boolean;
+    sortingFn?: SortingFnOption<any>;
   }[];
   groupColumnName?: string;
-  getRowSearchLink?: (row: any) => string | null;
+  onRowClick?: (row: any, e?: React.MouseEvent) => void;
   tableBottom?: React.ReactNode;
+  enableClientSideSorting?: boolean;
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
+  variant?: TableVariant;
 }) => {
+  const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const truncatedData = useMemo(() => {
+    if (data.length > MAX_TABLE_ROWS) {
+      return data.slice(0, MAX_TABLE_ROWS);
+    }
+    return data;
+  }, [data]);
+  const isTruncated = truncatedData.length === MAX_TABLE_ROWS;
 
   const tableWidth = tableContainerRef.current?.clientWidth;
   const numColumns = columns.filter(c => c.visible !== false).length + 1;
@@ -86,95 +108,126 @@ export const Table = ({
       .filter(c => c.visible !== false)
       .map(
         (
-          { id, dataKey, displayName, numberFormat, columnWidthPercent },
-          i,
-        ) => ({
-          id: id,
-          accessorKey: dataKey,
-          header: displayName,
-          accessorFn: (row: any) => row[dataKey],
-          cell: ({
-            getValue,
-            row,
-          }: {
-            getValue: Getter<number>;
-            row: Row<any>;
-          }) => {
-            const value = getValue();
-            let formattedValue: string | number | null = value ?? null;
-            if (numberFormat) {
-              formattedValue = formatNumber(value, numberFormat);
-            }
-            if (getRowSearchLink == null) {
-              return formattedValue;
-            }
-            const link = getRowSearchLink(row.original);
-
-            if (!link) {
-              return (
-                <div
-                  className={cx('align-top overflow-hidden py-1 pe-3', {
-                    'text-break': wrapLinesEnabled,
-                    'text-truncate': !wrapLinesEnabled,
-                  })}
-                >
-                  {formattedValue}
-                </div>
-              );
-            }
-
-            return (
-              <Link
-                href={link}
-                className={cx('align-top overflow-hidden py-1 pe-3', {
-                  'text-break': wrapLinesEnabled,
-                  'text-truncate': !wrapLinesEnabled,
-                })}
-                style={{
-                  display: 'block',
-                  color: 'inherit',
-                  textDecoration: 'none',
-                }}
-              >
-                {formattedValue}
-              </Link>
-            );
+          {
+            id,
+            dataKey,
+            displayName,
+            numberFormat,
+            columnWidthPercent,
+            sortingFn,
           },
-          size:
-            i === numColumns - 2
-              ? UNDEFINED_WIDTH
-              : tableWidth != null && columnWidthPercent != null
-                ? Math.max(
-                    tableWidth * (columnWidthPercent / 100),
-                    MIN_COLUMN_WIDTH_PX,
-                  )
-                : tableWidth != null
-                  ? tableWidth / numColumns
-                  : 200,
-          enableResizing: i !== numColumns - 2,
-        }),
+          i,
+        ) =>
+          ({
+            id: id,
+            accessorKey: dataKey,
+            header: displayName,
+            accessorFn: (row: any) => row[dataKey],
+            sortingFn,
+            cell: ({
+              getValue,
+              row,
+            }: {
+              getValue: Getter<number>;
+              row: Row<any>;
+            }) => {
+              const value = getValue();
+              let formattedValue: string | number | null = value ?? null;
+
+              // Table cannot accept values which are objects or arrays, so we need to stringify them
+              if (typeof value !== 'string' && typeof value !== 'number') {
+                formattedValue = JSON.stringify(value);
+              } else if (numberFormat) {
+                formattedValue = formatNumber(value, numberFormat);
+              }
+
+              const className = cx('align-top overflow-hidden py-1 pe-3', {
+                'text-break': wrapLinesEnabled,
+                'text-truncate': !wrapLinesEnabled,
+              });
+
+              if (onRowClick) {
+                return (
+                  <div
+                    role="link"
+                    tabIndex={0}
+                    className={className}
+                    style={{ cursor: 'pointer' }}
+                    // Left-click: fires onClick with button === 0. The parent
+                    // handler detects meta/ctrl for cmd/ctrl-click → new tab.
+                    onClick={e => onRowClick(row.original, e)}
+                    // Middle-click (button === 1) fires onAuxClick but NOT
+                    // onClick on non-anchor elements.
+                    onAuxClick={e => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        onRowClick(row.original, e);
+                      }
+                    }}
+                    // Suppress the browser's middle-click autoscroll cursor on non-anchor elements.
+                    onMouseDown={e => {
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick(row.original);
+                      }
+                    }}
+                  >
+                    {formattedValue}
+                  </div>
+                );
+              }
+
+              return <div className={className}>{formattedValue}</div>;
+            },
+            size:
+              i === numColumns - 2
+                ? UNDEFINED_WIDTH
+                : tableWidth != null && columnWidthPercent != null
+                  ? Math.max(
+                      tableWidth * (columnWidthPercent / 100),
+                      MIN_COLUMN_WIDTH_PX,
+                    )
+                  : tableWidth != null
+                    ? tableWidth / numColumns
+                    : 200,
+            enableResizing: i !== numColumns - 2,
+          }) satisfies ColumnDef<any>,
       ),
   ];
 
+  const sortingParams: Partial<TableOptions<any>> = useMemo(() => {
+    return enableClientSideSorting
+      ? {
+          enableSorting: true,
+          getSortedRowModel: getSortedRowModel(),
+        }
+      : {
+          enableSorting: true,
+          manualSorting: true,
+          onSortingChange: v => {
+            if (typeof v === 'function') {
+              const newSortVal = v(sorting);
+              onSortingChange?.(newSortVal ?? null);
+            } else {
+              onSortingChange?.(v ?? null);
+            }
+          },
+          state: {
+            sorting,
+          },
+        };
+  }, [enableClientSideSorting, onSortingChange, sorting]);
+
   const table = useReactTable({
-    data,
+    data: truncatedData,
     columns: reactTableColumns,
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
-    enableSorting: true,
-    manualSorting: true,
-    onSortingChange: v => {
-      if (typeof v === 'function') {
-        const newSortVal = v(sorting);
-        onSortingChange?.(newSortVal ?? null);
-      } else {
-        onSortingChange?.(v ?? null);
-      }
-    },
-    state: {
-      sorting,
-    },
+    ...sortingParams,
   });
 
   const { rows } = table.getRowModel();
@@ -203,7 +256,7 @@ export const Table = ({
   const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
   const { csvData } = useCsvExport(
-    data,
+    truncatedData,
     columns.map(col => ({
       dataKey: col.dataKey,
       displayName: col.displayName,
@@ -215,13 +268,20 @@ export const Table = ({
     <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
       <table
         className="w-100"
-        style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}
+        style={{
+          tableLayout: 'fixed',
+          borderCollapse: 'collapse',
+          fontFamily: 'var(--font-ibm-plex-mono)',
+        }}
       >
         <thead
           style={{
             position: 'sticky',
             top: 0,
-            background: 'var(--color-bg-body)',
+            background:
+              variant === 'muted'
+                ? 'var(--color-bg-muted)'
+                : 'var(--color-bg-body)',
           }}
         >
           {table.getHeaderGroups().map(headerGroup => (
@@ -243,7 +303,7 @@ export const Table = ({
                             </UnstyledButton>
                             <CsvExportButton
                               data={csvData}
-                              filename="HyperDX_table_results"
+                              filename={`${brandName}_table_results`}
                               className="fs-8 ms-2"
                               title="Download table as CSV"
                             >
@@ -294,6 +354,11 @@ export const Table = ({
           )}
         </tbody>
       </table>
+      {isTruncated && (
+        <div className="p-2 text-center">
+          Showing the first {MAX_TABLE_ROWS} rows.
+        </div>
+      )}
       {tableBottom}
     </div>
   );

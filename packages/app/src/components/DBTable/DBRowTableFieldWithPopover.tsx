@@ -6,20 +6,20 @@ import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
-import DBRowTableIconButton from './DBRowTableIconButton';
+import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 import styles from '../../../styles/LogTable.module.scss';
 
-export interface DBRowTableFieldWithPopoverProps {
+interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
-  tableContainerRef?: React.RefObject<HTMLDivElement | null>;
+  tableContainerRef: HTMLDivElement | null;
   isChart?: boolean;
 }
 
-export const DBRowTableFieldWithPopover = ({
+const DBRowTableFieldWithPopover = ({
   children,
   cellValue,
   tableContainerRef,
@@ -148,7 +148,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
-        portalProps={{ target: tableContainerRef?.current ?? undefined }}
+        portalProps={{ target: tableContainerRef ?? undefined }}
         closeOnClickOutside={false}
         clickOutsideEvents={[]}
       >

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithOptDateRange,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Badge, Tooltip } from '@mantine/core';
@@ -59,13 +60,16 @@ export default function MVOptimizationIndicator({
   variant = 'badge',
 }: {
   source: TSource;
-  config: ChartConfigWithOptDateRange | undefined;
+  config: BuilderChartConfigWithOptDateRange | undefined;
   variant?: 'badge' | 'icon';
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const { data } = useMVOptimizationExplanation(config);
 
-  const mvConfigs = source.materializedViews ?? [];
+  const mvConfigs =
+    ((source.kind === SourceKind.Log || source.kind === SourceKind.Trace) &&
+      source.materializedViews) ||
+    [];
   if (!mvConfigs?.length) {
     return null;
   }
