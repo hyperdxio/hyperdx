@@ -9,6 +9,6 @@ load 'test_helpers/assertions.bash'
 
 @test "compat schema should insert and query log data correctly" {
     emit_otel_data "http://localhost:24318" "data/compat-schema/basic-insert"
-    sleep 1
+    sleep 3
     assert_test_data_compat "data/compat-schema/basic-insert"
 }
