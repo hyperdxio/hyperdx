@@ -29,7 +29,8 @@
 // Known gaps (extend when seen in production):
 //   URL-percent-encoded values, vendor-specific tokens (Stripe, Twilio,
 //   Datadog, etc.), generic high-entropy hex blobs (too many false
-//   positives without surrounding context).
+//   positives without surrounding context), basic-auth URLs with raw
+//   "@" in the username (ambiguous to parse without percent-encoding).
 
 const SECRET_KEY_TOKENS =
   'password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|authorization|auth';
@@ -49,17 +50,24 @@ const PATTERNS: RedactionPattern[] = [
   // -----BEGIN ... PRIVATE KEY----- ... -----END ... PRIVATE KEY-----
   // Covers RSA, EC, DSA, OPENSSH, and PKCS#8 (plain "PRIVATE KEY").
   // The algorithm prefix is optional to accept the bare "PRIVATE KEY" form.
+  // The lazy quantifier is bounded so an unmatched BEGIN does not scan
+  // an unbounded amount of trailing input. Real PEM blocks are well
+  // under 16KB; the API also caps the whole request body at 50KB.
   {
     name: 'pem',
-    re: /-----BEGIN (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----/g,
+    re: /-----BEGIN (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----[\s\S]{0,16000}?-----END (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----/g,
     replace: '[REDACTED_PRIVATE_KEY]',
   },
-  // scheme://user:pass@host. RFC 3986 allows ":" in password; the
-  // first ":" delimits user from password the way clients parse it.
+  // scheme://user:pass@host. The password may contain "@" if not
+  // percent-encoded, so the password group greedily consumes anything
+  // non-whitespace, non-slash and the engine backtracks to the last
+  // "@" before the host. The host group is captured so the replacement
+  // preserves it. Raw "@" in the username is not handled (would need
+  // ambiguous parsing); add to known gaps if seen in production.
   {
     name: 'basic-auth-url',
-    re: /\b(https?|ftp|ssh):\/\/([^:@/\s]+):([^@/\s]+)@/g,
-    replace: '$1://[REDACTED]:[REDACTED]@',
+    re: /\b(https?|ftp|ssh):\/\/([^/\s:@]+):([^/\s]+)@([^/\s@]+)/g,
+    replace: '$1://[REDACTED]:[REDACTED]@$4',
   },
   // Authorization: Bearer xxx
   {
@@ -100,12 +108,18 @@ const PATTERNS: RedactionPattern[] = [
     re: /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g,
     replace: '[REDACTED_GITHUB_TOKEN]',
   },
-  // key=value where the key looks secret-ish. Stops at whitespace,
-  // commas, semicolons, ampersands, and quotes, so URL query string
-  // boundaries are preserved.
+  // key=value where the key looks secret-ish. Three variants on the
+  // value: double-quoted, single-quoted, or unquoted. Unquoted stops
+  // at whitespace, commas, semicolons, ampersands, and quotes so URL
+  // query-string boundaries are preserved. Quoted variants are
+  // matched first via alternation so shell-style password="secret"
+  // gets caught instead of slipping through the unquoted-value class.
   {
     name: 'key-value',
-    re: new RegExp(`\\b(${SECRET_KEY_TOKENS})=([^\\s,;&"'\`]+)`, 'gi'),
+    re: new RegExp(
+      `\\b(${SECRET_KEY_TOKENS})=(?:"[^"]*"|'[^']*'|[^\\s,;&"'\`]+)`,
+      'gi',
+    ),
     replace: '$1=[REDACTED]',
   },
   // JSON shape: "key": "value" with whitespace tolerance.

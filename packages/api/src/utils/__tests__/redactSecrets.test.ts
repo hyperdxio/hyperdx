@@ -56,6 +56,18 @@ describe('redactSecrets', () => {
       expect(out).toContain('private-key=[REDACTED]');
       expect(out).toContain('client_secret=[REDACTED]');
     });
+
+    it('redacts shell-style double-quoted values', () => {
+      const out = redactSecrets('export PASSWORD="hunter2 with spaces"');
+      expect(out).not.toContain('hunter2');
+      expect(out).toContain('PASSWORD=[REDACTED]');
+    });
+
+    it('redacts shell-style single-quoted values', () => {
+      const out = redactSecrets("API_KEY='abc 123'");
+      expect(out).not.toContain('abc 123');
+      expect(out).toContain('API_KEY=[REDACTED]');
+    });
   });
 
   describe('JSON-shaped secrets', () => {
@@ -165,6 +177,18 @@ describe('redactSecrets', () => {
       ].join('\n');
       expect(redactSecrets(cert)).toBe(cert);
     });
+
+    it('returns quickly when BEGIN has no matching END', () => {
+      // Unmatched BEGIN with a large trailing payload; bounded lazy
+      // quantifier should fail fast rather than scan the entire input.
+      const noisy = 'x'.repeat(50_000);
+      const input = `-----BEGIN RSA PRIVATE KEY-----\n${noisy}`;
+      const start = Date.now();
+      const out = redactSecrets(input);
+      const elapsed = Date.now() - start;
+      expect(out).toBe(input); // unchanged: no match
+      expect(elapsed).toBeLessThan(500); // generous upper bound
+    });
   });
 
   describe('basic-auth URLs', () => {
@@ -179,9 +203,28 @@ describe('redactSecrets', () => {
     });
 
     it('redacts user:pass in http URL', () => {
-      const out = redactSecrets('proxy http://svc:p@ss@proxy.local:8080/');
-      expect(out).toContain('[REDACTED]:[REDACTED]');
-      expect(out).not.toContain('svc:p@ss');
+      const out = redactSecrets('proxy http://svc:hunter2@proxy.local:8080/');
+      expect(out).toContain('http://[REDACTED]:[REDACTED]@proxy.local:8080/');
+      expect(out).not.toContain('hunter2');
+    });
+
+    it('redacts a password that contains an @ character', () => {
+      const out = redactSecrets('proxy http://svc:p@ss@proxy.local:8080/path');
+      expect(out).toContain(
+        'http://[REDACTED]:[REDACTED]@proxy.local:8080/path',
+      );
+      // The whole password including the embedded "@" must be gone.
+      expect(out).not.toContain('p@ss');
+      expect(out).not.toContain('ss@proxy');
+    });
+
+    it('preserves the host in the replacement', () => {
+      const out = redactSecrets(
+        'clone https://alice:hunter2@github.com/acme/repo',
+      );
+      expect(out).toContain(
+        'https://[REDACTED]:[REDACTED]@github.com/acme/repo',
+      );
     });
 
     it('does not match a URL without a password component', () => {
@@ -191,6 +234,11 @@ describe('redactSecrets', () => {
 
     it('does not falsely match an email address', () => {
       const line = 'contact alice@example.com for access';
+      expect(redactSecrets(line)).toBe(line);
+    });
+
+    it('does not match an ssh URL with only a username (no password)', () => {
+      const line = 'fetch ssh://git@github.com/acme/repo';
       expect(redactSecrets(line)).toBe(line);
     });
   });
