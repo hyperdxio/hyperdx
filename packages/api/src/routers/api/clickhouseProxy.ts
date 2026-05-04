@@ -27,7 +27,7 @@ const MAX_CLICKHOUSE_PROXY_TIMEOUT_SECONDS = 800;
  * @returns Sanitized path with pathname and query string
  * @throws Error if path contains malicious patterns
  */
-export const validateAndSanitizePath = (basePath: string): string => {
+const validateAndSanitizePath = (basePath: string): string => {
   // Extract pathname portion (before any literal ?) for encoding attack check
   // Must be done BEFORE sanitizeUrl because it decodes percent-encoded chars
   const firstQuestionMark = basePath.indexOf('?');
