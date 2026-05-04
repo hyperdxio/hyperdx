@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Meta } from '@storybook/nextjs';
 
 import { ColorSwatchInput } from './ColorSwatchInput';
 
@@ -8,8 +8,6 @@ const meta = {
 } satisfies Meta<typeof ColorSwatchInput>;
 
 export default meta;
-
-type Story = StoryObj<typeof meta>;
 
 export const Default = () => {
   const [color, setColor] = React.useState<string | undefined>('#6610f2');

@@ -156,6 +156,17 @@ export class DashboardPage {
   }
 
   /**
+   * Extract the current dashboard's ID from the URL. Throws if the current
+   * URL isn't on a /dashboards/<id> page.
+   */
+  getCurrentDashboardId(): string {
+    const url = this.page.url();
+    const match = url.match(/\/dashboards\/([^/?#]+)/);
+    if (!match) throw new Error(`Not on a dashboard page: ${url}`);
+    return match[1];
+  }
+
+  /**
    * Create a new dashboard
    */
   async createNewDashboard() {

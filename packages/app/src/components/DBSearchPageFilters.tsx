@@ -1048,7 +1048,6 @@ export const FilterGroup = ({
 
 const DBSearchPageFiltersComponent = ({
   filters: filterState,
-  clearAllFilters,
   clearFilter,
   setFilterValue: _setFilterValue,
   isLive,

@@ -133,7 +133,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
-    uniqueRowIdExpression: String,
+    /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,

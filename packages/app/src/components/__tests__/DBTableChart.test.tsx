@@ -38,6 +38,10 @@ jest.mock('@/HDXMultiSeriesTableChart', () => ({
   Table: jest.fn(() => null),
 }));
 
+jest.mock('@/hooks/useOnClickLinkBuilder', () => ({
+  useOnClickLinkBuilder: jest.fn().mockReturnValue(null),
+}));
+
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );

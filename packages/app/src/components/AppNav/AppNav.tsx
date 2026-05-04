@@ -49,6 +49,7 @@ import {
   AppNavLink,
   AppNavUserMenu,
 } from './AppNav.components';
+import { AppNavFeedback } from './AppNavFeedback';
 
 import styles from './AppNav.module.scss';
 
@@ -475,6 +476,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
             {/* Help */}
             <AppNavHelpMenu version={APP_VERSION} />
+
+            {/* Feedback */}
+            <AppNavFeedback />
 
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (

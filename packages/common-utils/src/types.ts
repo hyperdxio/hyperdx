@@ -137,6 +137,9 @@ export const DerivedColumnSchema = z.intersection(
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
     metricNameSql: z.string().optional(),
+    // Heatmap-specific fields (optional, only used when displayType is Heatmap)
+    countExpression: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -668,6 +671,7 @@ export const NumberFormatSchema = z.object({
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: z.string().min(1) }),
   z.object({ mode: z.literal('template'), template: z.string().min(1) }),
 ]);
 export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
@@ -680,8 +684,17 @@ const OnClickSearchSchema = z.object({
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
+export const OnClickDashboardSchema = z.object({
+  type: z.literal('dashboard'),
+  target: OnClickTargetSchema,
+  whereTemplate: z.string().optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+});
+export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
+
 export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickSearchSchema,
+  OnClickDashboardSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
@@ -1134,7 +1147,15 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
+  /**
+   * @deprecated Application-side SQL predicate AND'd into every query against
+   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
+   * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
+   *
+   * Existing values are still honored at query time; new sources should not
+   * set it. The Sources settings UI form input is disabled.
+   */
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
@@ -1251,6 +1272,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isSearchableSource(source: TSource): boolean {
+  return isLogSource(source) || isTraceSource(source);
 }
 
 type SourceLikeForSampleWeight = {
