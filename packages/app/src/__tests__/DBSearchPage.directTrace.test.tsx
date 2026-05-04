@@ -44,40 +44,37 @@ jest.mock('next/link', () => ({
   }) => <a href={href}>{children}</a>,
 }));
 
-jest.mock('nuqs', () => ({
-  parseAsBoolean: {
-    withDefault: () => 'parseAsBoolean',
-  },
-  parseAsInteger: {
-    withDefault: () => 'parseAsInteger',
-  },
-  parseAsString: {
+jest.mock('nuqs', () => {
+  const chainableParser = {
     withOptions() {
       return this;
     },
     withDefault() {
       return this;
     },
-  },
-  parseAsStringEnum: () => ({
-    withDefault: () => 'parseAsStringEnum',
-  }),
-  useQueryState: (key: string) => {
-    switch (key) {
-      case 'traceId':
-        return [mockDirectTraceId, mockSetDirectTraceId];
-      case 'mode':
-        return ['results', mockSetAnalysisMode];
-      case 'isLive':
-        return [true, mockSetIsLive];
-      case 'denoise':
-        return [false, jest.fn()];
-      default:
-        return [null, jest.fn()];
-    }
-  },
-  useQueryStates: () => [mockSearchedConfig, mockSetSearchedConfig],
-}));
+  };
+  return {
+    parseAsBoolean: { ...chainableParser },
+    parseAsInteger: { ...chainableParser },
+    parseAsString: { ...chainableParser },
+    parseAsStringEnum: () => ({ ...chainableParser }),
+    useQueryState: (key: string) => {
+      switch (key) {
+        case 'traceId':
+          return [mockDirectTraceId, mockSetDirectTraceId];
+        case 'mode':
+          return ['results', mockSetAnalysisMode];
+        case 'isLive':
+          return [true, mockSetIsLive];
+        case 'denoise':
+          return [false, jest.fn()];
+        default:
+          return [null, jest.fn()];
+      }
+    },
+    useQueryStates: () => [mockSearchedConfig, mockSetSearchedConfig],
+  };
+});
 
 jest.mock('@/source', () => ({
   getEventBody: () => 'Body',
