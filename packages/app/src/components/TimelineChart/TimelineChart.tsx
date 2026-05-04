@@ -10,66 +10,57 @@ import cx from 'classnames';
 import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import { useDrag } from '@/hooks/useDrag';
+import {
+  TimelineMouseCursor,
+  type TimelineMouseCursorHandle,
+} from '@/components/TimelineChart/TimelineMouseCursor';
+import {
+  TimelineXAxis,
+  type TimelineXAxisHandle,
+} from '@/components/TimelineChart/TimelineXAxis';
+import useResizable from '@/hooks/useResizable';
 import { useStableCallback } from '@/hooks/useStableCallback';
-
-import useResizable from '../../hooks/useResizable';
-import { usePrevious } from '../../utils';
 
 import {
   TimelineChartRowEvents,
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
-import { TimelineCursor } from './TimelineCursor';
-import { TimelineMouseCursor } from './TimelineMouseCursor';
-import { TimelineXAxis } from './TimelineXAxis';
 
 import resizeStyles from '../../../styles/ResizablePanel.module.scss';
 import styles from './TimelineChart.module.scss';
 
 type Row = {
-  id: string;
-  label: React.ReactNode;
   events: TTimelineEvent[];
-  style?: any;
-  type?: string;
-  className?: string;
-  isActive?: boolean;
-};
-
-type Cursor = {
   id: string;
-  start: number;
-  color: string;
+  isActive?: boolean;
+  label: React.ReactNode;
+  type?: string;
 };
 
 type TimelineChartProps = {
-  rows: Row[];
-  cursors?: Cursor[];
-  rowHeight: number;
-  onEventClick?: (e: Row) => void;
+  initialScrollRowIndex: number;
   labelWidth: number;
-  className?: string;
   maxHeight: number;
-  initialScrollRowIndex?: number;
+  rowHeight: number;
+  rows: Row[];
+  onEventClick: (e: Row) => void;
 };
 
-export const TimelineChart = memo(function ({
-  rows,
-  cursors,
-  rowHeight,
-  onEventClick,
-  labelWidth: initialLabelWidth,
-  className,
-  maxHeight,
-  initialScrollRowIndex,
-}: TimelineChartProps) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState(0);
-  const [cursorXPerc, setCursorXPerc] = useState(0);
+const axisHeight = 24;
+const rowsMarginTop = 32;
 
-  const prevScale = usePrevious(scale);
+export const TimelineChart = memo(function (props: TimelineChartProps) {
+  const {
+    initialScrollRowIndex,
+    labelWidth: initialLabelWidth,
+    maxHeight,
+    rowHeight,
+    rows,
+    onEventClick,
+  } = props;
+
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
+
   const { size: labelWidthPercent, startResize } = useResizable(
     initialWidthPercent,
     'left',
@@ -78,69 +69,104 @@ export const TimelineChart = memo(function ({
   const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
+  const [timelineHeight, setTimelineHeight] = useState(0);
 
   useLayoutEffect(() => {
-    if (prevScale != null && prevScale != scale) {
-      setOffset(offset => {
-        const newScale = scale;
+    const element = timelineRef.current;
+    if (element == null) return;
 
-        // we try to calculate the new offset we need to keep the cursor's
-        // abs % the same between current scale and new scale
-        // cursor abs % = cursorTime/maxVal = offset / 100 + xPerc / scale
-        const boundedCursorXPerc = Math.max(Math.min(cursorXPerc, 1), 0);
-        const newOffset =
-          offset +
-          (100 * boundedCursorXPerc) / prevScale -
-          (100 * boundedCursorXPerc) / newScale;
+    setTimelineHeight(element.getBoundingClientRect().height);
 
-        return Math.min(Math.max(newOffset, 0), 100 - 100 / scale);
-      });
-    }
-  }, [scale, prevScale, cursorXPerc]);
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (entry == null) return;
+      setTimelineHeight(entry.contentRect.height);
+    });
+    observer.observe(element);
 
-  const onDragMove = useStableCallback(({ movementX }: PointerEvent) => {
-    setOffset(v =>
-      Math.min(Math.max(v - movementX * (0.125 / scale), 0), 100 - 100 / scale),
-    );
+    return () => observer.disconnect();
+  }, []);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => timelineRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 5,
   });
 
-  const dragHandlers = useMemo(
-    () => ({
-      onDragStart: () => {
-        if (timelineRef.current) {
-          timelineRef.current.style.userSelect = 'none';
-        }
-      },
+  const initialScrolled = useRef(false);
 
-      onDragEnd: () => {
-        if (timelineRef.current) {
-          timelineRef.current.style.userSelect = 'auto';
-        }
-      },
+  useEffect(() => {
+    if (!initialScrolled.current && initialScrollRowIndex >= 0) {
+      initialScrolled.current = true;
+      rowVirtualizer.scrollToIndex(initialScrollRowIndex, {
+        align: 'center',
+      });
+    }
+  }, [initialScrollRowIndex, rowVirtualizer]);
 
-      onDragMove,
-    }),
-    [onDragMove],
-  );
+  const scale = useRef(1);
+  const timelineScrollerRef = useRef<HTMLDivElement>(null);
+  const xAxisHandleRef = useRef<TimelineXAxisHandle>(null);
+  const mouseCursorHandleRef = useRef<TimelineMouseCursorHandle>(null);
 
-  const onPointerDown = useDrag(dragHandlers);
+  const maxVal = useMemo(() => {
+    let max = 0;
+
+    for (const row of rows) {
+      for (const event of row.events) {
+        max = Math.max(max, event.end);
+      }
+    }
+
+    return max * 1.1;
+  }, [rows]);
 
   const onWheel = useStableCallback((e: WheelEvent) => {
-    const { deltaX, deltaY, metaKey, ctrlKey } = e;
+    const { deltaY, metaKey, ctrlKey, clientX } = e;
 
-    if (metaKey || ctrlKey) {
-      e.preventDefault();
-      setScale(v => Math.max(v + -deltaY * 0.01, 1));
+    if (!(metaKey || ctrlKey)) {
       return;
     }
 
-    const isHorizontalScroll = Math.abs(deltaX) > Math.abs(deltaY);
-    if (isHorizontalScroll) {
-      e.preventDefault();
-      setOffset(v =>
-        Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
-      );
+    e.preventDefault();
+
+    const container = timelineRef.current;
+    const scroller = timelineScrollerRef.current;
+
+    if (!container || !scroller) {
+      return;
     }
+
+    const oldScale = scale.current;
+    const newScale = Math.max(oldScale + -deltaY * 0.01, 1);
+
+    if (newScale === oldScale) {
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+
+    const clientW = container.clientWidth;
+
+    const eventsWOld = Math.max(1, clientW * oldScale - labelWidth);
+    const eventsWNew = Math.max(1, clientW * newScale - labelWidth);
+
+    // Clamp cursor to the events area so hovering the label column anchors
+    // the zoom at the events-area left edge instead of going negative.
+    const cursorPx = Math.min(
+      Math.max(0, clientX - rect.left - labelWidth),
+      eventsWOld,
+    );
+
+    const fraction = (container.scrollLeft + cursorPx) / eventsWOld;
+
+    scale.current = newScale;
+    scroller.style.width = `${100 * newScale}%`;
+    container.scrollLeft = fraction * eventsWNew - cursorPx;
+
+    xAxisHandleRef.current?.recompute();
+    mouseCursorHandleRef.current?.recompute();
   });
 
   useEffect(() => {
@@ -155,162 +181,101 @@ export const TimelineChart = memo(function ({
     }
   }, [onWheel]);
 
-  const maxVal = useMemo(() => {
-    let max = 0;
-    for (const row of rows) {
-      for (const event of row.events) {
-        max = Math.max(max, event.end);
-      }
-    }
-    return max * 1.1; // add 10% padding
-  }, [rows]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => timelineRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 5,
-  });
-  const items = rowVirtualizer.getVirtualItems();
-
-  const TIMELINE_AXIS_HEIGHT = 32;
-
-  const [initialScrolled, setInitialScrolled] = useState(false);
-  useEffect(() => {
-    if (
-      initialScrollRowIndex != null &&
-      !initialScrolled &&
-      initialScrollRowIndex >= 0
-    ) {
-      setInitialScrolled(true);
-      rowVirtualizer.scrollToIndex(initialScrollRowIndex, {
-        align: 'center',
-      });
-    }
-  }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
-
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight,
-      }}
-      className={className}
-    >
+    <Flex mah={maxHeight} direction="column">
       <Flex justify="end" mb="sm">
         <Text>
           <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
         </Text>
       </Flex>
-      <div
-        style={{
-          position: 'relative',
-          overscrollBehaviorX: 'contain',
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-        }}
-        ref={timelineRef}
-        onPointerDown={onPointerDown}
-      >
-        {(cursors ?? ([] as const)).map(cursor => {
-          const xPerc = (cursor.start / maxVal - offset / 100) * scale;
-          return (
-            <TimelineCursor
-              key={cursor.id}
-              xPerc={xPerc}
-              height={
-                timelineRef.current?.getBoundingClientRect().height ?? 300
-              }
-              labelWidth={labelWidth}
-              color={cursor.color}
-            />
-          );
-        })}
-        <TimelineMouseCursor
-          containerRef={timelineRef}
-          maxVal={maxVal}
-          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-          labelWidth={labelWidth}
-          scale={scale}
-          offset={offset}
-          xPerc={cursorXPerc}
-          setXPerc={setCursorXPerc}
-        />
-        <TimelineXAxis
-          maxVal={maxVal}
-          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-          labelWidth={labelWidth}
-          scale={scale}
-          offset={offset}
-        />
 
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
+      <div className={styles.timelineViewport}>
+        <div className={styles.timelineContainer} ref={timelineRef}>
           <div
+            ref={timelineScrollerRef}
+            className={styles.timelineScroller}
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+              height: `${rowVirtualizer.getTotalSize() + axisHeight + rowsMarginTop}px`,
             }}
           >
+            <TimelineXAxis
+              ref={xAxisHandleRef}
+              maxVal={maxVal}
+              height={timelineHeight}
+              labelWidth={labelWidth}
+              scaleRef={scale}
+            />
+
+            <div
+              aria-hidden
+              className={styles.timelineCorner}
+              style={{
+                width: labelWidth,
+                height: `${axisHeight}px`,
+                marginTop: `-${axisHeight}px`,
+              }}
+            />
+
             {rowVirtualizer.getVirtualItems().map(virtualRow => {
               const row = rows[virtualRow.index];
+              const top = virtualRow.start + axisHeight + rowsMarginTop;
 
               return (
                 <div
-                  onClick={() => onEventClick?.(row)}
                   key={virtualRow.index}
                   data-index={virtualRow.index}
+                  data-id={row.id}
                   ref={rowVirtualizer.measureElement}
-                  className={`${cx(
-                    'd-flex align-items-center overflow-hidden',
-                    row.className,
-                    styles.timelineRow,
-                    row.isActive && styles.timelineRowActive,
-                  )}`}
-                  style={row.style}
+                  className={cx(styles.timelineRow, {
+                    [styles.timelineRowActive]: row.isActive,
+                  })}
+                  style={{ top }}
+                  onClick={() => onEventClick(row)}
                 >
                   <div
                     className={styles.labelContainer}
-                    style={{
-                      width: labelWidth,
-                      minWidth: labelWidth,
-                    }}
+                    style={{ width: labelWidth }}
                   >
-                    {row.label}
-                    <div
-                      className={resizeStyles.resizeHandle}
-                      onMouseDown={startResize}
-                      onPointerDown={e => {
-                        // so it doesn't trigger drag start in useDrag
-                        e.stopPropagation();
-                      }}
-                      style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                    <div className={styles.labelContent}>{row.label}</div>
+                  </div>
+
+                  <div
+                    className={styles.eventsContainer}
+                    style={{ height: `${virtualRow.size}px` }}
+                  >
+                    <TimelineChartRowEvents
+                      events={row.events}
+                      height={rowHeight}
+                      maxVal={maxVal}
                     />
                   </div>
-                  <TimelineChartRowEvents
-                    events={row.events}
-                    height={rowHeight}
-                    maxVal={maxVal}
-                    scale={scale}
-                    offset={offset}
-                  />
                 </div>
               );
             })}
           </div>
         </div>
+
+        <div
+          className={styles.resizeHandleContainer}
+          style={{ transform: `translateX(${labelWidth}px)` }}
+        >
+          <div
+            className={resizeStyles.resizeHandle}
+            onMouseDown={startResize}
+            style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+          />
+        </div>
+
+        <TimelineMouseCursor
+          ref={mouseCursorHandleRef}
+          containerRef={timelineRef}
+          maxVal={maxVal}
+          height={timelineHeight}
+          labelWidth={labelWidth}
+          scaleRef={scale}
+        />
       </div>
-    </div>
+    </Flex>
   );
 });
 

@@ -147,21 +147,17 @@ function getConfig(
     SpanId: source.spanIdExpression ?? '',
     ParentSpanId:
       source.kind === SourceKind.Trace
-        ? (source.parentSpanIdExpression ?? '')
+        ? source.parentSpanIdExpression ?? ''
         : '',
     StatusCode:
-      source.kind === SourceKind.Trace
-        ? (source.statusCodeExpression ?? '')
-        : '',
+      source.kind === SourceKind.Trace ? source.statusCodeExpression ?? '' : '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText:
-      source.kind === SourceKind.Log
-        ? (source.severityTextExpression ?? '')
-        : '',
+      source.kind === SourceKind.Log ? source.severityTextExpression ?? '' : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
     SpanEvents:
       source.kind === SourceKind.Trace
-        ? (source.spanEventsValueExpression ?? '')
+        ? source.spanEventsValueExpression ?? ''
         : '',
   };
 
@@ -786,7 +782,7 @@ export function DBTraceWaterfallChartContainer({
 
   const timelineRows = useMemo(
     () =>
-      visibleNodes.map((result, i) => {
+      visibleNodes.map(result => {
         const tookMs = (result.Duration || 0) * 1000;
         const startOffset = parseTimestampToMs(result.Timestamp);
         const start = startOffset - minOffset;
@@ -932,10 +928,6 @@ export function DBTraceWaterfallChartContainer({
               </div>
             </div>
           ),
-          style: {
-            // paddingTop: 1,
-            marginTop: i === 0 ? 32 : 0,
-          },
           isActive: isHighlighted,
           events: [
             {
@@ -1137,9 +1129,9 @@ export function DBTraceWaterfallChartContainer({
           flattenedNodes.length > 0 ? (
             <div className="my-3">All items are hidden by filters</div>
           ) : (
-            (emptyState ?? (
+            emptyState ?? (
               <div className="my-3">No matching spans or logs found</div>
-            ))
+            )
           )
         ) : (
           <TimelineChart
@@ -1157,7 +1149,6 @@ export function DBTraceWaterfallChartContainer({
                 aliasWith: event.aliasWith ?? [],
               });
             }}
-            cursors={[]}
             rows={timelineRows}
             initialScrollRowIndex={initialScrollRowIndex}
           />
