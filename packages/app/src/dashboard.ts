@@ -3,6 +3,7 @@ import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
   DashboardFilter,
+  DashboardSchema,
   Filter,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -122,7 +123,7 @@ export function useDashboard({
 
   const [localDashboard, setLocalDashboard] = useQueryState(
     'dashboard',
-    parseAsJson<Dashboard>(),
+    parseAsJson(DashboardSchema),
   );
 
   const updateDashboard = useUpdateDashboard();

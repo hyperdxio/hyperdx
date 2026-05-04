@@ -16,14 +16,12 @@ import {
   sub,
   subMilliseconds,
 } from 'date-fns';
-import { parseAsFloat, useQueryStates } from 'nuqs';
 import {
-  NumberParam,
-  StringParam,
-  useQueryParam,
-  useQueryParams,
-  withDefault,
-} from 'use-query-params';
+  parseAsFloat,
+  parseAsString,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
@@ -74,6 +72,12 @@ function parseValidTimeRange(
   return undefined;
 }
 
+// This needs to be a stable reference to prevent rerenders
+const timeRangeQueryStateMap = {
+  from: parseAsFloat,
+  to: parseAsFloat,
+};
+
 export function useTimeQuery({
   defaultValue = LIVE_TAIL_TIME_QUERY,
   defaultTimeRange = [-1, -1],
@@ -96,14 +100,10 @@ export function useTimeQuery({
     undefined | string
   >(undefined);
 
-  const [_timeRangeQuery, setTimeRangeQuery] = useQueryParams(
+  const [_timeRangeQuery, setTimeRangeQuery] = useQueryStates(
+    timeRangeQueryStateMap,
     {
-      from: withDefault(NumberParam, undefined),
-      to: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
+      history: 'push',
     },
   );
 
@@ -116,13 +116,9 @@ export function useTimeQuery({
   );
 
   // Allow browser back/fwd button to modify the displayed time input value
-  const [inputTimeQuery, setInputTimeQuery] = useQueryParam(
+  const [inputTimeQuery, setInputTimeQuery] = useQueryState(
     'tq',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
+    parseAsString.withDefault(''),
   );
   const prevInputTimeQuery = usePrevious(inputTimeQuery);
 
@@ -321,7 +317,7 @@ export function useTimeQuery({
     (newIsLive: boolean) => {
       if (isLive === false && newIsLive) {
         setTempLiveTailTimeRange(undefined);
-        setTimeRangeQuery({ from: undefined, to: undefined });
+        setTimeRangeQuery({ from: null, to: null });
         setDisplayedTimeInputValue(LIVE_TAIL_TIME_QUERY);
         setInputTimeQuery(LIVE_TAIL_TIME_QUERY);
         refreshLiveTailTimeRange();
@@ -416,12 +412,6 @@ const getRelativeInterval = (start: Date, end: Date): string | undefined => {
   const duration = intervalToDuration({ start, end });
   const durationStr = formatDuration(duration);
   return `Past ${durationStr}`;
-};
-
-// This needs to be a stable reference to prevent rerenders
-const timeRangeQueryStateMap = {
-  from: parseAsFloat,
-  to: parseAsFloat,
 };
 
 export function useNewTimeQuery({

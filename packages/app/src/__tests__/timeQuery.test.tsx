@@ -2,12 +2,11 @@
 import * as React from 'react';
 import { useImperativeHandle } from 'react';
 import { useRouter } from 'next/router';
-import { NextAdapter } from 'next-query-params';
-import { QueryParamProvider } from 'use-query-params';
-import { LocationMock } from '@jedmao/location';
-import { render } from '@testing-library/react';
-
-import { TestRouter } from '@/fixtures';
+import {
+  type OnUrlUpdateFunction,
+  withNuqsTestingAdapter,
+} from 'nuqs/adapters/testing';
+import { act, render } from '@testing-library/react';
 
 import {
   getLiveTailTimeRange,
@@ -37,9 +36,7 @@ function TestWrapper({
   React.useEffect(() => {
     setUserPreference({ isUTC });
   }, [setUserPreference, isUTC]);
-  return (
-    <QueryParamProvider adapter={NextAdapter}>{children}</QueryParamProvider>
-  );
+  return <>{children}</>;
 }
 
 const TestComponent = React.forwardRef(function Component(
@@ -53,313 +50,137 @@ const TestComponent = React.forwardRef(function Component(
   return null;
 });
 
-const { location: savedLocation } = window;
+function renderTimeQuery({
+  isUTC,
+  searchParams,
+  onUrlUpdate,
+  ...props
+}: UseTimeQueryInputType & {
+  isUTC?: boolean;
+  searchParams?: string;
+  onUrlUpdate?: OnUrlUpdateFunction;
+}) {
+  const ref = React.createRef<UseTimeQueryReturnType>();
+  const result = render(
+    <TestWrapper isUTC={isUTC}>
+      <TestComponent {...props} ref={ref} />
+    </TestWrapper>,
+    {
+      wrapper: withNuqsTestingAdapter({
+        searchParams,
+        onUrlUpdate,
+        hasMemory: true,
+      }),
+    },
+  );
+  return { ref, ...result };
+}
 
-// TODO: Issues with testing nuqs :(
-// https://github.com/47ng/nuqs/issues/259
-describe.skip('useTimeQuery tests', () => {
-  let testRouter: TestRouter;
-  let locationMock: LocationMock;
-
-  beforeAll(() => {
-    // @ts-ignore - This complains because we can only delete optional operands
-    delete window.location;
-  });
-
+describe('useNewTimeQuery', () => {
   beforeEach(() => {
     jest.resetAllMocks();
-    locationMock = new LocationMock('https://www.hyperdx.io/');
-    testRouter = new TestRouter(locationMock);
-    // @ts-ignore - this is a mock
-    window.location = locationMock;
-
-    (useRouter as jest.Mock).mockReturnValue(testRouter);
-
+    (useRouter as jest.Mock).mockReturnValue({ isReady: true });
     jest.useFakeTimers().setSystemTime(new Date(INITIAL_DATE_STRING));
   });
 
-  afterAll(() => {
-    // @ts-ignore - this is a mock
-    window.location = savedLocation;
-  });
-
-  it('initializes successfully to a non-UTC time', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-
-    render(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
+  it('initializes successfully to a non-UTC time', () => {
+    const { ref } = renderTimeQuery({
+      initialTimeRange: getLiveTailTimeRange(),
+    });
 
     // The live tail time range is 15 mins
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+    expect(ref.current?.displayedTimeInputValue).toMatchInlineSnapshot(
       `"Oct 3 11:45:00 - Oct 3 12:00:00"`,
     );
   });
 
-  it('initializes successfully to a UTC time', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
+  it('initializes successfully to a UTC time', () => {
+    const { ref } = renderTimeQuery({
+      isUTC: true,
+      initialTimeRange: getLiveTailTimeRange(),
+    });
 
-    render(
-      <TestWrapper isUTC={true}>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-
-    // The live tail time range is 15 mins
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+    expect(ref.current?.displayedTimeInputValue).toMatchInlineSnapshot(
       `"Oct 3 15:45:00 - Oct 3 16:00:00"`,
     );
   });
 
-  it('can be overridden by `tq` url param', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    testRouter.replace('/search?tq=Last+4H');
-
-    const { rerender } = render(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    rerender(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    // Once the hook runs, it will unset the `tq` param and replace it with
-    // a `from` and `to`
-    expect(locationMock.searchParams.get('tq')).toBeNull();
-    // `From` should be 10/03/23 at 8:00am EDT
-    expect(locationMock.searchParams.get('from')).toBe('1696334400000');
-    // `To` should be 10/03/23 at 12:00pm EDT
-    expect(locationMock.searchParams.get('to')).toBe('1696348800000');
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
-      `"Oct 3 08:00:00 - Oct 3 12:00:00"`,
-    );
-  });
-
-  it('browser navigation of from/to qparmas updates the searched time range', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    testRouter.setIsReady(false);
-    testRouter.replace('/search');
-
-    const result = render(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    testRouter.setIsReady(true);
-
-    result.rerender(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
-      `"Past 1h"`,
-    );
-    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
-      Array [
-        2023-10-03T15:45:00.000Z,
-        2023-10-03T16:00:00.000Z,
-      ]
-    `);
-
+  it('accepts `from` and `to` url params', () => {
     // 10/03/23 from 04:00am EDT to 08:00am EDT
-    testRouter.replace('/search?from=1696320000000&to=1696334400000');
+    const { ref } = renderTimeQuery({
+      initialTimeRange: getLiveTailTimeRange(),
+      searchParams: '?from=1696320000000&to=1696334400000',
+    });
 
-    result.rerender(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-
-    result.rerender(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+    expect(ref.current?.displayedTimeInputValue).toMatchInlineSnapshot(
       `"Oct 3 04:00:00 - Oct 3 08:00:00"`,
     );
-    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
-      Array [
-        2023-10-03T08:00:00.000Z,
-        2023-10-03T12:00:00.000Z,
-      ]
-    `);
+    expect(ref.current?.searchedTimeRange).toEqual([
+      new Date(1696320000000),
+      new Date(1696334400000),
+    ]);
   });
 
-  it('overrides initial value with async updated `from` and `to` params', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    // 10/03/23 from 04:00am EDT to 08:00am EDT
-    testRouter.setIsReady(false);
-    testRouter.replace('/search');
+  it('falls back to initialTimeRange when from/to are unparseable', () => {
+    const { ref } = renderTimeQuery({
+      initialTimeRange: getLiveTailTimeRange(),
+      searchParams: '?from=abc&to=def',
+    });
 
-    const result = render(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    testRouter.replace('/search?from=1696320000000&to=1696334400000');
-    testRouter.setIsReady(true);
-
-    result.rerender(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue="Past 1h"
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
-      `"Oct 3 04:00:00 - Oct 3 08:00:00"`,
-    );
-    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
-      Array [
-        2023-10-03T08:00:00.000Z,
-        2023-10-03T12:00:00.000Z,
-      ]
-    `);
-  });
-
-  it('accepts `from` and `to` url params', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    // 10/03/23 from 04:00am EDT to 08:00am EDT
-    testRouter.replace('/search?from=1696320000000&to=1696334400000');
-
-    render(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
-      `"Oct 3 04:00:00 - Oct 3 08:00:00"`,
-    );
-  });
-
-  it('handles bad input in `from` and `to` url params', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    testRouter.replace('/search?from=abc&to=def');
-
-    render(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    // Should initialize to the initial time range 11:45am - 12:00pm
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+    expect(ref.current?.displayedTimeInputValue).toMatchInlineSnapshot(
       `"Oct 3 11:45:00 - Oct 3 12:00:00"`,
     );
   });
 
-  it('prefers `tq` param over `from` and `to` params', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    // 10/03/23 from 04:00am EDT to 08:00am EDT, tq says last 1 hour
-    testRouter.replace(
-      '/search?from=1696320000000&to=1696334400000&tq=Past+1h',
-    );
+  it('honors `initialDisplayValue` when updateInput is false', () => {
+    // Without `updateInput: false`, the hook's effect overwrites the displayed
+    // value with the formatted initialTimeRange on mount.
+    const { ref } = renderTimeQuery({
+      initialDisplayValue: 'Live Tail',
+      initialTimeRange: getLiveTailTimeRange(),
+      updateInput: false,
+    });
 
-    const result = render(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    result.rerender(
-      <TestWrapper>
-        <TestComponent
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
-
-    // The time range should be the last 1 hour even though the `from` and `to`
-    // params are passed in.
-    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
-      `"Oct 3 11:00:00 - Oct 3 12:00:00"`,
-    );
+    expect(ref.current?.displayedTimeInputValue).toBe('Live Tail');
   });
 
-  it('enables custom display value', async () => {
-    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
-    testRouter.replace('/search');
-    const initialDisplayValue = 'Live Tail';
+  it('onSearch writes parsed range to the url', async () => {
+    const onUrlUpdate = jest.fn();
+    const { ref } = renderTimeQuery({
+      initialTimeRange: getLiveTailTimeRange(),
+      onUrlUpdate,
+    });
 
-    render(
-      <TestWrapper>
-        <TestComponent
-          initialDisplayValue={initialDisplayValue}
-          initialTimeRange={getLiveTailTimeRange()}
-          ref={timeQueryRef}
-        />
-      </TestWrapper>,
-    );
-    jest.runAllTimers();
+    // setQueryStates flushes via setTimeout — advance fake timers to drain it.
+    await act(async () => {
+      ref.current?.onSearch('Past 1h');
+      jest.runAllTimers();
+    });
 
-    expect(timeQueryRef.current?.displayedTimeInputValue).toBe(
-      initialDisplayValue,
-    );
+    expect(onUrlUpdate).toHaveBeenCalledTimes(1);
+    const params = onUrlUpdate.mock.calls[0][0].searchParams;
+    // 'Past 1h' from "now" (Oct 3 12:00 EDT) → 11:00 EDT to 12:00 EDT
+    expect(params.get('from')).toBe('1696345200000');
+    expect(params.get('to')).toBe('1696348800000');
+  });
+
+  it('onTimeRangeSelect writes the explicit range to the url', async () => {
+    const onUrlUpdate = jest.fn();
+    const { ref } = renderTimeQuery({
+      initialTimeRange: getLiveTailTimeRange(),
+      onUrlUpdate,
+    });
+
+    const start = new Date(1696320000000);
+    const end = new Date(1696334400000);
+    await act(async () => {
+      ref.current?.onTimeRangeSelect(start, end);
+      jest.runAllTimers();
+    });
+
+    expect(onUrlUpdate).toHaveBeenCalledTimes(1);
+    const params = onUrlUpdate.mock.calls[0][0].searchParams;
+    expect(params.get('from')).toBe('1696320000000');
+    expect(params.get('to')).toBe('1696334400000');
   });
 });

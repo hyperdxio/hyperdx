@@ -14,7 +14,7 @@ module.exports = {
   globalSetup: '<rootDir>/global-setup.js',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
-  transformIgnorePatterns: ['/node_modules/'],
+  transformIgnorePatterns: ['/node_modules/(?!(nuqs)/)'],
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',

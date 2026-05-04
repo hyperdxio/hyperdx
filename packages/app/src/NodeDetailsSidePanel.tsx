@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { parseAsString, useQueryState } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
@@ -242,12 +242,9 @@ export default function NodeDetailsSidePanel({
   metricSource: TMetricSource;
   logSource: TLogSource;
 }) {
-  const [nodeName, setNodeName] = useQueryParam(
+  const [nodeName, setNodeName] = useQueryState(
     'nodeName',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'replaceIn',
-    },
+    parseAsString.withDefault('').withOptions({ history: 'replace' }),
   );
 
   const contextZIndex = useZIndex();
@@ -333,7 +330,7 @@ export default function NodeDetailsSidePanel({
   ]);
 
   const handleClose = React.useCallback(() => {
-    setNodeName(undefined);
+    setNodeName(null);
   }, [setNodeName]);
 
   if (!nodeName) {

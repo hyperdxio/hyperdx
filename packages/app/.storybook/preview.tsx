@@ -1,7 +1,6 @@
 import React from 'react';
-import { NextAdapter } from 'next-query-params';
 import { initialize, mswLoader } from 'msw-storybook-addon';
-import { QueryParamProvider } from 'use-query-params';
+import { NuqsAdapter } from 'nuqs/adapters/next/pages';
 import type { Preview } from '@storybook/nextjs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -103,8 +102,8 @@ const preview: Preview = {
 
       return (
         <div className={font.className}>
-          <QueryClientProvider client={queryClient}>
-            <QueryParamProvider adapter={NextAdapter}>
+          <NuqsAdapter defaultOptions={{ clearOnDefault: false }}>
+            <QueryClientProvider client={queryClient}>
               <AppThemeProvider themeName={brandTheme}>
                 <ThemeWrapper
                   colorScheme={context.globals.theme || 'light'}
@@ -113,8 +112,8 @@ const preview: Preview = {
                   <Story />
                 </ThemeWrapper>
               </AppThemeProvider>
-            </QueryParamProvider>
-          </QueryClientProvider>
+            </QueryClientProvider>
+          </NuqsAdapter>
         </div>
       );
     },

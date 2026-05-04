@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsInteger, parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Button, Code, Grid, Stack, Table, Text, Title } from '@mantine/core';
@@ -132,16 +133,18 @@ function useIndexes(
   });
 }
 
+const stringArraySchema = z.array(z.string());
+
 function BenchmarkPage() {
-  const [queries, setQueries] = useQueryState<string[]>(
+  const [queries, setQueries] = useQueryState(
     'queries',
-    parseAsJson(),
+    parseAsJson(stringArraySchema),
   );
-  const [connections, setConnections] = useQueryState<string[]>(
+  const [connections, setConnections] = useQueryState(
     'connections',
-    parseAsJson(),
+    parseAsJson(stringArraySchema),
   );
-  const [iterations, setIterations] = useQueryState<number>(
+  const [iterations, setIterations] = useQueryState(
     'iterations',
     parseAsInteger.withDefault(3),
   );

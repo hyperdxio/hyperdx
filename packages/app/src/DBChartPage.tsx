@@ -4,7 +4,11 @@ import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  SavedChartConfig,
+  SavedChartConfigSchema,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Box,
@@ -225,7 +229,7 @@ function DBChartExplorerPage() {
 
   const [chartConfig, setChartConfig] = useQueryState(
     'config',
-    parseAsJson<SavedChartConfig>().withDefault({
+    parseAsJson(SavedChartConfigSchema).withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
       connection: sources?.[0]?.connection,

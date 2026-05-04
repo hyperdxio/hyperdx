@@ -117,7 +117,7 @@ import {
   parseTimeQuery,
   useNewTimeQuery,
 } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, useLocalStorage } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -795,7 +795,9 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
-  source: parseAsString,
+  source: parseAsString.withOptions({
+    shallow: true,
+  }),
   where: parseAsStringEncoded,
   select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
@@ -882,7 +884,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -947,24 +949,6 @@ export function DBSearchPage() {
       setDisplayedTimeInputValue,
       updateInput: !isLive,
     });
-
-  // Sync url state back with form state
-  // (ex. for history navigation)
-  // TODO: Check if there are any bad edge cases here
-  const prevSearched = usePrevious(searchedConfig);
-  useEffect(() => {
-    if (JSON.stringify(prevSearched) !== JSON.stringify(searchedConfig)) {
-      reset({
-        select: searchedConfig?.select ?? '',
-        where: searchedConfig?.where ?? '',
-        whereLanguage:
-          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-        source: searchedConfig?.source ?? undefined,
-        filters: searchedConfig?.filters ?? [],
-        orderBy: searchedConfig?.orderBy ?? '',
-      });
-    }
-  }, [searchedConfig, reset, prevSearched]);
 
   // Populate searched query with saved search if the query params have
   // been wiped (ex. clicking on the same saved search again)

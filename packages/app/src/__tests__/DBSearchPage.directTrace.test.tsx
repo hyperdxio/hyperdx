@@ -51,7 +51,14 @@ jest.mock('nuqs', () => ({
   parseAsInteger: {
     withDefault: () => 'parseAsInteger',
   },
-  parseAsString: 'parseAsString',
+  parseAsString: {
+    withOptions() {
+      return this;
+    },
+    withDefault() {
+      return this;
+    },
+  },
   parseAsStringEnum: () => ({
     withDefault: () => 'parseAsStringEnum',
   }),
