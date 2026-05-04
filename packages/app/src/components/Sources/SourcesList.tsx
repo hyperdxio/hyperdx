@@ -3,6 +3,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -163,34 +164,35 @@ export function SourcesList({
                   transition: 'opacity 0.2s ease',
                 }}
               >
-                <Flex align="center" gap="sm">
-                  <div>
-                    <Group gap="xs" align="center">
-                      <Text size={textSize} fw={500}>
-                        {s.name}
-                      </Text>
+                <Group gap="xs" align="center">
+                  <Text size={textSize} fw={500}>
+                    {s.name}
+                  </Text>
+                  {s.disabled && (
+                    <Badge size="xs" variant="light" color="gray">
+                      Disabled
+                    </Badge>
+                  )}
+                </Group>
+                <Text size={subtextSize} c="dimmed" mt={4}>
+                  <Group gap="xs">
+                    {capitalizeFirstLetter(s.kind)}
+                    <Group gap={4}>
+                      <IconServer size={iconSize} />
+                      {connections?.find(c => c.id === s.connection)?.name}
                     </Group>
-                    <Text size={subtextSize} c="dimmed" mt={4}>
-                      <Group gap="xs">
-                        {capitalizeFirstLetter(s.kind)}
-                        <Group gap={4}>
-                          <IconServer size={iconSize} />
-                          {connections?.find(c => c.id === s.connection)?.name}
-                        </Group>
-                        <Group gap={4}>
-                          {s.from && (
-                            <>
-                              <IconStack size={iconSize} />
-                              {s.from.databaseName}
-                              {s.kind === SourceKind.Metric ? '' : '.'}
-                              {s.from.tableName}
-                            </>
-                          )}
-                        </Group>
-                      </Group>
-                    </Text>
-                  </div>
-                </Flex>
+                    <Group gap={4}>
+                      {s.from && (
+                        <>
+                          <IconStack size={iconSize} />
+                          {s.from.databaseName}
+                          {s.kind === SourceKind.Metric ? '' : '.'}
+                          {s.from.tableName}
+                        </>
+                      )}
+                    </Group>
+                  </Group>
+                </Text>
               </div>
               <ActionIcon
                 variant="secondary"
