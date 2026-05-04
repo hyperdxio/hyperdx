@@ -95,3 +95,10 @@ docker-compose.prod.yml
 
 # webstorm
 .idea
+
+# superpowers brainstorm artifacts (transient mockups)
+.superpowers/
+
+# allow design specs (overrides the broader specs/ rule above)
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
