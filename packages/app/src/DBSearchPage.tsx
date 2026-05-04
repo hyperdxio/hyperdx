@@ -27,6 +27,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   isBrowser,
@@ -37,9 +38,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
-  isLogSource,
   isTraceSource,
-  pickSampleWeightExpressionProps,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -511,7 +510,7 @@ function SaveSearchModalComponent({
               <Text size="xs" mb="xs" mt="sm">
                 ORDER BY
               </Text>
-              <Text size="xs">{chartConfig.orderBy}</Text>
+              <Text size="xs">{`${chartConfig.orderBy ?? ''}`}</Text>
               {searchedConfig.filters && searchedConfig.filters.length > 0 && (
                 <>
                   <Text size="xs" mb="xs" mt="sm">
@@ -690,35 +689,20 @@ function useSearchedConfigToChartConfig(
 
   return useMemo(() => {
     if (sourceObj != null) {
+      const resolvedOrderBy =
+        orderBy || defaultSearchConfig?.orderBy || defaultOrderBy;
+
+      const chartConfig = buildSearchChartConfig(sourceObj, {
+        where,
+        whereLanguage,
+        filters,
+        select: select || defaultSearchConfig?.select || null,
+        displayType: DisplayType.Search,
+        ...(resolvedOrderBy != null ? { orderBy: resolvedOrderBy } : {}),
+      });
+
       return {
-        data: {
-          select:
-            select ||
-            defaultSearchConfig?.select ||
-            sourceObj.defaultTableSelectExpression,
-          from: sourceObj.from,
-          source: sourceObj.id,
-          ...(isLogSource(sourceObj) && sourceObj.tableFilterExpression != null
-            ? {
-                filters: [
-                  {
-                    type: 'sql' as const,
-                    condition: sourceObj.tableFilterExpression,
-                  },
-                  ...(filters ?? []),
-                ],
-              }
-            : {}),
-          ...(filters != null ? { filters } : {}),
-          where: where ?? '',
-          whereLanguage: whereLanguage ?? 'sql',
-          timestampValueExpression: sourceObj.timestampValueExpression,
-          implicitColumnExpression: sourceObj.implicitColumnExpression,
-          ...pickSampleWeightExpressionProps(sourceObj),
-          connection: sourceObj.connection,
-          displayType: DisplayType.Search,
-          orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
-        },
+        data: chartConfig,
       };
     }
 
@@ -1308,13 +1292,15 @@ export function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = useMemo(
-    () =>
-      splitAndTrimWithBracket(
-        dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '',
-      ),
-    [dbSqlRowTableConfig?.select, defaultSearchConfig.select],
-  );
+  const displayedColumns = useMemo(() => {
+    // `select` is typed as `string | DerivedColumn[]` upstream, but in the
+    // search page we always supply a string. Guard for type safety.
+    const rawSelect =
+      dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '';
+    return splitAndTrimWithBracket(
+      typeof rawSelect === 'string' ? rawSelect : '',
+    );
+  }, [dbSqlRowTableConfig?.select, defaultSearchConfig.select]);
 
   const toggleColumn = useCallback(
     (column: string) => {
