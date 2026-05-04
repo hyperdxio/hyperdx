@@ -221,10 +221,14 @@ async function globalSetup(_config: FullConfig) {
       failOnStatusCode: false,
     });
 
-    // Login returns 302 redirect on success
-    if (loginResponse.status() !== 302 && !loginResponse.ok()) {
+    // Login returns a 3xx redirect on success (303 See Other from the API,
+    // historically 302). Playwright's request.post follows redirects by
+    // default, so loginStatus is typically 200 (the dashboard page). Accept
+    // any 2xx OR 3xx — only 4xx/5xx indicate a real failure.
+    const loginStatus = loginResponse.status();
+    if (loginStatus >= 400) {
       const body = await loginResponse.text();
-      throw new Error(`Login failed: ${loginResponse.status()} ${body}`);
+      throw new Error(`Login failed: ${loginStatus} ${body}`);
     }
 
     // Navigate to the app to establish session

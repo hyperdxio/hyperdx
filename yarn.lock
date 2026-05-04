@@ -4322,7 +4322,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/api@workspace:packages/api":
+"@hyperdx/api@workspace:*, @hyperdx/api@workspace:packages/api":
   version: 0.0.0-use.local
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
@@ -4416,6 +4416,7 @@ __metadata:
     "@eslint-react/eslint-plugin": "npm:^3.0.0"
     "@eslint/compat": "npm:^2.0.0"
     "@hookform/resolvers": "npm:^3.9.0"
+    "@hyperdx/api": "workspace:*"
     "@hyperdx/browser": "npm:^0.22.1"
     "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
