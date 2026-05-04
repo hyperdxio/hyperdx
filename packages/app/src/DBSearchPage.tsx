@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
@@ -1222,9 +1223,12 @@ export function DBSearchPage() {
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
+  const [isNuqsReady, startNuqsTransition] = useTransition();
   const [interval, setInterval] = useQueryState(
     'liveInterval',
-    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS).withOptions({
+      startTransition: startNuqsTransition,
+    }),
   );
 
   const [refreshFrequency, setRefreshFrequency] = useQueryState(
@@ -1240,12 +1244,17 @@ export function DBSearchPage() {
   }, []);
 
   useEffect(() => {
-    if (isReady && isLive) {
+    if (isReady && isNuqsReady && isLive) {
       updateRelativeTimeInputValue(interval);
     }
     // we only want this to run on initial mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateRelativeTimeInputValue, searchedConfig.source, isReady]);
+  }, [
+    updateRelativeTimeInputValue,
+    isNuqsReady,
+    searchedConfig.source,
+    isReady,
+  ]);
 
   useLiveUpdate({
     isLive,
