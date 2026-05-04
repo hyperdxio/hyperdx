@@ -48,22 +48,16 @@ interface RedactionPattern {
 // JWT shape inside the redacted value if it happened to leak.
 const PATTERNS: RedactionPattern[] = [
   // -----BEGIN ... PRIVATE KEY----- ... -----END ... PRIVATE KEY-----
-  // Covers RSA, EC, DSA, OPENSSH, and PKCS#8 (plain "PRIVATE KEY").
-  // The algorithm prefix is optional to accept the bare "PRIVATE KEY" form.
-  // The lazy quantifier is bounded so an unmatched BEGIN does not scan
-  // an unbounded amount of trailing input. Real PEM blocks are well
-  // under 16KB; the API also caps the whole request body at 50KB.
+  // (RSA, EC, DSA, OPENSSH, PKCS#8). Bounded lazy match so an
+  // unmatched BEGIN does not scan an unbounded trailing input.
   {
     name: 'pem',
     re: /-----BEGIN (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----[\s\S]{0,16000}?-----END (?:[A-Z][A-Z0-9 ]* )?PRIVATE KEY-----/g,
     replace: '[REDACTED_PRIVATE_KEY]',
   },
-  // scheme://user:pass@host. The password may contain "@" if not
-  // percent-encoded, so the password group greedily consumes anything
-  // non-whitespace, non-slash and the engine backtracks to the last
-  // "@" before the host. The host group is captured so the replacement
-  // preserves it. Raw "@" in the username is not handled (would need
-  // ambiguous parsing); add to known gaps if seen in production.
+  // scheme://user:pass@host. Password may contain "@"; the engine
+  // backtracks to the last "@" before the host. Host is captured and
+  // preserved in the replacement.
   {
     name: 'basic-auth-url',
     re: /\b(https?|ftp|ssh):\/\/([^/\s:@]+):([^/\s]+)@([^/\s@]+)/g,
@@ -108,12 +102,9 @@ const PATTERNS: RedactionPattern[] = [
     re: /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g,
     replace: '[REDACTED_GITHUB_TOKEN]',
   },
-  // key=value where the key looks secret-ish. Three variants on the
-  // value: double-quoted, single-quoted, or unquoted. Unquoted stops
-  // at whitespace, commas, semicolons, ampersands, and quotes so URL
-  // query-string boundaries are preserved. Quoted variants are
-  // matched first via alternation so shell-style password="secret"
-  // gets caught instead of slipping through the unquoted-value class.
+  // key=value with secret-ish key. Three value forms: double-quoted,
+  // single-quoted, or unquoted (stops at whitespace, comma, semicolon,
+  // ampersand, quote so URL query-string boundaries are preserved).
   {
     name: 'key-value',
     re: new RegExp(
