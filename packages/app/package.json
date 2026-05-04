@@ -141,7 +141,7 @@
     "knip": "^5.33.2",
     "msw": "^2.3.0",
     "msw-storybook-addon": "^2.0.2",
-    "postcss": "^8.4.38",
+    "postcss": "^8.5.10",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.0",
     "prettier": "^3.3.2",
