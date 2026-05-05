@@ -21,7 +21,7 @@ COPY ./packages/common-utils ./packages/common-utils
 
 EXPOSE 8080
 
-ENTRYPOINT ["npx", "nx", "run", "@hyperdx/app:dev"]
+ENTRYPOINT ["npx", "nx", "run", "@berg/app:dev"]
 
 
 ## common-utils-builder ############################################################################
@@ -30,7 +30,7 @@ ENTRYPOINT ["npx", "nx", "run", "@hyperdx/app:dev"]
 FROM base AS common-utils-builder
 
 COPY ./packages/common-utils ./packages/common-utils
-RUN yarn workspace @hyperdx/common-utils run build
+RUN yarn workspace @berg/common-utils run build
 
 
 ## builder #########################################################################################
@@ -60,9 +60,9 @@ COPY ./packages/app/pages ./packages/app/pages
 COPY ./packages/app/public ./packages/app/public
 COPY ./packages/app/styles ./packages/app/styles
 COPY ./packages/app/types ./packages/app/types
-RUN yarn workspace @hyperdx/app run build
+RUN yarn workspace @berg/app run build
 RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
-    rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
+    rm -rf node_modules && yarn workspaces focus @berg/app --production
 
 
 ## prod ############################################################################################
