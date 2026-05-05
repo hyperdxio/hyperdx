@@ -1,12 +1,12 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
+import * as metadataModule from '@/hooks/useMetadata';
 import * as sourceModule from '@/source';
 
-import { getDefaultSourceId, useDefaultOrderBy } from '../DBSearchPage';
-import * as metadataModule from '../hooks/useMetadata';
+import { useDefaultOrderBy } from '../hooks';
+import { getDefaultSourceId } from '../utils';
 
-// Mock the dependencies
 jest.mock('@/layout', () => ({
   withAppNav: (component: any) => component,
 }));
@@ -70,7 +70,6 @@ describe('useDefaultOrderBy', () => {
             '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp), Timestamp) DESC',
         },
         {
-          // test variation of toUnixTimestamp
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
           expected:
