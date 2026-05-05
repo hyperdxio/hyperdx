@@ -16,10 +16,10 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@v6
 
       - name: Setup node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
@@ -33,7 +33,7 @@ jobs:
           yarn knip --reporter json > /tmp/knip-results.json 2>/dev/null || true
 
       - name: Report results
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@v9
         env:
           IS_FORK_PR:
             ${{ github.event_name == 'pull_request' &&
