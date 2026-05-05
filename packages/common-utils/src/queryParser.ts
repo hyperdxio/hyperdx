@@ -761,7 +761,7 @@ function isTrinoStringType(type: string): boolean {
 /**
  * Trino-flavored SQL serializer for Lucene queries.
  *
- * Replaces the ClickHouse-specific {@link CustomSchemaSQLSerializerV2}.
+ * Replaces the previous ClickHouse-specific schema serializer.
  *
  * Key behaviors:
  * - Identifiers double-quoted (Trino convention).
