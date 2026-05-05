@@ -1,6 +1,7 @@
 /* Nord Theme Design Tokens */
 
 /* Arctic, bluish color palette inspired by the Nord IDE theme */
+
 /* https://www.nordtheme.com/ */
 
 @use '../shared-chart-tokens' as chart;
@@ -109,7 +110,7 @@
   --color-bg-header: #e5e9f0;
   --color-bg-hover: #d8dee9;
   --color-bg-active: #cdd3de;
-  --color-bg-field: #ffffff;
+  --color-bg-field: #fff;
   --color-bg-field-highlighted: #eceff4;
   --color-bg-field-addon: #eceff4;
   --color-bg-neutral: #adb5c0;

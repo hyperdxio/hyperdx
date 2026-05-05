@@ -1,6 +1,7 @@
 /* One Dark Theme Design Tokens */
 
 /* Atom's iconic dark theme and its light counterpart */
+
 /* https://github.com/atom/atom/tree/master/packages/one-dark-ui */
 
 @use '../shared-chart-tokens' as chart;
@@ -109,7 +110,7 @@
   --color-bg-header: #f0f0f0;
   --color-bg-hover: #e8e8e8;
   --color-bg-active: #dedede;
-  --color-bg-field: #ffffff;
+  --color-bg-field: #fff;
   --color-bg-field-highlighted: #fafafa;
   --color-bg-field-addon: #fafafa;
   --color-bg-neutral: #a0a1a7;

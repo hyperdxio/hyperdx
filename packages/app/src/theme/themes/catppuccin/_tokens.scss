@@ -1,6 +1,7 @@
 /* Catppuccin Theme Design Tokens */
 
 /* Mocha (dark) / Latte (light) - soothing pastel palette */
+
 /* https://github.com/catppuccin/catppuccin */
 
 @use '../shared-chart-tokens' as chart;
@@ -109,7 +110,7 @@
   --color-bg-header: #e6e9ef;
   --color-bg-hover: #dce0e8;
   --color-bg-active: #ccd0da;
-  --color-bg-field: #ffffff;
+  --color-bg-field: #fff;
   --color-bg-field-highlighted: #eff1f5;
   --color-bg-field-addon: #eff1f5;
   --color-bg-neutral: #9ca0b0;
