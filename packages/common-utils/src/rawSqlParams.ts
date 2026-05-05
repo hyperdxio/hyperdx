@@ -91,6 +91,10 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
+  [DisplayType.Timeline]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
 };
 
 const TIME_CHART_EXAMPLE_SQL = `SELECT
@@ -116,6 +120,18 @@ export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.Timeline]: `SELECT
+  TimestampTime AS ts,
+  concat(SeverityText, ': ', Body) AS label,
+  ServiceName AS \`group\`,
+  SeverityText AS severity
+FROM $__sourceTable
+WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters
+  AND SeverityText IN ('ERROR', 'FATAL')
+ORDER BY ts ASC
+LIMIT 1000`,
 };
 
 export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {

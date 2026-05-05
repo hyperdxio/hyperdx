@@ -166,6 +166,7 @@ const convertToExternalTileChartConfig = (
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      case DisplayType.Timeline:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -268,6 +269,7 @@ const convertToExternalTileChartConfig = (
         markdown: stringValueOrDefault(config.markdown, ''),
       };
     case DisplayType.Heatmap:
+    case DisplayType.Timeline:
     case undefined:
       logger.error(
         { config },

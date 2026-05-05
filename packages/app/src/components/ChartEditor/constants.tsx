@@ -46,6 +46,18 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.Timeline]: `SELECT
+  TimestampTime AS ts,
+  concat(SeverityText, ': ', Body) AS label,
+  ServiceName AS \`group\`,
+  SeverityText AS severity
+FROM $__sourceTable
+WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+  AND $__filters
+  AND SeverityText IN ('ERROR', 'FATAL')
+ORDER BY ts ASC
+LIMIT 1000`,
 };
 
 const TIMESERIES_INSTRUCTIONS = (
@@ -136,6 +148,55 @@ export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
             {' '}
             — The value of the first numeric column in the first result row is
             displayed as the number.
+          </Text>
+        </List.Item>
+      </List>
+    </>
+  ),
+  [DisplayType.Timeline]: (
+    <>
+      <Text size="xs" fw="bold">
+        Result columns are rendered as event markers on a time axis:
+      </Text>
+      <List size="xs" withPadding spacing={3} mb="xs">
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            ts
+          </Text>
+          <Text span size="xs">
+            {' '}
+            (required) — A <Code fz="xs">DateTime</Code> or{' '}
+            <Code fz="xs">DateTime64</Code> column for the event timestamp.
+          </Text>
+        </List.Item>
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            label
+          </Text>
+          <Text span size="xs">
+            {' '}
+            (required) — A <Code fz="xs">String</Code> column for the marker
+            label shown in tooltips.
+          </Text>
+        </List.Item>
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            group
+          </Text>
+          <Text span size="xs">
+            {' '}
+            (optional) — A <Code fz="xs">String</Code> column to split events
+            into separate lanes.
+          </Text>
+        </List.Item>
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            severity
+          </Text>
+          <Text span size="xs">
+            {' '}
+            (optional) — A <Code fz="xs">String</Code> column for severity-based
+            color mapping.
           </Text>
         </List.Item>
       </List>
