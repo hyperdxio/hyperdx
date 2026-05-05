@@ -1,8 +1,9 @@
-// NOTE (Berg / Task 2): @berg/common-utils/dist/clickhouse/* is excluded
-// from the common-utils build until Task 4 swaps in the Athena client.
-// The integration-test fixtures still need a ClickHouse client for now;
-// `@ts-ignore` keeps tsc happy until the modules are restored or replaced.
-// @ts-ignore - module path is excluded from build during the strip
+// NOTE (Berg / Task 4): @berg/common-utils/dist/clickhouse/node was deleted
+// in Task 4 along with the rest of the runtime ClickHouse client.  This
+// integration-test fixture file still imports it because it pre-dates the
+// Athena migration; Tasks 9/11 own porting the integration tests to the
+// new Athena-backed client.  The `@ts-ignore` keeps tsc happy until then.
+// @ts-ignore - module deleted in Task 4; integration tests owned by Task 9/11
 import { createNativeClient } from '@berg/common-utils/dist/clickhouse/node';
 import {
   DisplayType,

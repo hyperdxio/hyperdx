@@ -11,6 +11,7 @@
     "node": ">=22.16.0"
   },
   "dependencies": {
+    "@aws-sdk/client-athena": "^3.696.0",
     "@clickhouse/client-common": "^1.12.1",
     "@hyperdx/lucene": "^3.1.1",
     "date-fns": "^2.28.0",
@@ -29,6 +30,7 @@
     "@types/lodash": "^4.14.198",
     "@types/object-hash": "^2.2.1",
     "@types/sqlstring": "^2.3.0",
+    "aws-sdk-client-mock": "^4.1.0",
     "dotenv": "^17.2.3",
     "jest": "^30.2.0",
     "nodemon": "^2.0.20",

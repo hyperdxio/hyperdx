@@ -5,18 +5,16 @@
 // please move app-specific functions elsewhere in the app
 // ================================
 
-// NOTE (Berg / Task 2): @berg/common-utils/dist/clickhouse/* is excluded from
-// the common-utils build until Task 4 swaps in the Athena client. The
-// `@ts-ignore` directives keep tsc happy across the strip — re-enable as
-// part of Task 4.
-// @ts-ignore - module path is excluded from build during the strip
+// NOTE (Berg / Task 4): the clickhouse path now points at the transitional
+// shim in @berg/common-utils that re-exposes the SQL builder helpers + a
+// stub `ClickhouseClient` for the runtime client.  Tasks 9/11 will replace
+// these call sites with the new Athena-backed client.
 import {
   chSql,
   ClickhouseClientOptions,
   ColumnMeta,
   ResponseJSON,
 } from '@berg/common-utils/dist/clickhouse';
-// @ts-ignore - module path is excluded from build during the strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 

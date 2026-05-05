@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useState } from 'react';
-// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,

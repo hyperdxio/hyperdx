@@ -15,7 +15,7 @@ export default [
       'node_modules/**',
       'dist/**',
       'coverage/**',
-      'src/clickhouse/**',
+      'src/coverage/**',
       'src/__tests__/**',
       'src/**/*.test.ts',
       '**/*.config.js',

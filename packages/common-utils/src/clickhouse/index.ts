@@ -1,4 +1,24 @@
-import type { ClickHouseClient as NodeClickHouseClient } from '@clickhouse/client';
+/**
+ * Transitional ClickHouse compatibility shim (Berg / Task 4).
+ *
+ * The original `src/clickhouse/` directory exposed both a runtime
+ * ClickHouse query client AND a large pile of helpers (`chSql`, `JSDataType`,
+ * `ColumnMeta`, error wrappers, etc.) that the rest of common-utils + the
+ * downstream packages still consume.
+ *
+ * Task 4 deletes the runtime client and replaces it with `@/athena`
+ * (`AthenaClient`).  Tasks 5/6/9/11 are responsible for porting the SQL
+ * builders and metadata layer to Trino — and once that is done, this
+ * module disappears.
+ *
+ * Until then, this file exposes the helpers and a stubbed
+ * `BaseClickhouseClient` so that `src/queryParser.ts`,
+ * `src/core/{metadata,renderChartConfig,histogram,materializedViews}.ts`
+ * and the unit tests that exercise them can keep type-checking and
+ * running.  The stubbed client throws if you actually call `query()` —
+ * tests mock it out.
+ */
+
 import type {
   BaseResultSet,
   ClickHouseSettings,
@@ -7,7 +27,6 @@ import type {
   ResponseJSON,
   Row,
 } from '@clickhouse/client-common';
-import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
@@ -26,7 +45,7 @@ import {
 import { isBuilderChartConfig } from '@/guards';
 import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
-// export @clickhouse/client-common types
+// re-export @clickhouse/client-common types (the package is types-only)
 export type {
   BaseResultSet,
   ClickHouseSettings,
@@ -176,9 +195,6 @@ export const chSql = (
   const sql = strings
     .map((str, i) => {
       const value = values[i];
-      // if (typeof value === 'string') {
-      //   console.error('Unsafe string detected', value, 'in', strings, values);
-      // }
 
       return (
         str +
@@ -289,6 +305,7 @@ export const wrapChSqlIfNotEmpty = (
 
   return chSql`${left}${sql}${right}`;
 };
+
 export class ClickHouseQueryError extends Error {
   constructor(
     message: string,
@@ -439,18 +456,20 @@ export type ClickhouseClientOptions = {
   requestTimeout?: number;
 };
 
+/**
+ * Stubbed ClickHouse client used to keep `core/metadata.ts`, the unit tests
+ * and the few app/api fixtures that still type-check against the old
+ * ClickHouse surface.  The runtime methods throw — Tasks 5/6/9/11 will
+ * replace consumers with Athena-backed equivalents and remove this
+ * altogether.
+ */
 export abstract class BaseClickhouseClient {
   protected readonly host?: string;
   protected readonly username?: string;
   protected readonly password?: string;
   protected readonly queryTimeout?: number;
-  protected client?: WebClickHouseClient | NodeClickHouseClient;
+  protected client?: any;
   protected readonly application?: string;
-  /*
-   * Some clickhouse db's (the demo instance for example) make the
-   * max_rows_to_read setting readonly and the query will fail if you try to
-   * query with max_rows_to_read specified
-   */
   protected maxRowReadOnly: boolean;
   protected requestTimeout: number = 3600000;
 
@@ -473,7 +492,7 @@ export abstract class BaseClickhouseClient {
     }
   }
 
-  protected getClient(): WebClickHouseClient | NodeClickHouseClient {
+  protected getClient(): any {
     if (!this.client) {
       throw new Error(
         'ClickHouse client not initialized. Child classes must initialize the client.',
@@ -529,7 +548,7 @@ export abstract class BaseClickhouseClient {
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
-      output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
+      output_format_json_quote_64bit_integers: 1,
     };
 
     const metadata = getMetadata(this);
@@ -541,27 +560,18 @@ export abstract class BaseClickhouseClient {
       defaultSettings[name] = value;
     };
 
-    // Enables lazy materialization up to the given LIMIT
     applySettingIfAvailable('query_plan_optimize_lazy_materialization', '1');
     applySettingIfAvailable(
       'query_plan_max_limit_for_lazy_materialization',
       '100000',
     );
-    // Enables skip indexes to be used for top k style queries up to the given LIMIT
     applySettingIfAvailable('use_skip_indexes_for_top_k', '1');
     applySettingIfAvailable(
       'query_plan_max_limit_for_top_k_optimization',
       '100000',
     );
-    // TODO: HDX-3499 look into when we can and can't use this setting. For example, event deltas ORDER BY rand(), which is not compatible with this setting
-    // applySettingIfAvailable('use_top_k_dynamic_filtering', '1');
-    // Enables skip indexes to be used on data read
     applySettingIfAvailable('use_skip_indexes_on_data_read', '1');
-    // Evaluate WHERE filters with mixed AND and OR conditions using skip indexes.
-    // If value is 0, then skip indicies only used on AND queries
     applySettingIfAvailable('use_skip_indexes_for_disjunctions', '1');
-
-    // Enables full-text (inverted index) search.
     applySettingIfAvailable('enable_full_text_index', '1');
 
     return {
@@ -574,7 +584,6 @@ export abstract class BaseClickhouseClient {
     props: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>> {
     let attempts = 0;
-    // retry query if fails
     while (attempts < 2) {
       try {
         const res = await this.__query(props);
@@ -585,11 +594,9 @@ export abstract class BaseClickhouseClient {
           error.type === 'READONLY' &&
           error.message.includes('max_rows_to_read')
         ) {
-          // Indicate that the CH instance does not accept the max_rows_to_read setting
           this.maxRowReadOnly = true;
         } else {
           let err = error;
-          // We should never error out here for debug info, so it's aggressively wrapped
           try {
             let debugSql = '';
             try {
@@ -611,7 +618,6 @@ export abstract class BaseClickhouseClient {
       }
       attempts++;
     }
-    // should never get here
     throw new Error('ClickHouseClient query impossible codepath');
   }
 
@@ -619,8 +625,6 @@ export abstract class BaseClickhouseClient {
     inputs: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>>;
 
-  // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
-  // eventually we want to generate union CTEs on the db side instead of computing it on the client side
   async queryChartConfig({
     config,
     metadata,
@@ -662,13 +666,10 @@ export abstract class BaseClickhouseClient {
 
     if (resultSets.length === 1) {
       return resultSets[0];
-    }
-    // metrics -> join resultSets
-    else if (isBuilderChartConfig(config) && resultSets.length > 1) {
+    } else if (isBuilderChartConfig(config) && resultSets.length > 1) {
       const metaSet = new Map<string, { name: string; type: string }>();
       const tsBucketMap = new Map<string, Record<string, string | number>>();
       for (const resultSet of resultSets) {
-        // set up the meta data
         if (Array.isArray(resultSet.meta)) {
           for (const meta of resultSet.meta) {
             const key = meta.name;
@@ -714,16 +715,11 @@ export abstract class BaseClickhouseClient {
         meta: Array.from(metaSet.values()),
         data: Array.from(tsBucketMap.values()),
       };
-      // TODO: we should compute the ratio on the db side
       return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
     }
     throw new Error('No result sets');
   }
 
-  /**
-   * Checks whether the given chart config is valid by running an
-   * EXPLAIN query and returning whether the EXPLAIN succeeded
-   **/
   async testChartConfigValidity({
     config,
     metadata,
@@ -783,16 +779,6 @@ export const tableExpr = ({
   return chSql`${{ Identifier: database }}.${{ Identifier: table }}`;
 };
 
-/**
- * SELECT
- *  aggFnIf(fieldToColumn(field), where),
- *  timeBucketing(Granularity, timeConversion(fieldToColumn(field))),
- * FROM db.table
- * WHERE where
- * GROUP BY timeBucketing, fieldToColumn(groupBy)
- * ORDER BY orderBy
- */
-
 export function parameterizedQueryToSql({
   sql,
   params,
@@ -836,10 +822,8 @@ export function chSqlToAliasMap(
           if (column.type === 'expr' && column.expr.type === 'column_ref') {
             aliasMap[column.as] =
               column.expr.array_index && column.expr.array_index[0]?.brackets
-                ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
-                  `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
-                : // normal alias
-                  column.expr.column.expr.value;
+                ? `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                : column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
             aliasMap[column.as] = sqlWithReplacements.slice(
               column.expr.loc.start.offset,
@@ -852,7 +836,6 @@ export function chSqlToAliasMap(
       });
     }
 
-    // Replace the JSON replacement tokens with the original JSON expressions
     for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
       for (const [replacement, original] of jsonReplacementsToExpressions) {
         if (aliasExpression.includes(replacement)) {
@@ -884,10 +867,7 @@ export function filterColumnMetaByType(
   });
 }
 
-export function inferTimestampColumn(
-  // from: https://github.com/ClickHouse/clickhouse-js/blob/442392c83834f313a964f9e5bd7ff44474631755/packages/client-common/src/clickhouse_types.ts#L8C3-L8C47
-  meta: Array<ColumnMetaType>,
-) {
+export function inferTimestampColumn(meta: Array<ColumnMetaType>) {
   return filterColumnMetaByType(meta, [JSDataType.Date])?.[0];
 }
 

@@ -17,7 +17,7 @@
     {
       "id": 3,
       "subject": "Task 3: Delete Connection model; Athena config from env; collapse Source kinds",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Plan:** docs/superpowers/plans/2026-05-04-berg-implementation.md (Task 3)\n\n**Goal:** Connection deleted; Athena config from env; Source single Table kind; User.role added (default 'admin'). Migrations included.\n\n**Verify:** `cd packages/api && yarn ci:unit src/models/__tests__/source.test.ts && make ci-lint`\n\n```json:metadata\n{\"files\":[\"packages/api/src/config.ts\",\"packages/api/src/models/source.ts\",\"packages/api/src/models/user.ts\",\"packages/common-utils/src/types.ts\",\"packages/api/src/routers/api/index.ts\",\"packages/api/src/api-app.ts\",\"packages/api/src/setupDefaults.ts\",\"packages/api/src/controllers/sources.ts\",\"packages/api/src/routers/api/sources.ts\",\"packages/app/src/source.ts\",\"packages/api/migrations/202605040001-collapse-source-kinds.js\",\"packages/api/migrations/202605040002-add-user-role.js\",\".env.example\"],\"verifyCommand\":\"cd packages/api && yarn ci:unit src/models/__tests__/source.test.ts && make ci-lint\",\"acceptanceCriteria\":[\"Connection deleted\",\"Source single Table kind\",\"User.role added\",\"Athena env enforced\",\"Migrations written\"],\"planRef\":\"docs/superpowers/plans/2026-05-04-berg-implementation.md#task-3-delete-connection-model-athena-config-from-env-collapse-source-kinds\"}\n```"
     },

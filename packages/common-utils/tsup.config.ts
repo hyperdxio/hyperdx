@@ -9,14 +9,10 @@ export const tsup: Options = {
   bundle: true,
   skipNodeModulesBundle: true,
   outDir: 'dist',
-  // NOTE (Berg / Task 2): the runtime ClickHouse client packages
-  // (@clickhouse/client and @clickhouse/client-web) have been removed.  The
-  // clickhouse/ entry points are excluded so the rest of common-utils can
-  // emit JS for downstream packages while Task 4 swaps in the Athena client.
-  entry: [
-    'src/**/*.ts',
-    '!src/__tests__/**',
-    '!src/**/*.test.*',
-    '!src/clickhouse/**',
-  ],
+  // NOTE (Berg / Task 4): the runtime ClickHouse client has been replaced
+  // by `src/athena/` (AthenaClient).  `src/clickhouse.ts` remains as a
+  // transitional shim for the SQL builder helpers (chSql, JSDataType, etc.)
+  // that Tasks 5/6/9/11 will port to Trino — once those tasks finish,
+  // delete the shim and this comment.
+  entry: ['src/**/*.ts', '!src/__tests__/**', '!src/**/*.test.*'],
 };
