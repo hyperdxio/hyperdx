@@ -27,14 +27,22 @@ declare module 'express-session' {
 }
 
 export function redirectToDashboard(req: Request, res: Response) {
+  // Use 303 See Other so browsers always follow the redirect with GET, even
+  // when the original request was a POST (e.g. /login/password). Without an
+  // explicit status, Express sends 302 and some browsers/proxies preserve the
+  // POST method, which produces a 405 on Next.js pages that only accept GET.
+  // The destination is the app root so client-side routing in LandingPage
+  // decides where to send the user (/search if logged in, /login otherwise).
+  // This avoids hard-coding /search here, which fails when the post-login
+  // host differs from the configured FRONTEND_URL (e.g. Vercel previews).
   if (req?.user?.team) {
-    return res.redirect(`${config.FRONTEND_URL}/search`);
+    return res.redirect(303, `${config.FRONTEND_REDIRECT_BASE}/`);
   } else {
     logger.error(
       { userId: req?.user?._id },
       'Password login for user failed, user or team not found',
     );
-    res.redirect(`${config.FRONTEND_URL}/login?err=unknown`);
+    res.redirect(303, `${config.FRONTEND_REDIRECT_BASE}/login?err=unknown`);
   }
 }
 
@@ -61,7 +69,9 @@ export function handleAuthError(
         ? 'passwordAuthNotAllowed'
         : 'unknown';
 
-  res.redirect(`${config.FRONTEND_URL}/login?err=${returnErr}`);
+  // 303 forces GET on the redirected request even when the original request
+  // was a POST (e.g. /login/password failure path).
+  res.redirect(303, `${config.FRONTEND_REDIRECT_BASE}/login?err=${returnErr}`);
 }
 
 export async function validateUserAccessKey(

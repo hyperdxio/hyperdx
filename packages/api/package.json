@@ -9,6 +9,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.47",
+    "@braintree/sanitize-url": "^7.1.1",
     "@esm2cjs/p-queue": "^7.3.0",
     "@hyperdx/common-utils": "^0.18.1",
     "@hyperdx/node-opentelemetry": "^0.9.0",
@@ -86,6 +87,7 @@
     "dev:mcp": "npx @modelcontextprotocol/inspector",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias && cp -r ./src/opamp/proto ./build/opamp/",
+    "build:vercel": "rimraf ./build && tsc -p tsconfig.vercel.json && tsc-alias -p tsconfig.vercel.json && cp -r ./src/opamp/proto ./build/opamp/",
     "lint": "npx eslint --quiet . --ext .ts",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:openapi",

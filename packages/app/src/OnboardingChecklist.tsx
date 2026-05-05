@@ -86,7 +86,13 @@ const OnboardingChecklist = ({
   );
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
-      enabled: shouldShow,
+      // Skip the chart query when there's no connection to query against.
+      // Without this guard, the query fires with `connection: ''` (see
+      // sourceRowsConfig above), which sends a clickhouse-proxy request
+      // with no `x-hyperdx-connection-id` header and fails Zod validation
+      // on the API. This blocks brand-new teams (< 3 days old) from using
+      // the team settings page until they manually add a connection.
+      enabled: shouldShow && !!firstConnection?.id,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
   // const hasData = false;
