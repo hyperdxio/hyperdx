@@ -600,28 +600,21 @@ function HeatmapContainer({
     enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
   });
 
-  // Memoize so the array refs are stable across re-renders that don't
-  // change the underlying time range or granularity. Without this,
-  // timeBucketByGranularity returns a fresh Date[] each render, which
-  // would propagate into the heatmapData useMemo deps and defeat its
-  // own memoization.
+  // Memoize so timeBucketByGranularity's fresh Date[] doesn't defeat
+  // the heatmapData memoization downstream. dateRange itself may be a
+  // fresh array each render, so depend on primitive ms + granularity.
   const fromMs = dateRange[0]?.getTime() ?? 0;
   const toMs = dateRange[1]?.getTime() ?? 0;
   const generatedTsBuckets = useMemo(
     () => timeBucketByGranularity(dateRange[0], dateRange[1], granularity),
-    // dateRange itself may be a fresh array each render; depend on the
-    // primitive timestamps + granularity instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [fromMs, toMs, granularity],
   );
 
-  // Build the [time, bucket, count] arrays that feed uPlot. Memoized so the
-  // inner references stay stable when only the URL filter params change
-  // (drag-select writes xMin/xMax/yMin/yMax). uplot-react's dataMatch
-  // compares each series entry with === ; if the inner refs change, it calls
-  // setData(data, true), which resets uPlot's u.select rectangle. Stable
-  // refs here keep dataMatch happy and the dashed selection rectangle
-  // visible after the user releases the mouse.
+  // Memoize: URL-filter-only re-renders (drag-select writes xMin/xMax/
+  // yMin/yMax to the URL) must not change the data ref, or uplot-react
+  // calls setData(data, true), which wipes uPlot's u.select rectangle.
+  // Stable refs keep the dashed selection visible after mouseup. (HDX-4147)
   const heatmapData = useMemo<Mode2DataArray>(() => {
     const time: number[] = [];
     const bucket: number[] = [];
