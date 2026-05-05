@@ -813,6 +813,10 @@ const Tile = forwardRef(
                     />
                   )}
                 {queriedConfig?.displayType === DisplayType.Timeline && (
+                  // TODO: pass buildEventSearchHref once we have a route that
+                  // maps a timeline event (timestamp + lane key) to a search
+                  // URL. Until then, markers are not clickable and the events
+                  // table renders timestamps as plain text.
                   <DBTimelineChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}

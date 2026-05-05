@@ -6,7 +6,9 @@ type SourceInfo = {
 };
 
 function escapeString(s: string): string {
-  return s.replace(/'/g, "\\'");
+  // Escape backslashes first, then single quotes, so a literal backslash in a
+  // label doesn't corrupt the generated SQL string literal.
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 function compileEventsSeries(
@@ -99,6 +101,10 @@ export function compileSingleSeries(
   }
 }
 
+// TODO: wire into useQueriedChartConfig so builder-mode timeline tiles generate
+// SQL from the series config rather than requiring raw-SQL mode. Until then,
+// only raw-SQL timeline tiles produce data; builder configs are stored and
+// round-tripped but not compiled at query time.
 export function compileTimelineSeries(
   seriesList: TimelineSeries[],
   sources: Map<string, SourceInfo>,

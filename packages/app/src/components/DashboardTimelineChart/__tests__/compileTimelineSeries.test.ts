@@ -95,6 +95,21 @@ describe('compileSingleSeries', () => {
     expect(sql).toContain('PARTITION BY ServiceName');
   });
 
+  it('escapes backslashes and single quotes in series labels', () => {
+    const series: TimelineSeries = {
+      id: '1',
+      label: "O'Reilly\\Prod",
+      mode: 'events',
+      source: 'src1',
+      labelExpression: 'Body',
+    };
+
+    const sql = compileSingleSeries(series, mockSource);
+    // Backslash must be escaped before the single quote so the SQL literal is
+    // valid: O\'Reilly\\Prod -> 'O\'Reilly\\Prod'
+    expect(sql).toContain("'O\\'Reilly\\\\Prod' AS __series");
+  });
+
   it('uses groupExpression for both partition and label in value_change', () => {
     const series: TimelineSeries = {
       id: '3',
