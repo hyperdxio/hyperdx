@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-athena": "^3.696.0",
+    "@aws-sdk/client-glue": "^3.696.0",
     "@clickhouse/client-common": "^1.12.1",
     "@hyperdx/lucene": "^3.1.1",
     "date-fns": "^2.28.0",

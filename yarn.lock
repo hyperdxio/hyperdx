@@ -367,6 +367,53 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@aws-sdk/client-glue@npm:^3.696.0":
+  version: 3.1038.0
+  resolution: "@aws-sdk/client-glue@npm:3.1038.0"
+  dependencies:
+    "@aws-crypto/sha256-browser": "npm:5.2.0"
+    "@aws-crypto/sha256-js": "npm:5.2.0"
+    "@aws-sdk/core": "npm:^3.974.6"
+    "@aws-sdk/credential-provider-node": "npm:^3.972.37"
+    "@aws-sdk/middleware-host-header": "npm:^3.972.10"
+    "@aws-sdk/middleware-logger": "npm:^3.972.10"
+    "@aws-sdk/middleware-recursion-detection": "npm:^3.972.11"
+    "@aws-sdk/middleware-user-agent": "npm:^3.972.36"
+    "@aws-sdk/region-config-resolver": "npm:^3.972.13"
+    "@aws-sdk/types": "npm:^3.973.8"
+    "@aws-sdk/util-endpoints": "npm:^3.996.8"
+    "@aws-sdk/util-user-agent-browser": "npm:^3.972.10"
+    "@aws-sdk/util-user-agent-node": "npm:^3.973.22"
+    "@smithy/config-resolver": "npm:^4.4.17"
+    "@smithy/core": "npm:^3.23.17"
+    "@smithy/fetch-http-handler": "npm:^5.3.17"
+    "@smithy/hash-node": "npm:^4.2.14"
+    "@smithy/invalid-dependency": "npm:^4.2.14"
+    "@smithy/middleware-content-length": "npm:^4.2.14"
+    "@smithy/middleware-endpoint": "npm:^4.4.32"
+    "@smithy/middleware-retry": "npm:^4.5.6"
+    "@smithy/middleware-serde": "npm:^4.2.20"
+    "@smithy/middleware-stack": "npm:^4.2.14"
+    "@smithy/node-config-provider": "npm:^4.3.14"
+    "@smithy/node-http-handler": "npm:^4.6.1"
+    "@smithy/protocol-http": "npm:^5.3.14"
+    "@smithy/smithy-client": "npm:^4.12.13"
+    "@smithy/types": "npm:^4.14.1"
+    "@smithy/url-parser": "npm:^4.2.14"
+    "@smithy/util-base64": "npm:^4.3.2"
+    "@smithy/util-body-length-browser": "npm:^4.2.2"
+    "@smithy/util-body-length-node": "npm:^4.2.3"
+    "@smithy/util-defaults-mode-browser": "npm:^4.3.49"
+    "@smithy/util-defaults-mode-node": "npm:^4.2.54"
+    "@smithy/util-endpoints": "npm:^3.4.2"
+    "@smithy/util-middleware": "npm:^4.2.14"
+    "@smithy/util-retry": "npm:^4.3.5"
+    "@smithy/util-utf8": "npm:^4.2.2"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/0382e5e7a93c95e7e76a8bb6f6232ffab4b08ebc423d8bbb4e13ca8521f48632ad47de22354a0e593d45c33ab1a6bf7b1263874ecd5565c87b41f0e7561b213d
+  languageName: node
+  linkType: hard
+
 "@aws-sdk/client-sso-oidc@npm:3.279.0":
   version: 3.279.0
   resolution: "@aws-sdk/client-sso-oidc@npm:3.279.0"
@@ -3424,6 +3471,7 @@ __metadata:
   resolution: "@berg/common-utils@workspace:packages/common-utils"
   dependencies:
     "@aws-sdk/client-athena": "npm:^3.696.0"
+    "@aws-sdk/client-glue": "npm:^3.696.0"
     "@clickhouse/client-common": "npm:^1.12.1"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
