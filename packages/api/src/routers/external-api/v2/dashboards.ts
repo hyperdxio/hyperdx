@@ -16,6 +16,7 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  getHeatmapTilesWithNonTraceSources,
   getMissingConnections,
   getMissingSources,
   isConfigTile,
@@ -679,8 +680,9 @@ async function getSourceConnectionMismatches(
  *           example: "heatmap"
  *         valueExpression:
  *           type: string
+ *           minLength: 1
  *           maxLength: 10000
- *           description: SQL expression for the value being bucketed on the y-axis.
+ *           description: SQL expression for the value being bucketed on the y-axis. Must be non-empty.
  *           example: "Duration"
  *         countExpression:
  *           type: string
@@ -1681,12 +1683,17 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
+      const [
+        missingSources,
+        missingConnections,
+        sourceConnectionMismatches,
+        heatmapNonTraceSources,
+      ] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+        getSourceConnectionMismatches(teamId, tiles),
+        getHeatmapTilesWithNonTraceSources(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1704,6 +1711,13 @@ router.post(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });
@@ -1904,12 +1918,17 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
+      const [
+        missingSources,
+        missingConnections,
+        sourceConnectionMismatches,
+        heatmapNonTraceSources,
+      ] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+        getSourceConnectionMismatches(teamId, tiles),
+        getHeatmapTilesWithNonTraceSources(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1927,6 +1946,13 @@ router.put(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });

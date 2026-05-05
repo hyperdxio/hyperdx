@@ -6,6 +6,7 @@ import {
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
@@ -595,6 +596,37 @@ export async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/**
+ * Returns source IDs referenced by heatmap tiles that exist but are not Trace
+ * sources. The heatmap UI gates the source picker to SourceKind.Trace only
+ * (see `ChartEditorControls.tsx`), so the external API enforces the same
+ * convention to keep tiles renderable.
+ */
+export async function getHeatmapTilesWithNonTraceSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const heatmapSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      !isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.displayType === 'heatmap' &&
+      tile.config.sourceId
+    ) {
+      heatmapSourceIds.add(tile.config.sourceId);
+    }
+  }
+  if (heatmapSourceIds.size === 0) return [];
+
+  const existingSources = await getSources(team.toString());
+  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
+  return [...heatmapSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && source.kind !== SourceKind.Trace;
+  });
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
