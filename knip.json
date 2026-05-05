@@ -15,6 +15,7 @@
       "entry": [
         "src/index.ts",
         "src/tasks/index.ts",
+        "src/serverless.ts",
         "scripts/*.ts",
         "src/fixtures.ts"
       ],
@@ -27,7 +28,7 @@
       "project": ["src/**/*.ts"]
     }
   },
-  "ignore": ["scripts/dev-portal/**"],
+  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",

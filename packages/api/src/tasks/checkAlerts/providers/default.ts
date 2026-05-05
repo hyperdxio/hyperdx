@@ -9,7 +9,12 @@ import { URLSearchParams } from 'url';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection, ObjectId } from '@/models';
-import Alert, { AlertSource, AlertState, type IAlert } from '@/models/alert';
+import Alert, {
+  AlertSource,
+  AlertState,
+  type IAlert,
+  type IAlertError,
+} from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -332,7 +337,11 @@ export default class DefaultAlertProvider implements AlertProvider {
     return url.toString();
   }
 
-  async updateAlertState(alertId: string, histories: IAlertHistory[]) {
+  async updateAlertState(
+    alertId: string,
+    histories: IAlertHistory[],
+    errors: IAlertError[],
+  ) {
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
     const historyResults = await Promise.allSettled(
@@ -368,10 +377,17 @@ export default class DefaultAlertProvider implements AlertProvider {
       ? AlertState.ALERT
       : AlertState.OK;
 
-    // Update alert state based on successfully saved histories
+    // Update alert state + errors based on this execution
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alertId) },
-      { $set: { state: finalState } },
+      { $set: { state: finalState, executionErrors: errors } },
+    );
+  }
+
+  async recordAlertErrors(alertId: string, errors: IAlertError[]) {
+    await Alert.updateOne(
+      { _id: new mongoose.Types.ObjectId(alertId) },
+      { $set: { executionErrors: errors } },
     );
   }
 

@@ -80,15 +80,13 @@ export default function DBTracePanel({
 
   const sourceId = useWatch({ control, name: 'source' });
 
-  const { data: childSourceData, isLoading: isChildSourceDataLoading } =
-    useSource({
-      id: sourceId,
-    });
+  const { data: childSourceData } = useSource({
+    id: sourceId,
+  });
 
-  const { data: parentSourceData, isLoading: isParentSourceDataLoading } =
-    useSource({
-      id: parentSourceId,
-    });
+  const { data: parentSourceData } = useSource({
+    id: parentSourceId,
+  });
 
   const logSourceData =
     parentSourceData?.kind === SourceKind.Log
@@ -102,13 +100,6 @@ export default function DBTracePanel({
       : childSourceData?.kind === SourceKind.Trace
         ? childSourceData
         : null;
-
-  const isTraceSourceLoading =
-    childSourceData?.kind === SourceKind.Trace
-      ? isChildSourceDataLoading
-      : parentSourceData?.kind === SourceKind.Trace
-        ? isParentSourceDataLoading
-        : false;
 
   const { mutate: updateTableSource } = useUpdateSource();
 

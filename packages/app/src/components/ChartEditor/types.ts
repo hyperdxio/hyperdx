@@ -27,6 +27,7 @@ export type SavedChartConfigWithSelectArray = Omit<
 export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
   Partial<Omit<RawSqlSavedChartConfig, 'configType'>> & {
     alert?: BuilderSavedChartConfig['alert'] & {
+      id?: string;
       createdBy?: AlertWithCreatedBy['createdBy'];
     };
     series: SavedChartConfigWithSelectArray['select'];

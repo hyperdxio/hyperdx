@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { parseAsString, useQueryState } from 'nuqs';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
@@ -59,15 +59,11 @@ function FileSelection({
 
   const [error, setError] = useState<{
     message: string;
-    details?: string;
+    details?: ReactNode;
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
   });
 
@@ -75,18 +71,38 @@ function FileSelection({
     setError(null);
     if (!file) return;
 
+    let data: unknown;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      const parsed = DashboardTemplateSchema.parse(data); // throws if invalid
-      onComplete(parsed);
-    } catch (e: any) {
+      data = JSON.parse(text);
+    } catch (e: unknown) {
+      onComplete(null);
+      setError({
+        message: 'Invalid JSON File',
+        details: e instanceof Error ? e.message : 'Failed to parse JSON',
+      });
+      return;
+    }
+
+    const result = DashboardTemplateSchema.safeParse(data);
+    if (!result.success) {
       onComplete(null);
       setError({
         message: 'Failed to Import Dashboard',
-        details: e?.message ?? 'Failed to parse/validate JSON',
+        details: (
+          <Stack gap={0}>
+            {result.error.issues.map(issue => (
+              <Text key={`${issue.path.join('.')}:${issue.message}`} c="red">
+                {issue.message}
+              </Text>
+            ))}
+          </Stack>
+        ),
       });
+      return;
     }
+
+    onComplete(result.data);
   };
 
   return (
@@ -153,7 +169,7 @@ function FileSelection({
         {error && (
           <div>
             <Text c="red">{error.message}</Text>
-            {error.details && (
+            {error.details != null && (
               <>
                 <Button
                   variant="transparent"
@@ -173,9 +189,7 @@ function FileSelection({
                     {errorDetails ? 'Hide Details' : 'Show Details'}
                   </Group>
                 </Button>
-                <Collapse expanded={errorDetails}>
-                  <Text c="red">{error.details}</Text>
-                </Collapse>
+                <Collapse expanded={errorDetails}>{error.details}</Collapse>
               </>
             )}
           </div>
@@ -200,7 +214,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
   const { data: existingTags } = api.useTags();
-  const [dashboardId] = useQueryParam('dashboardId', StringParam);
+  const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
   const { handleSubmit, getFieldState, control, setValue } =
     useForm<MappingFormValues>({

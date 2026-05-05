@@ -36,6 +36,7 @@ describe('CheckAlertTask', () => {
         getAlertTasks: jest.fn(),
         getWebhooks: jest.fn(),
         updateAlertState: jest.fn(),
+        recordAlertErrors: jest.fn(),
         asyncDispose: jest.fn(),
         buildChartLink: jest.fn(),
         buildLogSearchLink: jest.fn(),

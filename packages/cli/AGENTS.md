@@ -16,9 +16,13 @@ logic (`@hyperdx/common-utils`) as the web frontend.
 hdx tui -s <url>                    # Interactive TUI (main command)
 hdx stream -s <url> --source "Logs" # Non-interactive streaming to stdout
 hdx sources -s <url>                # List available sources
+hdx connections                     # List ClickHouse connections (id, name, host)
 hdx auth login -s <url>             # Sign in (interactive or -e/-p flags)
 hdx auth status                     # Show auth status (reads saved session)
 hdx auth logout                     # Clear saved session
+hdx team list                       # List teams the user belongs to (multi-team)
+hdx team current                    # Show the active team
+hdx team use <name|id>              # Switch the active team (kubectx-style)
 ```
 
 The `-s, --server <url>` flag is required for commands that talk to the API. If

@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
+  AlertThresholdType,
+  ChartConfigWithDateRange,
+  DisplayType,
   Filter,
-  getSampleWeightExpression,
   isLogSource,
   isTraceSource,
   SearchCondition,
@@ -25,8 +31,9 @@ type AlertPreviewChartProps = {
   filters?: Filter[] | null;
   interval: AlertInterval;
   groupBy?: string;
-  thresholdType: 'above' | 'below';
+  thresholdType: AlertThresholdType;
   threshold: number;
+  thresholdMax?: number;
   select?: string | null;
 };
 
@@ -38,6 +45,7 @@ export const AlertPreviewChart = ({
   interval,
   groupBy,
   threshold,
+  thresholdMax,
   thresholdType,
   select,
 }: AlertPreviewChartProps) => {
@@ -55,7 +63,44 @@ export const AlertPreviewChart = ({
     from: source.from,
     whereLanguage: whereLanguage || undefined,
   });
-  const aliasWith = aliasMapToWithClauses(aliasMap);
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
+
+  // Delegate to the shared builder so this preview sees the same filters,
+  // sample weights, and implicit columns as the scheduled alert task and
+  // the app search page. Overrides `displayType` to Line and pins SELECT to
+  // a count() aggregate because the preview always renders the alert's
+  // count-over-time threshold view, regardless of the saved search's
+  // display columns.
+  //
+  // The `select` prop on this component is intentionally NOT forwarded —
+  // it's only used above (for `useAliasMapFromChartConfig`) so alias-WITH
+  // clauses match the saved search's display select.
+  //
+  // Cast to ChartConfigWithDateRange because the builder widens `dateRange`
+  // to optional, but it's always set here via `intervalToDateRange`.
+  const config = useMemo<ChartConfigWithDateRange>(() => {
+    const chartConfig = buildSearchChartConfig(source, {
+      where,
+      whereLanguage,
+      filters,
+      groupBy,
+      select: ALERT_COUNT_DEFAULT_SELECT,
+      displayType: DisplayType.Line,
+      dateRange: intervalToDateRange(interval),
+      granularity: intervalToGranularity(interval),
+    }) as ChartConfigWithDateRange;
+    return { ...chartConfig, with: aliasWith };
+  }, [source, where, whereLanguage, filters, groupBy, interval, aliasWith]);
+
+  const referenceLines = useMemo(
+    () =>
+      getAlertReferenceLines({
+        threshold,
+        thresholdMax,
+        thresholdType,
+      }),
+    [threshold, thresholdMax, thresholdType],
+  );
 
   return (
     <Paper w="100%" h={200}>
@@ -64,32 +109,8 @@ export const AlertPreviewChart = ({
         showDisplaySwitcher={false}
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
-        referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
-        config={{
-          where: where || '',
-          whereLanguage: whereLanguage || undefined,
-          dateRange: intervalToDateRange(interval),
-          granularity: intervalToGranularity(interval),
-          filters: filters || undefined,
-          implicitColumnExpression:
-            isLogSource(source) || isTraceSource(source)
-              ? source.implicitColumnExpression
-              : undefined,
-          sampleWeightExpression: getSampleWeightExpression(source),
-          groupBy,
-          with: aliasWith,
-          select: [
-            {
-              aggFn: 'count' as const,
-              aggCondition: '',
-              aggConditionLanguage: 'sql',
-              valueExpression: '',
-            },
-          ],
-          timestampValueExpression: source.timestampValueExpression,
-          from: source.from,
-          connection: source.connection,
-        }}
+        referenceLines={referenceLines}
+        config={config}
       />
     </Paper>
   );
