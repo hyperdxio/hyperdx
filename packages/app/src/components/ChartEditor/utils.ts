@@ -187,6 +187,7 @@ export function convertSavedChartConfigToFormState(
               s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
           }))
         : [],
+    timelineSeries: config.timelineSeries,
   };
 }
 
@@ -210,10 +211,12 @@ export const validateChartForm = (
     errors.push({ path: `sqlTemplate`, message: 'SQL query is required' });
   }
 
-  // Validate source is selected for builder charts
+  // Validate source is selected for builder charts (Timeline manages its own
+  // source per-series and validates at submit time instead)
   if (
     !isRawSqlChart &&
     form.displayType !== DisplayType.Markdown &&
+    form.displayType !== DisplayType.Timeline &&
     (!form.source || !source)
   ) {
     errors.push({ path: `source`, message: 'Source is required' });

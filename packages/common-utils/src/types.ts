@@ -1209,7 +1209,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   implicitColumnExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
-   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * the source. Not a security boundary (bypassable by direct table SELECT).
    * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
    * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
    *

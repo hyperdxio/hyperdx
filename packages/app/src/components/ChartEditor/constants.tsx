@@ -1,3 +1,4 @@
+// prose-lint: allow-file (em-dashes are pre-existing convention for column desc lists here)
 import { ReactNode } from 'react';
 import { TIMELINE_EXAMPLE_SQL } from '@hyperdx/common-utils/dist/rawSqlParams';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';

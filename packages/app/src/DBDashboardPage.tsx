@@ -124,6 +124,7 @@ import DBHeatmapChart, {
 } from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import DBTimelineChart from './components/DBTimelineChart';
 import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
@@ -811,6 +812,16 @@ const Tile = forwardRef(
                       dateRange={dateRange}
                     />
                   )}
+                {queriedConfig?.displayType === DisplayType.Timeline && (
+                  <DBTimelineChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbar}
+                    config={queriedConfig}
+                    onTimeRangeSelect={onTimeRangeSelect}
+                    queryKeyPrefix={keyPrefix}
+                  />
+                )}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (

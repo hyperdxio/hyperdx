@@ -612,7 +612,7 @@ export function convertExternalTilesToInternal(
     if (isSeriesTile(tileWithId)) {
       return translateExternalChartToTileConfig(tileWithId);
     }
-    // Fallback for tiles with neither config nor series — treat as empty series tile.
+    // Fallback for tiles with neither config nor series; treat as empty series tile.
     // This shouldn't happen with valid input, but matches the previous behavior.
     return translateExternalChartToTileConfig(tileWithId as SeriesTile);
   });

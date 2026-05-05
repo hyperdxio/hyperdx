@@ -628,7 +628,7 @@ export class DashboardPage {
 
   /**
    * Get the `title` attribute of a cell (by column index) in the first row of
-   * a table tile. The <td> title mirrors the cell's stringified value — useful
+   * a table tile. The <td> title mirrors the cell's stringified value, useful
    * for extracting column values (e.g. a ServiceName) for later assertions.
    */
   async getFirstTableRowValue(tileIndex = 0, columnIndex = 0): Promise<string> {
@@ -642,7 +642,7 @@ export class DashboardPage {
 
   /**
    * Click the first row's first cell of a table tile. Each cell contains a
-   * div[role="link"] that owns the onRowClick handler — click that directly
+   * div[role="link"] that owns the onRowClick handler; click that directly
    * to trigger the configured action.
    */
   async clickFirstTableRow(tileIndex = 0) {

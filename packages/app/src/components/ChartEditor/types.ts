@@ -1,6 +1,7 @@
 import {
   BuilderSavedChartConfig,
   RawSqlSavedChartConfig,
+  TimelineSeries,
 } from '@hyperdx/common-utils/dist/types';
 
 import { AlertWithCreatedBy } from '@/types';
@@ -32,4 +33,5 @@ export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
     };
     series: SavedChartConfigWithSelectArray['select'];
     configType?: 'sql' | 'builder';
+    timelineSeries?: TimelineSeries[];
   };
