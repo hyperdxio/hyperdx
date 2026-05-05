@@ -4495,7 +4495,6 @@ __metadata:
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:^16.1.7"
-    next-query-params: "npm:^4.3.1"
     next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     numbro: "npm:^2.4.0"
@@ -4520,7 +4519,6 @@ __metadata:
     rimraf: "npm:^4.4.1"
     rrweb: "npm:2.0.0-alpha.8"
     sass: "npm:^1.54.8"
-    serialize-query-params: "npm:^2.0.2"
     serve: "npm:^14.0.0"
     sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
@@ -4535,7 +4533,6 @@ __metadata:
     typescript: "npm:^5.9.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
-    use-query-params: "npm:^2.1.2"
     zod: "npm:3.25"
   languageName: unknown
   linkType: soft
@@ -21313,19 +21310,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next-query-params@npm:^4.3.1":
-  version: 4.3.1
-  resolution: "next-query-params@npm:4.3.1"
-  dependencies:
-    tslib: "npm:^2.0.3"
-  peerDependencies:
-    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    use-query-params: ^2.0.0
-  checksum: 10c0/d5752b77b7d3606f36703ac664cf95a75fe0bf1c297c1f06083fe61883a6c037d633558208d4f3e03744b31a079a712ced025da7bdb6f90216eb0ec17b7509a3
-  languageName: node
-  linkType: hard
-
 "next-runtime-env@npm:1":
   version: 1.7.4
   resolution: "next-runtime-env@npm:1.7.4"
@@ -25037,13 +25021,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"serialize-query-params@npm:^2.0.2":
-  version: 2.0.2
-  resolution: "serialize-query-params@npm:2.0.2"
-  checksum: 10c0/fdef1e8eb45ce585b12535ab7e546a2583220a2deb969359ccef50519dc541dd6690c00c8de7a2465b9b0b0072a3308b55df77bd568284989df1e72869c9ee3f
-  languageName: node
-  linkType: hard
-
 "serve-handler@npm:6.1.7":
   version: 6.1.7
   resolution: "serve-handler@npm:6.1.7"
@@ -27823,18 +27800,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/f887488c6e6075cdad4962979da1714b217bcb1ee009a9e57ce9a844bcfc4c3a99e93983dfc2e5af9e0913824d24e730090ff255e902c516dcb58d2d3837e01c
-  languageName: node
-  linkType: hard
-
-"use-query-params@npm:^2.1.2":
-  version: 2.2.0
-  resolution: "use-query-params@npm:2.2.0"
-  dependencies:
-    serialize-query-params: "npm:^2.0.2"
-  peerDependencies:
-    react: ">=16.8.0"
-    react-dom: ">=16.8.0"
-  checksum: 10c0/5f92511b6643e91609d1a0f043be93f0d989260a2476214c9b98b5885ff03cebe4240bbe75527a8a73c05653dae2c8a5769f72ba5ae0eacc2b0001d4732cc6b3
   languageName: node
   linkType: hard
 
