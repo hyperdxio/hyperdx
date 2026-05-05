@@ -1,5 +1,6 @@
 import compression from 'compression';
 import MongoStore from 'connect-mongo';
+import cors from 'cors';
 import express from 'express';
 import session from 'express-session';
 import onHeaders from 'on-headers';
@@ -75,7 +76,13 @@ app.use(function (req, res, next) {
   });
   next();
 });
-app.use(defaultCors);
+// Apply the strict default CORS to every route EXCEPT /mcp, which gets a
+// permissive CORS configuration below (MCP clients come from arbitrary origins
+// and authenticate with Bearer tokens, not cookies).
+app.use((req, res, next) => {
+  if (req.path.startsWith('/mcp')) return next();
+  return defaultCors(req, res, next);
+});
 
 // ---------------------------------------------------------------------
 // ----------------------- Background Jobs -----------------------------
@@ -92,7 +99,28 @@ if (config.USAGE_STATS_ENABLED) {
 app.use('/', routers.rootRouter);
 
 // SELF-AUTHENTICATED ROUTES (validated via access key, not session middleware)
-app.use('/mcp', mcpRouter);
+//
+// MCP clients (Claude Desktop, Cursor, MCP Apps host pages, etc.) come from
+// arbitrary origins, so the strict same-origin policy used for cookie-auth
+// routes doesn't apply here. The endpoint is Bearer-token authenticated;
+// validateUserAccessKey gates every request inside mcpRouter.
+app.use(
+  '/mcp',
+  cors({
+    origin: true, // reflect the request origin
+    credentials: false, // no cookies; Bearer is in the Authorization header
+    methods: ['GET', 'POST', 'OPTIONS', 'DELETE'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'mcp-session-id',
+      'mcp-protocol-version',
+    ],
+    exposedHeaders: ['mcp-session-id'],
+  }),
+  mcpRouter,
+);
 
 // PRIVATE ROUTES
 app.use('/ai', isUserAuthenticated, routers.aiRouter);

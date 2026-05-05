@@ -3,10 +3,15 @@ import { ObjectId } from 'mongodb';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
+import { HYPERDX_WIDGET_URI, RESOURCE_URI_META_KEY } from '../../ui/widget';
 import { withToolTracing } from '../../utils/tracing';
 import type { ToolDefinition } from '../types';
 import { parseTimeRange, runConfigTile } from './helpers';
-import { hyperdxQuerySchema } from './schemas';
+import {
+  type HyperdxQueryInput,
+  hyperdxQuerySchema,
+  validateHyperdxQueryInput,
+} from './schemas';
 
 // ─── Tool definition ─────────────────────────────────────────────────────────
 
@@ -31,8 +36,31 @@ const queryTools: ToolDefinition = (server, context) => {
         "Map attributes use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']. " +
         'Call hyperdx_list_sources to discover available columns and attribute keys for each source.',
       inputSchema: hyperdxQuerySchema,
+      // Hint to MCP Apps-capable hosts (Claude, Cursor, etc.) that this tool's
+      // result has a companion UI widget. We emit BOTH key forms because the
+      // ext-apps SDK normalises the nested form to the slash-key form on the
+      // way out, but at least one host (Claude Desktop) reads only the
+      // slash-key form. Hosts that don't understand either field simply
+      // ignore them and render the text content as before.
+      _meta: {
+        [RESOURCE_URI_META_KEY]: HYPERDX_WIDGET_URI,
+        ui: {
+          resourceUri: HYPERDX_WIDGET_URI,
+        },
+      },
     },
-    withToolTracing('hyperdx_query', context, async input => {
+    withToolTracing('hyperdx_query', context, async rawInput => {
+      // The schema is a flat ZodRawShape so the SDK publishes a real JSON
+      // schema to the LLM. Apply our own per-displayType cross-field check.
+      const input = rawInput as HyperdxQueryInput;
+      const validationError = validateHyperdxQueryInput(input);
+      if (validationError) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: validationError }],
+        };
+      }
+
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -55,8 +83,8 @@ const queryTools: ToolDefinition = (server, context) => {
           config: {
             configType: 'sql' as const,
             displayType: 'table' as const,
-            connectionId: input.connectionId,
-            sqlTemplate: input.sql,
+            connectionId: input.connectionId!,
+            sqlTemplate: input.sql!,
           },
         });
       } else if (input.displayType === 'search') {
@@ -69,7 +97,7 @@ const queryTools: ToolDefinition = (server, context) => {
           h: 6,
           config: {
             displayType: 'search' as const,
-            sourceId: input.sourceId,
+            sourceId: input.sourceId!,
             select: input.columns ?? '',
             where: input.where ?? '',
             whereLanguage: input.whereLanguage ?? 'lucene',
@@ -85,8 +113,8 @@ const queryTools: ToolDefinition = (server, context) => {
           h: 4,
           config: {
             displayType: input.displayType,
-            sourceId: input.sourceId,
-            select: input.select.map(s => ({
+            sourceId: input.sourceId!,
+            select: input.select!.map(s => ({
               aggFn: s.aggFn,
               where: s.where ?? '',
               whereLanguage: s.whereLanguage ?? 'lucene',
@@ -107,7 +135,7 @@ const queryTools: ToolDefinition = (server, context) => {
         startDate,
         endDate,
         input.displayType === 'search'
-          ? { maxResults: input.maxResults }
+          ? { maxResults: input.maxResults ?? 50 }
           : undefined,
       );
     }),

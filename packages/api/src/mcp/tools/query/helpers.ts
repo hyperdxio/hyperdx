@@ -5,10 +5,12 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
+  SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import ms from 'ms';
 
+import { FRONTEND_URL } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
@@ -49,35 +51,103 @@ function isEmptyResult(result: unknown): boolean {
   return false;
 }
 
-function formatQueryResult(result: unknown) {
+function formatQueryResult(
+  result: unknown,
+  ui?: {
+    displayType: string;
+    config: SavedChartConfig;
+    dateRange: [Date, Date];
+  },
+) {
   const trimmedResult = trimToolResponse(result);
   const isTrimmed =
     JSON.stringify(trimmedResult).length < JSON.stringify(result).length;
   const empty = isEmptyResult(result);
+
+  const content = [
+    {
+      type: 'text' as const,
+      text: JSON.stringify(
+        {
+          result: trimmedResult,
+          ...(isTrimmed
+            ? {
+                note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+              }
+            : {}),
+          ...(empty
+            ? {
+                hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
+              }
+            : {}),
+        },
+        null,
+        2,
+      ),
+    },
+  ];
+
+  // structuredContent powers the MCP Apps widget (`ui://hyperdx/widget`).
+  // Hosts that don't support MCP Apps will simply ignore this field.
+  // We send the *non-trimmed* result here so the chart has the full series.
+  if (ui) {
+    return {
+      content,
+      structuredContent: buildStructuredContent(result, ui),
+    };
+  }
+
+  return { content };
+}
+
+// ─── MCP Apps structuredContent ──────────────────────────────────────────────
+
+/**
+ * Build the payload consumed by the `ui://hyperdx/widget` iframe.
+ *
+ * Shape contract (kept stable; widget HTML reads these exact field names):
+ *   {
+ *     displayType: 'line' | 'stacked_bar' | 'table' | 'number' | ...,
+ *     config:      <SavedChartConfig>,         // for context, axis labels, name
+ *     data:        <ResponseJSON>,             // ClickHouse JSON: { meta, data, rows }
+ *     links: {
+ *       openInHyperdxUrl: string,              // /chart?config=<json>&from=&to=
+ *     },
+ *   }
+ */
+function buildStructuredContent(
+  result: unknown,
+  ui: {
+    displayType: string;
+    config: SavedChartConfig;
+    dateRange: [Date, Date];
+  },
+) {
   return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(
-          {
-            result: trimmedResult,
-            ...(isTrimmed
-              ? {
-                  note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
-                }
-              : {}),
-            ...(empty
-              ? {
-                  hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
-                }
-              : {}),
-          },
-          null,
-          2,
-        ),
-      },
-    ],
+    displayType: ui.displayType,
+    config: ui.config,
+    data: result,
+    links: {
+      openInHyperdxUrl: buildOpenInHyperdxUrl(ui.config, ui.dateRange),
+    },
   };
+}
+
+/**
+ * Build a `/chart?config=…&from=…&to=…` URL that opens the same chart in the
+ * HyperDX console. The /chart page already accepts a JSON-encoded
+ * SavedChartConfig in its `config` query parameter (see DBChartPage.tsx).
+ */
+export function buildOpenInHyperdxUrl(
+  config: SavedChartConfig,
+  dateRange: [Date, Date],
+): string | undefined {
+  if (!FRONTEND_URL) return undefined;
+  const params = new URLSearchParams();
+  params.set('config', JSON.stringify(config));
+  params.set('from', String(dateRange[0].getTime()));
+  params.set('to', String(dateRange[1].getTime()));
+  return `${FRONTEND_URL}/chart?${params.toString()}`;
 }
 
 // ─── Tile execution ──────────────────────────────────────────────────────────
@@ -200,10 +270,16 @@ export async function runConfigTile(
       querySettings: source.querySettings,
     });
 
-    return formatQueryResult(result);
+    return formatQueryResult(result, {
+      displayType: String(builderConfig.displayType ?? 'table'),
+      // savedConfig is the internal SavedChartConfig (no dateRange field).
+      // The /chart page reconstructs dateRange from from/to URL params.
+      config: savedConfig,
+      dateRange: [startDate, endDate],
+    });
   }
 
-  // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
+  // Raw SQL tile: hydrate source fields for macro support ($__sourceTable, $__filters)
   let sourceFields: {
     from?: { databaseName: string; tableName: string };
     implicitColumnExpression?: string;
@@ -260,5 +336,9 @@ export async function runConfigTile(
     querySettings: undefined,
   });
 
-  return formatQueryResult(result);
+  return formatQueryResult(result, {
+    displayType: String(savedConfig.displayType ?? 'table'),
+    config: savedConfig,
+    dateRange: [startDate, endDate],
+  });
 }

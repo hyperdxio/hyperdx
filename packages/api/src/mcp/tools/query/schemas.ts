@@ -16,12 +16,12 @@ const mcpAggFnSchema = z
   ])
   .describe(
     'Aggregation function:\n' +
-      '  count – count matching rows (no valueExpression needed)\n' +
-      '  sum / avg / min / max – aggregate a numeric column (valueExpression required)\n' +
-      '  count_distinct – unique value count (valueExpression required)\n' +
-      '  quantile – percentile; also set level (valueExpression required)\n' +
-      '  last_value – most recent value of a column\n' +
-      '  none – pass a raw expression through unchanged',
+      '  count: count matching rows (no valueExpression needed)\n' +
+      '  sum / avg / min / max: aggregate a numeric column (valueExpression required)\n' +
+      '  count_distinct: unique value count (valueExpression required)\n' +
+      '  quantile: percentile; also set level (valueExpression required)\n' +
+      '  last_value: most recent value of a column\n' +
+      '  none: pass a raw expression through unchanged',
   );
 
 const mcpSelectItemSchema = z.object({
@@ -75,41 +75,81 @@ const mcpTimeRangeSchema = z.object({
     .describe('End of the query window as ISO 8601. Default: now.'),
 });
 
-// ─── Discriminated union schema for hyperdx_query ───────────────────────────
+// ─── Flat schema for hyperdx_query ──────────────────────────────────────────
+//
+// IMPORTANT: this is a `ZodRawShape` (object literal of schemas), not a
+// top-level `z.discriminatedUnion`. The MCP SDK's `registerTool()` only
+// publishes a JSON Schema to the client when the input is a ZodRawShape;
+// passing a discriminated union (or any other top-level Zod type) causes
+// the client to receive `{type:"object",properties:{}}` and the LLM has no
+// idea what shape to send. We branch by `displayType` at runtime instead.
 
-const builderQuerySchema = mcpTimeRangeSchema.extend({
+const sqlMacrosDoc =
+  'SQL displayType:\n' +
+  '  ADVANCED: only use when the builder display types cannot express the query.\n' +
+  '  Always include LIMIT.\n' +
+  '  Parameters: {startDateMilliseconds:Int64}, {endDateMilliseconds:Int64},\n' +
+  '              {intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
+  '  Macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col),\n' +
+  '          $__dateTimeFilter(dateCol,timeCol), $__dt(dateCol,timeCol),\n' +
+  '          $__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms,\n' +
+  '          $__timeInterval(col), $__timeInterval_ms(col), $__interval_s,\n' +
+  '          $__filters.\n' +
+  '  Example: SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count()\n' +
+  '           FROM otel_logs WHERE $__timeFilter(TimestampTime)\n' +
+  '           GROUP BY ServiceName, ts ORDER BY ts';
+
+export const hyperdxQuerySchema = {
   displayType: z
-    .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
+    .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'search', 'sql'])
     .describe(
       'How to visualize the query results:\n' +
-        '  line – time-series line chart\n' +
-        '  stacked_bar – time-series stacked bar chart\n' +
-        '  table – grouped aggregation as rows\n' +
-        '  number – single aggregate scalar\n' +
-        '  pie – pie chart (one metric, grouped)',
+        '  line: time-series line chart (builder)\n' +
+        '  stacked_bar: time-series stacked bar chart (builder)\n' +
+        '  table: grouped aggregation as rows (builder)\n' +
+        '  number: single aggregate scalar (builder)\n' +
+        '  pie: pie chart, one metric grouped (builder)\n' +
+        '  search: browse individual log/event rows (search)\n' +
+        '  sql: execute raw ClickHouse SQL (advanced)',
     ),
+  startTime: z
+    .string()
+    .optional()
+    .describe(
+      'Start of the query window as ISO 8601. Default: 15 minutes ago. ' +
+        'If results are empty, try a wider range (e.g. 24 hours).',
+    ),
+  endTime: z
+    .string()
+    .optional()
+    .describe('End of the query window as ISO 8601. Default: now.'),
+
+  // ─── Builder + search fields ─────────────────────────────────────────────
   sourceId: z
     .string()
+    .optional()
     .describe(
-      'Source ID. Call hyperdx_list_sources to find available sources.',
+      'Source ID. Required for builder display types (line, stacked_bar, ' +
+        'table, number, pie) and search. Call hyperdx_list_sources to find ' +
+        'available sources.',
     ),
   select: z
     .array(mcpSelectItemSchema)
     .min(1)
     .max(10)
+    .optional()
     .describe(
-      'Metrics to compute. Each item defines an aggregation. ' +
-        'For "number" display, provide exactly 1 item. ' +
+      'Metrics to compute. Required for builder display types. ' +
+        'Each item defines an aggregation. For "number" display, provide exactly 1 item. ' +
         'Example: [{ aggFn: "count" }, { aggFn: "avg", valueExpression: "Duration" }]',
     ),
   groupBy: z
     .string()
     .optional()
     .describe(
-      'Column to group/split by. ' +
+      'Column to group/split by (builder only). ' +
         'Top-level columns use PascalCase (e.g. "SpanName", "StatusCode"). ' +
-        "Span attributes: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
-        "Resource attributes: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
+        "Span attributes: SpanAttributes['key']. Resource attributes: ResourceAttributes['key'].",
     ),
   orderBy: z
     .string()
@@ -124,35 +164,25 @@ const builderQuerySchema = mcpTimeRangeSchema.extend({
         'Examples: "1 minute", "5 minute", "1 hour", "1 day". ' +
         'Omit to let HyperDX pick automatically based on the time range.',
     ),
-});
 
-const searchQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z
-    .literal('search')
-    .describe('Search and filter individual log/event rows'),
-  sourceId: z
-    .string()
-    .describe(
-      'Source ID. Call hyperdx_list_sources to find available sources.',
-    ),
+  // ─── search-only fields ──────────────────────────────────────────────────
   where: z
     .string()
     .optional()
-    .default('')
     .describe(
-      'Row filter. Examples: "level:error", "service.name:api AND duration:>500"',
+      'Row filter (search only). Examples: "level:error", "service.name:api AND duration:>500"',
     ),
   whereLanguage: z
     .enum(['lucene', 'sql'])
     .optional()
-    .default('lucene')
-    .describe('Query language for the where filter. Default: lucene'),
+    .describe(
+      'Query language for the where filter (search only). Default: lucene',
+    ),
   columns: z
     .string()
     .optional()
-    .default('')
     .describe(
-      'Comma-separated columns to include. Leave empty for defaults. ' +
+      'Comma-separated columns to include (search only). Leave empty for defaults. ' +
         'Example: "body,service.name,duration"',
     ),
   maxResults: z
@@ -160,61 +190,73 @@ const searchQuerySchema = mcpTimeRangeSchema.extend({
     .min(1)
     .max(200)
     .optional()
-    .default(50)
     .describe(
-      'Maximum number of rows to return (1–200). Default: 50. ' +
-        'Use smaller values to reduce response size.',
+      'Maximum number of rows to return (search only, 1–200). Default: 50.',
     ),
-});
 
-const sqlQuerySchema = mcpTimeRangeSchema.extend({
-  displayType: z
-    .literal('sql')
-    .describe(
-      'ADVANCED: Execute raw SQL directly against ClickHouse. ' +
-        'Only use this when the builder query types (line, stacked_bar, table, number, pie, search) ' +
-        'cannot express the query you need — e.g. complex JOINs, sub-queries, CTEs, or ' +
-        'querying tables not registered as sources. ' +
-        'Prefer the builder display types for standard queries as they are safer and easier to use.',
-    ),
+  // ─── sql-only fields ─────────────────────────────────────────────────────
   connectionId: z
     .string()
+    .optional()
     .describe(
-      'Connection ID (not sourceId). Call hyperdx_list_sources to find available connections.',
+      'Connection ID (not sourceId). Required for sql display type. ' +
+        'Call hyperdx_list_sources to find available connections.',
     ),
-  sql: z
-    .string()
-    .describe(
-      'Raw ClickHouse SQL query to execute. ' +
-        'Always include a LIMIT clause to avoid returning excessive data.\n\n' +
-        'QUERY PARAMETERS (ClickHouse native parameterized syntax):\n' +
-        '  {startDateMilliseconds:Int64} — start of date range in ms since epoch\n' +
-        '  {endDateMilliseconds:Int64} — end of date range in ms since epoch\n' +
-        '  {intervalSeconds:Int64} — time bucket size in seconds (time-series only)\n' +
-        '  {intervalMilliseconds:Int64} — time bucket size in milliseconds (time-series only)\n\n' +
-        'MACROS (expanded before execution):\n' +
-        '  $__timeFilter(column) — expands to: column >= <start> AND column <= <end> (DateTime precision)\n' +
-        '  $__timeFilter_ms(column) — same but with DateTime64 millisecond precision\n' +
-        '  $__dateFilter(column) — same but with Date precision\n' +
-        '  $__dateTimeFilter(dateCol, timeCol) — filters on both a Date and DateTime column\n' +
-        '  $__dt(dateCol, timeCol) — alias for $__dateTimeFilter\n' +
-        '  $__fromTime / $__toTime — start/end as DateTime values\n' +
-        '  $__fromTime_ms / $__toTime_ms — start/end as DateTime64 values\n' +
-        '  $__timeInterval(column) — time bucket expression: toStartOfInterval(toDateTime(column), INTERVAL ...)\n' +
-        '  $__timeInterval_ms(column) — same with millisecond precision\n' +
-        '  $__interval_s — raw interval in seconds\n' +
-        '  $__filters — placeholder for dashboard filter conditions (resolves to 1=1 when no filters)\n\n' +
-        'Example (time-series): "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
-        'FROM otel_logs WHERE $__timeFilter(TimestampTime) GROUP BY ServiceName, ts ORDER BY ts"\n\n' +
-        'Example (table): "SELECT ServiceName, count() AS n FROM otel_logs ' +
-        'WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
-        'AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
-        'GROUP BY ServiceName ORDER BY n DESC LIMIT 20"',
-    ),
-});
+  sql: z.string().optional().describe(sqlMacrosDoc),
+};
 
-export const hyperdxQuerySchema = z.discriminatedUnion('displayType', [
-  builderQuerySchema,
-  searchQuerySchema,
-  sqlQuerySchema,
-]);
+// Runtime-validated input. Use after the SDK's per-field validation.
+export type HyperdxQueryInput = {
+  displayType:
+    | 'line'
+    | 'stacked_bar'
+    | 'table'
+    | 'number'
+    | 'pie'
+    | 'search'
+    | 'sql';
+  startTime?: string;
+  endTime?: string;
+  sourceId?: string;
+  select?: Array<z.infer<typeof mcpSelectItemSchema>>;
+  groupBy?: string;
+  orderBy?: string;
+  granularity?: string;
+  where?: string;
+  whereLanguage?: 'lucene' | 'sql';
+  columns?: string;
+  maxResults?: number;
+  connectionId?: string;
+  sql?: string;
+};
+
+/**
+ * Validate the parts of the input that depend on `displayType`. The SDK has
+ * already validated each field in isolation; this enforces cross-field
+ * required-ness (e.g. builder needs sourceId+select, sql needs connectionId+sql).
+ */
+export function validateHyperdxQueryInput(
+  input: HyperdxQueryInput,
+): string | null {
+  const isBuilder = ['line', 'stacked_bar', 'table', 'number', 'pie'].includes(
+    input.displayType,
+  );
+  if (isBuilder) {
+    if (!input.sourceId)
+      return 'sourceId is required for builder display types';
+    if (!input.select || input.select.length === 0) {
+      return 'select must be a non-empty array for builder display types';
+    }
+    if (input.displayType === 'number' && input.select.length !== 1) {
+      return 'select must contain exactly 1 item for displayType "number"';
+    }
+  } else if (input.displayType === 'search') {
+    if (!input.sourceId) return 'sourceId is required for displayType "search"';
+  } else if (input.displayType === 'sql') {
+    if (!input.connectionId) {
+      return 'connectionId is required for displayType "sql"';
+    }
+    if (!input.sql) return 'sql is required for displayType "sql"';
+  }
+  return null;
+}
