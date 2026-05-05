@@ -651,13 +651,13 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   );
 
   test.describe('Raw SQL Dashboard Tiles', () => {
-    const LINE_SQL = `SELECT toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
+    const LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
 
-    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
+    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
 
-    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
+    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
 
-    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
+    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
 
     test.beforeEach(async () => {
       await dashboardPage.createNewDashboard();
@@ -836,7 +836,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         name: DELETABLE_SOURCE_NAME,
         connection,
         from,
-        timestampValueExpression: 'TimestampTime',
+        timestampValueExpression: 'Timestamp',
         defaultTableSelectExpression:
           'Timestamp, ServiceName, SeverityText, Body',
         serviceNameExpression: 'ServiceName',
