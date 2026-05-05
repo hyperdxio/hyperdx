@@ -95,7 +95,7 @@ export function useTimeQuery({
   >(undefined);
 
   const [_timeRangeQuery, setTimeRangeQuery] = useQueryStates(
-    legacyTimeRangeQueryStateMap,
+    timeRangeQueryStateMap,
     {
       history: 'push',
     },
@@ -113,6 +113,7 @@ export function useTimeQuery({
   const [inputTimeQuery, setInputTimeQuery] = useQueryState(
     'tq',
     parseAsString.withDefault(''),
+    { history: 'push' },
   );
   const prevInputTimeQuery = usePrevious(inputTimeQuery);
 
@@ -408,12 +409,7 @@ const getRelativeInterval = (start: Date, end: Date): string | undefined => {
   return `Past ${durationStr}`;
 };
 
-// These need to be stable references to prevent rerenders
-const legacyTimeRangeQueryStateMap = {
-  from: parseAsFloat,
-  to: parseAsFloat,
-};
-
+// This needs to be a stable reference to prevent rerenders
 const timeRangeQueryStateMap = {
   from: parseAsFloat,
   to: parseAsFloat,
