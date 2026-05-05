@@ -420,8 +420,8 @@ export const externalDashboardTileSchema = z
       })
       .optional(),
     config: externalDashboardTileConfigSchema.optional(),
-    containerId: z.string().optional(),
-    tabId: z.string().optional(),
+    containerId: z.string().min(1).optional(),
+    tabId: z.string().min(1).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {
