@@ -3,16 +3,16 @@ import cx from 'classnames';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  Field,
+  TableConnectionChoice,
+} from '@berg/common-utils/dist/core/metadata';
+import {
   acceptCompletion,
   autocompletion,
   closeCompletion,
   Completion,
   startCompletion,
 } from '@codemirror/autocomplete';
-import {
-  Field,
-  TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   Flex,
   Paper,

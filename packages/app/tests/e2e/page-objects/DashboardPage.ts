@@ -2,7 +2,7 @@
  * DashboardPage - Page object for dashboard pages
  * Encapsulates interactions with dashboard creation, editing, and tile management
  */
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';

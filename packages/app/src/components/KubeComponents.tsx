@@ -1,15 +1,15 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
-import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import type { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   BuilderChartConfigWithDateRange,
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
   TLogSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Badge, Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 

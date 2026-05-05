@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
-import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
+import { MVOptimizationExplanation } from '@berg/common-utils/dist/core/materializedViews';
+import { MaterializedViewConfiguration } from '@berg/common-utils/dist/types';
 import {
   Accordion,
   Alert,

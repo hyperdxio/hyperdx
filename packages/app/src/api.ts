@@ -19,7 +19,7 @@ import type {
   WebhooksApiResponse,
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 

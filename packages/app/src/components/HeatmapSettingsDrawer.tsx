@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   Box,
   Button,

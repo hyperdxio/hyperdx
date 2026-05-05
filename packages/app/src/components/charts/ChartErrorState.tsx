@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import cx from 'classnames';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';

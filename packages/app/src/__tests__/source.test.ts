@@ -2,7 +2,7 @@ import {
   SourceKind,
   TLogSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import {

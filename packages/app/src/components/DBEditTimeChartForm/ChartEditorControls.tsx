@@ -5,14 +5,14 @@ import {
   UseFormClearErrors,
   UseFormSetValue,
 } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
 import { IconBell, IconCirclePlus } from '@tabler/icons-react';
 

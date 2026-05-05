@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
+import { TTraceSource } from '@berg/common-utils/dist/types';
 import dagre from '@dagrejs/dagre';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Center, Code, Loader, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {

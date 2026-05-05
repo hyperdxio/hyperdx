@@ -1,6 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 

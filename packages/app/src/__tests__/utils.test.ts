@@ -1,4 +1,4 @@
-import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
+import { NumericUnit, TSource } from '@berg/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 

@@ -1,9 +1,9 @@
-import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { ColumnMeta } from '@berg/common-utils/dist/clickhouse';
 import {
   Metadata,
   TableConnection,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/core/metadata';
 
 import {
   getSourceTableColumn,

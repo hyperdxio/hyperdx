@@ -2,7 +2,7 @@ import {
   AlertErrorType,
   AlertThresholdType,
   DisplayType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import {
   getLoggedInAgent,

@@ -1,5 +1,5 @@
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { TLogSource, TSource } from '@hyperdx/common-utils/dist/types';
+import { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
+import { TLogSource, TSource } from '@berg/common-utils/dist/types';
 
 import { getJSONColumnNames } from '@/components/DBRowDataPanel';
 

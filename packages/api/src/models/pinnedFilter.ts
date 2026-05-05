@@ -1,4 +1,4 @@
-import type { PinnedFiltersValue } from '@hyperdx/common-utils/dist/types';
+import type { PinnedFiltersValue } from '@berg/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import { SavedChartConfig } from '@berg/common-utils/dist/types';
 import {
   Box,
   Button,

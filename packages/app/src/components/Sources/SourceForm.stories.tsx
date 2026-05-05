@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { Card } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 

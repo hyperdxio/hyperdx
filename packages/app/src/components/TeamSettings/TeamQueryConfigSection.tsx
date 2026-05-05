@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
-import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { type TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
+import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@berg/common-utils/dist/core/metadata';
+import { type TeamClickHouseSettings } from '@berg/common-utils/dist/types';
 import {
   Box,
   Button,

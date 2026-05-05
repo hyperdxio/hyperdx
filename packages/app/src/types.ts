@@ -4,7 +4,7 @@ import {
   BuilderChartConfig,
   Filter,
   NumberFormat as _NumberFormat,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
 

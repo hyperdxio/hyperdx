@@ -1,11 +1,11 @@
 import {
   MVOptimizationExplanation,
   tryOptimizeConfigWithMaterializedViewWithExplanations,
-} from '@hyperdx/common-utils/dist/core/materializedViews';
+} from '@berg/common-utils/dist/core/materializedViews';
 import {
   BuilderChartConfigWithOptDateRange,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,

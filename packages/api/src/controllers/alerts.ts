@@ -1,8 +1,8 @@
 import {
   displayTypeSupportsRawSqlAlerts,
   validateRawSqlForAlert,
-} from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';

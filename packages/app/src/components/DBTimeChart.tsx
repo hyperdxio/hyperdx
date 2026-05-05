@@ -4,16 +4,16 @@ import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
   getAlignedDateRange,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Divider,
   Group,

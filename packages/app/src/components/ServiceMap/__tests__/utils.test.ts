@@ -1,5 +1,5 @@
 import router from 'next/router';
-import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@berg/common-utils/dist/types';
 
 import {
   formatApproximateNumber,

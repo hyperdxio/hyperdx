@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';

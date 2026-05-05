@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  WebhookApiData,
-  WebhookService,
-} from '@hyperdx/common-utils/dist/types';
+import { WebhookApiData, WebhookService } from '@berg/common-utils/dist/types';
 import { IconBrandSlack, IconLink } from '@tabler/icons-react';
 
 import { IncidentIOIcon } from '@/SVGIcons';

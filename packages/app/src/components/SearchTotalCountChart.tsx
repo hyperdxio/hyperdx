@@ -3,8 +3,8 @@ import {
   filterColumnMetaByType,
   JSDataType,
   ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/clickhouse';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 

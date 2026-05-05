@@ -1,7 +1,7 @@
 import {
   SavedSearchListApiResponse,
   SavedSearchSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { z } from 'zod';
 

@@ -1,5 +1,5 @@
 import { CSSProperties, useState } from 'react';
-import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
+import { DashboardContainer as DashboardContainerSchema } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Box,

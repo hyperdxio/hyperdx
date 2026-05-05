@@ -1,7 +1,7 @@
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
-} from '@hyperdx/common-utils/dist/clickhouse';
+} from '@berg/common-utils/dist/clickhouse';
 import { Row, SortingFnOption } from '@tanstack/react-table';
 
 export const numericRowSortingFn = ((

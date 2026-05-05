@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
+import { SavedSearchListApiResponse } from '@berg/common-utils/dist/types';
 import HyperDX from '@hyperdx/browser';
-import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,

@@ -1,5 +1,5 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { Tile } from '@berg/common-utils/dist/types';
 import _ from 'lodash';
 
 import { ObjectId } from '@/models';

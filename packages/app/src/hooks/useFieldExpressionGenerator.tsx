@@ -1,6 +1,6 @@
 import SqlString from 'sqlstring';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
+import { TSource } from '@berg/common-utils/dist/types';
 
 import { useJsonColumns } from './useMetadata';
 

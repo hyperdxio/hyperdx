@@ -1,10 +1,10 @@
 import { pick } from 'lodash';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   type Filter,
   pickSampleWeightExpressionProps,
   type TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';

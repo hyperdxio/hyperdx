@@ -2,8 +2,8 @@ import { atom, useAtom } from 'jotai';
 import {
   QUERY_PARAM_EXAMPLES,
   QUERY_PARAMS_BY_DISPLAY_TYPE,
-} from '@hyperdx/common-utils/dist/rawSqlParams';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/rawSqlParams';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,

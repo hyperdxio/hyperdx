@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
   MetricsDataType,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Button,
   Center,

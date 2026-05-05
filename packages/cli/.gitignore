@@ -1,5 +1,0 @@
-# Build output
-dist/
-
-# Bun build artifacts
-*.bun-build

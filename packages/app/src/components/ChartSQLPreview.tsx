@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
-import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import { format } from '@berg/common-utils/dist/sqlFormatter';
+import { ChartConfigWithOptDateRange } from '@berg/common-utils/dist/types';
 import { Button, Paper, Text, useMantineColorScheme } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';

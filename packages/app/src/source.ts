@@ -6,10 +6,10 @@ import {
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/clickhouse';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
+import { splitAndTrimWithBracket } from '@berg/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithOptDateRange,
   MetricsDataType,
@@ -22,7 +22,7 @@ import {
   TSource,
   TSourceNoId,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import {
   useMutation,

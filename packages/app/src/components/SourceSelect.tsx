@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from 'react';
 import { UseControllerProps, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import {
   ComboboxChevron,
   ComboboxItem,

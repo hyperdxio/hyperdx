@@ -1,4 +1,4 @@
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';

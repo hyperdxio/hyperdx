@@ -6,14 +6,14 @@ import {
 } from 'date-fns';
 import _ from 'lodash';
 import { z } from 'zod';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
+import { Granularity } from '@berg/common-utils/dist/core/utils';
 import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertInterval,
   AlertThresholdType,
   ChartAlertBaseSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import { IS_DEV } from '@/config';
 

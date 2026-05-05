@@ -7,7 +7,7 @@ import {
 import {
   AlertThresholdType,
   isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,

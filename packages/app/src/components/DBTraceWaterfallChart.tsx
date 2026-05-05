@@ -3,7 +3,7 @@ import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
@@ -12,7 +12,7 @@ import {
   TLogSource,
   TSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Anchor,
   Box,

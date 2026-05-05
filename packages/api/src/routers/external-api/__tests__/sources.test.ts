@@ -1,4 +1,4 @@
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request, { SuperAgentTest } from 'supertest';
 

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Field,
-  TableConnection,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { Field, TableConnection } from '@berg/common-utils/dist/core/metadata';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 
 import { NOW } from '@/config';
 import {

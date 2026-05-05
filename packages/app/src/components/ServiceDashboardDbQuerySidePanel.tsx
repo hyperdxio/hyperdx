@@ -6,7 +6,7 @@ import {
   type Filter,
   pickSampleWeightExpressionProps,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 

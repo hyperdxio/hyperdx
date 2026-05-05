@@ -1,4 +1,4 @@
-import type { InstallationApiResponse } from '@hyperdx/common-utils/dist/types';
+import type { InstallationApiResponse } from '@berg/common-utils/dist/types';
 import express from 'express';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';

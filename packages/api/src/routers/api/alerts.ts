@@ -2,7 +2,7 @@ import type {
   AlertApiResponse,
   AlertsApiResponse,
   AlertsPageItem,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import express from 'express';
 import { pick } from 'lodash';
 import { ObjectId } from 'mongodb';

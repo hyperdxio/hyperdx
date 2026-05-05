@@ -1,10 +1,10 @@
 import objectHash from 'object-hash';
 import store from 'store2';
-import type { PinnedFiltersValue } from '@hyperdx/common-utils/dist/types';
+import type { PinnedFiltersValue } from '@berg/common-utils/dist/types';
 import {
   SavedSearchListApiResponse,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import { HDX_LOCAL_DEFAULT_SOURCES } from './config';
 import { parseJSON } from './utils';

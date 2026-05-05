@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import {
   renderOnClickDashboard,
   renderOnClickSearch,
-} from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
-import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/core/linkUrlBuilder';
+import { isSearchableSource, OnClick } from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import { useDashboards } from '@/dashboard';

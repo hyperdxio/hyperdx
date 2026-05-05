@@ -2,8 +2,8 @@ import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertErrorType,
   AlertThresholdType,
-} from '@hyperdx/common-utils/dist/types';
-export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+export { AlertThresholdType } from '@berg/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';

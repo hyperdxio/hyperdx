@@ -1,7 +1,7 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { displayTypeSupportsRawSqlAlerts } from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
+import { Tile } from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';

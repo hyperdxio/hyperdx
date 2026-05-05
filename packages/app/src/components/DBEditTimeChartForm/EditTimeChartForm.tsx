@@ -6,20 +6,20 @@ import {
   type UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
-} from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   SavedChartConfig,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Box,
   Divider,

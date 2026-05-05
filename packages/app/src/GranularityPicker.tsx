@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
+import { Granularity } from '@berg/common-utils/dist/core/utils';
 import { Select } from '@mantine/core';
 
 function GranularityPicker({

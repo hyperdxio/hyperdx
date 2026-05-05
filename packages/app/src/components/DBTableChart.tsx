@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
+import { isRatioChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/guards';
+import { ChartConfigWithOptTimestamp } from '@berg/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 

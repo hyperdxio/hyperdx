@@ -1,5 +1,5 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
-import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnectionChoice } from '@berg/common-utils/dist/core/metadata';
 import { Box, Flex, Kbd } from '@mantine/core';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';

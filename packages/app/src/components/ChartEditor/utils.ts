@@ -1,10 +1,10 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
-import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
+import { validateRawSqlForAlert } from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
@@ -19,7 +19,7 @@ import {
   SavedChartConfig,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import { getStoredLanguage } from '../SearchInput';
 

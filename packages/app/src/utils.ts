@@ -3,13 +3,13 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
 import {
   NumericUnit,
   SourceKind,
   TMetricSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { MetricsDataType, NumberFormat } from './types';

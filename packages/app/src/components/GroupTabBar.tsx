@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
+import { DashboardContainer } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Button,

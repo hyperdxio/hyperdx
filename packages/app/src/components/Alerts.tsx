@@ -11,7 +11,7 @@ import {
   type AlertChannelType,
   AlertThresholdType,
   WebhookService,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 

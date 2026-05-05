@@ -1,5 +1,5 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
+import { MetricsDataType } from '@berg/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
 

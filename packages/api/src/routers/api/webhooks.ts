@@ -3,7 +3,7 @@ import type {
   WebhooksApiResponse,
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';

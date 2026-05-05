@@ -1,4 +1,4 @@
-import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
+import { SavedSearchSchema } from '@berg/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import { z } from 'zod';
 

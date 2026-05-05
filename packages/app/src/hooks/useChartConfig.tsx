@@ -3,26 +3,26 @@ import {
   ClickHouseQueryError,
   parameterizedQueryToSql,
   ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import {
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
-} from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
-import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
+} from '@berg/common-utils/dist/guards';
+import { format } from '@berg/common-utils/dist/sqlFormatter';
 import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   QuerySettings,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   useQuery,
   useQueryClient,

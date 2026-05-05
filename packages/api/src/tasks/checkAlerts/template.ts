@@ -1,11 +1,11 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   _useTry,
   formatDate,
   objectHash,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   AlertChannelType,
   AlertThresholdType,
@@ -16,8 +16,8 @@ import {
   SourceKind,
   WebhookService,
   zAlertChannelType,
-} from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
+} from '@berg/common-utils/dist/types';
+import { isValidSlackUrl } from '@berg/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import PromisedHandlebars from 'promised-handlebars';

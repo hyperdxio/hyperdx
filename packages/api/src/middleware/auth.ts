@@ -1,4 +1,4 @@
-import { Connection } from '@hyperdx/common-utils/dist/types';
+import { Connection } from '@berg/common-utils/dist/types';
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';

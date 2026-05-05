@@ -1,4 +1,4 @@
-import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { createNativeClient } from '@berg/common-utils/dist/clickhouse/node';
 import {
   AlertThresholdType,
   BuilderSavedChartConfig,
@@ -6,7 +6,7 @@ import {
   RawSqlSavedChartConfig,
   SavedChartConfig,
   Tile,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import request from 'supertest';

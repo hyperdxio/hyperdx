@@ -8,12 +8,12 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
+import { format as formatSql } from '@berg/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,

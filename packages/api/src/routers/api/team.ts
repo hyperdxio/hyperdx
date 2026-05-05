@@ -5,8 +5,8 @@ import type {
   TeamMembersApiResponse,
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
-} from '@hyperdx/common-utils/dist/types';
-import { TeamClickHouseSettingsSchema } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { TeamClickHouseSettingsSchema } from '@berg/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';

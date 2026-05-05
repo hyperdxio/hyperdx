@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
+import { DashboardTemplateSchema } from '@berg/common-utils/dist/types';
 
 const TEMPLATES_DIR = path.resolve(__dirname, '../dashboardTemplates');
 

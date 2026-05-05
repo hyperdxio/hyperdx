@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { isTraceSource, SourceKind } from '@berg/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';

@@ -4,7 +4,7 @@ import {
   DateRange,
   MetricsDataType,
   TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';

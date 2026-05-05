@@ -1,4 +1,4 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';

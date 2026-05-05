@@ -6,7 +6,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
 import {
   isLogSource,
   isMetricSource,
@@ -14,7 +14,7 @@ import {
   TLogSource,
   TMetricSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,

@@ -4,7 +4,7 @@ import {
   PresetDashboard,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { omit } from 'lodash';
 import mongoose, { Types } from 'mongoose';
 

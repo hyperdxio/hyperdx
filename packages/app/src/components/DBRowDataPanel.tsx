@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
-import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import type { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';

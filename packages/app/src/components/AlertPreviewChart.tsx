@@ -2,8 +2,8 @@ import React, { useMemo } from 'react';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-} from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/searchChartConfig';
+import { aliasMapToWithClauses } from '@berg/common-utils/dist/core/utils';
 import {
   AlertInterval,
   AlertThresholdType,
@@ -15,7 +15,7 @@ import {
   SearchCondition,
   SearchConditionLanguage,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';

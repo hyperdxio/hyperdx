@@ -1,4 +1,4 @@
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import { WebhookService } from '@berg/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import mongoose, { Schema } from 'mongoose';
 

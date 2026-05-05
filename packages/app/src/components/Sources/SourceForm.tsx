@@ -14,14 +14,14 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
   SourceSchema,
   SourceSchemaNoId,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,

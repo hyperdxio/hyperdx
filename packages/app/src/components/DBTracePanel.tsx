@@ -1,12 +1,12 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Button,
   Center,

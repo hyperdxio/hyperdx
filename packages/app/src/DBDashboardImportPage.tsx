@@ -6,14 +6,14 @@ import { useRouter } from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { convertToDashboardDocument } from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import {
   type DashboardTemplate,
   DashboardTemplateSchema,
   SavedChartConfig,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Anchor,
   Breadcrumbs,

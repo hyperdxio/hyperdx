@@ -5,7 +5,7 @@ import {
   DashboardFilter,
   DisplayType,
   SavedChartConfig,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { omit } from 'lodash';
 
 import type { ObjectId } from '@/models';

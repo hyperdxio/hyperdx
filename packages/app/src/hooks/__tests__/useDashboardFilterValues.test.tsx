@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
-import { optimizeGetKeyValuesCalls } from '@hyperdx/common-utils/dist/core/materializedViews';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { optimizeGetKeyValuesCalls } from '@berg/common-utils/dist/core/materializedViews';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
   MetricsDataType,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
@@ -19,7 +19,7 @@ import * as useMetadataModule from '../useMetadata';
 // Mock modules
 jest.mock('@/source');
 jest.mock('../useMetadata');
-jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
+jest.mock('@berg/common-utils/dist/core/materializedViews', () => ({
   optimizeGetKeyValuesCalls: jest
     .fn()
     .mockImplementation(async ({ keys, chartConfig }) => [

@@ -1,7 +1,7 @@
 import {
   PresetDashboard,
   PresetDashboardFilter,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { ObjectId } from '@/models';

@@ -3,20 +3,20 @@ import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import {
   TableConnection,
   tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsRawSqlAlerts,
   validateRawSqlForAlert,
-} from '@hyperdx/common-utils/dist/core/utils';
-import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
-import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
-import { RawSqlChartConfig } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/core/utils';
+import { MACRO_SUGGESTIONS } from '@berg/common-utils/dist/macros';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@berg/common-utils/dist/rawSqlParams';
+import { RawSqlChartConfig } from '@berg/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
   isMetricSource,
   isTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 

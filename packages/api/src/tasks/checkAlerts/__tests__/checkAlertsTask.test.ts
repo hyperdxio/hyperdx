@@ -1,4 +1,4 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';

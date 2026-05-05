@@ -1,7 +1,7 @@
 import {
   type DashboardTemplate,
   DashboardTemplateSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import dotnetRuntime from './dotnet-runtime.json';
 import goRuntime from './go-runtime.json';

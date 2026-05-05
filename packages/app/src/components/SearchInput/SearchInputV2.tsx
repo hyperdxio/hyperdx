@@ -4,8 +4,8 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Field,
   TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
+} from '@berg/common-utils/dist/core/metadata';
+import { genEnglishExplanation } from '@berg/common-utils/dist/queryParser';
 import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 

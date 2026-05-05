@@ -2,7 +2,7 @@
  * ChartEditorComponent - Reusable component for chart/tile editor
  * Used for creating and configuring dashboard tiles and chart explorer
  */
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import { Locator, Page } from '@playwright/test';
 
 import { getSqlEditor } from '../utils/locators';

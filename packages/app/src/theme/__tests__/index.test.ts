@@ -35,7 +35,7 @@ describe('theme/index', () => {
     it('should contain hyperdx theme', () => {
       expect(themes.hyperdx).toBeDefined();
       expect(themes.hyperdx.name).toBe('hyperdx');
-      expect(themes.hyperdx.displayName).toBe('HyperDX');
+      expect(themes.hyperdx.displayName).toBe('Berg');
     });
 
     it('should contain clickstack theme', () => {

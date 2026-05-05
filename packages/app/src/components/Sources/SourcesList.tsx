@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,

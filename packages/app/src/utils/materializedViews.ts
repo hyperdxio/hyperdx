@@ -3,20 +3,20 @@ import {
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
+} from '@berg/common-utils/dist/clickhouse';
 import {
   Metadata,
   TableConnection,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/core/metadata';
 import {
   Granularity,
   splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   InternalAggregateFunction,
   MaterializedViewConfiguration,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 export const MV_AGGREGATE_FUNCTIONS = [
   'avg',

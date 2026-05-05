@@ -6,7 +6,7 @@ import Wordmark from './Wordmark';
 
 export const hyperdxTheme: ThemeConfig = {
   name: 'hyperdx',
-  displayName: 'HyperDX',
+  displayName: 'Berg',
   mantineTheme: theme,
   Wordmark,
   Logomark,

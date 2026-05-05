@@ -18,8 +18,8 @@ import {
   YAxis,
 } from 'recharts';
 import { AxisDomain } from 'recharts/types/util/types';
-import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { convertGranularityToSeconds } from '@berg/common-utils/dist/core/utils';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';

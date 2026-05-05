@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Code, Container, Text } from '@mantine/core';
 
 import { SQLPreview } from '@/components/ChartSQLPreview';

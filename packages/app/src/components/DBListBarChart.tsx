@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 

@@ -1,5 +1,5 @@
 import { useContext, useMemo, useState } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@berg/common-utils/dist/types';
 import { Anchor, Flex } from '@mantine/core';
 
 import { RowSidePanelContext } from './DBRowSidePanel';

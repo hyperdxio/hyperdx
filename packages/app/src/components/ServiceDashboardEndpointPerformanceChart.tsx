@@ -2,7 +2,7 @@ import { pick } from 'lodash';
 import {
   pickSampleWeightExpressionProps,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';

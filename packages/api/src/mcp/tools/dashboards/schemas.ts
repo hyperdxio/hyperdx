@@ -1,7 +1,7 @@
 import {
   AggregateFunctionSchema,
   SearchConditionLanguageSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { z } from 'zod';
 
 import { externalQuantileLevelSchema } from '@/utils/zod';

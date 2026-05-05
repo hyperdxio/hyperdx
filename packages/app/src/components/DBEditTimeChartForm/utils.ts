@@ -3,7 +3,7 @@ import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
@@ -15,7 +15,7 @@ import {
   SourceKind,
   TSource,
   validateAlertScheduleOffsetMinutes,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import {
   convertToNumberChartConfig,

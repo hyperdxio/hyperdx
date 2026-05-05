@@ -4,7 +4,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   NumberFormat,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Box,
   Button,

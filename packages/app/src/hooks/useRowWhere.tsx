@@ -5,9 +5,9 @@ import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
-import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/clickhouse';
+import { aliasMapToWithClauses } from '@berg/common-utils/dist/core/utils';
+import { BuilderChartConfig } from '@berg/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
 

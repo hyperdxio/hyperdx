@@ -4,13 +4,13 @@ import {
   ColumnMeta,
   filterColumnMetaByType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
+} from '@berg/common-utils/dist/clickhouse';
 import {
   Field,
   TableConnection,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/core/metadata';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptDateRange } from '@berg/common-utils/dist/types';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';

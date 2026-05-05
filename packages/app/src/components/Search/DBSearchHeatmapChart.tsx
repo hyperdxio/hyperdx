@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Box,

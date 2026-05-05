@@ -7,7 +7,7 @@ import {
   SessionSourceSchema,
   SourceKind,
   TraceSourceSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import z from 'zod';
 
@@ -134,7 +134,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     spanIdExpression: String,
     implicitColumnExpression: String,
     uniqueRowIdExpression: String,
-    /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
+    /** @deprecated See LogSourceSchema in @berg/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,

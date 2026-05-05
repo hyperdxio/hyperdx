@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
+import { TLogSource, TMetricSource } from '@berg/common-utils/dist/types';
 import {
   Badge,
   Card,

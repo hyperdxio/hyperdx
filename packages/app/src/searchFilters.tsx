@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
-import type { Filter } from '@hyperdx/common-utils/dist/types';
+import type { Filter } from '@berg/common-utils/dist/types';
 
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
 import { useLocalStorage } from './utils';

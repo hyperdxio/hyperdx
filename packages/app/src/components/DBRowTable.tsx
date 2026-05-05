@@ -28,14 +28,14 @@ import {
   extractColumnReferencesFromKey,
   isJSDataTypeJSONStringifiable,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/clickhouse';
+import { splitAndTrimWithBracket } from '@berg/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Box,
   Code,

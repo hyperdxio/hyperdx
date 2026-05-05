@@ -4,7 +4,7 @@ import React from 'react';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import { useDocumentVisibility } from '@mantine/hooks';
 
 export const useDashboardRefresh = ({

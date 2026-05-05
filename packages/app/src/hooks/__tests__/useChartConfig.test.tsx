@@ -1,12 +1,12 @@
 import React from 'react';
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   MetricsDataType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 

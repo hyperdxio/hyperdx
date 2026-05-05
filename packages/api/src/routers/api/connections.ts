@@ -1,4 +1,4 @@
-import { ConnectionSchema } from '@hyperdx/common-utils/dist/types';
+import { ConnectionSchema } from '@berg/common-utils/dist/types';
 import express from 'express';
 import { validateRequest } from 'zod-express-middleware';
 

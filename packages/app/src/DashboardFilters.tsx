@@ -1,4 +1,4 @@
-import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter } from '@berg/common-utils/dist/types';
 import { Group, MultiSelect } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
 

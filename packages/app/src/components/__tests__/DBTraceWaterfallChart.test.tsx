@@ -3,7 +3,7 @@ import {
   SourceKind,
   TLogSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 

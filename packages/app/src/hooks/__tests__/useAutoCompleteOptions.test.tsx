@@ -1,5 +1,5 @@
-import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { Field } from '@hyperdx/common-utils/dist/core/metadata';
+import { JSDataType } from '@berg/common-utils/dist/clickhouse';
+import { Field } from '@berg/common-utils/dist/core/metadata';
 import { renderHook } from '@testing-library/react';
 
 import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';

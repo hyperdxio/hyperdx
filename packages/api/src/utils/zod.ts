@@ -10,7 +10,7 @@ import {
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 

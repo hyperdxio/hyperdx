@@ -1,4 +1,4 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import { useSource } from '@/source';

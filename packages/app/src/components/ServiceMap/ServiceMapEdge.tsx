@@ -1,4 +1,4 @@
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@berg/common-utils/dist/types';
 import {
   BaseEdge,
   Edge,

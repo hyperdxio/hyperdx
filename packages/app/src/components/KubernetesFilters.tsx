@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
 
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';

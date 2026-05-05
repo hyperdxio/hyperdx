@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import SqlString from 'sqlstring';
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@berg/common-utils/dist/types';
 import { Button, Stack } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 

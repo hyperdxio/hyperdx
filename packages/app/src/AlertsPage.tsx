@@ -5,7 +5,7 @@ import {
   AlertSource,
   AlertState,
   isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Alert, Anchor, Badge, Container, Group, Stack } from '@mantine/core';
 import {
   IconAlertTriangle,

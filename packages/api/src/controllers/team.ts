@@ -1,4 +1,4 @@
-import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
+import { TeamClickHouseSettings } from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 

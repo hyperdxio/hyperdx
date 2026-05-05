@@ -2,7 +2,7 @@ import {
   SourceKind,
   SourceSchema,
   type TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import express from 'express';
 
 import { getSources } from '@/controllers/sources';

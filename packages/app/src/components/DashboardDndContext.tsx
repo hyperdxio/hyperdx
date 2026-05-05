@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { DashboardContainer } from '@berg/common-utils/dist/types';
 import {
   DndContext,
   DragEndEvent,
@@ -13,7 +14,6 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { Box, Text } from '@mantine/core';
 
 export type DragHandleProps = React.HTMLAttributes<HTMLElement>;

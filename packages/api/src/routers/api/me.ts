@@ -1,4 +1,4 @@
-import type { MeApiResponse } from '@hyperdx/common-utils/dist/types';
+import type { MeApiResponse } from '@berg/common-utils/dist/types';
 import express from 'express';
 
 import { AI_API_KEY, ANTHROPIC_API_KEY, USAGE_STATS_ENABLED } from '@/config';

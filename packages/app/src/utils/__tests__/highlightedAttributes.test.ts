@@ -2,7 +2,7 @@ import {
   SourceKind,
   TSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import {
   getHighlightedAttributesFromData,

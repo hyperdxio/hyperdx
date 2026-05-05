@@ -2,8 +2,7 @@ import React from 'react';
 import router from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   type Alert,
   AlertIntervalSchema,
@@ -17,7 +16,8 @@ import {
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   zAlertChannel,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Accordion,
   Alert as MantineAlert,

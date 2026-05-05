@@ -2,10 +2,10 @@ import {
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { getMetadata } from '@berg/common-utils/dist/core/metadata';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 

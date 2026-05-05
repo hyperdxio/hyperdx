@@ -18,18 +18,18 @@ import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
@@ -46,7 +46,7 @@ import {
   SourceKind,
   SQLInterval,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,

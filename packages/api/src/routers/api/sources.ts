@@ -1,7 +1,4 @@
-import {
-  SourceSchema,
-  SourceSchemaNoId,
-} from '@hyperdx/common-utils/dist/types';
+import { SourceSchema, SourceSchemaNoId } from '@berg/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';

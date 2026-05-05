@@ -3,13 +3,13 @@ import { pick } from 'lodash';
 import {
   GetKeyValueCall,
   optimizeGetKeyValuesCalls,
-} from '@hyperdx/common-utils/dist/core/materializedViews';
+} from '@berg/common-utils/dist/core/materializedViews';
 import {
   BuilderChartConfigWithDateRange,
   DashboardFilter,
   isLogSource,
   isTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   useQueries,
   useQueryClient,

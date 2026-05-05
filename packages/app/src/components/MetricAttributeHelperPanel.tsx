@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { TMetricSource } from '@hyperdx/common-utils/dist/types';
+import { TMetricSource } from '@berg/common-utils/dist/types';
 import {
   Badge,
   Box,

@@ -1,8 +1,8 @@
 import SqlString from 'sqlstring';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { chSql } from '@berg/common-utils/dist/clickhouse';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
+import { TTraceSource } from '@berg/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';

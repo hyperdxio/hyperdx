@@ -1,4 +1,4 @@
-import type { AILineTableResponse } from '@hyperdx/common-utils/dist/types';
+import type { AILineTableResponse } from '@berg/common-utils/dist/types';
 import { useMutation } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';

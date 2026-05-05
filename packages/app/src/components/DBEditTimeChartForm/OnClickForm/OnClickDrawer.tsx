@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { validateOnClickTemplate } from '@berg/common-utils/dist/core/linkUrlBuilder';
+import { isSearchableSource, OnClick } from '@berg/common-utils/dist/types';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
-import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,

@@ -2,7 +2,7 @@ import {
   DashboardContainerSchema,
   DashboardSchema,
   TileSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 describe('DashboardContainer schema', () => {
   it('validates a valid group', () => {

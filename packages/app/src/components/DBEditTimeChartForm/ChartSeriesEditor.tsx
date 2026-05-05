@@ -11,7 +11,7 @@ import {
   MetricsDataType,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Button, Divider, Flex, Group, Text } from '@mantine/core';
 import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
 

@@ -4,13 +4,13 @@ import type {
   RawSqlSavedChartConfig,
   TMetricSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   AlertThresholdType,
   DisplayType,
   MetricsDataType,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import type { ChartEditorFormState } from '../types';
 import {

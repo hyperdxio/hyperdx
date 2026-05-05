@@ -5,26 +5,26 @@ import type {
   ClickHouseSettings,
   ResponseJSON,
   Row,
-} from '@hyperdx/common-utils/dist/clickhouse';
+} from '@berg/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+} from '@berg/common-utils/dist/clickhouse';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,

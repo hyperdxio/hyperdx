@@ -1,4 +1,4 @@
-import { SavedSearch, TSource } from '@hyperdx/common-utils/dist/types';
+import { SavedSearch, TSource } from '@berg/common-utils/dist/types';
 
 // Mock config so we can control HDX_LOCAL_DEFAULT_SOURCES in tests
 jest.mock('../config', () => ({

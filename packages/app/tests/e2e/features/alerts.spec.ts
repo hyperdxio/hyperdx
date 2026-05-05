@@ -1,4 +1,4 @@
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 
 import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
 import { AlertsPage } from '../page-objects/AlertsPage';

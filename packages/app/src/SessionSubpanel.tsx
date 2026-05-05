@@ -3,7 +3,7 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
@@ -11,7 +11,7 @@ import {
   SearchConditionLanguage,
   TSessionSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Button,

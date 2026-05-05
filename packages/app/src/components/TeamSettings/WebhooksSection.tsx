@@ -1,9 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import { HTTPError } from 'ky';
-import {
-  WebhookApiData,
-  WebhookService,
-} from '@hyperdx/common-utils/dist/types';
+import { WebhookApiData, WebhookService } from '@berg/common-utils/dist/types';
 import { Button, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';

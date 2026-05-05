@@ -11,8 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/types';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';

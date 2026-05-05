@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
-import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import type { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
+import { chSql } from '@berg/common-utils/dist/clickhouse';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
   pickSampleWeightExpressionProps,
@@ -10,7 +10,7 @@ import {
   SearchConditionLanguage,
   TSessionSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { usePrevious } from '@/utils';

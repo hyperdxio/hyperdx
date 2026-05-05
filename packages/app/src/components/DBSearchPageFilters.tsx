@@ -3,11 +3,11 @@ import cx from 'classnames';
 import {
   TableMetadata,
   tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Accordion,
   ActionIcon,

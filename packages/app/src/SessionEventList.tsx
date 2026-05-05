@@ -1,6 +1,6 @@
 import * as React from 'react';
 import cx from 'classnames';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptDateRange } from '@berg/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledValue } from '@mantine/hooks';
 import {

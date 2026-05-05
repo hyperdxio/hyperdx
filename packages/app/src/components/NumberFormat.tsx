@@ -6,7 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { NumberFormat, NumericUnit } from '@hyperdx/common-utils/dist/types';
+import { NumberFormat, NumericUnit } from '@berg/common-utils/dist/types';
 import {
   Checkbox as MCheckbox,
   NativeSelect,

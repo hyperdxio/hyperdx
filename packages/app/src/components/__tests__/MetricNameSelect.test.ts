@@ -1,4 +1,4 @@
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType } from '@berg/common-utils/dist/types';
 
 import { getMetricOptions } from '../MetricNameSelect';
 

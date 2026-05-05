@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import {
   DashboardFilter,
   PresetDashboard,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';

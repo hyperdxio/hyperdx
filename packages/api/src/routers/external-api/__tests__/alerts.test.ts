@@ -1,4 +1,4 @@
-import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
+import { AlertErrorType } from '@berg/common-utils/dist/types';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';

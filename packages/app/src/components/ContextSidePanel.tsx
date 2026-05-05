@@ -2,13 +2,13 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 

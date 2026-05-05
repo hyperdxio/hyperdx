@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
-import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter, Filter } from '@berg/common-utils/dist/types';
 
 import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';

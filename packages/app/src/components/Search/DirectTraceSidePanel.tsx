@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { Box, Drawer, Flex, Group, Text } from '@mantine/core';
 import { IconConnection } from '@tabler/icons-react';
 

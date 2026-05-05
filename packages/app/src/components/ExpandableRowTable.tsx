@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@berg/common-utils/dist/types';
 import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';

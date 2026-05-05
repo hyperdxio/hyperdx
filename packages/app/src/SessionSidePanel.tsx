@@ -7,7 +7,7 @@ import {
   SearchConditionLanguage,
   TSessionSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { ActionIcon, Button, Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';

@@ -1,10 +1,10 @@
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
 import {
   MetricsDataType,
   SourceKind,
   TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';

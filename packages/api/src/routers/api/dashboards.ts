@@ -3,7 +3,7 @@ import {
   DashboardWithoutIdSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';

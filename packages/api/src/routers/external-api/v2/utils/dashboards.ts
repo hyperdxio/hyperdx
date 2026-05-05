@@ -1,13 +1,13 @@
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { displayTypeSupportsRawSqlAlerts } from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
-} from '@hyperdx/common-utils/dist/types';
-import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { SearchConditionLanguageSchema as whereLanguageSchema } from '@berg/common-utils/dist/types';
 import { pick } from 'lodash';
 import _ from 'lodash';
 import mongoose from 'mongoose';

@@ -1,4 +1,4 @@
-import { SourceKind, SourceSchema } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, SourceSchema } from '@berg/common-utils/dist/types';
 
 import {
   ISourceInput,

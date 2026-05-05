@@ -1,8 +1,5 @@
 import MD5 from 'crypto-js/md5';
-import {
-  ColumnMetaType,
-  JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
+import { ColumnMetaType, JSDataType } from '@berg/common-utils/dist/clickhouse';
 import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
@@ -11,8 +8,8 @@ import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
 jest.mock('crypto-js/md5');
 
 // Mock convertCHDataTypeToJSType
-jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
-  ...jest.requireActual('@hyperdx/common-utils/dist/clickhouse'),
+jest.mock('@berg/common-utils/dist/clickhouse', () => ({
+  ...jest.requireActual('@berg/common-utils/dist/clickhouse'),
   convertCHDataTypeToJSType: jest.fn((type: string) => {
     const typeMap: Record<string, JSDataType> = {
       String: JSDataType.String,

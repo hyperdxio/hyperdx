@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,
   isTraceSource,
@@ -9,7 +9,7 @@ import {
   TLogSource,
   TSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';

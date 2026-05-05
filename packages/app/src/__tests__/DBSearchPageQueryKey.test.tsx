@@ -3,7 +3,7 @@ import objectHash from 'object-hash';
 import {
   ChartConfigWithDateRange,
   DisplayType,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';

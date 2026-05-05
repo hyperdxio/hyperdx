@@ -1,6 +1,6 @@
 {
-  "name": "@hyperdx/common-utils",
-  "description": "Common utilities for HyperDX application",
+  "name": "@berg/common-utils",
+  "description": "Common utilities for Berg application",
   "version": "0.18.1",
   "license": "MIT",
   "private": true,

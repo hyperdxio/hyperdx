@@ -1,4 +1,4 @@
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@berg/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';

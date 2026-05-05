@@ -1,12 +1,12 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { getMetadata } from '@berg/common-utils/dist/core/metadata';
+import { getFirstTimestampValueExpression } from '@berg/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
-} from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { DisplayType, SourceKind } from '@berg/common-utils/dist/types';
 import ms from 'ms';
 
 import { getConnectionById } from '@/controllers/connection';

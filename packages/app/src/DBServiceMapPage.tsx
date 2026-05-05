@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@berg/common-utils/dist/types';
 import { Box, Button, Group, Modal, Slider, Text } from '@mantine/core';
 import { IconConnection } from '@tabler/icons-react';
 

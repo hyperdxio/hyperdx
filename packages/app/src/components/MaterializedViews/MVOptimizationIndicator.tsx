@@ -3,7 +3,7 @@ import {
   BuilderChartConfigWithOptDateRange,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { ActionIcon, Badge, Tooltip } from '@mantine/core';
 import { IconBolt, IconBoltOff } from '@tabler/icons-react';
 

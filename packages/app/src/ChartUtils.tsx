@@ -9,15 +9,15 @@ import {
   inferTimestampColumn,
   JSDataType,
   ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+} from '@berg/common-utils/dist/clickhouse';
+import { isMetricChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   getAlignedDateRange,
   Granularity,
-} from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
   BuilderChartConfigWithDateRange,
@@ -32,7 +32,7 @@ import {
   SQLInterval,
   TMetricSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';

@@ -1,7 +1,7 @@
 import {
   SavedSearch,
   SavedSearchListApiResponse,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   useMutation,
   useQuery,

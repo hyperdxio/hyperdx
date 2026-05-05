@@ -1,12 +1,12 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { getMetadata } from '@berg/common-utils/dist/core/metadata';
+import { Granularity } from '@berg/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
   pickSampleWeightExpressionProps,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';

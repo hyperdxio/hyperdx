@@ -2,14 +2,14 @@ import { useEffect } from 'react';
 import { HTTPError } from 'ky';
 import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { ZodIssue } from 'zod';
-import { json, jsonParseLinter } from '@codemirror/lang-json';
-import { linter } from '@codemirror/lint';
 import {
   AlertState,
   WebhookApiData,
   WebhookService,
-} from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
+} from '@berg/common-utils/dist/types';
+import { isValidSlackUrl } from '@berg/common-utils/dist/validation';
+import { json, jsonParseLinter } from '@codemirror/lang-json';
+import { linter } from '@codemirror/lint';
 import {
   Alert,
   Button,

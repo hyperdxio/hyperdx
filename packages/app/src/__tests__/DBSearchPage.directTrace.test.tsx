@@ -1,5 +1,5 @@
 import React from 'react';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 
 import { DBSearchPage } from '../DBSearchPage';

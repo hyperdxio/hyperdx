@@ -6,10 +6,10 @@ import UplotReact from 'uplot-react';
 import {
   ClickHouseQueryError,
   inferTimestampColumn,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/clickhouse';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import {
   Box,
   Button,

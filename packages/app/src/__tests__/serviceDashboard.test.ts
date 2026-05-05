@@ -1,6 +1,6 @@
-import type { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import type { ColumnMeta } from '@berg/common-utils/dist/clickhouse';
+import type { TTraceSource } from '@berg/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
 import * as metadataModule from '../hooks/useMetadata';

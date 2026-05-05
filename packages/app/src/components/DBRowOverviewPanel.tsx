@@ -1,7 +1,7 @@
 import { useCallback, useContext, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@berg/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';

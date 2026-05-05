@@ -1,10 +1,10 @@
 import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   BuilderChartConfigWithOptTimestamp,
   RawSqlConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
 import {

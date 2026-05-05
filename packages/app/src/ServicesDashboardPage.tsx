@@ -9,9 +9,9 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import SqlString from 'sqlstring';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import type { TSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
+import type { TSource } from '@berg/common-utils/dist/types';
 import {
   BuilderChartConfigWithDateRange,
   CteChartConfig,
@@ -23,7 +23,7 @@ import {
   PresetDashboard,
   SourceKind,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 // Extract common chart config fields from a source.
 // This avoids union type issues with lodash `pick` on discriminated unions.

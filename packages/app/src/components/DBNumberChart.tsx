@@ -2,15 +2,15 @@ import { useMemo } from 'react';
 import {
   filterColumnMetaByType,
   JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
+} from '@berg/common-utils/dist/clickhouse';
 import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   RawSqlConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
 import {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
-import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
+import { splitAndTrimWithBracket } from '@berg/common-utils/dist/core/utils';
+import { MaterializedViewConfiguration } from '@berg/common-utils/dist/types';
 import { Grid, Group, Pill, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 

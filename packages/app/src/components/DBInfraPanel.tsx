@@ -4,14 +4,14 @@ import { add, min, sub } from 'date-fns';
 import {
   convertDateRangeToGranularityString,
   Granularity,
-} from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
   TMetricSource,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Alert,
   Anchor,

@@ -6,7 +6,7 @@ import {
   Filter,
   SavedChartConfig,
   SearchConditionLanguage,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 

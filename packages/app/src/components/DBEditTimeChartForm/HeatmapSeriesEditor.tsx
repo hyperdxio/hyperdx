@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Control, UseFormSetValue } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
+import { TSource } from '@berg/common-utils/dist/types';
 import { Button, Divider, Flex } from '@mantine/core';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';

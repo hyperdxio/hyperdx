@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
 import { acceptCompletion } from '@codemirror/autocomplete';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { Paper, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
   Compartment,

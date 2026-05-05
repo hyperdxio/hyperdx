@@ -1,5 +1,5 @@
 import router from 'next/router';
-import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@berg/common-utils/dist/types';
 
 export function navigateToTraceSearch({
   dateRange,

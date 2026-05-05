@@ -1,13 +1,13 @@
 import React from 'react';
-import * as metadataModule from '@hyperdx/app/src/metadata';
-import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import * as metadataModule from '@berg/app/src/metadata';
+import { JSDataType } from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   Field,
   Metadata,
   MetadataCache,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/core/metadata';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 

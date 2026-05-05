@@ -1,6 +1,6 @@
 import React, { act } from 'react';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
+import { ChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import {
   QueryClient,
   QueryClientProvider,
@@ -22,12 +22,12 @@ jest.mock('@/api', () => ({
 }));
 
 // Mock the clickhouse client
-jest.mock('@hyperdx/app/src/clickhouse', () => ({
+jest.mock('@berg/app/src/clickhouse', () => ({
   getClickhouseClient: jest.fn(),
 }));
 
 // Mock the metadata module
-jest.mock('@hyperdx/app/src/metadata', () => ({
+jest.mock('@berg/app/src/metadata', () => ({
   getMetadata: jest.fn(),
 }));
 
@@ -54,14 +54,14 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 }));
 
 // Mock the renderChartConfig function
-jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
+jest.mock('@berg/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),
 }));
 
 // Import mocked modules after jest.mock calls
-import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { getClickhouseClient } from '@berg/app/src/clickhouse';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {

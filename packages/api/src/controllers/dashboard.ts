@@ -2,7 +2,7 @@ import {
   DashboardWithoutIdSchema,
   SavedChartConfig,
   Tile,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { map, partition, uniq } from 'lodash';
 import { z } from 'zod';
 

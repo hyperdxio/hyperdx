@@ -1,5 +1,5 @@
 import React from 'react';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@berg/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
 import { ChartPreviewPanel } from '../ChartPreviewPanel';

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
@@ -8,7 +8,7 @@ import {
   ChartConfigWithOptTimestamp,
   SourceKind,
   TSource,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { Accordion, Divider, Stack, Text } from '@mantine/core';
 import { IconCode, IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';

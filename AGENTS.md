@@ -1,13 +1,13 @@
-# HyperDX Development Guide
+# Berg Development Guide
 
-## What is HyperDX?
+## What is Berg?
 
-HyperDX is an observability platform that helps engineers search, visualize, and
-monitor logs, metrics, traces, and session replays. It's built on ClickHouse for
-blazing-fast queries and supports OpenTelemetry natively.
+Berg is a Kibana-style web UI for AWS S3 Tables, built on top of an Athena query
+client and the Glue Data Catalog. It is a fork of HyperDX/ClickStack
+repurposed for analytical query workflows on top of S3 Tables.
 
-**Core value**: Unified observability with ClickHouse performance,
-schema-agnostic design, and correlation across all telemetry types in one place.
+**Core value**: Familiar log/discover UX for engineers, but on top of
+Athena-managed S3 Tables instead of ClickHouse.
 
 ## Architecture (WHAT)
 

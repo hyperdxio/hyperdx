@@ -3,7 +3,7 @@ import {
   Filter,
   PresetDashboard,
   PresetDashboardFilter,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import api from '@/api';

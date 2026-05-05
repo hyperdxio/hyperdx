@@ -1,35 +1,31 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
-import PQueue from '@esm2cjs/p-queue';
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import * as clickhouse from '@berg/common-utils/dist/clickhouse';
 import {
   chSqlToAliasMap,
   ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
-import {
-  getMetadata,
-  Metadata,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+} from '@berg/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/node';
+import { tryOptimizeConfigWithMaterializedView } from '@berg/common-utils/dist/core/materializedViews';
+import { getMetadata, Metadata } from '@berg/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-} from '@hyperdx/common-utils/dist/core/searchChartConfig';
+} from '@berg/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
   isTimeSeriesDisplayType,
-} from '@hyperdx/common-utils/dist/core/utils';
-import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
+} from '@berg/common-utils/dist/core/utils';
+import { timeBucketByGranularity } from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+} from '@berg/common-utils/dist/guards';
 import {
   AlertErrorType,
   AlertThresholdType,
@@ -39,7 +35,8 @@ import {
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import PQueue from '@esm2cjs/p-queue';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -516,7 +513,7 @@ const getChartConfigFromAlert = (
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const { source } = details;
     const savedSearch = details.savedSearch;
-    // Delegate to the shared builder (in @hyperdx/common-utils) so the alert
+    // Delegate to the shared builder (in @berg/common-utils) so the alert
     // task, the alert preview chart, and the main app search page all
     // assemble saved-search chart configs identically — keeping source-level
     // fields like `tableFilterExpression` applied uniformly across paths.

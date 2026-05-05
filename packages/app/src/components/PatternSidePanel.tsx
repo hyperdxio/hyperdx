@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { JSDataType } from '@berg/common-utils/dist/clickhouse';
+import { SourceKind, TSource } from '@berg/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
 // Easter egg: April Fools 2026 — see aiSummarize/ for details.

@@ -1,8 +1,8 @@
-import PQueue from '@esm2cjs/p-queue';
 import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertInterval,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import PQueue from '@esm2cjs/p-queue';
 import { ObjectId } from 'mongodb';
 
 import { AlertState } from '@/models/alert';

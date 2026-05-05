@@ -1,6 +1,6 @@
 import { Control, UseFormHandleSubmit } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import { TableConnection } from '@berg/common-utils/dist/core/metadata';
+import { SavedChartConfig } from '@berg/common-utils/dist/types';
 import { ActionIcon, Button, Flex, Menu } from '@mantine/core';
 import {
   IconDotsVertical,

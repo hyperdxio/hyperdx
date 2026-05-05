@@ -3,21 +3,21 @@ import {
   ChSql,
   chSql,
   parameterizedQueryToSql,
-} from '@hyperdx/common-utils/dist/clickhouse';
-import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+} from '@berg/common-utils/dist/clickhouse';
+import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import {
   FIXED_TIME_BUCKET_EXPR_ALIAS,
   isNonEmptyWhereExpr,
   isUsingGroupBy,
   renderChartConfig,
-} from '@hyperdx/common-utils/dist/core/renderChartConfig';
+} from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   AggregateFunction,
   BuilderChartConfigWithOptDateRange,
   DerivedColumn,
   QuerySettings,
   SQLInterval,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 
 const HDX_DATABASE = 'hyperdx'; // all materialized views should sit in this database
 

@@ -5,12 +5,12 @@ import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { NumberParam } from 'serialize-query-params';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   SearchCondition,
   SearchConditionLanguage,
   SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
 import {
   Anchor,
   Box,

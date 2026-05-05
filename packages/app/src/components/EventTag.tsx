@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import SqlString from 'sqlstring';
-import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
+import { SearchConditionLanguage } from '@berg/common-utils/dist/types';
 import { Button, Group, Popover, Stack, Text, Tooltip } from '@mantine/core';
 import { IconCirclePlus, IconLink, IconSearch } from '@tabler/icons-react';
 

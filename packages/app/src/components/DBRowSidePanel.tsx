@@ -20,8 +20,8 @@ import {
   TLogSource,
   TSource,
   TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+} from '@berg/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
 import DBRowSidePanelHeader, {

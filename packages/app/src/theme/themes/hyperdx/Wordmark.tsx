@@ -21,7 +21,7 @@ export default function Wordmark() {
           fontSize: 15,
         }}
       >
-        HyperDX
+        Berg
       </span>
     </div>
   );

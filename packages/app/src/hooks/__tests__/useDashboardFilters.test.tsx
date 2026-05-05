@@ -1,4 +1,4 @@
-import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter, Filter } from '@berg/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import useDashboardFilters from '../useDashboardFilters';
