@@ -17,7 +17,7 @@ import {
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
 import { replaceMacros } from '@/macros';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import { SearchQueryBuilder, TrinoSchemaSerializer } from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
@@ -814,12 +814,31 @@ async function renderWhereExpressionStr({
 }): Promise<string> {
   let _condition = condition;
   if (language === 'lucene') {
-    const serializer = new CustomSchemaSQLSerializerV2({
-      metadata,
-      databaseName: from.databaseName,
-      tableName: from.tableName,
+    // Fetch the table's column list so the Trino serializer can validate
+    // identifiers and pick numeric vs. string comparison shapes. When the
+    // metadata fetch fails (CTEs, missing tables, etc.) fall back to an
+    // empty schema — TrinoSchemaSerializer will then reject every field,
+    // which surfaces as an explicit "column not found" parse error rather
+    // than producing silently wrong SQL.
+    let columns: { name: string; type: string }[] = [];
+    if (from.databaseName && from.tableName) {
+      try {
+        const fetched = await metadata.getColumns({
+          databaseName: from.databaseName,
+          tableName: from.tableName,
+          connectionId,
+        });
+        columns = (fetched ?? []).map(c => ({
+          name: c.name,
+          type: c.type,
+        }));
+      } catch {
+        // ignore — empty schema falls through
+      }
+    }
+    const serializer = new TrinoSchemaSerializer({
+      columns,
       implicitColumnExpression,
-      connectionId: connectionId,
     });
     const builder = new SearchQueryBuilder(condition, serializer);
     _condition = await builder.build();

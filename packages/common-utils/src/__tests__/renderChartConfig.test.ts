@@ -33,9 +33,18 @@ describe('renderChartConfig', () => {
       { name: 'ServiceName', type: 'String' },
     ];
     mockMetadata = {
+      // getColumns must return the full column list so the
+      // TrinoSchemaSerializer can validate identifiers used in Lucene
+      // filters (severity, ServiceName, etc.). Tests append to this list
+      // when they need additional fields.
       getColumns: jest.fn().mockResolvedValue([
         { name: 'timestamp', type: 'DateTime' },
         { name: 'value', type: 'Float64' },
+        { name: 'TraceId', type: 'String' },
+        { name: 'ServiceName', type: 'String' },
+        { name: 'severity', type: 'String' },
+        { name: 'Duration', type: 'Float64' },
+        { name: 'Body', type: 'String' },
       ]),
       getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
       getColumn: jest
@@ -1519,7 +1528,7 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain(
-        "avgMergeIf(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
+        "avgMergeIf(Duration, ((\"severity\" = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
       );
       expect(actual).toMatchSnapshot();
     });
@@ -1555,7 +1564,7 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain(
-        "quantileMergeIf(0.95)(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
+        "quantileMergeIf(0.95)(Duration, ((\"severity\" = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
       );
       expect(actual).toMatchSnapshot();
     });
@@ -1946,7 +1955,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
       expect(result.sql).toBe(
-        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')))",
+        "SELECT * FROM logs WHERE (((lower(\"ServiceName\") LIKE lower('%api%'))))",
       );
     });
 
@@ -1972,7 +1981,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
       expect(result.sql).toBe(
-        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')) AND (duration > 100))",
+        "SELECT * FROM logs WHERE (((lower(\"ServiceName\") LIKE lower('%api%'))) AND (duration > 100))",
       );
     });
 
