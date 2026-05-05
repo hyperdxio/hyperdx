@@ -88,6 +88,11 @@ app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
+// Berg query lifecycle + Glue catalog discovery — every route here
+// passes through the team-isolation gate via `isUserAuthenticated` and
+// the controller-level checks (sourceId team ownership, write rejection).
+app.use('/api/v1/query', isUserAuthenticated, routers.queryRouter);
+app.use('/api/v1', isUserAuthenticated, routers.catalogRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

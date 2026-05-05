@@ -7,11 +7,11 @@ jest.spyOn(console, 'debug').mockImplementation(() => {});
 jest.spyOn(console, 'info').mockImplementation(() => {});
 jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-// Mock alert notification functions to prevent HTTP calls during tests
-jest.mock('@/utils/slack', () => ({
-  ...jest.requireActual('@/utils/slack'),
-  postMessageToWebhook: jest.fn().mockResolvedValue(null),
-}));
+// NOTE (Berg / Task 2): @/utils/slack was deleted along with the alert
+// surface; the previous `jest.mock('@/utils/slack', ...)` would now error
+// out before any test file could load.  We keep the global `fetch` mock so
+// the few remaining webhook callsites (e.g. external API integrations) do
+// not hit the network during tests.
 
 // Mock global fetch for generic webhook calls
 global.fetch = jest.fn().mockResolvedValue({

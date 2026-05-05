@@ -1,7 +1,9 @@
+import catalogRouter from './catalog';
 import dashboardRouter from './dashboards';
 import favoritesRouter from './favorites';
 import meRouter from './me';
 import pinnedFiltersRouter from './pinnedFilters';
+import queryRouter from './query';
 import rootRouter from './root';
 import savedSearchRouter from './savedSearch';
 import sourcesRouter from './sources';
@@ -16,4 +18,6 @@ export default {
   sourcesRouter,
   favoritesRouter,
   pinnedFiltersRouter,
+  queryRouter,
+  catalogRouter,
 };
