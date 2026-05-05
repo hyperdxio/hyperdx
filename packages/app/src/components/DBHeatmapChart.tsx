@@ -615,8 +615,6 @@ function HeatmapContainer({
     [fromMs, toMs, granularity],
   );
 
-  const timestampColumn = inferTimestampColumn(data?.meta ?? []);
-
   // Build the [time, bucket, count] arrays that feed uPlot. Memoized so the
   // inner references stay stable when only the URL filter params change
   // (drag-select writes xMin/xMax/yMin/yMax). uplot-react's dataMatch
@@ -625,9 +623,13 @@ function HeatmapContainer({
   // refs here keep dataMatch happy and the dashed selection rectangle
   // visible after the user releases the mouse.
   const heatmapData = useMemo<Mode2DataArray>(() => {
-    const time: number[] = []; // x values
-    const bucket: number[] = []; // y value series 1
-    const count: number[] = []; // y value series 2
+    const time: number[] = [];
+    const bucket: number[] = [];
+    const count: number[] = [];
+
+    // timestampColumn is fully derived from data.meta, so it doesn't need
+    // to be a separate hook dep — having data as a dep is sufficient.
+    const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
     if (data == null || timestampColumn == null) {
       return [time, bucket, count];
@@ -679,15 +681,7 @@ function HeatmapContainer({
     }
 
     return [time, bucket, count];
-  }, [
-    data,
-    timestampColumn,
-    generatedTsBuckets,
-    scaleType,
-    effectiveMin,
-    max,
-    nBuckets,
-  ]);
+  }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
   const time = heatmapData[0];
 
