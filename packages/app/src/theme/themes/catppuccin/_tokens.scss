@@ -1,0 +1,198 @@
+/* Catppuccin Theme Design Tokens */
+
+/* Mocha (dark) / Latte (light) - soothing pastel palette */
+/* https://github.com/catppuccin/catppuccin */
+
+@use '../shared-chart-tokens' as chart;
+
+@mixin dark-mode-tokens {
+  /* Mocha palette backgrounds */
+  --color-bg-body: #1e1e2e;
+  --color-bg-surface: #181825;
+  --color-bg-inverted: #cdd6f4;
+  --color-bg-muted: #11111b;
+  --color-bg-highlighted: rgb(49 50 68 / 70%);
+  --color-bg-sidenav: #181825;
+  --color-bg-sidenav-link-active: #313244;
+  --color-bg-sidenav-link-active-hover: #45475a;
+  --color-bg-header: #181825;
+  --color-bg-hover: #313244;
+  --color-bg-active: #45475a;
+  --color-bg-field: #313244;
+  --color-bg-field-highlighted: #45475a;
+  --color-bg-field-addon: #45475a;
+  --color-bg-neutral: #585b70;
+  --color-bg-brand: #cba6f7;
+  --color-bg-brand-hover: #b4befe;
+  --color-bg-success: #a6e3a1;
+  --color-bg-danger: #f38ba8;
+  --color-bg-warning: #fab387;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(203 166 247 / 15%);
+  --color-primary-button-bg-hover: rgb(203 166 247 / 25%);
+  --color-primary-button-text: #cba6f7;
+
+  /* Borders & Dividers */
+  --color-border: #45475a;
+  --color-border-emphasis: #585b70;
+  --color-border-muted: rgb(255 255 255 / 6%);
+
+  /* Text */
+  --color-text: #cdd6f4;
+  --color-text-inverted: #1e1e2e;
+  --color-text-primary: #cba6f7;
+  --color-text-primary-hover: #b4befe;
+  --color-text-secondary: #bac2de;
+  --color-text-muted: #a6adc8;
+  --color-text-muted-hover: #bac2de;
+  --color-text-brand: #cba6f7;
+  --color-text-brand-hover: #b4befe;
+  --color-text-success: #a6e3a1;
+  --color-text-success-hover: #b8eeb4;
+  --color-text-danger: #f38ba8;
+  --color-text-sidenav-link: #bac2de;
+  --color-text-sidenav-link-active: #cba6f7;
+
+  /* Icons */
+  --color-icon-primary: #cdd6f4;
+  --color-icon-muted: #585b70;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 50%);
+  --color-backdrop: rgb(0 0 0 / 30%);
+
+  /* States */
+  --color-state-hover: #313244;
+  --color-state-selected: #45475a;
+  --color-state-focus: #585b70;
+  --color-outline-focus: #cba6f7;
+
+  /* Slider */
+  --color-slider-bar: #cba6f7;
+  --color-slider-thumb: #cba6f7;
+  --color-slider-thumb-border: #cba6f7;
+  --color-slider-dot: #585b70;
+  --color-slider-dot-active: #b4befe;
+
+  /* Code / Misc UI */
+  --color-bg-code: #11111b;
+  --color-border-code: #45475a;
+  --color-bg-kbd: #1e1e2e;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #a6e3a1;
+  --color-json-number: #fab387;
+  --color-json-boolean: #fab387;
+  --color-json-key: #89b4fa;
+  --color-json-object: #a6e3a1;
+  --color-json-array: #a6e3a1;
+  --color-json-punctuation: #585b70;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
+  --mantine-color-text: var(--color-text);
+}
+
+@mixin light-mode-tokens {
+  /* Latte palette backgrounds */
+  --color-bg-body: #eff1f5;
+  --color-bg-surface: #e6e9ef;
+  --color-bg-inverted: #4c4f69;
+  --color-bg-muted: #dce0e8;
+  --color-bg-highlighted: rgb(220 224 232 / 70%);
+  --color-bg-sidenav: #e6e9ef;
+  --color-bg-sidenav-link-active: #dce0e8;
+  --color-bg-sidenav-link-active-hover: #ccd0da;
+  --color-bg-header: #e6e9ef;
+  --color-bg-hover: #dce0e8;
+  --color-bg-active: #ccd0da;
+  --color-bg-field: #ffffff;
+  --color-bg-field-highlighted: #eff1f5;
+  --color-bg-field-addon: #eff1f5;
+  --color-bg-neutral: #9ca0b0;
+  --color-bg-brand: #8839ef;
+  --color-bg-brand-hover: #7287fd;
+  --color-bg-success: #40a02b;
+  --color-bg-danger: #d20f39;
+  --color-bg-warning: #fe640b;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(136 57 239 / 12%);
+  --color-primary-button-bg-hover: rgb(136 57 239 / 22%);
+  --color-primary-button-text: #8839ef;
+
+  /* Borders & Dividers */
+  --color-border: #ccd0da;
+  --color-border-emphasis: #bcc0cc;
+  --color-border-muted: rgb(0 0 0 / 6%);
+
+  /* Text */
+  --color-text: #4c4f69;
+  --color-text-inverted: #eff1f5;
+  --color-text-primary: #8839ef;
+  --color-text-primary-hover: #7287fd;
+  --color-text-secondary: #6c6f85;
+  --color-text-muted: #8c8fa1;
+  --color-text-muted-hover: #6c6f85;
+  --color-text-brand: #8839ef;
+  --color-text-brand-hover: #7287fd;
+  --color-text-success: #40a02b;
+  --color-text-success-hover: #358520;
+  --color-text-danger: #d20f39;
+  --color-text-sidenav-link: #6c6f85;
+  --color-text-sidenav-link-active: #8839ef;
+
+  /* Icons */
+  --color-icon-primary: #4c4f69;
+  --color-icon-muted: #9ca0b0;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 30%);
+  --color-backdrop: rgb(0 0 0 / 10%);
+
+  /* States */
+  --color-state-hover: #dce0e8;
+  --color-state-selected: #ccd0da;
+  --color-state-focus: #bcc0cc;
+  --color-outline-focus: #8839ef;
+
+  /* Slider */
+  --color-slider-bar: #8839ef;
+  --color-slider-thumb: #8839ef;
+  --color-slider-thumb-border: #8839ef;
+  --color-slider-dot: #9ca0b0;
+  --color-slider-dot-active: #ccd0da;
+
+  /* Code / Misc UI */
+  --color-bg-code: #dce0e8;
+  --color-border-code: #ccd0da;
+  --color-bg-kbd: #e6e9ef;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #40a02b;
+  --color-json-number: #fe640b;
+  --color-json-boolean: #fe640b;
+  --color-json-key: #1e66f5;
+  --color-json-object: #40a02b;
+  --color-json-array: #40a02b;
+  --color-json-punctuation: #9ca0b0;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+  --mantine-color-text: var(--color-text);
+}
+
+/* Dark Mode - scoped to .theme-catppuccin */
+.theme-catppuccin[data-mantine-color-scheme='dark'] {
+  @include dark-mode-tokens;
+}
+
+/* Light Mode - scoped to .theme-catppuccin */
+.theme-catppuccin[data-mantine-color-scheme='light'] {
+  @include light-mode-tokens;
+}

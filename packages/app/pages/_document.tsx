@@ -3,14 +3,26 @@ import { Head, Html, Main, NextScript } from 'next/document';
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 
+const VALID_THEME_NAMES = [
+  'hyperdx',
+  'clickstack',
+  'nord',
+  'catppuccin',
+  'onedark',
+] as const;
+
+type ValidThemeName = (typeof VALID_THEME_NAMES)[number];
+
+function isValidThemeName(name: string | undefined): name is ValidThemeName {
+  return VALID_THEME_NAMES.includes(name as ValidThemeName);
+}
+
 // Get theme class for SSR - must match ThemeProvider's resolution
 // This ensures CSS variables are applied during server-side rendering
 // to prevent hydration mismatch with button styling
 function getThemeClass(): string {
   const envTheme = process.env.NEXT_PUBLIC_THEME;
-  // Default to hyperdx if not set or invalid
-  const themeName =
-    envTheme === 'hyperdx' || envTheme === 'clickstack' ? envTheme : 'hyperdx';
+  const themeName = isValidThemeName(envTheme) ? envTheme : 'hyperdx';
   return `theme-${themeName}`;
 }
 

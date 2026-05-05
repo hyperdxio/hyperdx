@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
+import { catppuccinTheme } from './themes/catppuccin';
 import { clickstackTheme } from './themes/clickstack';
 import { hyperdxTheme } from './themes/hyperdx';
+import { nordTheme } from './themes/nord';
+import { onedarkTheme } from './themes/onedark';
 import { ThemeConfig, ThemeName } from './types';
 
 /**
@@ -51,7 +54,7 @@ const faviconConfigSchema = z.object({
 });
 
 const themeConfigSchema = z.object({
-  name: z.enum(['hyperdx', 'clickstack']),
+  name: z.enum(['hyperdx', 'clickstack', 'nord', 'catppuccin', 'onedark']),
   displayName: z.string().min(1),
   cssClass: z.string().min(1),
   favicon: faviconConfigSchema,
@@ -108,6 +111,9 @@ function validateThemeConfig(
 try {
   validateThemeConfig(hyperdxTheme, 'hyperdx');
   validateThemeConfig(clickstackTheme, 'clickstack');
+  validateThemeConfig(nordTheme, 'nord');
+  validateThemeConfig(catppuccinTheme, 'catppuccin');
+  validateThemeConfig(onedarkTheme, 'onedark');
 } catch (error) {
   // Log error but don't crash - fallback to default theme
   console.error(
@@ -124,6 +130,9 @@ try {
 export const themes: Record<ThemeName, ThemeConfig> = {
   hyperdx: hyperdxTheme,
   clickstack: clickstackTheme,
+  nord: nordTheme,
+  catppuccin: catppuccinTheme,
+  onedark: onedarkTheme,
 };
 
 // Check if we're in development/local mode

@@ -1,0 +1,34 @@
+/* Shared Chart Color Tokens */
+
+/*
+ * Reusable chart palette mixin based on the ClickStack/Observable categorical palette.
+ * Include this mixin inside any theme's dark or light mode token block to avoid duplication.
+ *
+ * Note: Chart colors are intentionally the same for dark and light mode in most themes —
+ * they are perceptually balanced for both contexts. Override individual vars after @include
+ * if a theme needs to adjust specific chart colors.
+ */
+
+@mixin chart-tokens {
+  /* Chart Colors - Observable 10 categorical palette */
+  --color-chart-1: #437eef; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+
+  /* Chart Semantic Colors */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-success-highlight: #80d9b3;
+  --color-chart-warning-highlight: #f5c94d;
+  --color-chart-error-highlight: #ffa090;
+}

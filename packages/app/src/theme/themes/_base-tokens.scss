@@ -10,6 +10,9 @@
 
 @use './hyperdx/tokens' as hyperdx-tokens;
 @use './clickstack/tokens' as clickstack-tokens;
+@use './nord/tokens' as nord-tokens;
+@use './catppuccin/tokens' as catppuccin-tokens;
+@use './onedark/tokens' as onedark-tokens;
 
 /* Dark Mode (default fallback) - uses HyperDX tokens */
 [data-mantine-color-scheme='dark'] {

@@ -1,0 +1,198 @@
+/* One Dark Theme Design Tokens */
+
+/* Atom's iconic dark theme and its light counterpart */
+/* https://github.com/atom/atom/tree/master/packages/one-dark-ui */
+
+@use '../shared-chart-tokens' as chart;
+
+@mixin dark-mode-tokens {
+  /* One Dark backgrounds */
+  --color-bg-body: #282c34;
+  --color-bg-surface: #21252b;
+  --color-bg-inverted: #abb2bf;
+  --color-bg-muted: #1d2025;
+  --color-bg-highlighted: rgb(40 44 52 / 80%);
+  --color-bg-sidenav: #21252b;
+  --color-bg-sidenav-link-active: #2c313a;
+  --color-bg-sidenav-link-active-hover: #353b45;
+  --color-bg-header: #21252b;
+  --color-bg-hover: #2c313a;
+  --color-bg-active: #353b45;
+  --color-bg-field: #2c313a;
+  --color-bg-field-highlighted: #353b45;
+  --color-bg-field-addon: #353b45;
+  --color-bg-neutral: #4b5263;
+  --color-bg-brand: #61afef;
+  --color-bg-brand-hover: #56b6c2;
+  --color-bg-success: #98c379;
+  --color-bg-danger: #e06c75;
+  --color-bg-warning: #e5c07b;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(97 175 239 / 18%);
+  --color-primary-button-bg-hover: rgb(97 175 239 / 28%);
+  --color-primary-button-text: #61afef;
+
+  /* Borders & Dividers */
+  --color-border: #3e4451;
+  --color-border-emphasis: #4b5263;
+  --color-border-muted: rgb(255 255 255 / 6%);
+
+  /* Text */
+  --color-text: #abb2bf;
+  --color-text-inverted: #282c34;
+  --color-text-primary: #61afef;
+  --color-text-primary-hover: #56b6c2;
+  --color-text-secondary: #828997;
+  --color-text-muted: #5c6370;
+  --color-text-muted-hover: #828997;
+  --color-text-brand: #61afef;
+  --color-text-brand-hover: #56b6c2;
+  --color-text-success: #98c379;
+  --color-text-success-hover: #a8cf8c;
+  --color-text-danger: #e06c75;
+  --color-text-sidenav-link: #828997;
+  --color-text-sidenav-link-active: #61afef;
+
+  /* Icons */
+  --color-icon-primary: #abb2bf;
+  --color-icon-muted: #4b5263;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 50%);
+  --color-backdrop: rgb(0 0 0 / 30%);
+
+  /* States */
+  --color-state-hover: #2c313a;
+  --color-state-selected: #353b45;
+  --color-state-focus: #4b5263;
+  --color-outline-focus: #61afef;
+
+  /* Slider */
+  --color-slider-bar: #61afef;
+  --color-slider-thumb: #61afef;
+  --color-slider-thumb-border: #61afef;
+  --color-slider-dot: #4b5263;
+  --color-slider-dot-active: #56b6c2;
+
+  /* Code / Misc UI */
+  --color-bg-code: #1d2025;
+  --color-border-code: #3e4451;
+  --color-bg-kbd: #282c34;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #98c379;
+  --color-json-number: #d19a66;
+  --color-json-boolean: #d19a66;
+  --color-json-key: #61afef;
+  --color-json-object: #98c379;
+  --color-json-array: #98c379;
+  --color-json-punctuation: #4b5263;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
+  --mantine-color-text: var(--color-text);
+}
+
+@mixin light-mode-tokens {
+  /* One Light backgrounds */
+  --color-bg-body: #fafafa;
+  --color-bg-surface: #f0f0f0;
+  --color-bg-inverted: #494b53;
+  --color-bg-muted: #e8e8e8;
+  --color-bg-highlighted: rgb(232 232 232 / 70%);
+  --color-bg-sidenav: #f0f0f0;
+  --color-bg-sidenav-link-active: #e8e8e8;
+  --color-bg-sidenav-link-active-hover: #dedede;
+  --color-bg-header: #f0f0f0;
+  --color-bg-hover: #e8e8e8;
+  --color-bg-active: #dedede;
+  --color-bg-field: #ffffff;
+  --color-bg-field-highlighted: #fafafa;
+  --color-bg-field-addon: #fafafa;
+  --color-bg-neutral: #a0a1a7;
+  --color-bg-brand: #4078f2;
+  --color-bg-brand-hover: #0184bc;
+  --color-bg-success: #50a14f;
+  --color-bg-danger: #e45649;
+  --color-bg-warning: #c18401;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(64 120 242 / 12%);
+  --color-primary-button-bg-hover: rgb(64 120 242 / 22%);
+  --color-primary-button-text: #4078f2;
+
+  /* Borders & Dividers */
+  --color-border: #dedede;
+  --color-border-emphasis: #cecece;
+  --color-border-muted: rgb(0 0 0 / 6%);
+
+  /* Text */
+  --color-text: #383a42;
+  --color-text-inverted: #fafafa;
+  --color-text-primary: #4078f2;
+  --color-text-primary-hover: #0184bc;
+  --color-text-secondary: #696c77;
+  --color-text-muted: #a0a1a7;
+  --color-text-muted-hover: #696c77;
+  --color-text-brand: #4078f2;
+  --color-text-brand-hover: #0184bc;
+  --color-text-success: #50a14f;
+  --color-text-success-hover: #3d8a3c;
+  --color-text-danger: #e45649;
+  --color-text-sidenav-link: #696c77;
+  --color-text-sidenav-link-active: #4078f2;
+
+  /* Icons */
+  --color-icon-primary: #383a42;
+  --color-icon-muted: #a0a1a7;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 30%);
+  --color-backdrop: rgb(0 0 0 / 10%);
+
+  /* States */
+  --color-state-hover: #e8e8e8;
+  --color-state-selected: #dedede;
+  --color-state-focus: #cecece;
+  --color-outline-focus: #4078f2;
+
+  /* Slider */
+  --color-slider-bar: #4078f2;
+  --color-slider-thumb: #4078f2;
+  --color-slider-thumb-border: #4078f2;
+  --color-slider-dot: #a0a1a7;
+  --color-slider-dot-active: #dedede;
+
+  /* Code / Misc UI */
+  --color-bg-code: #e8e8e8;
+  --color-border-code: #dedede;
+  --color-bg-kbd: #f0f0f0;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #50a14f;
+  --color-json-number: #986801;
+  --color-json-boolean: #986801;
+  --color-json-key: #4078f2;
+  --color-json-object: #50a14f;
+  --color-json-array: #50a14f;
+  --color-json-punctuation: #a0a1a7;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+  --mantine-color-text: var(--color-text);
+}
+
+/* Dark Mode - scoped to .theme-onedark */
+.theme-onedark[data-mantine-color-scheme='dark'] {
+  @include dark-mode-tokens;
+}
+
+/* Light Mode - scoped to .theme-onedark */
+.theme-onedark[data-mantine-color-scheme='light'] {
+  @include light-mode-tokens;
+}

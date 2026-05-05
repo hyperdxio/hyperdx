@@ -49,6 +49,8 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+- `agent_docs/theming.md` - Theme system, CSS variable conventions, and how to
+  add new themes (read when working on UI theming)
 
 **After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
 and lint issues across all packages. Pre-commit hooks handle this when

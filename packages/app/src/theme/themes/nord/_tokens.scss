@@ -1,0 +1,198 @@
+/* Nord Theme Design Tokens */
+
+/* Arctic, bluish color palette inspired by the Nord IDE theme */
+/* https://www.nordtheme.com/ */
+
+@use '../shared-chart-tokens' as chart;
+
+@mixin dark-mode-tokens {
+  /* Backgrounds - Polar Night */
+  --color-bg-body: #2e3440;
+  --color-bg-surface: #3b4252;
+  --color-bg-inverted: #d8dee9;
+  --color-bg-muted: #242933;
+  --color-bg-highlighted: rgb(67 76 94 / 70%);
+  --color-bg-sidenav: #2e3440;
+  --color-bg-sidenav-link-active: #3b4252;
+  --color-bg-sidenav-link-active-hover: #434c5e;
+  --color-bg-header: #2e3440;
+  --color-bg-hover: #434c5e;
+  --color-bg-active: #4c566a;
+  --color-bg-field: #3b4252;
+  --color-bg-field-highlighted: #434c5e;
+  --color-bg-field-addon: #434c5e;
+  --color-bg-neutral: #4c566a;
+  --color-bg-brand: #88c0d0;
+  --color-bg-brand-hover: #81a1c1;
+  --color-bg-success: #a3be8c;
+  --color-bg-danger: #bf616a;
+  --color-bg-warning: #ebcb8b;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(136 192 208 / 20%);
+  --color-primary-button-bg-hover: rgb(136 192 208 / 30%);
+  --color-primary-button-text: #88c0d0;
+
+  /* Borders & Dividers */
+  --color-border: #434c5e;
+  --color-border-emphasis: #4c566a;
+  --color-border-muted: rgb(255 255 255 / 7%);
+
+  /* Text - Snow Storm */
+  --color-text: #eceff4;
+  --color-text-inverted: #2e3440;
+  --color-text-primary: #88c0d0;
+  --color-text-primary-hover: #8fbcbb;
+  --color-text-secondary: #d8dee9;
+  --color-text-muted: #adb5c0;
+  --color-text-muted-hover: #d8dee9;
+  --color-text-brand: #88c0d0;
+  --color-text-brand-hover: #8fbcbb;
+  --color-text-success: #a3be8c;
+  --color-text-success-hover: #b5cf9e;
+  --color-text-danger: #bf616a;
+  --color-text-sidenav-link: #d8dee9;
+  --color-text-sidenav-link-active: #88c0d0;
+
+  /* Icons */
+  --color-icon-primary: #d8dee9;
+  --color-icon-muted: #4c566a;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 50%);
+  --color-backdrop: rgb(0 0 0 / 30%);
+
+  /* States */
+  --color-state-hover: #434c5e;
+  --color-state-selected: #4c566a;
+  --color-state-focus: #4c566a;
+  --color-outline-focus: #88c0d0;
+
+  /* Slider */
+  --color-slider-bar: #88c0d0;
+  --color-slider-thumb: #88c0d0;
+  --color-slider-thumb-border: #88c0d0;
+  --color-slider-dot: #4c566a;
+  --color-slider-dot-active: #81a1c1;
+
+  /* Code / Misc UI */
+  --color-bg-code: #242933;
+  --color-border-code: #434c5e;
+  --color-bg-kbd: #2e3440;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #a3be8c;
+  --color-json-number: #d08770;
+  --color-json-boolean: #d08770;
+  --color-json-key: #81a1c1;
+  --color-json-object: #a3be8c;
+  --color-json-array: #a3be8c;
+  --color-json-punctuation: #4c566a;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
+  --mantine-color-text: var(--color-text);
+}
+
+@mixin light-mode-tokens {
+  /* Backgrounds - Snow Storm */
+  --color-bg-body: #eceff4;
+  --color-bg-surface: #e5e9f0;
+  --color-bg-inverted: #4c566a;
+  --color-bg-muted: #d8dee9;
+  --color-bg-highlighted: rgb(216 222 233 / 70%);
+  --color-bg-sidenav: #e5e9f0;
+  --color-bg-sidenav-link-active: #d8dee9;
+  --color-bg-sidenav-link-active-hover: #cdd3de;
+  --color-bg-header: #e5e9f0;
+  --color-bg-hover: #d8dee9;
+  --color-bg-active: #cdd3de;
+  --color-bg-field: #ffffff;
+  --color-bg-field-highlighted: #eceff4;
+  --color-bg-field-addon: #eceff4;
+  --color-bg-neutral: #adb5c0;
+  --color-bg-brand: #5e81ac;
+  --color-bg-brand-hover: #4c6f9a;
+  --color-bg-success: #4a7c59;
+  --color-bg-danger: #9a3a42;
+  --color-bg-warning: #8a6a1e;
+
+  /* Primary Button */
+  --color-primary-button-bg: rgb(94 129 172 / 15%);
+  --color-primary-button-bg-hover: rgb(94 129 172 / 25%);
+  --color-primary-button-text: #5e81ac;
+
+  /* Borders & Dividers */
+  --color-border: #cdd3de;
+  --color-border-emphasis: #adb5c0;
+  --color-border-muted: rgb(0 0 0 / 6%);
+
+  /* Text */
+  --color-text: #2e3440;
+  --color-text-inverted: #eceff4;
+  --color-text-primary: #5e81ac;
+  --color-text-primary-hover: #4c6f9a;
+  --color-text-secondary: #4c566a;
+  --color-text-muted: #677080;
+  --color-text-muted-hover: #4c566a;
+  --color-text-brand: #5e81ac;
+  --color-text-brand-hover: #4c6f9a;
+  --color-text-success: #4a7c59;
+  --color-text-success-hover: #3d6749;
+  --color-text-danger: #9a3a42;
+  --color-text-sidenav-link: #4c566a;
+  --color-text-sidenav-link-active: #5e81ac;
+
+  /* Icons */
+  --color-icon-primary: #3b4252;
+  --color-icon-muted: #adb5c0;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 30%);
+  --color-backdrop: rgb(0 0 0 / 10%);
+
+  /* States */
+  --color-state-hover: #d8dee9;
+  --color-state-selected: #cdd3de;
+  --color-state-focus: #b8c0cc;
+  --color-outline-focus: #5e81ac;
+
+  /* Slider */
+  --color-slider-bar: #5e81ac;
+  --color-slider-thumb: #5e81ac;
+  --color-slider-thumb-border: #5e81ac;
+  --color-slider-dot: #adb5c0;
+  --color-slider-dot-active: #cdd3de;
+
+  /* Code / Misc UI */
+  --color-bg-code: #d8dee9;
+  --color-border-code: #cdd3de;
+  --color-bg-kbd: #e5e9f0;
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #4a7c59;
+  --color-json-number: #914b33;
+  --color-json-boolean: #914b33;
+  --color-json-key: #4c6f9a;
+  --color-json-object: #4a7c59;
+  --color-json-array: #4a7c59;
+  --color-json-punctuation: #8890a0;
+
+  @include chart.chart-tokens;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+  --mantine-color-text: var(--color-text);
+}
+
+/* Dark Mode - scoped to .theme-nord */
+.theme-nord[data-mantine-color-scheme='dark'] {
+  @include dark-mode-tokens;
+}
+
+/* Light Mode - scoped to .theme-nord */
+.theme-nord[data-mantine-color-scheme='light'] {
+  @include light-mode-tokens;
+}
