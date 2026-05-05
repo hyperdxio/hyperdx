@@ -600,39 +600,59 @@ function HeatmapContainer({
     enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
   });
 
-  const generatedTsBuckets = timeBucketByGranularity(
-    dateRange[0],
-    dateRange[1],
-    granularity,
+  // Memoize so the array refs are stable across re-renders that don't
+  // change the underlying time range or granularity. Without this,
+  // timeBucketByGranularity returns a fresh Date[] each render, which
+  // would propagate into the heatmapData useMemo deps and defeat its
+  // own memoization.
+  const fromMs = dateRange[0]?.getTime() ?? 0;
+  const toMs = dateRange[1]?.getTime() ?? 0;
+  const generatedTsBuckets = useMemo(
+    () => timeBucketByGranularity(dateRange[0], dateRange[1], granularity),
+    // dateRange itself may be a fresh array each render; depend on the
+    // primitive timestamps + granularity instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fromMs, toMs, granularity],
   );
 
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
-  // Compute the y-axis value for a given bucket index.
-  // For log scale we store values in log space so that bins are uniformly
-  // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
-  // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
-  // with actual log-spaced values the first increment is tiny relative to the
-  // full range and tiles render at ~0px height (invisible).
-  const bucketToYValue = (j: number) => {
-    if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
-      // Return the natural-log of the actual bucket boundary so that the
-      // y-values are uniformly spaced.  Tick labels are exponentiated back
-      // via the tickFormatter below.
-      const actualValue =
-        effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
-      return Math.log(actualValue);
+  // Build the [time, bucket, count] arrays that feed uPlot. Memoized so the
+  // inner references stay stable when only the URL filter params change
+  // (drag-select writes xMin/xMax/yMin/yMax). uplot-react's dataMatch
+  // compares each series entry with === ; if the inner refs change, it calls
+  // setData(data, true), which resets uPlot's u.select rectangle. Stable
+  // refs here keep dataMatch happy and the dashed selection rectangle
+  // visible after the user releases the mouse.
+  const heatmapData = useMemo<Mode2DataArray>(() => {
+    const time: number[] = []; // x values
+    const bucket: number[] = []; // y value series 1
+    const count: number[] = []; // y value series 2
+
+    if (data == null || timestampColumn == null) {
+      return [time, bucket, count];
     }
-    // Linear: min + j * step
-    return effectiveMin + j * ((max - effectiveMin) / nBuckets);
-  };
 
-  const time: number[] = []; // x values
-  const bucket: number[] = []; // y value series 1
-  const count: number[] = []; // y value series 2
-  if (data != null && timestampColumn != null) {
+    // Compute the y-axis value for a given bucket index.
+    // For log scale we store values in log space so that bins are uniformly
+    // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
+    // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
+    // with actual log-spaced values the first increment is tiny relative to
+    // the full range and tiles render at ~0px height (invisible).
+    const bucketToYValue = (j: number) => {
+      if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
+        // Return the natural-log of the actual bucket boundary so that the
+        // y-values are uniformly spaced.  Tick labels are exponentiated back
+        // via the tickFormatter below.
+        const actualValue =
+          effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+        return Math.log(actualValue);
+      }
+      // Linear: min + j * step
+      return effectiveMin + j * ((max - effectiveMin) / nBuckets);
+    };
+
     let dataIndex = 0;
-
     for (let i = 0; i < generatedTsBuckets.length; i++) {
       const generatedTs = generatedTsBuckets[i].getTime();
 
@@ -657,7 +677,19 @@ function HeatmapContainer({
         }
       }
     }
-  }
+
+    return [time, bucket, count];
+  }, [
+    data,
+    timestampColumn?.name,
+    generatedTsBuckets,
+    scaleType,
+    effectiveMin,
+    max,
+    nBuckets,
+  ]);
+
+  const [time, bucket, count] = heatmapData;
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -743,7 +775,7 @@ function HeatmapContainer({
       ) : (
         <Heatmap
           key={JSON.stringify(config)}
-          data={[time, bucket, count]}
+          data={heatmapData}
           numberFormat={config.numberFormat}
           onFilter={
             onFilter
