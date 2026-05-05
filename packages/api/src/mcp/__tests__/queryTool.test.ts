@@ -94,6 +94,18 @@ describe('MCP Query Tool', () => {
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+      // MCP Apps: ensure the widget contract is populated.
+      const structured = (
+        result as { structuredContent?: Record<string, unknown> }
+      ).structuredContent;
+      expect(structured).toBeDefined();
+      expect(structured?.displayType).toBe('line');
+      expect(structured?.config).toBeDefined();
+      expect(structured?.data).toBeDefined();
+      expect(
+        (structured?.links as { openInHyperdxUrl?: string } | undefined)
+          ?.openInHyperdxUrl,
+      ).toMatch(/\/chart\?/);
     });
 
     it('should execute a table query', async () => {
