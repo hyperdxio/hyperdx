@@ -28,6 +28,7 @@ import {
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
+  ExternalDashboardHeatmapSelectItem,
   ExternalDashboardRawSqlTileConfig,
   externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
@@ -87,6 +88,18 @@ const DEFAULT_SELECT_ITEM: ExternalDashboardSelectItem = {
   aggFn: 'count',
   where: '',
 };
+
+const convertToExternalHeatmapSelectItem = (
+  item: Exclude<BuilderSavedChartConfig['select'][number], string> | undefined,
+): ExternalDashboardHeatmapSelectItem => ({
+  aggFn: 'heatmap',
+  valueExpression: item?.valueExpression ?? '',
+  ...(item?.countExpression ? { countExpression: item.countExpression } : {}),
+  ...(item?.alias ? { alias: item.alias } : {}),
+  ...(item?.heatmapScaleType
+    ? { heatmapScaleType: item.heatmapScaleType }
+    : {}),
+});
 
 const convertToExternalSelectItem = (
   item: Exclude<BuilderSavedChartConfig['select'][number], string>,
@@ -272,19 +285,7 @@ const convertToExternalTileChartConfig = (
       return {
         displayType: DisplayType.Heatmap,
         sourceId,
-        select: [
-          {
-            aggFn: 'heatmap',
-            valueExpression: item?.valueExpression ?? '',
-            ...(item?.countExpression
-              ? { countExpression: item.countExpression }
-              : {}),
-            ...(item?.alias ? { alias: item.alias } : {}),
-            ...(item?.heatmapScaleType
-              ? { heatmapScaleType: item.heatmapScaleType }
-              : {}),
-          },
-        ],
+        select: [convertToExternalHeatmapSelectItem(item)],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         numberFormat: config.numberFormat,
       };
