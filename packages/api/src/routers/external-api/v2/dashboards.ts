@@ -922,6 +922,60 @@ async function getSourceConnectionMismatches(
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
+ *     DashboardContainerTab:
+ *       type: object
+ *       description: A single tab inside a dashboard container. Tiles join a tab via tabId.
+ *       required:
+ *         - id
+ *         - title
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           description: Unique identifier for the tab within its container.
+ *           example: "errors"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           description: Display title for the tab.
+ *           example: "Errors"
+ *
+ *     DashboardContainer:
+ *       type: object
+ *       description: A grouping container for tiles on a dashboard. Tiles join a container via containerId.
+ *       required:
+ *         - id
+ *         - title
+ *         - collapsed
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           description: Unique identifier for the container within the dashboard.
+ *           example: "service-health"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           description: Display title for the container.
+ *           example: "Service Health"
+ *         collapsed:
+ *           type: boolean
+ *           description: Persisted default collapse state. Per-viewer state lives in the URL.
+ *           example: false
+ *         collapsible:
+ *           type: boolean
+ *           description: Whether the user can collapse the group. Defaults to true.
+ *           example: true
+ *         bordered:
+ *           type: boolean
+ *           description: Whether to show a visual border around the group. Defaults to true.
+ *           example: true
+ *         tabs:
+ *           type: array
+ *           description: Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainerTab'
+ *
  *     TileBase:
  *       type: object
  *       description: Common fields shared by tile input and output
@@ -961,6 +1015,14 @@ async function getSourceConnectionMismatches(
  *         config:
  *           $ref: '#/components/schemas/TileConfig'
  *           description: Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated "series" and "asRatio" fields.
+ *         containerId:
+ *           type: string
+ *           description: References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.
+ *           example: "service-health"
+ *         tabId:
+ *           type: string
+ *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
+ *           example: "errors"
  *
  *     TileOutput:
  *       description: Response format for dashboard tiles
@@ -1107,6 +1169,11 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values restored when loading the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     CreateDashboardRequest:
  *       type: object
@@ -1153,6 +1220,11 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     UpdateDashboardRequest:
  *       type: object
@@ -1199,6 +1271,11 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     DashboardResponse:
  *       allOf:
@@ -1311,6 +1388,7 @@ router.get('/', async (req, res, next) => {
         savedQuery: 1,
         savedQueryLanguage: 1,
         savedFilterValues: 1,
+        containers: 1,
       },
     ).sort({ name: -1 });
 
@@ -1428,6 +1506,7 @@ router.get(
           savedQuery: 1,
           savedQueryLanguage: 1,
           savedFilterValues: 1,
+          containers: 1,
         },
       );
 
@@ -1595,6 +1674,7 @@ router.post(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body;
 
       const [missingSources, missingConnections, sourceConnectionMismatches] =
@@ -1642,6 +1722,7 @@ router.post(
         savedQueryLanguage: normalizedSavedQueryLanguage,
         savedFilterValues,
         team: teamId,
+        ...(containers !== undefined ? { containers } : {}),
       }).save();
 
       res.json({
@@ -1818,6 +1899,7 @@ router.put(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body ?? {};
 
       const [missingSources, missingConnections, sourceConnectionMismatches] =
@@ -1887,6 +1969,9 @@ router.put(
       }
       if (savedFilterValues !== undefined) {
         setPayload.savedFilterValues = savedFilterValues;
+      }
+      if (containers !== undefined) {
+        setPayload.containers = containers;
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(
