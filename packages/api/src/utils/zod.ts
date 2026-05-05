@@ -312,11 +312,17 @@ export type ExternalDashboardHeatmapSelectItem = z.infer<
   typeof externalDashboardHeatmapSelectItemSchema
 >;
 
+// Heatmap exposes the row-level filter at the chart-config level (matching
+// the editor: HeatmapSeriesEditor renders a single SearchWhereInput bound
+// to the top-level `where` / `whereLanguage`). There is no groupBy in the
+// heatmap UI (HeatmapSeriesEditor doesn't render one), so it is omitted
+// from the schema.
 const externalDashboardHeatmapChartConfigSchema = z.object({
   displayType: z.literal('heatmap'),
   sourceId: objectIdSchema,
   select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
-  groupBy: z.string().max(10000).optional(),
+  where: z.string().max(10000).optional().default(''),
+  whereLanguage: whereLanguageSchema.optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
 

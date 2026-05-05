@@ -708,7 +708,9 @@ async function getSourceConnectionMismatches(
  *         - select
  *       description: >
  *         Builder configuration for a heatmap tile. Heatmap is builder-only
- *         (no Raw SQL variant) and currently supports trace sources.
+ *         (no Raw SQL variant) and currently supports trace sources. The
+ *         row-level filter lives at the chart-config level (where /
+ *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
  *       properties:
  *         displayType:
  *           type: string
@@ -726,11 +728,16 @@ async function getSourceConnectionMismatches(
  *           description: Exactly one heatmap select item.
  *           items:
  *             $ref: '#/components/schemas/HeatmapSelectItem'
- *         groupBy:
+ *         where:
  *           type: string
  *           maxLength: 10000
- *           description: Optional field expression to group results by.
- *           example: "service.name"
+ *           description: Row-level filter (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "ServiceName = 'api'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *           default: "lucene"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
