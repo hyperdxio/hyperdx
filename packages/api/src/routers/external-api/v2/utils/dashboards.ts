@@ -94,9 +94,14 @@ const convertToExternalHeatmapSelectItem = (
 ): ExternalDashboardHeatmapSelectItem => ({
   aggFn: 'heatmap',
   valueExpression: item?.valueExpression ?? '',
-  ...(item?.countExpression ? { countExpression: item.countExpression } : {}),
-  ...(item?.alias ? { alias: item.alias } : {}),
-  ...(item?.heatmapScaleType
+  // Use `!== undefined` (not truthy) to match the deserializer in
+  // convertToInternalTileConfig so empty-string round-trips do not
+  // silently drop fields.
+  ...(item?.countExpression !== undefined
+    ? { countExpression: item.countExpression }
+    : {}),
+  ...(item?.alias !== undefined ? { alias: item.alias } : {}),
+  ...(item?.heatmapScaleType !== undefined
     ? { heatmapScaleType: item.heatmapScaleType }
     : {}),
 });
