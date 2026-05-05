@@ -398,6 +398,7 @@ describe('MCP Dashboard Tools', () => {
       const tableTile = output.tiles.find(
         (t: { name: string }) => t.name === 'Table',
       );
+      expect(tableTile).toBeDefined();
       expect(tableTile.config.groupByColumnsOnLeft).toBe(true);
     });
 
