@@ -1,0 +1,42 @@
+{
+  "name": "@hyperdx/chart-presenters",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure React presenter components for HyperDX charts. Shared by the dashboard (packages/app) and the MCP Apps widget (packages/mcp-widget) so both render identically. No data-fetching, no app-context, no Mantine dependencies — environments wrap presenters with their own data hooks.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "dev:build": "tsup",
+    "ci:build": "tsup",
+    "lint": "eslint src",
+    "tsc": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "recharts": "^2.12.0"
+  },
+  "dependencies": {
+    "classnames": "^2.5.1",
+    "date-fns": "^3.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "react": "^19.2.3",
+    "recharts": "^2.12.7",
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3"
+  }
+}
