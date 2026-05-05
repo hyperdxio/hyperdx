@@ -13,9 +13,6 @@ import { validateRequestHeaders } from '@/middleware/validation';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
-// Synced with Vercel Limits: https://vercel.com/docs/functions/configuring-functions/duration?framework=nextjs#duration-limits
-const MAX_CLICKHOUSE_PROXY_TIMEOUT_SECONDS = 800;
-
 /**
  * Validates and sanitizes a URL path to prevent injection attacks.
  * - Recursively decodes to catch double/triple encoding of ? and &
@@ -205,7 +202,6 @@ const proxyMiddleware: RequestHandler =
       }
       return _req._hdx_connection.host;
     },
-    proxyTimeout: MAX_CLICKHOUSE_PROXY_TIMEOUT_SECONDS * 1000,
     on: {
       proxyReq: (proxyReq, _req, res) => {
         // set user-agent to the hyperdx version identifier
