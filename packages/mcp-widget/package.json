@@ -1,0 +1,33 @@
+{
+  "name": "@hyperdx/mcp-widget",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HyperDX MCP Apps widget — renders observability query results inline in MCP-Apps-capable hosts (Claude, Cursor, etc.).",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "dev:build": "vite build",
+    "ci:build": "vite build"
+  },
+  "dependencies": {
+    "@hyperdx/chart-presenters": "workspace:*",
+    "@modelcontextprotocol/ext-apps": "^1.7.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "recharts": "^2.12.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
