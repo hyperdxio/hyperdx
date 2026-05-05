@@ -198,6 +198,7 @@ const convertToExternalTileChartConfig = (
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
+        granularity: stringValueOrDefault(config.granularity, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
@@ -215,6 +216,7 @@ const convertToExternalTileChartConfig = (
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
+        granularity: stringValueOrDefault(config.granularity, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
@@ -400,6 +402,7 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, [
             'groupBy',
+            'granularity',
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
@@ -609,7 +612,7 @@ export function convertExternalTilesToInternal(
     if (isSeriesTile(tileWithId)) {
       return translateExternalChartToTileConfig(tileWithId);
     }
-    // Fallback for tiles with neither config nor series — treat as empty series tile.
+    // Fallback for tiles with neither config nor series; treat as empty series tile.
     // This shouldn't happen with valid input, but matches the previous behavior.
     return translateExternalChartToTileConfig(tileWithId as SeriesTile);
   });

@@ -223,6 +223,11 @@ const externalDashboardTimeChartConfigSchema = z.object({
   alignDateRangeToGranularity: z.boolean().optional(),
   fillNulls: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  // Time bucket size for time-series displays (line, stacked_bar). Format:
+  // "<number> <unit>" where unit is second, minute, hour, or day. Required
+  // for time-bucketed output. Without it the renderer omits the
+  // toStartOfInterval column and rows aggregate to a single point per series.
+  granularity: z.string().max(64).optional(),
 });
 
 const externalDashboardLineChartConfigSchema =
@@ -374,7 +379,7 @@ export const externalDashboardTileConfigSchema = z
   })
   .transform(data => {
     // Re-parse through the appropriate sub-schema to strip unknown fields.
-    // Safe to call .parse() here — superRefine already validated the data,
+    // Safe to call .parse() here; superRefine already validated the data,
     // so this is guaranteed to succeed.
     const schema =
       data !== null &&
