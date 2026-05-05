@@ -3026,28 +3026,28 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:1.12.1, @clickhouse/client-common@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-common@npm:1.12.1"
-  checksum: 10c0/9f475c8517b164c3676a969b60c8165a4b0558906917dbe97ae35f69f2702a6fc198cbdb2e6d2ec3543c627ec04a7e2fccb41f3114452bf7f4818152c0f98a5d
+"@clickhouse/client-common@npm:1.18.4-head.3029a3d.1, @clickhouse/client-common@npm:head":
+  version: 1.18.4-head.3029a3d.1
+  resolution: "@clickhouse/client-common@npm:1.18.4-head.3029a3d.1"
+  checksum: 10c0/d562164f344e97cebf16a7a44977007f7746c99b50f80c2fc856702259de945fb80c19b0d36b56011ed25d1e8b7e83129539ac9d3941e1b4760dd8d568adacfb
   languageName: node
   linkType: hard
 
-"@clickhouse/client-web@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-web@npm:1.12.1"
+"@clickhouse/client-web@npm:head":
+  version: 1.18.4-head.3029a3d.1
+  resolution: "@clickhouse/client-web@npm:1.18.4-head.3029a3d.1"
   dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/3e374288a2e0e4ced37220638629612dc8d6ced66490c2bdac136ddb887d5e108b9992b26d57911d6007bd47eaf7a754caa48e3afdfdb44cbd4f07bec7900995
+    "@clickhouse/client-common": "npm:1.18.4-head.3029a3d.1"
+  checksum: 10c0/8d0ea9a12a4141e9a0b30c887bf8f22e7e2db8987927283292c035de3c579bd9119fd01e2b63194e0900758c0decaab5c1b79e06a1bf7ff72f6f278677f56c57
   languageName: node
   linkType: hard
 
-"@clickhouse/client@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client@npm:1.12.1"
+"@clickhouse/client@npm:head":
+  version: 1.18.4-head.3029a3d.1
+  resolution: "@clickhouse/client@npm:1.18.4-head.3029a3d.1"
   dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/4d715accad5ba74248c63fab83469ebeffc16d7cc5050ee7e5f9e7dd48d0e7c4b79517bf5917f2a60599960aee997e5d8341c480d056286f5d9a86530623211f
+    "@clickhouse/client-common": "npm:1.18.4-head.3029a3d.1"
+  checksum: 10c0/d7a3620352f4eeb8d43bdfe2bf814f813f30f8c802f729fe9121c67274d7abf5bb6fff260e287e908b4b88aee1bf1ba25d1754b19e17573de6a1592cec576afe
   languageName: node
   linkType: hard
 
@@ -4554,8 +4554,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/cli@workspace:packages/cli"
   dependencies:
-    "@clickhouse/client": "npm:^1.12.1"
-    "@clickhouse/client-common": "npm:^1.12.1"
+    "@clickhouse/client": "npm:head"
+    "@clickhouse/client-common": "npm:head"
     "@hyperdx/common-utils": "npm:^0.18.1"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/react": "npm:^19.0.0"
@@ -4582,9 +4582,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client": "npm:^1.12.1"
-    "@clickhouse/client-common": "npm:^1.12.1"
-    "@clickhouse/client-web": "npm:^1.12.1"
+    "@clickhouse/client": "npm:head"
+    "@clickhouse/client-common": "npm:head"
+    "@clickhouse/client-web": "npm:head"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^29.5.14"
