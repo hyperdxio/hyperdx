@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { parseAsString, useQueryState } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
@@ -219,12 +219,9 @@ export default function PodDetailsSidePanel({
   logSource: TLogSource;
   metricSource: TMetricSource;
 }) {
-  const [podName, setPodName] = useQueryParam(
+  const [podName, setPodName] = useQueryState(
     'podName',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'replaceIn',
-    },
+    parseAsString.withDefault(''),
   );
 
   const [rowId, setRowId] = React.useState<string | null>(null);
@@ -235,8 +232,8 @@ export default function PodDetailsSidePanel({
 
   // If we're in a nested side panel, we need to use a higher z-index
   // TODO: This is a hack
-  const [nodeName] = useQueryParam('nodeName', StringParam);
-  const [namespaceName] = useQueryParam('namespaceName', StringParam);
+  const [nodeName] = useQueryState('nodeName', parseAsString);
+  const [namespaceName] = useQueryState('namespaceName', parseAsString);
   const isNested = !!nodeName || !!namespaceName;
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10 + (isNested ? 100 : 0);
@@ -325,7 +322,7 @@ export default function PodDetailsSidePanel({
       // If we're in a nested side panel, don't close the drawer
       return;
     }
-    setPodName(undefined);
+    setPodName(null);
   }, [rowId, setPodName]);
 
   if (!podName) {
