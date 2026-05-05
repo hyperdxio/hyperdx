@@ -24,7 +24,7 @@
     {
       "id": 4,
       "subject": "Task 4: Implement Athena query client in common-utils",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Plan:** docs/superpowers/plans/2026-05-04-berg-implementation.md (Task 4)\n\n**Goal:** New `@berg/common-utils/athena` module replaces `clickhouse/`. Sync/async query lifecycle on `@aws-sdk/client-athena` using IRSA; type mapping; cancel; pagination; result-reuse caching.\n\n**Verify:** `cd packages/common-utils && yarn ci:unit src/__tests__/athena.test.ts`\n\n```json:metadata\n{\"files\":[\"packages/common-utils/src/athena/index.ts\",\"packages/common-utils/src/athena/types.ts\",\"packages/common-utils/src/athena/typeMapping.ts\",\"packages/common-utils/src/__tests__/athena.test.ts\",\"packages/common-utils/src/clickhouse\",\"packages/common-utils/src/__tests__/clickhouse.test.ts\",\"packages/common-utils/package.json\",\"packages/common-utils/src/index.ts\"],\"verifyCommand\":\"cd packages/common-utils && yarn ci:unit src/__tests__/athena.test.ts\",\"acceptanceCriteria\":[\"All AthenaClient methods\",\"Type mapping\",\"Errors classified\",\"Result reuse enabled\",\"Tests pass\"],\"planRef\":\"docs/superpowers/plans/2026-05-04-berg-implementation.md#task-4-implement-athena-query-client-in-common-utils\"}\n```"
     },

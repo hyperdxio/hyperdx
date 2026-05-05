@@ -714,6 +714,389 @@ export type CustomSchemaConfig = {
   connectionId: string;
 };
 
+/**
+ * Schema description supplied to {@link TrinoSchemaSerializer}.
+ *
+ * The serializer is fully self-contained — given the column list it can
+ * validate fields, infer numeric vs. string comparisons, and emit Trino SQL
+ * without any catalog round-trip. The optional `timestampColumn` enables
+ * automatic time-window injection when `timeRange` is provided.
+ */
+export interface TrinoSchemaConfig {
+  columns: Array<{ name: string; type: string }>;
+  timestampColumn?: string;
+  timeRange?: { startMs: number; endMs: number };
+  /**
+   * Optional implicit search column expression. When set, bare-text Lucene
+   * matches (no field prefix) match against this expression rather than
+   * defaulting to OR-across-all-string-columns.
+   */
+  implicitColumnExpression?: string;
+}
+
+const TRINO_NUMERIC_TYPE_PREFIXES = [
+  'tinyint',
+  'smallint',
+  'integer',
+  'int',
+  'bigint',
+  'real',
+  'double',
+  'decimal',
+  'float',
+];
+
+const TRINO_BOOL_TYPE_PREFIXES = ['boolean', 'bool'];
+
+function isTrinoNumericType(type: string): boolean {
+  const lower = type.toLowerCase();
+  return TRINO_NUMERIC_TYPE_PREFIXES.some(p => lower.startsWith(p));
+}
+
+function isTrinoBoolType(type: string): boolean {
+  const lower = type.toLowerCase();
+  return TRINO_BOOL_TYPE_PREFIXES.some(p => lower.startsWith(p));
+}
+
+function isTrinoStringType(type: string): boolean {
+  const lower = type.toLowerCase();
+  return (
+    lower.startsWith('varchar') ||
+    lower.startsWith('char') ||
+    lower === 'string'
+  );
+}
+
+/**
+ * Trino-flavored SQL serializer for Lucene queries.
+ *
+ * Replaces the ClickHouse-specific {@link CustomSchemaSQLSerializerV2}.
+ *
+ * Key behaviors:
+ * - Identifiers double-quoted (Trino convention).
+ * - Free-text matches use `lower(col) LIKE lower('%v%')` and OR across all
+ *   string columns when no implicit column expression is supplied.
+ * - Range/comparison ops emit bare numeric literals against numeric columns
+ *   and quoted string literals against string columns.
+ * - JSON access via `json_extract_scalar(col, '$.path')`.
+ * - Regex via `regexp_like(col, pattern)`.
+ * - Unknown columns raise an Error with the column name.
+ */
+export class TrinoSchemaSerializer extends SQLSerializer {
+  private schema: TrinoSchemaConfig;
+
+  constructor(schema: TrinoSchemaConfig) {
+    super();
+    this.schema = schema;
+  }
+
+  /** Look up a column by name; throws if not found. */
+  private requireColumn(name: string): { name: string; type: string } {
+    const col = this.schema.columns.find(c => c.name === name);
+    if (!col) {
+      throw new Error(`Column '${name}' not found in schema`);
+    }
+    return col;
+  }
+
+  /** Trino identifier escaping: double quotes, doubled internally. */
+  private escapeIdentifier(name: string): string {
+    return `"${name.replace(/"/g, '""')}"`;
+  }
+
+  /** Trino string literal escaping: single quotes, doubled internally. */
+  private escapeStringLiteral(v: string): string {
+    return `'${v.replace(/'/g, "''")}'`;
+  }
+
+  /** Helper: find a column without throwing. */
+  private findColumn(name: string): { name: string; type: string } | undefined {
+    return this.schema.columns.find(c => c.name === name);
+  }
+
+  private isNumericField(field: string): boolean {
+    const col = this.findColumn(field);
+    return !!col && isTrinoNumericType(col.type);
+  }
+
+  private isBoolField(field: string): boolean {
+    const col = this.findColumn(field);
+    return !!col && isTrinoBoolType(col.type);
+  }
+
+  /**
+   * Resolve a Lucene field reference to a Trino column expression.
+   *
+   * Supports:
+   * - exact column matches
+   * - dotted paths into JSON-typed columns via `json_extract_scalar`
+   *
+   * Throws when no column matches the leading path segment.
+   */
+  async getColumnForField(field: string, context: SerializerContext) {
+    const implicitColumnExpression =
+      context.implicitColumnExpression ?? this.schema.implicitColumnExpression;
+
+    if (field === IMPLICIT_FIELD) {
+      // Implicit field — handled per-call (eq/range typically not invoked on bare text).
+      return {
+        column: implicitColumnExpression ?? '',
+        propertyType:
+          implicitColumnExpression != null ? JSDataType.String : undefined,
+        found: implicitColumnExpression != null,
+      };
+    }
+
+    // Try exact match first.
+    const exact = this.findColumn(field);
+    if (exact) {
+      let propertyType: JSDataType | undefined;
+      if (isTrinoNumericType(exact.type)) propertyType = JSDataType.Number;
+      else if (isTrinoBoolType(exact.type)) propertyType = JSDataType.Bool;
+      else if (isTrinoStringType(exact.type)) propertyType = JSDataType.String;
+      else if (exact.type.toLowerCase().startsWith('json'))
+        propertyType = JSDataType.JSON;
+      else if (exact.type.toLowerCase().startsWith('array'))
+        propertyType = JSDataType.Array;
+      else if (exact.type.toLowerCase().startsWith('map'))
+        propertyType = JSDataType.Map;
+      return {
+        column: this.escapeIdentifier(exact.name),
+        propertyType,
+        found: true,
+      };
+    }
+
+    // Try dotted-path fallback: leading segment must match a column.
+    const parts = field.split('.');
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const head = parts.slice(0, i).join('.');
+      const tail = parts.slice(i).join('.');
+      const headCol = this.findColumn(head);
+      if (headCol) {
+        const colType = headCol.type.toLowerCase();
+        if (colType.startsWith('json') || colType.startsWith('row')) {
+          const expr = `json_extract_scalar(${this.escapeIdentifier(
+            headCol.name,
+          )}, ${this.escapeStringLiteral('$.' + tail)})`;
+          return {
+            column: expr,
+            propertyType: JSDataType.String,
+            found: true,
+          };
+        }
+        if (colType.startsWith('map')) {
+          const expr = `element_at(${this.escapeIdentifier(
+            headCol.name,
+          )}, ${this.escapeStringLiteral(tail)})`;
+          return {
+            column: expr,
+            propertyType: JSDataType.String,
+            found: true,
+          };
+        }
+      }
+    }
+
+    throw new Error(`Column '${field}' not found in schema`);
+  }
+
+  // ----- Comparison / equality overrides emitting Trino-flavored SQL -----
+
+  async eq(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ): Promise<string> {
+    if (field === IMPLICIT_FIELD) {
+      return this.fieldSearch(field, term, isNegatedField, false, false, context);
+    }
+    const col = this.requireColumn(field);
+    const colExpr = this.escapeIdentifier(col.name);
+    const op = isNegatedField ? '!=' : '=';
+    if (isTrinoNumericType(col.type)) {
+      const num = Number(term);
+      const rhs = Number.isNaN(num) ? this.escapeStringLiteral(term) : `${num}`;
+      return `(${colExpr} ${op} ${rhs})`;
+    }
+    if (isTrinoBoolType(col.type)) {
+      const norm = term.trim().toLowerCase();
+      const rhs = norm === 'true' ? 'true' : norm === 'false' ? 'false' : term;
+      return `(${colExpr} ${op} ${rhs})`;
+    }
+    return `(${colExpr} ${op} ${this.escapeStringLiteral(term)})`;
+  }
+
+  async isNotNull(
+    field: string,
+    isNegatedField: boolean,
+    _context: SerializerContext,
+  ): Promise<string> {
+    const col = this.requireColumn(field);
+    const colExpr = this.escapeIdentifier(col.name);
+    return isNegatedField
+      ? `(${colExpr} IS NULL)`
+      : `(${colExpr} IS NOT NULL)`;
+  }
+
+  private rangeOp(
+    field: string,
+    op: '<' | '<=' | '>' | '>=',
+    term: string,
+  ): string {
+    const col = this.requireColumn(field);
+    const colExpr = this.escapeIdentifier(col.name);
+    if (isTrinoNumericType(col.type)) {
+      const num = Number(term);
+      const rhs = Number.isNaN(num) ? this.escapeStringLiteral(term) : `${num}`;
+      return `(${colExpr} ${op} ${rhs})`;
+    }
+    return `(${colExpr} ${op} ${this.escapeStringLiteral(term)})`;
+  }
+
+  async gte(field: string, term: string, _ctx: SerializerContext) {
+    return this.rangeOp(field, '>=', term);
+  }
+  async lte(field: string, term: string, _ctx: SerializerContext) {
+    return this.rangeOp(field, '<=', term);
+  }
+  async lt(field: string, term: string, _ctx: SerializerContext) {
+    return this.rangeOp(field, '<', term);
+  }
+  async gt(field: string, term: string, _ctx: SerializerContext) {
+    return this.rangeOp(field, '>', term);
+  }
+
+  async range(
+    field: string,
+    start: string,
+    end: string,
+    isNegatedField: boolean,
+    _context: SerializerContext,
+  ): Promise<string> {
+    const col = this.requireColumn(field);
+    const colExpr = this.escapeIdentifier(col.name);
+    const between = isNegatedField ? 'NOT BETWEEN' : 'BETWEEN';
+    if (isTrinoNumericType(col.type)) {
+      const startNum = Number(start);
+      const endNum = Number(end);
+      const lhs = Number.isNaN(startNum)
+        ? this.escapeStringLiteral(start)
+        : `${startNum}`;
+      const rhs = Number.isNaN(endNum)
+        ? this.escapeStringLiteral(end)
+        : `${endNum}`;
+      return `(${colExpr} ${between} ${lhs} AND ${rhs})`;
+    }
+    return `(${colExpr} ${between} ${this.escapeStringLiteral(
+      start,
+    )} AND ${this.escapeStringLiteral(end)})`;
+  }
+
+  async fieldSearch(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    prefixWildcard: boolean,
+    suffixWildcard: boolean,
+    context: SerializerContext,
+  ): Promise<string> {
+    const isImplicit = field === IMPLICIT_FIELD;
+    if (isImplicit) {
+      const implicit =
+        context.implicitColumnExpression ?? this.schema.implicitColumnExpression;
+      if (implicit) {
+        // Use the configured implicit expression as a single match target.
+        const pattern = `${prefixWildcard ? '%' : '%'}${term}${
+          suffixWildcard ? '%' : '%'
+        }`;
+        const sql = `lower(${implicit}) LIKE lower(${this.escapeStringLiteral(
+          pattern,
+        )})`;
+        return isNegatedField ? `(NOT (${sql}))` : `(${sql})`;
+      }
+      // Fallback: OR across every string column.
+      const stringCols = this.schema.columns.filter(c =>
+        isTrinoStringType(c.type),
+      );
+      if (stringCols.length === 0) {
+        return isNegatedField ? '(true)' : '(false)';
+      }
+      const pattern = `%${term}%`;
+      const ors = stringCols
+        .map(c => {
+          const colExpr = this.escapeIdentifier(c.name);
+          return `lower(${colExpr}) LIKE lower(${this.escapeStringLiteral(
+            pattern,
+          )})`;
+        })
+        .join(' OR ');
+      return isNegatedField ? `(NOT (${ors}))` : `(${ors})`;
+    }
+
+    // Resolve the column expression — handles dotted JSON / Map paths.
+    const resolved = await this.getColumnForField(field, context);
+    const colExpr = resolved.column ?? this.escapeIdentifier(field);
+    const propertyType = resolved.propertyType;
+
+    if (propertyType === JSDataType.Bool) {
+      const norm = term.trim().toLowerCase();
+      const rhs = norm === 'true' ? 'true' : norm === 'false' ? 'false' : term;
+      return `(${colExpr} ${isNegatedField ? '!=' : '='} ${rhs})`;
+    }
+    if (propertyType === JSDataType.Number) {
+      const num = Number(term);
+      if (!Number.isNaN(num)) {
+        return `(${colExpr} ${isNegatedField ? '!=' : '='} ${num})`;
+      }
+    }
+
+    if (term.length === 0) {
+      return '(1=1)';
+    }
+
+    const pattern = `${prefixWildcard ? '%' : '%'}${term}${
+      suffixWildcard ? '%' : '%'
+    }`;
+    const sql = `lower(${colExpr}) LIKE lower(${this.escapeStringLiteral(
+      pattern,
+    )})`;
+    return isNegatedField ? `(NOT (${sql}))` : `(${sql})`;
+  }
+
+  /**
+   * Emit a Trino-compatible time-window predicate.
+   *
+   * Returns null when either `timestampColumn` or `timeRange` is unset
+   * — callers can treat that as "no time-window injection".
+   */
+  emitTimeWindow(): string | null {
+    if (!this.schema.timestampColumn || !this.schema.timeRange) return null;
+    const col = this.escapeIdentifier(this.schema.timestampColumn);
+    const startSecs = Math.floor(this.schema.timeRange.startMs / 1000);
+    const endSecs = Math.floor(this.schema.timeRange.endMs / 1000);
+    return `${col} BETWEEN from_unixtime(${startSecs}) AND from_unixtime(${endSecs})`;
+  }
+
+  /**
+   * Convenience wrapper: parse the supplied AST and emit the WHERE-clause
+   * fragment for it. When `timestampColumn` and `timeRange` are both set,
+   * the time window is appended.
+   */
+  async serialize(ast: lucene.AST): Promise<string> {
+    const where = await genWhereSQL(ast, this);
+    const tw = this.emitTimeWindow();
+    if (tw && where) {
+      return `(${where}) AND (${tw})`;
+    }
+    if (tw) {
+      return tw;
+    }
+    return where;
+  }
+}
+
 function renderArrayFieldExpression({
   column,
   mapKey,
