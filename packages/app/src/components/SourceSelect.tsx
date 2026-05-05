@@ -132,7 +132,8 @@ function SourceSelectControlledComponent({
         ?.filter(
           source =>
             (!allowedSourceKinds || allowedSourceKinds.includes(source.kind)) &&
-            (!connectionId || source.connection === connectionId),
+            (!connectionId || source.connection === connectionId) &&
+            !source.disabled,
         )
         .map(d => ({
           value: d.id,

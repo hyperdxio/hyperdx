@@ -1084,6 +1084,7 @@ export const BaseSourceSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  disabled: z.boolean().optional(),
   querySettings: QuerySettingsSchema.optional(),
   timestampValueExpression: RequiredTimestampColumnSchema,
 });
@@ -1147,7 +1148,6 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
    * the source. Not a security boundary — bypassable by direct table SELECT.
