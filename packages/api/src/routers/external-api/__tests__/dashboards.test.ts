@@ -2317,7 +2317,8 @@ describe('External API v2 Dashboards - new format', () => {
               heatmapScaleType: 'log',
             },
           ],
-          groupBy: 'service.name',
+          where: "ServiceName = 'api'",
+          whereLanguage: 'sql',
           numberFormat: {
             output: 'time',
             factor: 0.001,
@@ -3211,7 +3212,8 @@ describe('External API v2 Dashboards - new format', () => {
               heatmapScaleType: 'linear',
             },
           ],
-          groupBy: 'service.name',
+          where: 'service:api',
+          whereLanguage: 'lucene',
           numberFormat: {
             output: 'time',
             factor: 0.001,

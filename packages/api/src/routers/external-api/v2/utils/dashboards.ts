@@ -291,7 +291,8 @@ const convertToExternalTileChartConfig = (
         displayType: DisplayType.Heatmap,
         sourceId,
         select: [convertToExternalHeatmapSelectItem(item)],
-        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        where: stringValueOrDefault(config.where, ''),
+        whereLanguage: config.whereLanguage ?? 'lucene',
         numberFormat: config.numberFormat,
       };
     }
@@ -485,10 +486,12 @@ export function convertToInternalTileConfig(
         // its own shape: aggFn is the literal 'heatmap' on the external
         // surface, mapped to the internal 'count' aggFn that the editor
         // form persists, with the heatmap-specific countExpression /
-        // heatmapScaleType fields preserved on the select item.
+        // heatmapScaleType fields preserved on the select item. The
+        // row-level filter lives at the chart-config level (matching
+        // HeatmapSeriesEditor in the UI), not on the select item.
         const item = externalConfig.select[0];
         internalConfig = {
-          ...pick(externalConfig, ['groupBy', 'numberFormat']),
+          ...pick(externalConfig, ['numberFormat']),
           displayType: DisplayType.Heatmap,
           select: [
             {
@@ -506,7 +509,8 @@ export function convertToInternalTileConfig(
             },
           ],
           source: externalConfig.sourceId,
-          where: '',
+          where: externalConfig.where ?? '',
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
           name,
         } satisfies BuilderSavedChartConfig;
         break;
