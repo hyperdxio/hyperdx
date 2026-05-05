@@ -714,10 +714,10 @@ export const TimelineSeriesSchema = z.object({
    *
    * - In `events` mode, each distinct value becomes a lane label.
    * - In `value_change` mode, this expression is also used as the SQL
-   *   PARTITION BY for the LAG window function — so version history is
+   *   PARTITION BY for the LAG window function, so version history is
    *   tracked independently per group (e.g. one history per service).
    *
-   * Conceptually: "what do I want one row per?" — typically `ServiceName`
+   * Conceptually: "what do I want one row per?" Typically `ServiceName`
    * or another resource attribute that identifies the entity being watched.
    */
   groupExpression: z.string().optional(),
@@ -738,6 +738,21 @@ export const TimelineSeriesSchema = z.object({
    * within the same `groupExpression` partition.
    */
   trackColumn: z.string().optional(),
+}).superRefine((val, ctx) => {
+  if (val.mode === 'events' && !val.labelExpression) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'labelExpression is required when mode is "events"',
+      path: ['labelExpression'],
+    });
+  }
+  if (val.mode === 'value_change' && !val.trackColumn) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'trackColumn is required when mode is "value_change"',
+      path: ['trackColumn'],
+    });
+  }
 });
 
 export type TimelineSeries = z.infer<typeof TimelineSeriesSchema>;

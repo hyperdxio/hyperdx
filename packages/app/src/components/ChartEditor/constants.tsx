@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { TIMELINE_EXAMPLE_SQL } from '@hyperdx/common-utils/dist/rawSqlParams';
 import { Code, List, Text } from '@mantine/core';
 
 const TIMESERIES_PLACEHOLDER_SQL = `SELECT
@@ -46,18 +47,7 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
-  [DisplayType.Timeline]: `SELECT
-  TimestampTime AS ts,
-  concat(SeverityText, ': ', Body) AS label,
-  ServiceName AS \`group\`,
-  SeverityText AS severity
-FROM $__sourceTable
-WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
-  AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
-  AND $__filters
-  AND SeverityText IN ('ERROR', 'FATAL')
-ORDER BY ts ASC
-LIMIT 1000`,
+  [DisplayType.Timeline]: TIMELINE_EXAMPLE_SQL,
 };
 
 const TIMESERIES_INSTRUCTIONS = (
