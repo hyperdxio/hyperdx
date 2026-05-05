@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { TIMELINE_EXAMPLE_SQL } from '@hyperdx/common-utils/dist/rawSqlParams';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Code, List, Text } from '@mantine/core';
 
 const TIMESERIES_PLACEHOLDER_SQL = `SELECT
