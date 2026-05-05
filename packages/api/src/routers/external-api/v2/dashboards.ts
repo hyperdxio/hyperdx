@@ -1017,10 +1017,12 @@ async function getSourceConnectionMismatches(
  *           description: Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated "series" and "asRatio" fields.
  *         containerId:
  *           type: string
+ *           minLength: 1
  *           description: References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.
  *           example: "service-health"
  *         tabId:
  *           type: string
+ *           minLength: 1
  *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
  *           example: "errors"
  *

@@ -3878,6 +3878,61 @@ describe('External API v2 Dashboards - new format', () => {
       ).expect(200);
       expect(getResponse.body.data.containers).toBeUndefined();
     });
+
+    // An explicit empty array is semantically equivalent to no organization
+    // layer. The conversion only emits the field when at least one container
+    // is present, so the response normalizes [] back to absent. This matches
+    // the behavior of optional list fields elsewhere in the API.
+    it('normalizes an explicitly empty containers array to absent on read', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Empty Containers Array',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.containers).toBeUndefined();
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.containers).toBeUndefined();
+    });
+
+    it('rejects an empty-string containerId or tabId on a tile', async () => {
+      const sourceId = traceSource._id.toString();
+      const containerResp = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Empty containerId',
+          tiles: [buildTile(sourceId, { containerId: '' })],
+          tags: [],
+        })
+        .expect(400);
+      expect(containerResp.body.message).toContain('tiles.0.containerId');
+
+      const tabResp = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Empty tabId',
+          tiles: [
+            buildTile(sourceId, { containerId: 'service-health', tabId: '' }),
+          ],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [{ id: 'errors', title: 'Errors' }],
+            },
+          ],
+        })
+        .expect(400);
+      expect(tabResp.body.message).toContain('tiles.0.tabId');
+    });
   });
 
   describe('DELETE /:id', () => {
