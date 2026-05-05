@@ -702,58 +702,60 @@ export type OnClick = z.infer<typeof OnClickSchema>;
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 
-export const TimelineSeriesSchema = z.object({
-  id: z.string(),
-  label: z.string().min(1),
-  mode: z.enum(['events', 'value_change']),
-  source: z.string(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionLanguageSchema,
-  /**
-   * Splits the rendered markers into colored lanes by this expression.
-   *
-   * - In `events` mode, each distinct value becomes a lane label.
-   * - In `value_change` mode, this expression is also used as the SQL
-   *   PARTITION BY for the LAG window function, so version history is
-   *   tracked independently per group (e.g. one history per service).
-   *
-   * Conceptually: "what do I want one row per?" Typically `ServiceName`
-   * or another resource attribute that identifies the entity being watched.
-   */
-  groupExpression: z.string().optional(),
-  // events mode:
-  labelExpression: z.string().optional(),
-  /**
-   * Optional SQL expression that resolves to a severity string per row
-   * (e.g. `SeverityText` for OTel log sources). When set, individual event
-   * markers are colored by severity (FATAL/ERROR/WARN/INFO/DEBUG/TRACE)
-   * rather than by lane. Only applies in `events` mode.
-   */
-  severityExpression: z.string().optional(),
-  // value_change mode:
-  /**
-   * SQL expression that resolves to the value being tracked for changes
-   * (e.g. `ResourceAttributes['service.version']`). The renderer emits a
-   * marker each time this expression's value differs from the previous row
-   * within the same `groupExpression` partition.
-   */
-  trackColumn: z.string().optional(),
-}).superRefine((val, ctx) => {
-  if (val.mode === 'events' && !val.labelExpression) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'labelExpression is required when mode is "events"',
-      path: ['labelExpression'],
-    });
-  }
-  if (val.mode === 'value_change' && !val.trackColumn) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'trackColumn is required when mode is "value_change"',
-      path: ['trackColumn'],
-    });
-  }
-});
+export const TimelineSeriesSchema = z
+  .object({
+    id: z.string(),
+    label: z.string().min(1),
+    mode: z.enum(['events', 'value_change']),
+    source: z.string(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionLanguageSchema,
+    /**
+     * Splits the rendered markers into colored lanes by this expression.
+     *
+     * - In `events` mode, each distinct value becomes a lane label.
+     * - In `value_change` mode, this expression is also used as the SQL
+     *   PARTITION BY for the LAG window function, so version history is
+     *   tracked independently per group (e.g. one history per service).
+     *
+     * Conceptually: "what do I want one row per?" Typically `ServiceName`
+     * or another resource attribute that identifies the entity being watched.
+     */
+    groupExpression: z.string().optional(),
+    // events mode:
+    labelExpression: z.string().optional(),
+    /**
+     * Optional SQL expression that resolves to a severity string per row
+     * (e.g. `SeverityText` for OTel log sources). When set, individual event
+     * markers are colored by severity (FATAL/ERROR/WARN/INFO/DEBUG/TRACE)
+     * rather than by lane. Only applies in `events` mode.
+     */
+    severityExpression: z.string().optional(),
+    // value_change mode:
+    /**
+     * SQL expression that resolves to the value being tracked for changes
+     * (e.g. `ResourceAttributes['service.version']`). The renderer emits a
+     * marker each time this expression's value differs from the previous row
+     * within the same `groupExpression` partition.
+     */
+    trackColumn: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.mode === 'events' && !val.labelExpression) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'labelExpression is required when mode is "events"',
+        path: ['labelExpression'],
+      });
+    }
+    if (val.mode === 'value_change' && !val.trackColumn) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'trackColumn is required when mode is "value_change"',
+        path: ['trackColumn'],
+      });
+    }
+  });
 
 export type TimelineSeries = z.infer<typeof TimelineSeriesSchema>;
 
