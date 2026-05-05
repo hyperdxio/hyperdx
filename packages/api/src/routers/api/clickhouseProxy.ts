@@ -1,12 +1,10 @@
 import { sanitizeUrl } from '@braintree/sanitize-url';
-import { parameterizedQueryToSql } from '@hyperdx/common-utils/dist/clickhouse';
-import opentelemetry from '@opentelemetry/api';
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { CODE_VERSION, IS_DEV } from '@/config';
+import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
@@ -232,28 +230,6 @@ const proxyMiddleware: RequestHandler =
           }
         }
 
-        // Add request body to the active span (dev only — avoids leaking
-        // arbitrary SQL into production traces).
-        if (IS_DEV) {
-          const span = opentelemetry.trace.getActiveSpan();
-          if (span && body) {
-            try {
-              // Extract query params (param_* prefix) and reconstruct the full SQL
-              const params: Record<string, string> = {};
-              for (const [key, value] of Object.entries(_req.query)) {
-                if (key.startsWith('param_') && typeof value === 'string') {
-                  params[key.slice(6)] = value; // Remove 'param_' prefix
-                }
-              }
-              const sql = parameterizedQueryToSql({ sql: body, params });
-              span.setAttribute('http.request.body', sql);
-            } catch {
-              // Fall back to raw body if parameterization fails
-              span.setAttribute('http.request.body', body);
-            }
-          }
-        }
-
         try {
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(body);
@@ -279,16 +255,6 @@ const proxyMiddleware: RequestHandler =
         if (_req.headers.origin) {
           proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
           proxyRes.headers['access-control-allow-credentials'] = 'true';
-        }
-
-        // Add a custom header to indicate that the response is a mixed response when applicable
-        // since the Clickhouse Web SDK allows accessing headers but not status codes.
-        if (proxyRes.statusCode === 207) {
-          proxyRes.headers['X-ClickHouse-Mixed-Response'] = 'true';
-        }
-
-        if (proxyRes.statusCode === 206) {
-          proxyRes.headers['X-ClickHouse-Service-Unavailable'] = 'true';
         }
       },
       error: (err, _req, _res) => {

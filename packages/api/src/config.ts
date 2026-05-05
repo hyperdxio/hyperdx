@@ -21,13 +21,10 @@ const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
 export const IS_APP_IMAGE = HYPERDX_IMAGE === 'hyperdx';
 export const IS_ALL_IN_ONE_IMAGE = HYPERDX_IMAGE === 'all-in-one-auth';
 export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
-// When the API is inlined into the Next.js app on Vercel preview deployments,
-// the API runs on the same origin as the app and FRONTEND_URL is unreliable
-// (it points to the production host on the shared Vercel project). In that
-// mode, emit relative redirects so the browser resolves them against the
-// current preview host. In every other deployment topology (CHC, Docker
-// fullstack, standalone OSS) the API and app run on separate hosts, so
-// absolute URLs anchored at FRONTEND_URL are required.
+// On Vercel preview deployments the API is inlined into the Next.js app and
+// shares its origin, so we emit relative redirects (FRONTEND_URL there points
+// at the production host). Everywhere else the API and app run on separate
+// hosts, so absolute URLs anchored at FRONTEND_URL are required.
 export const IS_INLINE_API = env.HDX_PREVIEW_INLINE_API === 'true';
 export const FRONTEND_REDIRECT_BASE = IS_INLINE_API ? '' : FRONTEND_URL;
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
