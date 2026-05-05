@@ -3574,6 +3574,312 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('Containers and tabs', () => {
+    const buildTile = (
+      sourceId: string,
+      overrides: Partial<ExternalDashboardTileWithId> = {},
+    ): ExternalDashboardTileWithId => ({
+      id: new ObjectId().toString(),
+      name: 'Tile',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line',
+        sourceId,
+        select: [{ aggFn: 'count', where: '' }],
+      },
+      ...overrides,
+    });
+
+    it('round-trips containers, tabs, and tile containerId/tabId on create and update', async () => {
+      const sourceId = traceSource._id.toString();
+      const groupedTabA = buildTile(sourceId, {
+        name: 'In Group, Tab A',
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+      const groupedTabB = buildTile(sourceId, {
+        name: 'In Group, Tab B',
+        containerId: 'service-health',
+        tabId: 'latency',
+      });
+      const groupedNoTab = buildTile(sourceId, {
+        name: 'In Plain Group',
+        containerId: 'overview',
+      });
+      const ungrouped = buildTile(sourceId, { name: 'Ungrouped' });
+
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          collapsible: true,
+          bordered: true,
+          tabs: [
+            { id: 'errors', title: 'Errors' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+        {
+          id: 'overview',
+          title: 'Overview',
+          collapsed: true,
+        },
+      ];
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Containers Round-Trip',
+          tiles: [groupedTabA, groupedTabB, groupedNoTab, ungrouped],
+          tags: ['containers-test'],
+          containers,
+        })
+        .expect(200);
+
+      expect(createResponse.body.data.containers).toEqual(containers);
+      const createdTilesByName = Object.fromEntries(
+        createResponse.body.data.tiles.map((t: ExternalDashboardTileWithId) => [
+          t.name,
+          t,
+        ]),
+      );
+      expect(createdTilesByName['In Group, Tab A']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+      expect(createdTilesByName['In Group, Tab B']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'latency',
+      });
+      expect(createdTilesByName['In Plain Group']).toMatchObject({
+        containerId: 'overview',
+      });
+      expect(createdTilesByName['In Plain Group'].tabId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.containerId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.tabId).toBeUndefined();
+
+      const dashboardId = createResponse.body.data.id;
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboardId}`,
+      ).expect(200);
+      expect(getResponse.body.data.containers).toEqual(containers);
+
+      // Update: rename a tab, drop the second container, re-home tiles.
+      const updatedContainers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: true,
+          tabs: [
+            { id: 'errors', title: 'Error Rate' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+      ];
+      const reHomedUngrouped = {
+        ...createdTilesByName.Ungrouped,
+        containerId: 'service-health',
+        tabId: 'errors',
+      };
+      const droppedContainerTile = {
+        ...createdTilesByName['In Plain Group'],
+        containerId: undefined,
+        tabId: undefined,
+      };
+
+      const updateResponse = await authRequest(
+        'put',
+        `${BASE_URL}/${dashboardId}`,
+      )
+        .send({
+          name: 'Containers Round-Trip',
+          tiles: [
+            createdTilesByName['In Group, Tab A'],
+            createdTilesByName['In Group, Tab B'],
+            droppedContainerTile,
+            reHomedUngrouped,
+          ],
+          tags: ['containers-test'],
+          containers: updatedContainers,
+        })
+        .expect(200);
+
+      expect(updateResponse.body.data.containers).toEqual(updatedContainers);
+      const updatedTilesByName = Object.fromEntries(
+        updateResponse.body.data.tiles.map((t: ExternalDashboardTileWithId) => [
+          t.name,
+          t,
+        ]),
+      );
+      expect(updatedTilesByName['In Plain Group'].containerId).toBeUndefined();
+      expect(updatedTilesByName.Ungrouped).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+    });
+
+    it('round-trips a container with no optional fields set', async () => {
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'minimal',
+          title: 'Minimal',
+          collapsed: false,
+        },
+      ];
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Minimal Container Dashboard',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers,
+        })
+        .expect(200);
+
+      expect(response.body.data.containers).toEqual(containers);
+      const [container] = response.body.data.containers;
+      expect(container.collapsible).toBeUndefined();
+      expect(container.bordered).toBeUndefined();
+      expect(container.tabs).toBeUndefined();
+    });
+
+    it('rejects a tile that references an unknown containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Bad Container Reference',
+          tiles: [buildTile(sourceId, { containerId: 'does-not-exist' })],
+          tags: [],
+          containers: [
+            { id: 'real-container', title: 'Real', collapsed: false },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'unknown containerId "does-not-exist"',
+      );
+    });
+
+    it('rejects a tile that references an unknown tabId', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Bad Tab Reference',
+          tiles: [
+            buildTile(sourceId, {
+              containerId: 'service-health',
+              tabId: 'ghost',
+            }),
+          ],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [{ id: 'errors', title: 'Errors' }],
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('unknown tabId "ghost"');
+    });
+
+    it('rejects a tile that supplies tabId without containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Tab Without Container',
+          tiles: [buildTile(sourceId, { tabId: 'errors' })],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [{ id: 'errors', title: 'Errors' }],
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'tabId requires containerId to be set',
+      );
+    });
+
+    it('rejects duplicate container ids', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Duplicate Containers',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers: [
+            { id: 'dupe', title: 'A', collapsed: false },
+            { id: 'dupe', title: 'B', collapsed: false },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('Container IDs must be unique');
+    });
+
+    it('rejects duplicate tab ids within a container', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Duplicate Tabs',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [
+                { id: 'errors', title: 'Errors' },
+                { id: 'errors', title: 'Errors Two' },
+              ],
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Duplicate tab id "errors" in container "service-health"',
+      );
+    });
+
+    it('round-trips a dashboard with no containers (backward compat)', async () => {
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'No Containers',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.containers).toBeUndefined();
+
+      const dashboardId = response.body.data.id;
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboardId}`,
+      ).expect(200);
+      expect(getResponse.body.data.containers).toBeUndefined();
+    });
+  });
+
   describe('DELETE /:id', () => {
     it('should delete a dashboard', async () => {
       const dashboard = await createTestDashboard();

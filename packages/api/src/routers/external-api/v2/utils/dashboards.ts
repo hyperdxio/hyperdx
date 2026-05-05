@@ -3,6 +3,8 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  DashboardContainer,
+  DashboardContainerSchema,
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -77,6 +79,7 @@ export type ExternalDashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: string | null;
   savedFilterValues?: DashboardDocument['savedFilterValues'];
+  containers?: DashboardContainer[];
 };
 
 // --------------------------------------------------------------------------------
@@ -301,6 +304,10 @@ function convertTileToExternalChart(
     ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
     name: tile.config.name ?? '',
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
+    ...(tile.containerId !== undefined
+      ? { containerId: tile.containerId }
+      : {}),
+    ...(tile.tabId !== undefined ? { tabId: tile.tabId } : {}),
   };
 }
 
@@ -318,6 +325,12 @@ export function convertToExternalDashboard(
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
     savedFilterValues: dashboard.savedFilterValues ?? [],
+    // Mongoose persists missing arrays as []. Only emit containers when
+    // the user actually saved one or more, so dashboards without the
+    // organization layer round-trip with the field absent.
+    ...(dashboard.containers && dashboard.containers.length > 0
+      ? { containers: dashboard.containers }
+      : {}),
   };
 }
 
@@ -489,7 +502,16 @@ export function convertToInternalTileConfig(
   const strippedConfig = _.omitBy(internalConfig, _.isNil) as SavedChartConfig;
 
   return {
-    ...pick(externalTile, ['id', 'x', 'y', 'w', 'h', 'name']),
+    ...pick(externalTile, [
+      'id',
+      'x',
+      'y',
+      'w',
+      'h',
+      'name',
+      'containerId',
+      'tabId',
+    ]),
     config: strippedConfig,
   };
 }
@@ -583,6 +605,7 @@ const dashboardBodyBaseShape = {
   savedFilterValues: z
     .array(externalDashboardSavedFilterValueSchema)
     .optional(),
+  containers: z.array(DashboardContainerSchema).optional(),
 };
 
 // --------------------------------------------------------------------------------
@@ -701,6 +724,76 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
           path: ['savedQueryLanguage'],
         });
       }
+
+      const containers = data.containers ?? [];
+      const containerById = new Map<string, DashboardContainer>(
+        containers.map(c => [c.id, c]),
+      );
+
+      // Container id uniqueness across the dashboard.
+      const seenContainerIds = new Set<string>();
+      containers.forEach((container, containerIdx) => {
+        if (seenContainerIds.has(container.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Container IDs must be unique: "${container.id}"`,
+            path: ['containers', containerIdx, 'id'],
+          });
+        }
+        seenContainerIds.add(container.id);
+      });
+
+      // Tab id uniqueness within each container.
+      containers.forEach((container, containerIdx) => {
+        if (!container.tabs) return;
+        const seenTabIds = new Set<string>();
+        container.tabs.forEach((tab, tabIdx) => {
+          if (seenTabIds.has(tab.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Duplicate tab id "${tab.id}" in container "${container.id}"`,
+              path: ['containers', containerIdx, 'tabs', tabIdx, 'id'],
+            });
+          }
+          seenTabIds.add(tab.id);
+        });
+      });
+
+      // Each tile's containerId resolves to a real container,
+      // and each tile's tabId resolves to a tab in that container.
+      data.tiles.forEach((tile, tileIdx) => {
+        if (tile.containerId !== undefined) {
+          const container = containerById.get(tile.containerId);
+          if (!container) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Tile references unknown containerId "${tile.containerId}"`,
+              path: ['tiles', tileIdx, 'containerId'],
+            });
+          }
+        }
+
+        if (tile.tabId !== undefined) {
+          if (tile.containerId === undefined) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'tabId requires containerId to be set',
+              path: ['tiles', tileIdx, 'tabId'],
+            });
+            return;
+          }
+          const container = containerById.get(tile.containerId);
+          if (!container) return;
+          const tab = container.tabs?.find(t => t.id === tile.tabId);
+          if (!tab) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Tile references unknown tabId "${tile.tabId}" in container "${tile.containerId}"`,
+              path: ['tiles', tileIdx, 'tabId'],
+            });
+          }
+        }
+      });
     });
 }
 
