@@ -55,24 +55,9 @@ function applyLegacyDefaults(
 }
 
 function formatExternalSource(source: SourceDocument) {
-  // Convert to JSON so that any ObjectIds are converted to strings
-  const json = JSON.stringify(
-    (() => {
-      switch (source.kind) {
-        case SourceKind.Log:
-          return source.toJSON({ getters: true });
-        case SourceKind.Trace:
-          return source.toJSON({ getters: true });
-        case SourceKind.Metric:
-          return source.toJSON({ getters: true });
-        case SourceKind.Session:
-          return source.toJSON({ getters: true });
-        default:
-          source satisfies never;
-          return {};
-      }
-    })(),
-  );
+  // Convert to JSON so that any ObjectIds are converted to strings.
+  // Berg has a single Source kind (Table); the kind-switch is gone.
+  const json = JSON.stringify(source.toJSON({ getters: true }));
 
   // Parse using the SourceSchema to strip out any fields not defined in the schema
   const parseResult = SourceSchema.safeParse(

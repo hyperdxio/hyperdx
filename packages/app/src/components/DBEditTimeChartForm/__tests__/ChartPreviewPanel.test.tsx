@@ -53,7 +53,6 @@ const dateRange: [Date, Date] = [
   new Date('2024-01-02'),
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const mockTableSource = {
   id: 'test-source',
   kind: SourceKind.Log,

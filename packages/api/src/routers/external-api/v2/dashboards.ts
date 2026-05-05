@@ -24,28 +24,16 @@ import {
   updateDashboardBodySchema,
 } from './utils/dashboards';
 
+/**
+ * @deprecated Connection model has been removed in Berg. Mismatch detection
+ * is no longer meaningful — Sources no longer carry a connection ObjectId.
+ * Always returns an empty list so the validation pipeline still runs cleanly.
+ */
 async function getSourceConnectionMismatches(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
+  _team: string | mongoose.Types.ObjectId,
+  _tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
-  const existingSources = await getSources(team.toString());
-  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
-
-  const sourcesWithInvalidConnections: string[] = [];
-  for (const tile of tiles) {
-    if (
-      isConfigTile(tile) &&
-      isRawSqlExternalTileConfig(tile.config) &&
-      tile.config.sourceId
-    ) {
-      const source = sourceById.get(tile.config.sourceId);
-      if (source && source.connection.toString() !== tile.config.connectionId) {
-        sourcesWithInvalidConnections.push(tile.config.sourceId);
-      }
-    }
-  }
-
-  return sourcesWithInvalidConnections;
+  return [];
 }
 
 /**

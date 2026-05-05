@@ -12,7 +12,6 @@ import _ from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
-import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import { DashboardDocument } from '@/models/dashboard';
 import {
@@ -533,29 +532,16 @@ export async function getMissingSources(
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
 }
 
-/** Returns connection IDs referenced in tiles that do not belong to the team */
+/**
+ * @deprecated Connection model has been removed in Berg. Always returns an
+ * empty list. The external dashboards router still calls this for legacy
+ * RawSql tile configs; PR2/PR3 removes both sides.
+ */
 export async function getMissingConnections(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
+  _team: string | mongoose.Types.ObjectId,
+  _tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
-  const connectionIds = new Set<string>();
-
-  for (const tile of tiles) {
-    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
-      connectionIds.add(tile.config.connectionId);
-    }
-  }
-
-  if (connectionIds.size === 0) return [];
-
-  const existingConnections = await getConnectionsByTeam(team.toString());
-  const existingConnectionIds = new Set(
-    existingConnections.map(connection => connection._id.toString()),
-  );
-
-  return [...connectionIds].filter(
-    connectionId => !existingConnectionIds.has(connectionId),
-  );
+  return [];
 }
 
 type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;

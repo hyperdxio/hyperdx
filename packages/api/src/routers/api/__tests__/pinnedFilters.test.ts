@@ -1,16 +1,16 @@
-import { SourceKind, TSource } from '@berg/common-utils/dist/types';
+import { SourceKind } from '@berg/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
-import { Source } from '@/models/source';
+import { ISourceInput, Source } from '@/models/source';
 
-const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
-  kind: SourceKind.Log,
+const MOCK_SOURCE: Omit<ISourceInput, 'id' | 'team'> = {
+  kind: SourceKind.Table,
   name: 'Test Source',
-  connection: new Types.ObjectId().toString(),
-  from: { databaseName: 'test_db', tableName: 'test_table' },
-  timestampValueExpression: 'timestamp',
-  defaultTableSelectExpression: 'body',
+  catalog: 'AwsDataCatalog',
+  database: 'test_db',
+  table: 'test_table',
+  displayName: 'Test Source',
 };
 
 describe('pinnedFilters router', () => {

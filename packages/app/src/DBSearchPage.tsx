@@ -1625,8 +1625,7 @@ export function DBSearchPage() {
       }
 
       const nextSource = sources?.find(
-        (source): source is Extract<TSource, { kind: SourceKind.Trace }> =>
-          source.id === sourceId && isTraceSource(source),
+        source => source.id === sourceId && isTraceSource(source),
       );
       if (!nextSource || !directTraceId) {
         return;

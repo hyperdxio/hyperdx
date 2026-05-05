@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 
+export type UserRole = 'admin' | 'editor' | 'viewer';
+
 export interface IUser {
   _id: ObjectId;
   accessKey: string;
@@ -12,6 +14,8 @@ export interface IUser {
   email: string;
   name: string;
   team: ObjectId;
+  // Phase 2 hook; defaults to 'admin' for v1 (flat permissions, team isolation only).
+  role: UserRole;
 }
 
 export type UserDocument = mongoose.HydratedDocument<IUser>;
@@ -24,6 +28,12 @@ const UserSchema = new Schema(
       required: true,
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    role: {
+      type: String,
+      enum: ['admin', 'editor', 'viewer'],
+      default: 'admin',
+      required: true,
+    },
     accessKey: {
       type: String,
       default: function genUUID() {

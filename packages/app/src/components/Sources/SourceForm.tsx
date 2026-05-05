@@ -145,6 +145,9 @@ function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    default:
+      // Berg Table sources have no cross-source correlations.
+      return source;
   }
 }
 
@@ -197,6 +200,8 @@ const CORRELATION_FIELD_MAP: Record<
       { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
     ],
   },
+  // Berg Table sources have no cross-source correlations.
+  [SourceKind.Table]: {},
 };
 
 function FormRow({

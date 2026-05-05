@@ -140,12 +140,12 @@ export function useSources() {
   });
 }
 
-export function useSource<K extends SourceKind>(opts: {
-  id?: string | null;
-  kinds: K[];
-}): UseQueryResult<Extract<TSource, { kind: K }> | undefined>;
+// In Berg the four kinds collapse to a single Table source, so the
+// kinds-narrowing overload is gone — the runtime kind filter still applies
+// but the return type is the full TSource.
 export function useSource(opts: {
   id?: string | null;
+  kinds?: SourceKind[];
 }): UseQueryResult<TSource | undefined>;
 export function useSource({
   id,

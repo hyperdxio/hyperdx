@@ -1,35 +1,24 @@
-import { useMemo } from 'react';
+/**
+ * Berg compatibility shim. The Connection model has been deleted; the UI
+ * components that import this select are scheduled for removal in
+ * Tasks 9/10/11. Until then, this stub keeps imports type-checking.
+ */
 import { UseControllerProps } from 'react-hook-form';
-import { IconServer } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
-import { useConnections } from '@/connection';
 
 export function ConnectionSelectControlled({
   size,
   ...props
 }: { size?: string } & UseControllerProps<any>) {
-  const { data } = useConnections();
-
-  const values = useMemo(
-    () =>
-      data?.map(d => ({
-        value: d.id,
-        label: d.name,
-      })),
-    [data],
-  );
-
   return (
     <SelectControlled
       {...props}
       allowDeselect={false}
-      data={values}
-      // disabled={isDatabasesLoading}
+      data={[]}
       comboboxProps={{ withinPortal: false }}
       searchable
       placeholder="Connection"
-      leftSection={<IconServer size={16} />}
       maxDropdownHeight={280}
       size={size}
     />

@@ -18,7 +18,7 @@ import type {
   BuilderChartConfigWithDateRange,
   TSource,
 } from '@/types';
-import { SourceKind } from '@/types';
+import { isLogSource, isTraceSource } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { getDistributedTableArgs, objectHash } from './utils';
@@ -1285,8 +1285,7 @@ export class Metadata {
 
         const defaultKeyValueCall = { chartConfig, keys };
         const canHaveMVs =
-          source &&
-          (source.kind === SourceKind.Log || source.kind === SourceKind.Trace);
+          source && (isLogSource(source) || isTraceSource(source));
         const getKeyValueCalls = canHaveMVs
           ? await optimizeGetKeyValuesCalls({
               chartConfig,

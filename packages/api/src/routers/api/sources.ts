@@ -20,12 +20,7 @@ router.get('/', async (req, res, next) => {
 
     const sources = await getSources(teamId.toString());
 
-    return res.json(
-      sources.map(
-        // @ts-expect-error source.toJSON has incompatible type signatures but is actually a safe operation
-        source => source.toJSON({ getters: true }),
-      ),
-    );
+    return res.json(sources.map(source => source.toJSON({ getters: true })));
   } catch (e) {
     next(e);
   }

@@ -247,7 +247,8 @@ function Mapping({ input }: { input: DashboardTemplate }) {
       const config = tile.config as SavedChartConfig;
       if (!isRawSqlSavedChartConfig(config)) return '';
       const match = connections.find(
-        conn => conn.name.toLowerCase() === config.connection.toLowerCase(),
+        conn =>
+          (conn.name ?? '').toLowerCase() === config.connection.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -495,7 +496,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
                         name={`connectionMappings.${i}`}
                         data={connections?.map(conn => ({
                           value: conn.id,
-                          label: conn.name,
+                          label: conn.name ?? '',
                         }))}
                         placeholder="Select a connection"
                       />

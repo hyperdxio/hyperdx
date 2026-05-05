@@ -144,14 +144,14 @@ export function buildSearchChartConfig(
       : undefined;
 
   const config: SearchChartConfig = {
-    connection: input.connection ?? source.connection,
+    connection: input.connection ?? source.connection ?? '',
     displayType: input.displayType ?? DisplayType.Search,
     source: source.id,
     from: source.from,
     select: resolveSelect(source, input.select),
     where: input.where ?? '',
     whereLanguage: input.whereLanguage ?? 'sql',
-    timestampValueExpression: source.timestampValueExpression,
+    timestampValueExpression: source.timestampValueExpression ?? '',
     ...(implicitColumnExpression != null ? { implicitColumnExpression } : {}),
     ...pickSampleWeightExpressionProps(source),
     ...(mergedFilters.length > 0 ? { filters: mergedFilters } : {}),

@@ -483,15 +483,11 @@ export function convertToDashboardTemplate(
     // Extract name from source/connection or default to '' if not found
     const tileConfig = tile.config;
     if (isBuilderSavedChartConfig(tileConfig)) {
-      tileConfig.source = (
-        sources.find(source => source.id === tileConfig.source) ?? { name: '' }
-      ).name;
+      tileConfig.source =
+        sources.find(source => source.id === tileConfig.source)?.name ?? '';
     } else if (isRawSqlSavedChartConfig(tileConfig)) {
-      tileConfig.connection = (
-        connections.find(conn => conn.id === tileConfig.connection) ?? {
-          name: '',
-        }
-      ).name;
+      tileConfig.connection =
+        connections.find(conn => conn.id === tileConfig.connection)?.name ?? '';
       if (tileConfig.source) {
         tileConfig.source =
           sources.find(source => source.id === tileConfig.source)?.name ?? '';

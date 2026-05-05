@@ -1011,11 +1011,12 @@ export function getMetricTableName(
 
 export function getAllMetricTables(source: TSource): TableConnection[] {
   if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+  const metricTables = source.metricTables;
 
   return Object.values(MetricsDataType)
     .filter(
       metricType =>
-        !!source.metricTables[
+        !!metricTables[
           metricType as unknown as keyof TMetricSource['metricTables']
         ],
     )
@@ -1023,9 +1024,9 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
       metricType =>
         ({
           tableName:
-            source.metricTables[
+            metricTables[
               metricType as unknown as keyof TMetricSource['metricTables']
-            ],
+            ] ?? '',
           databaseName: source.from.databaseName,
           connectionId: source.connection,
         }) satisfies TableConnection,
