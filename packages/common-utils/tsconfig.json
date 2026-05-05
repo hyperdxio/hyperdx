@@ -11,5 +11,12 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "src/clickhouse/**",
+    "src/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.int.test.ts",
+    "dist"
+  ]
 }

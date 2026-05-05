@@ -1,4 +1,3 @@
-import { displayTypeSupportsRawSqlAlerts } from '@berg/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
@@ -13,7 +12,6 @@ import _ from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
-import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import { DashboardDocument } from '@/models/dashboard';
@@ -631,49 +629,6 @@ export function convertExternalFiltersToInternal(
         : new mongoose.Types.ObjectId().toString();
     return translateExternalFilterToFilter({ ...filter, id: filterId });
   });
-}
-
-/**
- * Delete alerts for tiles that were removed or converted to raw SQL
- * (which doesn't support alerts).
- */
-export async function cleanupDashboardAlerts({
-  dashboardId,
-  teamId,
-  internalTiles,
-  existingTileIds,
-}: {
-  dashboardId: string;
-  teamId: string | mongoose.Types.ObjectId;
-  internalTiles: DashboardDocument['tiles'];
-  existingTileIds: Set<string>;
-}) {
-  const newTileIdSet = new Set(internalTiles.map(t => t.id));
-  const tileIdsToDeleteAlerts = [
-    ...internalTiles
-      .filter(
-        tile =>
-          isRawSqlSavedChartConfig(tile.config) &&
-          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
-      )
-      .map(tile => tile.id),
-    ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
-  ];
-  if (tileIdsToDeleteAlerts.length > 0) {
-    logger.info(
-      { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
-      'Deleting alerts for tiles with unsupported config or removed tiles',
-    );
-    const teamObjectId =
-      teamId instanceof mongoose.Types.ObjectId
-        ? teamId
-        : new mongoose.Types.ObjectId(teamId);
-    await deleteDashboardAlerts(
-      dashboardId,
-      teamObjectId,
-      tileIdsToDeleteAlerts,
-    );
-  }
 }
 
 // --------------------------------------------------------------------------------

@@ -24,7 +24,6 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
-import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
@@ -154,7 +153,6 @@ export default function SavedSearchesListPage() {
                   href={`/search/${s.id}`}
                   tags={s.tags}
                   onDelete={() => handleDelete(s.id)}
-                  statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                   resourceId={s.id}
                   resourceType="savedSearch"
                   updatedAt={s.updatedAt}
@@ -284,7 +282,6 @@ export default function SavedSearchesListPage() {
                         resourceId={s.id}
                         size="xs"
                       />
-                      <AlertStatusIcon alerts={s.alerts} />
                     </Group>
                   }
                 />
@@ -306,7 +303,6 @@ export default function SavedSearchesListPage() {
                       href={`/search/${s.id}`}
                       tags={s.tags}
                       onDelete={() => handleDelete(s.id)}
-                      statusIcon={<AlertStatusIcon alerts={s.alerts} />}
                       resourceId={s.id}
                       resourceType="savedSearch"
                       updatedAt={s.updatedAt}

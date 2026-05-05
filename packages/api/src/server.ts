@@ -6,7 +6,6 @@ import app from '@/api-app';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection } from '@/models';
-import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 
@@ -14,14 +13,9 @@ export default class Server {
   protected shouldHandleGracefulShutdown = true;
 
   protected appServer!: http.Server;
-  protected opampServer!: http.Server;
 
   private createAppServer() {
     return http.createServer(app);
-  }
-
-  private createOpampServer() {
-    return http.createServer(opampApp);
   }
 
   protected async shutdown(signal?: string) {
@@ -51,24 +45,14 @@ export default class Server {
     this.appServer.keepAliveTimeout = 61000; // Ensure all inactive connections are terminated by the ALB, by setting this a few seconds higher than the ALB idle timeout
     this.appServer.headersTimeout = 62000; // Ensure the headersTimeout is set higher than the keepAliveTimeout due to this nodejs regression bug: https://github.com/nodejs/node/issues/27363
 
-    this.opampServer = this.createOpampServer();
-    this.opampServer.keepAliveTimeout = 61000;
-    this.opampServer.headersTimeout = 62000;
-
     this.appServer.listen(config.PORT, () => {
       logger.info(
         `API Server listening on port ${config.PORT}, NODE_ENV=${process.env.NODE_ENV}`,
       );
     });
 
-    this.opampServer.listen(config.OPAMP_PORT, () => {
-      logger.info(
-        `OpAMP Server listening on port ${config.OPAMP_PORT}, NODE_ENV=${process.env.NODE_ENV}`,
-      );
-    });
-
     if (this.shouldHandleGracefulShutdown) {
-      [this.appServer, this.opampServer].forEach(server => {
+      [this.appServer].forEach(server => {
         gracefulShutdown(server, {
           signals: 'SIGINT SIGTERM',
           timeout: 10000, // 10 secs

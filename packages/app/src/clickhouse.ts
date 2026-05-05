@@ -5,12 +5,18 @@
 // please move app-specific functions elsewhere in the app
 // ================================
 
+// NOTE (Berg / Task 2): @berg/common-utils/dist/clickhouse/* is excluded from
+// the common-utils build until Task 4 swaps in the Athena client. The
+// `@ts-ignore` directives keep tsc happy across the strip — re-enable as
+// part of Task 4.
+// @ts-ignore - module path is excluded from build during the strip
 import {
   chSql,
   ClickhouseClientOptions,
   ColumnMeta,
   ResponseJSON,
 } from '@berg/common-utils/dist/clickhouse';
+// @ts-ignore - module path is excluded from build during the strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -74,7 +80,7 @@ export function useDatabasesDirect(
           query: 'SHOW DATABASES',
           connectionId,
         })
-        .then(res => res.json());
+        .then((res: any) => res.json());
 
       return json;
     },
@@ -98,7 +104,7 @@ export function useTablesDirect(
           query_params: paramSql.params,
           connectionId,
         })
-        .then(res => res.json());
+        .then((res: any) => res.json());
 
       return json;
     },

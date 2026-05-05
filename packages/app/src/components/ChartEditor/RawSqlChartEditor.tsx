@@ -4,13 +4,8 @@ import {
   TableConnection,
   tcFromSource,
 } from '@berg/common-utils/dist/core/metadata';
-import {
-  displayTypeSupportsRawSqlAlerts,
-  validateRawSqlForAlert,
-} from '@berg/common-utils/dist/core/utils';
 import { MACRO_SUGGESTIONS } from '@berg/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@berg/common-utils/dist/rawSqlParams';
-import { RawSqlChartConfig } from '@berg/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
@@ -18,16 +13,13 @@ import {
   isTraceSource,
 } from '@berg/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
-import { IconBell, IconHelpCircle } from '@tabler/icons-react';
+import { IconHelpCircle } from '@tabler/icons-react';
 
-import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
-import { IS_LOCAL_MODE } from '@/config';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
-import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
@@ -46,16 +38,12 @@ export default function RawSqlChartEditor({
   onOpenDisplaySettings,
   onSubmit,
   isDashboardForm,
-  alert,
-  dashboardId,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   onOpenDisplaySettings: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
-  alert: ChartEditorFormState['alert'];
-  dashboardId?: string;
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -64,29 +52,7 @@ export default function RawSqlChartEditor({
   const displayType = useWatch({ control, name: 'displayType' });
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
-  const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
   const sourceObject = sources?.find(s => s.id === source);
-
-  const rawSqlConfig = useMemo(
-    () =>
-      ({
-        configType: 'sql',
-        sqlTemplate: sqlTemplate ?? '',
-        connection: connection ?? '',
-        from: sourceObject?.from,
-        displayType,
-      }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject?.from, displayType],
-  );
-
-  const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
-    const { errors, warnings } = validateRawSqlForAlert(rawSqlConfig);
-    return {
-      alertErrorMessage: errors.length > 0 ? errors.join('. ') : undefined,
-      alertWarningMessage:
-        warnings.length > 0 ? warnings.join('. ') : undefined,
-    };
-  }, [rawSqlConfig]);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -169,11 +135,6 @@ export default function RawSqlChartEditor({
       });
   }, [sources, connection]);
 
-  const alertTooltip =
-    displayType === DisplayType.Number
-      ? 'The threshold will be evaluated against the last numeric column in the first query result'
-      : 'The threshold will be evaluated against the last numeric column in each query result';
-
   return (
     <Stack gap="xs">
       <Group align="center" gap={0} justify="space-between">
@@ -210,22 +171,6 @@ export default function RawSqlChartEditor({
           />
         </Group>
         <Group gap="xs">
-          {displayTypeSupportsRawSqlAlerts(displayType) &&
-            dashboardId &&
-            !alert &&
-            !IS_LOCAL_MODE && (
-              <Button
-                variant="subtle"
-                data-testid="alert-button"
-                size="sm"
-                color={'gray'}
-                onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
-              >
-                <IconBell size={14} className="me-2" />
-                Add Alert
-              </Button>
-            )}
-
           <Group>
             {displayType === DisplayType.Table && (
               <OnClickFormButton
@@ -257,17 +202,6 @@ export default function RawSqlChartEditor({
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
-      {alert && (
-        <TileAlertEditor
-          control={control}
-          setValue={setValue}
-          alert={alert}
-          onRemove={() => setValue('alert', undefined)}
-          error={alertErrorMessage}
-          warning={alertWarningMessage}
-          tooltip={alertTooltip}
-        />
-      )}
     </Stack>
   );
 }

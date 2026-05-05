@@ -17,7 +17,6 @@ import { IconAt, IconLock } from '@tabler/icons-react';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import * as config from './config';
-import LandingHeader from './LandingHeader';
 import { CheckOrX, PasswordCheck } from './PasswordCheck';
 
 type FormData = {
@@ -131,7 +130,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   return (
     <div className="AuthPage">
       <NextSeo title={title} />
-      <LandingHeader activeKey={`/${action}`} fixed />
       <div className="d-flex justify-content-center align-items-center vh-100">
         <div style={{ width: '26rem' }}>
           <div className="text-center mb-2 fs-5 " style={{ marginTop: -30 }}>

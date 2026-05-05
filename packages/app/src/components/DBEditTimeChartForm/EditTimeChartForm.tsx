@@ -8,11 +8,6 @@ import {
 } from 'react-hook-form';
 import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
-  displayTypeSupportsBuilderAlerts,
-  displayTypeSupportsRawSqlAlerts,
-} from '@berg/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@berg/common-utils/dist/guards';
-import {
   ChartConfigWithDateRange,
   DisplayType,
   SavedChartConfig,
@@ -29,7 +24,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { useDisclosure, usePrevious } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
@@ -71,7 +66,6 @@ import {
   getTraceDurationNumberFormat,
   useSource,
 } from '@/source';
-import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
@@ -153,7 +147,7 @@ export default function EditTimeChartForm({
     register,
     setError,
     clearErrors,
-    formState: { errors, isDirty, dirtyFields },
+    formState: { errors, isDirty },
   } = useForm<ChartEditorFormState>({
     defaultValues: formValue,
     values: formValue,
@@ -176,7 +170,6 @@ export default function EditTimeChartForm({
 
   const select = useWatch({ control, name: 'select' });
   const sourceId = useWatch({ control, name: 'source' });
-  const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
@@ -185,7 +178,6 @@ export default function EditTimeChartForm({
   const granularity = useWatch({ control, name: 'granularity' });
   const configType = useWatch({ control, name: 'configType' });
 
-  const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
 
@@ -194,19 +186,6 @@ export default function EditTimeChartForm({
   const tableName = tableSource?.from.tableName;
 
   const activeTab = displayTypeToActiveTab(displayType);
-
-  // When switching display types, remove the alert if the new display type doesn't support alerts
-  const previousDisplayType = usePrevious(displayType);
-  useEffect(() => {
-    if (displayType === previousDisplayType) return;
-    const displayTypeSupportsAlerts =
-      configType === 'sql'
-        ? displayTypeSupportsRawSqlAlerts(displayType)
-        : displayTypeSupportsBuilderAlerts(displayType);
-    if (!displayTypeSupportsAlerts) {
-      setValue('alert', undefined);
-    }
-  }, [configType, displayType, previousDisplayType, setValue]);
 
   const showGeneratedSql = TABS_WITH_GENERATED_SQL.has(activeTab);
 
@@ -285,8 +264,8 @@ export default function EditTimeChartForm({
   );
 
   const dbTimeChartConfig = useMemo(
-    () => computeDbTimeChartConfig(queriedConfig, alert),
-    [queriedConfig, alert],
+    () => computeDbTimeChartConfig(queriedConfig),
+    [queriedConfig],
   );
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
@@ -300,31 +279,9 @@ export default function EditTimeChartForm({
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
       if (!savedConfig) return { errors: [], config: null };
 
-      const config = isRawSqlSavedChartConfig(savedConfig)
-        ? savedConfig
-        : {
-            ...savedConfig,
-            alert: normalizeNoOpAlertScheduleFields(
-              savedConfig.alert,
-              chartConfigAlert,
-              {
-                preserveExplicitScheduleOffsetMinutes:
-                  dirtyFields.alert?.scheduleOffsetMinutes === true,
-                preserveExplicitScheduleStartAt:
-                  dirtyFields.alert?.scheduleStartAt === true,
-              },
-            ),
-          };
-
-      return { errors: [], config };
+      return { errors: [], config: savedConfig };
     },
-    [
-      tableSource,
-      setError,
-      chartConfigAlert,
-      dirtyFields.alert?.scheduleOffsetMinutes,
-      dirtyFields.alert?.scheduleStartAt,
-    ],
+    [tableSource, setError],
   );
 
   const onSubmit = useCallback(
@@ -701,8 +658,6 @@ export default function EditTimeChartForm({
             onOpenDisplaySettings={openDisplaySettings}
             onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
-            alert={alert}
-            dashboardId={dashboardId}
           />
         ) : (
           <ChartEditorControls
@@ -723,7 +678,6 @@ export default function EditTimeChartForm({
             displayType={displayType}
             activeTab={activeTab}
             seriesReturnType={seriesReturnType}
-            alert={alert}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}
@@ -758,7 +712,6 @@ export default function EditTimeChartForm({
         tableSource={tableSource}
         dateRange={dateRange}
         activeTab={activeTab}
-        alert={alert}
         sourceId={sourceId}
         onTimeRangeSelect={onTimeRangeSelect}
         chartConfigForExplanations={chartConfigForExplanations}

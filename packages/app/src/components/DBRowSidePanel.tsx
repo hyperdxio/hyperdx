@@ -31,7 +31,6 @@ import DBRowSidePanelHeader, {
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
@@ -40,11 +39,21 @@ import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
-import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
-import { DBSessionPanel, useSessionId } from './DBSessionPanel';
-import DBTracePanel from './DBTracePanel';
+
+// NOTE (Berg / Task 2): the trace/session/infra side panels were
+// observability-specific and have been removed. Task 9 will rebuild the
+// row-side-panel surface for table data; for now stub these so the rest of
+// DBSearchPage continues to compile.
+const LogSidePanelKbdShortcuts = () => null;
+const DBInfraPanel: React.ComponentType<any> = () => null;
+const DBTracePanel: React.ComponentType<any> = () => null;
+const DBSessionPanel: React.ComponentType<any> = () => null;
+const useSessionId = (_: unknown) => ({
+  rumSessionId: undefined as string | undefined,
+  rumServiceName: undefined as string | undefined,
+});
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { testLocalConnection } from '@berg/common-utils/dist/clickhouse/browser';
 import { Connection } from '@berg/common-utils/dist/types';
 import {

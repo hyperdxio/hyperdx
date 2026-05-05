@@ -278,8 +278,8 @@ export default function useServiceMap({
             join_algorithm: 'auto',
           },
         })
-        .then(res => res.json<Record<string, string>>())
-        .then(data =>
+        .then((res: any) => res.json())
+        .then((data: any) =>
           data.data.map((row: Record<string, string>) => ({
             serverServiceName: row.serverServiceName,
             serverStatusCode: row.serverStatusCode,

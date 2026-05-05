@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 export enum TaskName {
   PING_PONG = 'ping-pong',
-  CHECK_ALERTS = 'check-alerts',
 }
 
 /**
@@ -13,29 +12,9 @@ const pingTaskArgsSchema = z.object({
   taskName: z.literal(TaskName.PING_PONG),
 });
 
-const checkAlertsTaskArgsSchema = z.object({
-  taskName: z.literal(TaskName.CHECK_ALERTS),
-  provider: z.string().optional(),
-  concurrency: z
-    .number()
-    .int('concurrency must be an integer')
-    .min(1, 'concurrency must be at least 1')
-    .max(1024, 'concurrency must be less than 1024')
-    .optional(),
-  sourceTimeoutMs: z
-    .number()
-    .int('sourceTimeoutMs must be an int')
-    .nonnegative('sourceTimeoutMs must be a non-negative value')
-    .optional(),
-});
-
-const taskArgsSchema = z.discriminatedUnion('taskName', [
-  pingTaskArgsSchema,
-  checkAlertsTaskArgsSchema,
-]);
+const taskArgsSchema = z.discriminatedUnion('taskName', [pingTaskArgsSchema]);
 
 export type PingTaskArgs = z.infer<typeof pingTaskArgsSchema>;
-export type CheckAlertsTaskArgs = z.infer<typeof checkAlertsTaskArgsSchema>;
 export type TaskArgs = z.infer<typeof taskArgsSchema>;
 
 /**

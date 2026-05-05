@@ -11,7 +11,6 @@ import logger from '@/utils/logger';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
-  cleanupDashboardAlerts,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
@@ -1898,13 +1897,6 @@ router.put(
       if (updatedDashboard == null) {
         return res.sendStatus(404);
       }
-
-      await cleanupDashboardAlerts({
-        dashboardId,
-        teamId,
-        internalTiles,
-        existingTileIds,
-      });
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),

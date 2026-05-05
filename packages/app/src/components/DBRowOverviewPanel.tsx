@@ -13,9 +13,6 @@ import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
-import { ExceptionSubpanel } from './ExceptionSubpanel';
-import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
-import { SpanEventsSubpanel } from './SpanEventsSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -93,8 +90,6 @@ export function RowOverviewPanel({
   });
 
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
-  const flattenedEventAttributes =
-    firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
   const dataAttributes = useMemo(
     () =>
@@ -118,65 +113,9 @@ export function RowOverviewPanel({
     [generateSearchUrl],
   );
 
-  const isHttpRequest = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    return attributes?.['http.url'] != null;
-  }, [dataAttributes, eventAttributesExpr]);
-
   const filteredEventAttributes = useMemo(() => {
-    if (!eventAttributesExpr) return dataAttributes;
-
-    const attributes = dataAttributes?.[eventAttributesExpr];
-    return isHttpRequest && attributes
-      ? {
-          [eventAttributesExpr]: pickBy(
-            attributes,
-            (_, key) => !key.startsWith('http.'),
-          ),
-        }
-      : dataAttributes;
-  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
-
-  const exceptionValues = useMemo(() => {
-    const parsedEvents =
-      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
-    const stacktrace =
-      parsedEvents?.['exception.stacktrace'] ||
-      parsedEvents?.['exception.parsed_stacktrace'];
-
-    let parsedStacktrace = stacktrace ?? '[]';
-    try {
-      parsedStacktrace = JSON.parse(stacktrace);
-    } catch {
-      // do nothing
-    }
-
-    return [
-      {
-        stacktrace: parsedStacktrace,
-        type: parsedEvents?.['exception.type'],
-        value:
-          typeof parsedEvents?.['exception.message'] !== 'string'
-            ? JSON.stringify(parsedEvents?.['exception.message'])
-            : parsedEvents?.['exception.message'],
-        mechanism: parsedEvents?.['exception.mechanism'],
-      },
-    ];
-  }, [firstRow]);
-
-  const hasException = useMemo(() => {
-    return (
-      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
-    );
-  }, [firstRow?.__hdx_events_exception_attributes]);
-
-  const hasSpanEvents = useMemo(() => {
-    return (
-      Array.isArray(firstRow?.__hdx_span_events) &&
-      firstRow?.__hdx_span_events.length > 0
-    );
-  }, [firstRow?.__hdx_span_events]);
+    return dataAttributes;
+  }, [dataAttributes]);
 
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
@@ -212,59 +151,6 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
-        {isHttpRequest && (
-          <Accordion.Item value="network">
-            <Accordion.Control>
-              <Text size="sm" ps="md">
-                HTTP Request
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px="md">
-                <NetworkPropertySubpanel
-                  eventAttributes={flattenedEventAttributes}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
-        {hasException && (
-          <Accordion.Item value="exception">
-            <Accordion.Control>
-              <Text size="sm" ps="md">
-                Exception
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px="md">
-                <ExceptionSubpanel
-                  exceptionValues={exceptionValues}
-                  breadcrumbs={[]}
-                  logData={{
-                    timestamp: firstRow?.__hdx_timestamp,
-                  }}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
-        {hasSpanEvents && (
-          <Accordion.Item value="spanEvents">
-            <Accordion.Control>
-              <Text size="sm" ps="md">
-                Span Events
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px="md">
-                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {Object.keys(topLevelAttributes).length > 0 && (
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>

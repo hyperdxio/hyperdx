@@ -1,7 +1,5 @@
-import { recordException } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 
-import { IS_PROD } from '@/config';
 import { BaseError, isOperationalError, StatusCode } from '@/utils/errors';
 import logger from '@/utils/logger';
 
@@ -23,13 +21,6 @@ export const appErrorHandler = (
     : err instanceof SyntaxError && err.message.includes('JSON')
       ? 'Invalid JSON payload'
       : 'Something went wrong :(';
-
-  void recordException(err, {
-    mechanism: {
-      type: 'generic',
-      handled: userFacingErrorMessage ? true : false,
-    },
-  });
 
   if (!res.headersSent) {
     res.status(err.statusCode ?? StatusCode.INTERNAL_SERVER).json({

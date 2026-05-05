@@ -70,7 +70,9 @@ export const useFetchMetricMetadata = ({
           abort_signal: signal,
           connectionId: tableSource!.connection,
         })
-        .then(res => res.json())) as ResponseJSON<MetricMetadataResponse>;
+        .then((res: any) =>
+          res.json(),
+        )) as ResponseJSON<MetricMetadataResponse>;
 
       if (result?.data?.[0]) {
         return {

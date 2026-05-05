@@ -60,11 +60,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import {
-  useDebouncedCallback,
-  useDisclosure,
-  useDocumentVisibility,
-} from '@mantine/hooks';
+import { useDebouncedCallback, useDocumentVisibility } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
@@ -140,7 +136,6 @@ import {
   parseAsStringEncoded,
 } from './utils/queryParsers';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
-import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
@@ -1379,8 +1374,6 @@ export function DBSearchPage() {
     [setIsLive, setQueryErrors],
   );
 
-  const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
-    useDisclosure();
   const directTraceRangeAppliedRef = useRef<string | null>(null);
   const directTraceFilterAppliedRef = useRef<string | null>(null);
 
@@ -1698,14 +1691,6 @@ export function DBSearchPage() {
           {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
         </title>
       </Head>
-      {!IS_LOCAL_MODE && isAlertModalOpen && (
-        <DBSearchPageAlertModal
-          id={savedSearch?.id}
-          searchedConfig={searchedConfig}
-          open={isAlertModalOpen}
-          onClose={closeAlertModal}
-        />
-      )}
       <OnboardingModal />
       {savedSearch && (
         <Stack mt="lg" mx="xs">
@@ -1860,17 +1845,6 @@ export function DBSearchPage() {
                 style={{ flexShrink: 0 }}
               >
                 Update
-              </Button>
-            )}
-            {!IS_LOCAL_MODE && (
-              <Button
-                data-testid="alerts-button"
-                variant="secondary"
-                size="xs"
-                onClick={openAlertModal}
-                style={{ flexShrink: 0 }}
-              >
-                Alerts
               </Button>
             )}
           </>

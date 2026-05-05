@@ -1,21 +1,10 @@
 import {
-  Alert,
-  AlertsPageItem as _AlertsPageItem,
   BuilderChartConfig,
   Filter,
   NumberFormat as _NumberFormat,
 } from '@berg/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
-
-export type AlertsPageItem = _AlertsPageItem;
-
-export type AlertWithCreatedBy = Alert & {
-  createdBy?: {
-    email: string;
-    name?: string;
-  };
-};
 
 export type SearchConfig = {
   select?: string | null;

@@ -14,8 +14,6 @@ import { IconCode, IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
-import { getAlertReferenceLines } from '@/components/Alerts';
-import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
@@ -109,7 +107,6 @@ type ChartPreviewPanelProps = {
   tableSource?: TSource;
   dateRange: [Date, Date];
   activeTab: string;
-  alert?: ChartEditorFormState['alert'];
   sourceId?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
@@ -125,7 +122,6 @@ export function ChartPreviewPanel({
   tableSource,
   dateRange,
   activeTab,
-  alert,
   sourceId,
   onTimeRangeSelect,
   chartConfigForExplanations,
@@ -205,14 +201,6 @@ export function ChartPreviewPanel({
             sourceId={sourceId}
             config={dbTimeChartConfig}
             onTimeRangeSelect={onTimeRangeSelect}
-            referenceLines={
-              alert &&
-              getAlertReferenceLines({
-                threshold: alert.threshold,
-                thresholdMax: alert.thresholdMax,
-                thresholdType: alert.thresholdType,
-              })
-            }
             errorVariant="inline"
             showMVOptimizationIndicator={false}
           />

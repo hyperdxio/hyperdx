@@ -2,11 +2,8 @@ import {
   SavedSearchListApiResponse,
   SavedSearchSchema,
 } from '@berg/common-utils/dist/types';
-import { groupBy } from 'lodash';
 import { z } from 'zod';
 
-import { deleteSavedSearchAlerts } from '@/controllers/alerts';
-import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
@@ -17,19 +14,8 @@ export async function getSavedSearches(
   const savedSearches = await SavedSearch.find({ team: teamId })
     .populate('createdBy', 'email name')
     .populate('updatedBy', 'email name');
-  const alerts = await Alert.find(
-    { team: teamId, savedSearch: { $exists: true, $ne: null } },
-    { __v: 0 },
-  ).populate('createdBy', 'email name');
 
-  const alertsBySavedSearchId = groupBy(alerts, 'savedSearch');
-
-  return savedSearches.map(savedSearch => ({
-    ...savedSearch.toJSON(),
-    alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
-      return alert.toJSON();
-    }),
-  }));
+  return savedSearches.map(savedSearch => savedSearch.toJSON());
 }
 
 export function getSavedSearch(teamId: string, savedSearchId: string) {
@@ -69,11 +55,8 @@ export function updateSavedSearch(
 }
 
 export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
-  const savedSearch = await SavedSearch.findOneAndDelete({
+  await SavedSearch.findOneAndDelete({
     _id: savedSearchId,
     team: teamId,
   });
-  if (savedSearch) {
-    await deleteSavedSearchAlerts(savedSearchId, teamId);
-  }
 }

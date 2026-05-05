@@ -1,17 +1,19 @@
-import aiRouter from './ai';
-import alertsRouter from './alerts';
 import dashboardRouter from './dashboards';
+import favoritesRouter from './favorites';
 import meRouter from './me';
+import pinnedFiltersRouter from './pinnedFilters';
 import rootRouter from './root';
+import savedSearchRouter from './savedSearch';
+import sourcesRouter from './sources';
 import teamRouter from './team';
-import webhooksRouter from './webhooks';
 
 export default {
-  aiRouter,
-  alertsRouter,
   dashboardRouter,
   meRouter,
   rootRouter,
   teamRouter,
-  webhooksRouter,
+  savedSearchRouter,
+  sourcesRouter,
+  favoritesRouter,
+  pinnedFiltersRouter,
 };

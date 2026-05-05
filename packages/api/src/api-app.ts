@@ -5,19 +5,16 @@ import session from 'express-session';
 import onHeaders from 'on-headers';
 
 import * as config from './config';
-import mcpRouter from './mcp/app';
 import { isUserAuthenticated } from './middleware/auth';
 import defaultCors from './middleware/cors';
 import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
-import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
 import favoritesRouter from './routers/api/favorites';
 import pinnedFiltersRouter from './routers/api/pinnedFilters';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
-import usageStats from './tasks/usageStats';
 import logger, { expressLogger } from './utils/logger';
 import passport from './utils/passport';
 
@@ -79,35 +76,20 @@ app.use(function (req, res, next) {
 app.use(defaultCors);
 
 // ---------------------------------------------------------------------
-// ----------------------- Background Jobs -----------------------------
-// ---------------------------------------------------------------------
-if (config.USAGE_STATS_ENABLED && !config.IS_CI) {
-  usageStats();
-}
-// ---------------------------------------------------------------------
-
-// ---------------------------------------------------------------------
 // ----------------------- Internal Routers ----------------------------
 // ---------------------------------------------------------------------
 // PUBLIC ROUTES
 app.use('/', routers.rootRouter);
 
-// SELF-AUTHENTICATED ROUTES (validated via access key, not session middleware)
-app.use('/mcp', mcpRouter);
-
 // PRIVATE ROUTES
-app.use('/ai', isUserAuthenticated, routers.aiRouter);
-app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
-app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
-app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

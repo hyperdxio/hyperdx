@@ -281,12 +281,7 @@ router.delete(
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
 
-      const userIdRequestingDelete = req.user?._id;
-      if (!userIdRequestingDelete) {
-        throw new Error(`Requesting user has no id`);
-      }
-
-      await deleteTeamMember(teamId, userIdToDelete, userIdRequestingDelete);
+      await deleteTeamMember(teamId, userIdToDelete);
 
       res.json({ message: 'User deleted' });
     } catch (e) {

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,
@@ -278,7 +279,7 @@ function OnboardingModalComponent({
     });
     client
       .query({ query: 'SELECT 1', shouldSkipApplySettings: true })
-      .then(result => {
+      .then((result: any) => {
         result.json().then(() => {
           createConnectionMutation.mutate(
             {

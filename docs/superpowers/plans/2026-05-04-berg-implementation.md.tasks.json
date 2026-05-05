@@ -4,7 +4,7 @@
     {
       "id": 1,
       "subject": "Task 1: Rebrand packages from @hyperdx/* to @berg/*",
-      "status": "pending",
+      "status": "completed",
       "description": "**Plan:** docs/superpowers/plans/2026-05-04-berg-implementation.md (Task 1)\n\n**Goal:** Every package, import, branding string, and configuration says \"berg\" instead of \"hyperdx\". Build still passes.\n\n**Verify:** `grep -r \"@hyperdx\" packages --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.json\" | grep -v node_modules | grep -v hyperdx.io` returns nothing\n\n```json:metadata\n{\"files\":[\"package.json\",\"packages/api/package.json\",\"packages/app/package.json\",\"packages/common-utils/package.json\",\"packages/api/src\",\"packages/app/src\",\"packages/app/pages\",\"Makefile\",\"docker-compose.dev.yml\",\"docker-compose.yml\",\"README.md\",\"AGENTS.md\",\"CLAUDE.md\"],\"verifyCommand\":\"make ci-lint && make ci-unit\",\"acceptanceCriteria\":[\"No @hyperdx/ imports anywhere\",\"App branding says Berg\",\"@berg/ in all package names\",\"Lint and unit tests pass\",\"packages/cli deleted\"],\"planRef\":\"docs/superpowers/plans/2026-05-04-berg-implementation.md#task-1-rebrand-packages-from-hyperdx-to-berg\"}\n```"
     },
     {
@@ -78,5 +78,5 @@
       "description": "**Plan:** docs/superpowers/plans/2026-05-04-berg-implementation.md (Task 11)\n\n**Goal:** Dashboard UX preserved; under the hood, chart config retargets to single Table source kind, emits Trino SQL, hides time-axis chart types for Sources without timestampColumn. Tile-level alert UI removed.\n\n**Verify:** `make ci-unit && yarn dev` (manual smoke)\n\n```json:metadata\n{\"files\":[\"packages/app/src/DBDashboardPage.tsx\",\"packages/app/src/DBChartPage.tsx\",\"packages/app/src/components/ChartEditor\",\"packages/app/src/components/DBEditTimeChartForm\",\"packages/app/src/components/DBTimeChart.tsx\",\"packages/app/src/components/DBTableChart.tsx\",\"packages/app/src/components/DBNumberChart.tsx\",\"packages/app/src/components/DBPieChart.tsx\",\"packages/app/src/components/DBHeatmapChart.tsx\",\"packages/app/src/components/DBHistogramChart.tsx\",\"packages/app/src/components/DBListBarChart.tsx\",\"packages/app/src/components/DBDeltaChart.tsx\",\"packages/common-utils/src/core/renderChartConfig.ts\",\"packages/common-utils/src/macros.ts\",\"packages/app/src/components/DashboardContainer.tsx\",\"packages/app/src/AlertScheduleFields.tsx\"],\"verifyCommand\":\"make ci-unit\",\"acceptanceCriteria\":[\"Source picker generalized\",\"Trino SQL\",\"Chart-type filtering\",\"CRUD works\",\"No alert UI\",\"Tests pass\"],\"planRef\":\"docs/superpowers/plans/2026-05-04-berg-implementation.md#task-11-generalize-dashboard-charts-for-any-table\"}\n```"
     }
   ],
-  "lastUpdated": "2026-05-04T00:00:00Z"
+  "lastUpdated": "2026-05-04T22:00:00Z"
 }

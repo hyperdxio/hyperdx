@@ -43,7 +43,10 @@ import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import { useCreateDashboard, useUpdateDashboard } from './dashboard';
-import { getDashboardTemplate } from './dashboardTemplates';
+// NOTE (Berg / Task 2): dashboard templates were observability-specific and
+// have been removed. Always return undefined; if anyone hits the template
+// import path they'll get an "unknown template" empty state.
+const getDashboardTemplate = (_name: string) => undefined;
 import { withAppNav } from './layout';
 import { useSources } from './source';
 

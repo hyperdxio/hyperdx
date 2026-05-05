@@ -9,7 +9,6 @@ import {
   Anchor,
   Badge,
   Collapse,
-  Flex,
   Group,
   ScrollArea,
   Text,
@@ -17,23 +16,18 @@ import {
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowBarToLeft,
-  IconBell,
   IconChartDots,
   IconDeviceFloppy,
-  IconDeviceLaptop,
   IconLayoutGrid,
   IconSettings,
-  IconSitemap,
   IconTable,
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import InstallInstructionModal from '@/InstallInstructionsModal';
-import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
@@ -73,26 +67,6 @@ const NAV_LINKS: NavLinkConfig[] = [
     label: 'Chart Explorer',
     href: '/chart',
     icon: <IconChartDots size={16} />,
-  },
-  {
-    id: 'alerts',
-    label: 'Alerts',
-    href: '/alerts',
-    icon: <IconBell size={16} />,
-    cloudOnly: true,
-  },
-  {
-    id: 'sessions',
-    label: 'Client Sessions',
-    href: '/sessions',
-    icon: <IconDeviceLaptop size={16} />,
-  },
-  {
-    id: 'service-map',
-    label: 'Service Map',
-    href: '/service-map',
-    icon: <IconSitemap size={16} />,
-    isBeta: true,
   },
 ];
 
@@ -217,9 +191,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       >
         <Group gap={2} wrap="nowrap" align="center">
           <div className="text-truncate">{savedSearch.name}</div>
-          <Flex flex={0}>
-            <AlertStatusIcon alerts={savedSearch.alerts} />
-          </Flex>
         </Group>
       </Link>
     ),
@@ -227,29 +198,21 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   );
 
   const renderDashboardLink = useCallback(
-    (dashboard: Dashboard) => {
-      const alerts = dashboard.tiles
-        .map(t => t.config.alert)
-        .filter(a => a != null);
-      return (
-        <Link
-          href={`/dashboards/${dashboard.id}`}
-          key={dashboard.id}
-          tabIndex={0}
-          className={cx(styles.subMenuItem, {
-            [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
-          })}
-          title={dashboard.name}
-        >
-          <Group gap={2} wrap="nowrap" align="center">
-            <div className="text-truncate">{dashboard.name}</div>
-            <Flex flex={0}>
-              <AlertStatusIcon alerts={alerts} />
-            </Flex>
-          </Group>
-        </Link>
-      );
-    },
+    (dashboard: Dashboard) => (
+      <Link
+        href={`/dashboards/${dashboard.id}`}
+        key={dashboard.id}
+        tabIndex={0}
+        className={cx(styles.subMenuItem, {
+          [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
+        })}
+        title={dashboard.name}
+      >
+        <Group gap={2} wrap="nowrap" align="center">
+          <div className="text-truncate">{dashboard.name}</div>
+        </Group>
+      </Link>
+    ),
     [query.dashboardId],
   );
 
@@ -264,7 +227,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const [
     showInstallInstructions,
-    { open: openInstallInstructions, close: closeInstallInstructions },
+    { open: _openInstallInstructions, close: closeInstallInstructions },
   ] = useDisclosure(false);
 
   const isSavedSearchActive = useMemo(() => {
@@ -495,28 +458,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               style={{ width: navWidth }}
               className={styles.onboardingSection}
             >
-              <OnboardingChecklist onAddDataClick={openInstallInstructions} />
               <AppNavCloudBanner />
             </div>
           )}
         </ScrollArea>
 
         <div className={styles.footer} style={{ width: navWidth }}>
-          {IS_LOCAL_MODE && !isCollapsed && (
-            <Link
-              href="/careers"
-              style={{
-                display: 'block',
-                padding: '4px 16px',
-                textDecoration: 'none',
-                pointerEvents: 'auto',
-              }}
-            >
-              <Text size="xs" c="dimmed">
-                Join us & build the future of high scale observability &rarr;
-              </Text>
-            </Link>
-          )}
           <AppNavUserMenu
             userName={meData?.name}
             teamName={meData?.team?.name}

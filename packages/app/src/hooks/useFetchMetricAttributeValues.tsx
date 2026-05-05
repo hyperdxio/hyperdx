@@ -98,7 +98,9 @@ export const useFetchMetricAttributeValues = ({
             timeout_overflow_mode: 'break',
           },
         })
-        .then(res => res.json())) as ResponseJSON<AttributeValueResponse>;
+        .then((res: any) =>
+          res.json(),
+        )) as ResponseJSON<AttributeValueResponse>;
 
       if (result?.data) {
         return result.data.map(row => row.value).filter(Boolean);

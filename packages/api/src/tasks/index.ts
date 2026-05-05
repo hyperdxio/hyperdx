@@ -3,7 +3,6 @@ import minimist from 'minimist';
 import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
-import CheckAlertTask from '@/tasks/checkAlerts';
 import {
   taskExecutionDurationGauge,
   taskExecutionFailureCounter,
@@ -19,8 +18,6 @@ import { tasksTracer } from './tracer';
 function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
   const taskName = argv.taskName;
   switch (taskName) {
-    case TaskName.CHECK_ALERTS:
-      return new CheckAlertTask(argv);
     case TaskName.PING_PONG:
       return new PingPongTask(argv);
     default:

@@ -4,8 +4,12 @@ import { SourceKind } from '@berg/common-utils/dist/types';
 import { Box, Drawer, Flex, Group, Text } from '@mantine/core';
 import { IconConnection } from '@tabler/icons-react';
 
-import DBTracePanel from '@/components/DBTracePanel';
 import EmptyState from '@/components/EmptyState';
+
+// NOTE (Berg / Task 2): the trace side panel was observability-specific and
+// has been removed. Task 9 will rebuild the row-side-panel surface for table
+// data; for now stub this so the rest of the search page continues to compile.
+const DBTracePanel: React.ComponentType<any> = () => null;
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useSource } from '@/source';
 

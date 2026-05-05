@@ -1,20 +1,13 @@
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
-  AlertThresholdType,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
-  scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
-  validateAlertScheduleOffsetMinutes,
-  validateAlertThresholdMax,
-  WebhookService,
 } from '@berg/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
-
-import { AlertSource } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
@@ -476,78 +469,3 @@ export const externalDashboardTileListSchema = z
       messageSuffix: '. Omit the ID to generate a unique one.',
     }),
   );
-
-// ==============================
-// Alerts
-// ==============================
-const zChannel = z.object({
-  type: z.literal('webhook'),
-  webhookId: z.string().min(1),
-});
-
-const zSavedSearchAlert = z.object({
-  source: z.literal(AlertSource.SAVED_SEARCH),
-  groupBy: z.string().optional(),
-  savedSearchId: z.string().min(1),
-});
-
-const zTileAlert = z.object({
-  source: z.literal(AlertSource.TILE),
-  tileId: z.string().min(1),
-  dashboardId: z.string().min(1),
-});
-
-export const alertSchema = z
-  .object({
-    channel: zChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
-    scheduleStartAt: scheduleStartAtSchema,
-    threshold: z.number(),
-    thresholdType: z.nativeEnum(AlertThresholdType),
-    thresholdMax: z.number().optional(),
-    source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-  })
-  .and(zSavedSearchAlert.or(zTileAlert))
-  .superRefine(validateAlertScheduleOffsetMinutes)
-  .superRefine(validateAlertThresholdMax);
-
-// ==============================
-// Webhooks
-// ==============================
-
-const baseWebhookSchema = {
-  id: z.string(),
-  name: z.string(),
-  url: z.string().optional(),
-  description: z.string().optional(),
-  updatedAt: z.string(),
-  createdAt: z.string(),
-};
-
-const slackWebhookSchema = z.object({
-  ...baseWebhookSchema,
-  service: z.literal(WebhookService.Slack),
-});
-
-const incidentIOWebhookSchema = z.object({
-  ...baseWebhookSchema,
-  service: z.literal(WebhookService.IncidentIO),
-});
-
-const genericWebhookSchema = z.object({
-  ...baseWebhookSchema,
-  service: z.literal(WebhookService.Generic),
-  body: z.string().optional(),
-  // headers are intentionally omitted from response schemas to avoid leaking sensitive information.
-});
-
-export const externalWebhookSchema = z.discriminatedUnion('service', [
-  slackWebhookSchema,
-  incidentIOWebhookSchema,
-  genericWebhookSchema,
-]);
-
-export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;

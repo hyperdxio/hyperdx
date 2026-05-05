@@ -1,9 +1,11 @@
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
   parameterizedQueryToSql,
   ResponseJSON,
 } from '@berg/common-utils/dist/clickhouse';
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import {
@@ -31,8 +33,6 @@ import {
 
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
-import { IS_MTVIEWS_ENABLED } from '@/config';
-import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
@@ -150,17 +150,6 @@ async function* fetchDataInChunks({
     enableQueryChunking && shouldUseChunking(config)
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
-
-  if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
-    const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-      await buildMTViewSelectQuery(config, metadata, querySettings);
-    // TODO: show the DDLs in the UI so users can run commands manually
-    // eslint-disable-next-line no-console
-    console.log('dataTableDDL:', dataTableDDL);
-    // eslint-disable-next-line no-console
-    console.log('mtViewDDL:', mtViewDDL);
-    await renderMTViewConfig();
-  }
 
   // Readonly = 2 means the query is readonly but can still specify query settings.
   const clickHouseSettings = isRawSqlChartConfig(config)

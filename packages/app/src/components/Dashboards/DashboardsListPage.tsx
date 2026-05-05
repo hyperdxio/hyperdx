@@ -30,15 +30,12 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
-import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
-import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
-  type Dashboard,
   useCreateDashboard,
   useDashboards,
   useDeleteDashboard,
@@ -50,31 +47,8 @@ import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
 
-function getDashboardAlerts(tiles: Dashboard['tiles']) {
-  return tiles.map(t => t.config.alert).filter(a => a != null);
-}
-
-const PRESET_DASHBOARDS = [
-  {
-    name: 'Services',
-    href: '/services',
-    description: 'Monitor HTTP endpoints, latency, and error rates',
-  },
-  {
-    name: 'ClickHouse',
-    href: '/clickhouse',
-    description: 'ClickHouse cluster health and query performance',
-  },
-  ...(IS_K8S_DASHBOARD_ENABLED
-    ? [
-        {
-          name: 'Kubernetes',
-          href: '/kubernetes',
-          description: 'Kubernetes cluster monitoring and pod health',
-        },
-      ]
-    : []),
-];
+const PRESET_DASHBOARDS: { name: string; href: string; description: string }[] =
+  [];
 
 export default function DashboardsListPage() {
   const brandName = useBrandDisplayName();
@@ -224,9 +198,6 @@ export default function DashboardsListPage() {
                   tags={d.tags}
                   description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                   onDelete={() => handleDelete(d.id)}
-                  statusIcon={
-                    <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
-                  }
                   resourceId={d.id}
                   resourceType="dashboard"
                   updatedAt={d.updatedAt}
@@ -405,7 +376,6 @@ export default function DashboardsListPage() {
                         resourceId={d.id}
                         size="xs"
                       />
-                      <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
                     </Group>
                   }
                 />
@@ -428,9 +398,6 @@ export default function DashboardsListPage() {
                       tags={d.tags}
                       description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                       onDelete={() => handleDelete(d.id)}
-                      statusIcon={
-                        <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
-                      }
                       resourceId={d.id}
                       resourceType="dashboard"
                       updatedAt={d.updatedAt}

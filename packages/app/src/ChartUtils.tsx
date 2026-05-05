@@ -37,7 +37,10 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
-import { getMetricNameSql } from './otelSemanticConventions';
+// otelSemanticConventions removed in Berg strip (Task 2). Metric-specific
+// logic will be revisited in Task 11; for now keep ChartUtils compilable
+// by inlining a no-op helper that preserves the previous "no override" path.
+const getMetricNameSql = (_metricName: string): string | undefined => undefined;
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
 import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';

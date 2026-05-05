@@ -13,8 +13,8 @@ import {
   SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
-import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
-import { IconBell, IconCirclePlus } from '@tabler/icons-react';
+import { Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
+import { IconCirclePlus } from '@tabler/icons-react';
 
 import {
   ChartEditorFormState,
@@ -25,13 +25,10 @@ import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_LOCAL_MODE } from '@/config';
-import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
-import { TileAlertEditor } from './TileAlertEditor';
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
@@ -51,8 +48,7 @@ type ChartEditorControlsProps = {
   displayType: DisplayType;
   activeTab: string;
   seriesReturnType: ChartEditorFormState['seriesReturnType'];
-  alert: ChartEditorFormState['alert'];
-  isRawSqlInput: boolean;
+  isRawSqlInput?: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
@@ -79,9 +75,8 @@ export function ChartEditorControls({
   displayType,
   activeTab,
   seriesReturnType,
-  alert,
-  isRawSqlInput,
-  dashboardId,
+  isRawSqlInput: _isRawSqlInput,
+  dashboardId: _dashboardId,
   parentRef,
   chartConfigForExplanations,
   onSubmit,
@@ -261,22 +256,6 @@ export function ChartEditorControls({
                   checked={seriesReturnType === 'ratio'}
                 />
               )}
-              {(displayType === DisplayType.Line ||
-                displayType === DisplayType.StackedBar ||
-                displayType === DisplayType.Number) &&
-                dashboardId &&
-                !alert &&
-                !IS_LOCAL_MODE && (
-                  <Button
-                    variant="subtle"
-                    data-testid="alert-button"
-                    size="sm"
-                    onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
-                  >
-                    <IconBell size={14} className="me-2" />
-                    Add Alert
-                  </Button>
-                )}
             </Group>
             <Group>
               {displayType === DisplayType.Table && (
@@ -328,16 +307,6 @@ export function ChartEditorControls({
             showLabel={false}
           />
         </Flex>
-      )}
-      {alert && !isRawSqlInput && (
-        <Box mt="sm">
-          <TileAlertEditor
-            control={control}
-            setValue={setValue}
-            alert={alert}
-            onRemove={() => setValue('alert', undefined)}
-          />
-        </Box>
       )}
     </>
   );

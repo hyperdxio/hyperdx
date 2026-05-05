@@ -11,7 +11,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { formatDistanceToNow, formatRelative } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
@@ -19,11 +19,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@berg/common-utils/dist/core/metadata';
-import {
-  convertToDashboardTemplate,
-  displayTypeSupportsBuilderAlerts,
-  displayTypeSupportsRawSqlAlerts,
-} from '@berg/common-utils/dist/core/utils';
+import { convertToDashboardTemplate } from '@berg/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -31,7 +27,6 @@ import {
   isRawSqlSavedChartConfig,
 } from '@berg/common-utils/dist/guards';
 import {
-  AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DashboardContainer as DashboardContainerSchema,
@@ -55,7 +50,6 @@ import {
   Button,
   Flex,
   Group,
-  Indicator,
   Menu,
   Modal,
   Paper,
@@ -69,7 +63,6 @@ import { useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
-  IconBell,
   IconChartBar,
   IconCopy,
   IconCornerDownRight,
@@ -462,33 +455,7 @@ const Tile = forwardRef(
     }, [source, chart, dateRange, granularity, filters]);
 
     const [hovered, setHovered] = useState(false);
-
-    const alert = chart.config.alert;
-    const alertIndicatorColor = useMemo(() => {
-      if (!alert) {
-        return 'transparent';
-      }
-      if (alert.state === AlertState.OK) {
-        return 'green';
-      }
-      if (alert.silenced?.at) {
-        return 'yellow';
-      }
-      return 'red';
-    }, [alert]);
-
-    const alertTooltip = useMemo(() => {
-      if (!alert) {
-        return 'Add alert';
-      }
-      let tooltip = `Has alert and is in ${alert.state} state`;
-      if (alert.silenced?.at) {
-        const silencedAt = new Date(alert.silenced.at);
-        // eslint-disable-next-line no-restricted-syntax
-        tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
-      }
-      return tooltip;
-    }, [alert]);
+    // NOTE (Berg / Task 2): tile-level alerts have been removed.
 
     const filterWarning = useMemo(() => {
       const doFiltersExist = !!filters?.filter(
@@ -532,40 +499,14 @@ const Tile = forwardRef(
     }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
-      const isRawSql = isRawSqlSavedChartConfig(chart.config);
-      const displayTypeSupportsAlerts = isRawSql
-        ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
-        : displayTypeSupportsBuilderAlerts(chart.config.displayType);
       return (
         <Flex
           gap="0px"
           onMouseDown={e => e.stopPropagation()}
           key="hover-toolbar"
-          my={4} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
+          my={4}
           style={{ visibility: hovered ? 'visible' : 'hidden' }}
         >
-          {displayTypeSupportsAlerts && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
-              <Tooltip label={alertTooltip} withArrow>
-                <ActionIcon
-                  data-testid={`tile-alerts-button-${chart.id}`}
-                  variant="subtle"
-                  size="sm"
-                  onClick={onEditClick}
-                >
-                  <IconBell size={16} />
-                </ActionIcon>
-              </Tooltip>
-            </Indicator>
-          )}
-
           <ActionIcon
             data-testid={`tile-duplicate-button-${chart.id}`}
             variant="subtle"
@@ -676,11 +617,7 @@ const Tile = forwardRef(
         </Flex>
       );
     }, [
-      alert,
-      alertIndicatorColor,
-      alertTooltip,
       moveTargets,
-      chart.config,
       chart.id,
       chart.containerId,
       chart.tabId,
@@ -1640,7 +1577,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   id: makeId(),
                   config: {
                     ...chart.config,
-                    alert: undefined,
                   },
                 },
               ],
@@ -1885,22 +1821,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     return map;
   }, [containers, allTiles]);
 
-  const alertingTabIdsByContainer = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const container of containers) {
-      const tiles = tilesByContainerId.get(container.id) ?? [];
-      const firstTabId = container.tabs?.[0]?.id;
-      const alerting = new Set<string>();
-      for (const tile of tiles) {
-        if (tile.config.alert?.state === AlertState.ALERT) {
-          const attributedTabId = tile.tabId ?? firstTabId;
-          if (attributedTabId) alerting.add(attributedTabId);
-        }
-      }
-      if (alerting.size > 0) map.set(container.id, alerting);
-    }
-    return map;
-  }, [containers, tilesByContainerId]);
+  // NOTE (Berg / Task 2): tile-level alerts have been removed; this map is
+  // intentionally empty so the tab-bar alert badge logic short-circuits.
+  const alertingTabIdsByContainer = useMemo(
+    () => new Map<string, Set<string>>(),
+    [],
+  );
 
   const ungroupedTiles = useMemo(
     () =>

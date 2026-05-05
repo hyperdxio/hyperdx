@@ -19,7 +19,6 @@ import { IconPencil } from '@tabler/icons-react';
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
-import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
@@ -135,10 +134,6 @@ export default function TeamPage() {
       value: 'integrations',
       label: 'Integrations',
       sections: [
-        {
-          id: 'team-integrations-webhooks',
-          content: <IntegrationsSection />,
-        },
         {
           id: 'team-integrations-api-keys',
           content: <ApiKeysSection />,

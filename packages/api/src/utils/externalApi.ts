@@ -1,6 +1,4 @@
 import {
-  AlertErrorType,
-  AlertThresholdType,
   BuilderSavedChartConfig,
   DashboardFilter,
   DisplayType,
@@ -8,14 +6,6 @@ import {
 } from '@berg/common-utils/dist/types';
 import { omit } from 'lodash';
 
-import type { ObjectId } from '@/models';
-import {
-  AlertChannel,
-  AlertDocument,
-  AlertInterval,
-  AlertState,
-  IAlert,
-} from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
 import { ExternalDashboardFilterWithId } from '@/utils/zod';
@@ -222,136 +212,4 @@ export function translateExternalFilterToFilter(
     ...omit(filter, 'sourceId'),
     source: filter.sourceId,
   };
-}
-
-// Alert related types and transformations
-export type ExternalAlert = {
-  id: string;
-  name?: string | null;
-  message?: string | null;
-  threshold: number;
-  thresholdMax?: number;
-  interval: AlertInterval;
-  scheduleOffsetMinutes?: number;
-  scheduleStartAt?: string | null;
-  thresholdType: AlertThresholdType;
-  source?: string;
-  state: AlertState;
-  channel: AlertChannel;
-  teamId: string;
-  tileId?: string;
-  dashboardId?: string;
-  savedSearchId?: string;
-  groupBy?: string;
-  silenced?: {
-    by?: string;
-    at: string;
-    until: string;
-  };
-  executionErrors?: {
-    timestamp: string;
-    type: AlertErrorType;
-    message: string;
-  }[];
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-type AlertDocumentObject = IAlert & { _id: ObjectId };
-
-function hasCreatedAt(
-  alert: AlertDocumentObject,
-): alert is AlertDocument & { createdAt: Date } {
-  return 'createdAt' in alert && alert.createdAt instanceof Date;
-}
-
-function hasUpdatedAt(
-  alert: AlertDocumentObject,
-): alert is AlertDocument & { updatedAt: Date } {
-  return 'updatedAt' in alert && alert.updatedAt instanceof Date;
-}
-
-function transformScheduleStartAt(
-  scheduleStartAt: unknown,
-): ExternalAlert['scheduleStartAt'] {
-  if (scheduleStartAt === null) {
-    return null;
-  }
-
-  if (scheduleStartAt === undefined) {
-    return undefined;
-  }
-
-  if (scheduleStartAt instanceof Date) {
-    return scheduleStartAt.toISOString();
-  }
-
-  return typeof scheduleStartAt === 'string' ? scheduleStartAt : undefined;
-}
-
-function transformSilencedToExternalSilenced(
-  silenced: AlertDocumentObject['silenced'],
-): ExternalAlert['silenced'] {
-  return silenced
-    ? {
-        by: silenced.by?.toString(),
-        at: silenced.at.toISOString(),
-        until: silenced.until.toISOString(),
-      }
-    : undefined;
-}
-
-function transformErrorsToExternalErrors(
-  errors: AlertDocumentObject['executionErrors'],
-): ExternalAlert['executionErrors'] {
-  return errors?.map(err => ({
-    timestamp:
-      err.timestamp instanceof Date
-        ? err.timestamp.toISOString()
-        : String(err.timestamp),
-    type: err.type,
-    message: err.message,
-  }));
-}
-
-export function translateAlertDocumentToExternalAlert(
-  alert: AlertDocument,
-): ExternalAlert {
-  // Convert to plain object if it's a Mongoose document
-  const alertObj: AlertDocumentObject = alert.toJSON
-    ? alert.toJSON()
-    : { ...alert };
-
-  // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
-  const result = {
-    id: alertObj._id.toString(),
-    name: alertObj.name,
-    message: alertObj.message,
-    threshold: alertObj.threshold,
-    thresholdMax: alertObj.thresholdMax,
-    interval: alertObj.interval,
-    ...(alertObj.scheduleOffsetMinutes != null && {
-      scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,
-    }),
-    scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
-    thresholdType: alertObj.thresholdType,
-    source: alertObj.source,
-    state: alertObj.state,
-    channel: alertObj.channel,
-    teamId: alertObj.team.toString(),
-    tileId: alertObj.tileId,
-    dashboardId: alertObj.dashboard?.toString(),
-    savedSearchId: alertObj.savedSearch?.toString(),
-    groupBy: alertObj.groupBy,
-    silenced: transformSilencedToExternalSilenced(alertObj.silenced),
-    executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
-    createdAt: hasCreatedAt(alertObj)
-      ? alertObj.createdAt.toISOString()
-      : undefined,
-    updatedAt: hasUpdatedAt(alertObj)
-      ? alertObj.updatedAt.toISOString()
-      : undefined,
-  };
-
-  return result;
 }

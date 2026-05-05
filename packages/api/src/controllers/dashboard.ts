@@ -1,132 +1,24 @@
-import {
-  DashboardWithoutIdSchema,
-  SavedChartConfig,
-  Tile,
-} from '@berg/common-utils/dist/types';
-import { map, partition, uniq } from 'lodash';
+import { DashboardWithoutIdSchema } from '@berg/common-utils/dist/types';
+import { uniq } from 'lodash';
 import { z } from 'zod';
 
-import {
-  createOrUpdateDashboardAlerts,
-  deleteDashboardAlerts,
-  getDashboardAlertsByTile,
-  getTeamDashboardAlertsByDashboardAndTile,
-} from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
-import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 
-function pickAlertsByTile(tiles: Tile[]) {
-  return tiles.reduce((acc, tile) => {
-    if (tile.config.alert) {
-      acc[tile.id] = tile.config.alert;
-    }
-    return acc;
-  }, {});
-}
-
-type TileForAlertSync = Pick<Tile, 'id'> & {
-  config?: Pick<SavedChartConfig, 'alert'> | { alert?: IAlert | AlertDocument };
-};
-
-function extractTileAlertData(tiles: TileForAlertSync[]): {
-  tileIds: Set<string>;
-  tileIdsWithAlerts: Set<string>;
-} {
-  const [tilesWithAlerts, _] = partition(tiles, 'config.alert');
-  const tileIds = new Set(map(tiles, 'id'));
-  const tileIdsWithAlerts = new Set(map(tilesWithAlerts, 'id'));
-
-  return { tileIds, tileIdsWithAlerts };
-}
-
-async function syncDashboardAlerts(
-  dashboardId: string,
-  teamId: ObjectId,
-  oldTiles: TileForAlertSync[],
-  newTiles: Tile[],
-  userId?: ObjectId,
-): Promise<void> {
-  const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
-    extractTileAlertData(oldTiles);
-
-  const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
-    id: t.id,
-    config: { alert: t.config.alert },
-  }));
-  const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
-    extractTileAlertData(newTilesForAlertSync);
-
-  // 1. Create/update alerts for tiles that have alerts
-  const alertsByTile = pickAlertsByTile(newTiles);
-  if (Object.keys(alertsByTile).length > 0) {
-    await createOrUpdateDashboardAlerts(
-      dashboardId,
-      teamId,
-      alertsByTile,
-      userId,
-    );
-  }
-
-  // 2. Identify tiles whose alerts need to be deleted
-  const tilesToDeleteAlertsFrom = new Set([
-    // Tiles that were completely removed
-    ...Array.from(oldTileIds).filter(id => !newTileIds.has(id)),
-    // Tiles that exist but no longer have alerts
-    ...Array.from(oldTileIdsWithAlerts).filter(
-      id => newTileIds.has(id) && !newTileIdsWithAlerts.has(id),
-    ),
-  ]);
-
-  // 3. Delete alerts
-  if (tilesToDeleteAlertsFrom.size > 0) {
-    await deleteDashboardAlerts(
-      dashboardId,
-      teamId,
-      Array.from(tilesToDeleteAlertsFrom),
-    );
-  }
-}
-
 export async function getDashboards(teamId: ObjectId) {
-  const [_dashboards, alerts] = await Promise.all([
-    Dashboard.find({ team: teamId })
-      .populate('createdBy', 'email name')
-      .populate('updatedBy', 'email name'),
-    getTeamDashboardAlertsByDashboardAndTile(teamId),
-  ]);
+  const dashboards = await Dashboard.find({ team: teamId })
+    .populate('createdBy', 'email name')
+    .populate('updatedBy', 'email name');
 
-  const dashboards = _dashboards
-    .map(d => d.toJSON())
-    .map(d => ({
-      ...d,
-      tiles: d.tiles.map(t => ({
-        ...t,
-        config: {
-          ...t.config,
-          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
-        },
-      })),
-    }));
-
-  return dashboards;
+  return dashboards.map(d => d.toJSON());
 }
 
 export async function getDashboard(dashboardId: string, teamId: ObjectId) {
-  const [_dashboard, alerts] = await Promise.all([
-    Dashboard.findOne({ _id: dashboardId, team: teamId })
-      .populate('createdBy', 'email name')
-      .populate('updatedBy', 'email name'),
-    getDashboardAlertsByTile(teamId, dashboardId),
-  ]);
+  const dashboard = await Dashboard.findOne({ _id: dashboardId, team: teamId })
+    .populate('createdBy', 'email name')
+    .populate('updatedBy', 'email name');
 
-  return {
-    ..._dashboard?.toJSON(),
-    tiles: _dashboard?.tiles.map(t => ({
-      ...t,
-      config: { ...t.config, alert: alerts[t.id]?.[0] },
-    })),
-  };
+  return dashboard?.toJSON();
 }
 
 export async function createDashboard(
@@ -141,24 +33,14 @@ export async function createDashboard(
     updatedBy: userId,
   }).save();
 
-  await createOrUpdateDashboardAlerts(
-    newDashboard._id,
-    teamId,
-    pickAlertsByTile(dashboard.tiles),
-    userId,
-  );
-
   return newDashboard;
 }
 
 export async function deleteDashboard(dashboardId: string, teamId: ObjectId) {
-  const dashboard = await Dashboard.findOneAndDelete({
+  await Dashboard.findOneAndDelete({
     _id: dashboardId,
     team: teamId,
   });
-  if (dashboard) {
-    await deleteDashboardAlerts(dashboardId, teamId);
-  }
 }
 
 export async function updateDashboard(
@@ -167,12 +49,6 @@ export async function updateDashboard(
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
   userId?: ObjectId,
 ) {
-  const oldDashboard = await getDashboard(dashboardId, teamId);
-
-  if (oldDashboard == null) {
-    throw new Error('Dashboard not found');
-  }
-
   const updatedDashboard = await Dashboard.findOneAndUpdate(
     {
       _id: dashboardId,
@@ -187,16 +63,6 @@ export async function updateDashboard(
   );
   if (updatedDashboard == null) {
     throw new Error('Could not update dashboard');
-  }
-
-  if (updates.tiles) {
-    await syncDashboardAlerts(
-      dashboardId,
-      teamId,
-      oldDashboard?.tiles || [],
-      updates.tiles,
-      userId,
-    );
   }
 
   return updatedDashboard;

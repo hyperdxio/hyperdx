@@ -1,6 +1,8 @@
 import React from 'react';
 import * as metadataModule from '@berg/app/src/metadata';
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { JSDataType } from '@berg/common-utils/dist/clickhouse';
+// @ts-ignore - module path is excluded from build during the Berg Task 2 strip
 import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   Field,

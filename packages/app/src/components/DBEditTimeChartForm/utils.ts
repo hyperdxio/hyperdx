@@ -5,7 +5,6 @@ import {
   isRawSqlSavedChartConfig,
 } from '@berg/common-utils/dist/guards';
 import {
-  ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -14,7 +13,6 @@ import {
   SelectList,
   SourceKind,
   TSource,
-  validateAlertScheduleOffsetMinutes,
 } from '@berg/common-utils/dist/types';
 
 import {
@@ -23,12 +21,7 @@ import {
   convertToTableChartConfig,
   convertToTimeChartConfig,
 } from '@/ChartUtils';
-import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
-import {
-  extendDateRangeToInterval,
-  intervalToGranularity,
-} from '@/utils/alerts';
 
 export const isQueryReady = (
   queriedConfig: ChartConfigWithDateRange | undefined,
@@ -47,14 +40,7 @@ export const isQueryReady = (
   );
 };
 
-export const zSavedChartConfig = z
-  .object({
-    // TODO: Chart
-    alert: ChartAlertBaseSchema.superRefine(
-      validateAlertScheduleOffsetMinutes,
-    ).optional(),
-  })
-  .passthrough();
+export const zSavedChartConfig = z.object({}).passthrough();
 
 // similar to seriesToSearchQuery from v1
 export function seriesToFilters(select: SelectList): Filter[] {
@@ -107,7 +93,6 @@ export const TABS_WITH_GENERATED_SQL = new Set([
 
 export function computeDbTimeChartConfig(
   queriedConfig: ChartConfigWithDateRange | undefined,
-  alert: ChartEditorFormState['alert'],
 ): ChartConfigWithDateRange | undefined {
   if (!queriedConfig) {
     return undefined;
@@ -115,12 +100,8 @@ export function computeDbTimeChartConfig(
 
   return {
     ...queriedConfig,
-    granularity: alert
-      ? intervalToGranularity(alert.interval)
-      : queriedConfig.granularity,
-    dateRange: alert
-      ? extendDateRangeToInterval(queriedConfig.dateRange, alert.interval)
-      : queriedConfig.dateRange,
+    granularity: queriedConfig.granularity,
+    dateRange: queriedConfig.dateRange,
   };
 }
 

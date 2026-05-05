@@ -1,7 +1,10 @@
+// NOTE (Berg / Task 2): @berg/common-utils/dist/clickhouse/* is excluded
+// from the common-utils build until Task 4 swaps in the Athena client.
+// The integration-test fixtures still need a ClickHouse client for now;
+// `@ts-ignore` keeps tsc happy until the modules are restored or replaced.
+// @ts-ignore - module path is excluded from build during the strip
 import { createNativeClient } from '@berg/common-utils/dist/clickhouse/node';
 import {
-  AlertThresholdType,
-  BuilderSavedChartConfig,
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -12,11 +15,9 @@ import ms from 'ms';
 import request from 'supertest';
 
 import * as config from '@/config';
-import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
-import { AlertInterval, AlertSource } from '@/models/alert';
 import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
@@ -191,13 +192,7 @@ class MockServer extends Server {
           reject(err);
           return;
         }
-        this.opampServer.close(err => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve();
-        });
+        resolve();
       });
     });
     await closeTestFixtureClickHouseClient();
@@ -428,11 +423,7 @@ export function buildMetricSeries({
 
 export const randomMongoId = () => new mongoose.Types.ObjectId().toHexString();
 
-export const makeTile = (opts?: {
-  id?: string;
-  alert?: BuilderSavedChartConfig['alert'];
-  sourceId?: string;
-}): Tile => ({
+export const makeTile = (opts?: { id?: string; sourceId?: string }): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
   y: 1,
@@ -443,7 +434,6 @@ export const makeTile = (opts?: {
 
 export const makeChartConfig = (opts?: {
   id?: string;
-  alert?: BuilderSavedChartConfig['alert'];
   sourceId?: string;
 }): SavedChartConfig => ({
   name: 'Test Chart',
@@ -465,7 +455,6 @@ export const makeChartConfig = (opts?: {
     output: 'number',
   },
   filters: [],
-  alert: opts?.alert,
 });
 
 // TODO: DEPRECATED
@@ -526,103 +515,4 @@ export const makeRawSqlTile = (opts?: {
     sqlTemplate: opts?.sqlTemplate ?? 'SELECT 1',
     connection: opts?.connectionId ?? 'test-connection',
   } satisfies RawSqlSavedChartConfig,
-});
-
-export const RAW_SQL_ALERT_TEMPLATE = [
-  'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
-  ' count() AS cnt',
-  ' FROM default.otel_logs',
-  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
-  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
-  ' GROUP BY ts ORDER BY ts',
-].join('');
-
-export const makeRawSqlAlertTile = (opts?: {
-  id?: string;
-  connectionId?: string;
-  sqlTemplate?: string;
-}): Tile => ({
-  id: opts?.id ?? randomMongoId(),
-  x: 1,
-  y: 1,
-  w: 1,
-  h: 1,
-  config: {
-    configType: 'sql',
-    displayType: DisplayType.Line,
-    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
-    connection: opts?.connectionId ?? 'test-connection',
-  } satisfies RawSqlSavedChartConfig,
-});
-
-export const RAW_SQL_NUMBER_ALERT_TEMPLATE = [
-  'SELECT count() AS cnt',
-  ' FROM default.otel_logs',
-  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
-  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
-].join('');
-
-export const makeRawSqlNumberAlertTile = (opts?: {
-  id?: string;
-  connectionId?: string;
-  sqlTemplate?: string;
-}): Tile => ({
-  id: opts?.id ?? randomMongoId(),
-  x: 1,
-  y: 1,
-  w: 1,
-  h: 1,
-  config: {
-    configType: 'sql',
-    displayType: DisplayType.Number,
-    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_NUMBER_ALERT_TEMPLATE,
-    connection: opts?.connectionId ?? 'test-connection',
-  } satisfies RawSqlSavedChartConfig,
-});
-
-export const makeAlertInput = ({
-  dashboardId,
-  interval = '15m',
-  threshold = 8,
-  tileId,
-  webhookId = 'test-webhook-id',
-}: {
-  dashboardId: string;
-  interval?: AlertInterval;
-  threshold?: number;
-  tileId: string;
-  webhookId?: string;
-}): Partial<AlertInput> => ({
-  channel: {
-    type: 'webhook',
-    webhookId,
-  },
-  interval,
-  threshold,
-  thresholdType: AlertThresholdType.ABOVE,
-  source: AlertSource.TILE,
-  dashboardId,
-  tileId,
-});
-
-export const makeSavedSearchAlertInput = ({
-  savedSearchId,
-  interval = '15m',
-  threshold = 8,
-  webhookId = 'test-webhook-id',
-}: {
-  savedSearchId: string;
-  interval?: AlertInterval;
-  threshold?: number;
-  webhookId?: string;
-}): Partial<AlertInput> => ({
-  channel: {
-    type: 'webhook',
-    webhookId,
-  },
-  interval,
-  threshold,
-  thresholdType: AlertThresholdType.ABOVE,
-  source: AlertSource.SAVED_SEARCH,
-  savedSearchId,
 });

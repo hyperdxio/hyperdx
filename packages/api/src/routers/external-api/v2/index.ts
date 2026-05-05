@@ -1,11 +1,8 @@
 import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
-import alertsRouter from '@/routers/external-api/v2/alerts';
-import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
 import sourcesRouter from '@/routers/external-api/v2/sources';
-import webhooksRouter from '@/routers/external-api/v2/webhooks';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
 const router = express.Router();
@@ -25,10 +22,6 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
   });
 });
 
-router.use('/alerts', defaultRateLimiter, validateUserAccessKey, alertsRouter);
-
-router.use('/charts', defaultRateLimiter, validateUserAccessKey, chartsRouter);
-
 router.use(
   '/dashboards',
   defaultRateLimiter,
@@ -41,13 +34,6 @@ router.use(
   defaultRateLimiter,
   validateUserAccessKey,
   sourcesRouter,
-);
-
-router.use(
-  '/webhooks',
-  defaultRateLimiter,
-  validateUserAccessKey,
-  webhooksRouter,
 );
 
 export default router;

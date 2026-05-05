@@ -8,14 +8,14 @@ export const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'HyperDX External API',
-      description: 'API for managing HyperDX alerts and dashboards',
+      title: 'Berg External API',
+      description: 'API for managing Berg dashboards and sources',
       version: '2.0.0',
     },
     servers: [
       {
         url: '/',
-        description: 'Your HyperDX instance (http://<host>:<port>)',
+        description: 'Your Berg instance (http://<host>:<port>)',
       },
     ],
     tags: [
@@ -25,20 +25,12 @@ export const swaggerOptions = {
           'Endpoints for managing dashboards and their visualizations',
       },
       {
-        name: 'Alerts',
-        description: 'Endpoints for managing monitoring alerts',
-      },
-      {
         name: 'Charts',
         description: 'Endpoints for querying chart data',
       },
       {
         name: 'Sources',
         description: 'Endpoints for managing data sources',
-      },
-      {
-        name: 'Webhooks',
-        description: 'Endpoints for managing webhooks',
       },
     ],
     components: {
@@ -47,6 +39,25 @@ export const swaggerOptions = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'API Key',
+        },
+      },
+      schemas: {
+        Error: {
+          type: 'object',
+          description: 'Error response payload returned for non-2xx responses',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'Human-readable error message',
+              example: 'Validation failed',
+            },
+          },
+          required: ['message'],
+        },
+        EmptyResponse: {
+          type: 'object',
+          description: 'Empty success response',
+          additionalProperties: false,
         },
       },
     },

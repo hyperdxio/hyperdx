@@ -15,7 +15,6 @@ import { localSavedSearches } from './localStore';
 
 async function fetchSavedSearches(): Promise<SavedSearchListApiResponse[]> {
   if (IS_LOCAL_MODE) {
-    // Locally stored saved searches never have alert data (alerts are cloud-only)
     return localSavedSearches.getAll() as SavedSearchListApiResponse[];
   }
   return hdxServer('saved-search').json<SavedSearchListApiResponse[]>();

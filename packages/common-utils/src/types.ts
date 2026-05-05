@@ -537,7 +537,6 @@ export const SavedSearchSchema = z.object({
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
-  alerts: z.array(AlertSchema).optional(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
@@ -546,18 +545,7 @@ const PopulatedUserSchema = z
   .object({ email: z.string(), name: z.string().optional() })
   .optional();
 
-export const SavedSearchListApiResponseSchema = SavedSearchSchema.omit({
-  alerts: true,
-}).extend({
-  alerts: z
-    .array(
-      AlertSchema.and(
-        z.object({
-          createdBy: PopulatedUserSchema,
-        }),
-      ),
-    )
-    .optional(),
+export const SavedSearchListApiResponseSchema = SavedSearchSchema.extend({
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   createdBy: PopulatedUserSchema,
@@ -835,7 +823,7 @@ export type ChartConfigWithOptDateRange =
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-const BuilderSavedChartConfigWithoutAlertSchema = z
+const BuilderSavedChartConfigSchema = z
   .object({
     name: z.string().optional(),
     source: z.string(),
@@ -853,30 +841,13 @@ const BuilderSavedChartConfigWithoutAlertSchema = z
     }).shape,
   );
 
-const BuilderSavedChartConfigSchema =
-  BuilderSavedChartConfigWithoutAlertSchema.extend({
-    alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
-    ]),
-  });
-
 export type BuilderSavedChartConfig = z.infer<
   typeof BuilderSavedChartConfigSchema
 >;
 
-const RawSqlSavedChartConfigWithoutAlertSchema =
-  RawSqlBaseChartConfigSchema.extend({
-    name: z.string().optional(),
-  });
-
-const RawSqlSavedChartConfigSchema =
-  RawSqlSavedChartConfigWithoutAlertSchema.extend({
-    alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
-    ]),
-  });
+const RawSqlSavedChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
+  name: z.string().optional(),
+});
 
 export const SavedChartConfigSchema = z.union([
   BuilderSavedChartConfigSchema,
@@ -903,8 +874,8 @@ export const TileSchema = z.object({
 
 export const TileTemplateSchema = TileSchema.extend({
   config: z.union([
-    BuilderSavedChartConfigWithoutAlertSchema,
-    RawSqlSavedChartConfigWithoutAlertSchema,
+    BuilderSavedChartConfigSchema,
+    RawSqlSavedChartConfigSchema,
   ]),
 });
 

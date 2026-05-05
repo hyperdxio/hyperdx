@@ -185,7 +185,9 @@ export const useFetchMetricResourceAttrs = ({
           abort_signal: signal,
           connectionId: tableSource!.connection,
         })
-        .then(res => res.json())) as ResponseJSON<MetricAttributesResponse>;
+        .then((res: any) =>
+          res.json(),
+        )) as ResponseJSON<MetricAttributesResponse>;
 
       if (result?.data) {
         return extractAttributeKeys(result.data, isSql);

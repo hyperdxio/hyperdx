@@ -1,5 +1,4 @@
 import { Connection } from '@berg/common-utils/dist/types';
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
@@ -107,12 +106,6 @@ export function isUserAuthenticated(
   }
 
   if (req.isAuthenticated()) {
-    // set user id as trace attribute
-    setTraceAttributes({
-      userId: req.user?._id.toString(),
-      userEmail: req.user?.email,
-    });
-
     return next();
   }
   res.sendStatus(401);

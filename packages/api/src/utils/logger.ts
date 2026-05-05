@@ -1,7 +1,3 @@
-import {
-  getPinoMixinFunction,
-  getPinoTransport,
-} from '@hyperdx/node-opentelemetry';
 import type { Request, Response } from 'express';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
@@ -10,20 +6,9 @@ import * as config from '@/config';
 
 const MAX_LEVEL = config.HYPERDX_LOG_LEVEL ?? 'debug';
 
-const hyperdxTransport = config.HYPERDX_API_KEY
-  ? getPinoTransport(MAX_LEVEL, {
-      detectResources: true,
-    })
-  : null;
-
-// Configure transport based on environment and whether HyperDX is enabled
+// Configure transport based on environment.
 const getTransport = () => {
   const targets: any[] = [];
-
-  // Add HyperDX transport if API key is configured
-  if (hyperdxTransport) {
-    targets.push(hyperdxTransport);
-  }
 
   if (config.IS_DEV || config.IS_CI) {
     // In development, use pino-pretty for nice console output
@@ -57,7 +42,6 @@ const getTransport = () => {
 const logger = pino({
   level: MAX_LEVEL,
   transport: getTransport(),
-  mixin: getPinoMixinFunction,
 });
 
 export const expressLogger = pinoHttp({
