@@ -627,8 +627,7 @@ function HeatmapContainer({
     const bucket: number[] = [];
     const count: number[] = [];
 
-    // timestampColumn is fully derived from data.meta, so it doesn't need
-    // to be a separate hook dep — having data as a dep is sufficient.
+    // timestampColumn is derived from data.meta, so data covers the dep.
     const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
     if (data == null || timestampColumn == null) {
