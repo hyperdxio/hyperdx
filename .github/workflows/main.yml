@@ -104,7 +104,7 @@ jobs:
         with:
           files: |
             docker/otel-collector/**
-            smoke-tests/otel-ccollector/**
+            smoke-tests/otel-collector/**
       - name: Install required tooling
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
