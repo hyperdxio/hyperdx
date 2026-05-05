@@ -1263,6 +1263,325 @@ describe('CustomSchemaSQLSerializerV2 - indexCoversColumn', () => {
   );
 });
 
+describe('CustomSchemaSQLSerializerV2 - Map Tokens Skip-Index Optimization', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'LogAttributes') {
+      return {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      };
+    } else if (column === 'ResourceAttributes') {
+      return {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      };
+    } else if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockResolvedValue(new Map());
+  metadata.getSetting = jest.fn().mockResolvedValue(undefined);
+
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  it('should use has(TokensColumn, key=value) for exact map matches when tokens column with text index exists', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_kv_text',
+        type: 'text',
+        typeFull: "text(tokenizer = 'array')",
+        expression: 'LogAttributeTokens',
+        granularity: 1,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Exact match: LogAttributes.userId:"abc123"
+    const result = await serializer.eq(
+      'LogAttributes.userId',
+      'abc123',
+      false,
+      {},
+    );
+    expect(result).toBe("(has(`LogAttributeTokens`, 'userId=abc123'))");
+  });
+
+  it('should fall back to map access for negated exact matches', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_kv_text',
+        type: 'text',
+        typeFull: "text(tokenizer = 'array')",
+        expression: 'LogAttributeTokens',
+        granularity: 1,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Negated: -LogAttributes.userId:"abc123"
+    const result = await serializer.eq(
+      'LogAttributes.userId',
+      'abc123',
+      true,
+      {},
+    );
+    expect(result).toBe("(`LogAttributes`['userId'] != 'abc123')");
+  });
+
+  it('should fall back to map access when no tokens column exists', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const result = await serializer.eq(
+      'LogAttributes.userId',
+      'abc123',
+      false,
+      {},
+    );
+    expect(result).toBe(
+      "(`LogAttributes`['userId'] = 'abc123' AND indexHint(mapContains(`LogAttributes`, 'userId')))",
+    );
+  });
+
+  it('should fall back to map access when tokens column exists but has no text index', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const result = await serializer.eq(
+      'LogAttributes.userId',
+      'abc123',
+      false,
+      {},
+    );
+    expect(result).toBe(
+      "(`LogAttributes`['userId'] = 'abc123' AND indexHint(mapContains(`LogAttributes`, 'userId')))",
+    );
+  });
+
+  it('should handle values containing equals signs', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_kv_text',
+        type: 'text',
+        typeFull: "text(tokenizer = 'array')",
+        expression: 'LogAttributeTokens',
+        granularity: 1,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Value with = should still work (key doesn't contain =)
+    const result = await serializer.eq(
+      'LogAttributes.userId',
+      'abc=123',
+      false,
+      {},
+    );
+    expect(result).toBe("(has(`LogAttributeTokens`, 'userId=abc=123'))");
+  });
+
+  it('should use tokens optimization via SearchQueryBuilder for quoted map field searches', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_kv_text',
+        type: 'text',
+        typeFull: "text(tokenizer = 'array')",
+        expression: 'LogAttributeTokens',
+        granularity: 1,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Lucene: LogAttributes.error.message:"Failed to fetch"
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeTokens`, 'error.message=Failed to fetch')))",
+    );
+  });
+
+  it('should work with ResourceAttributes tokens column', async () => {
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'ResourceAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'ALIAS',
+        default_expression:
+          "arrayMap((k,v) -> concat(k, '=', v), mapKeys(ResourceAttributes), mapValues(ResourceAttributes))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_res_attr_kv_text',
+        type: 'text',
+        typeFull: "text(tokenizer = 'array')",
+        expression: 'ResourceAttributeTokens',
+        granularity: 1,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const result = await serializer.eq(
+      'ResourceAttributes.service.name',
+      'my-service',
+      false,
+      {},
+    );
+    expect(result).toBe(
+      "(has(`ResourceAttributeTokens`, 'service.name=my-service'))",
+    );
+  });
+});
+
 describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
   const metadata = getMetadata(
     new ClickhouseClient({ host: 'http://localhost:8123' }),
