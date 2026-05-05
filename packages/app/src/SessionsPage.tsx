@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { sub } from 'date-fns';
-import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+import {
+  parseAsFloat,
+  parseAsString,
+  parseAsStringEnum,
+  useQueryStates,
+} from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { NumberParam } from 'serialize-query-params';
-import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SearchCondition,
@@ -209,6 +212,11 @@ function SessionCardList({
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+const selectedSessionQueryStateMap = {
+  sid: parseAsString,
+  sfrom: parseAsFloat,
+  sto: parseAsFloat,
+};
 const appliedConfigMap = {
   sessionSource: parseAsString,
   where: parseAsString.withDefault(''),
@@ -288,15 +296,10 @@ export default function SessionsPage() {
     }
   }, [sourceId, appliedConfig.sessionSource, onSubmit]);
 
-  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
+  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
+    selectedSessionQueryStateMap,
     {
-      sid: withDefault(StringParam, undefined),
-      sfrom: withDefault(NumberParam, undefined),
-      sto: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
+      history: 'push',
     },
   );
 
@@ -311,14 +314,18 @@ export default function SessionsPage() {
         new Date(selectedSessionQuery.sto ?? 0),
       ] as [Date, Date],
     };
-  }, [selectedSessionQuery]);
+  }, [
+    selectedSessionQuery.sid,
+    selectedSessionQuery.sfrom,
+    selectedSessionQuery.sto,
+  ]);
   const setSelectedSession = useCallback(
     (session: Session | undefined) => {
       if (session == null) {
         setSelectedSessionQuery({
-          sid: undefined,
-          sfrom: undefined,
-          sto: undefined,
+          sid: null,
+          sfrom: null,
+          sto: null,
         });
       } else {
         setSelectedSessionQuery({
