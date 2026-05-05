@@ -39,4 +39,4 @@ ENGINE = MergeTree
 PARTITION BY toDate(Timestamp)
 ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + ${TABLES_TTL}
-SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1, enable_block_number_column = 1, enable_block_offset_column = 1;
