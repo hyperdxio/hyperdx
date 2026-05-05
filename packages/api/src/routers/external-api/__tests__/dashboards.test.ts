@@ -2299,6 +2299,33 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const heatmapChart: ExternalDashboardTile = {
+        name: 'Heatmap Chart',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+              countExpression: 'count()',
+              alias: 'Duration Heatmap',
+              heatmapScaleType: 'log',
+            },
+          ],
+          groupBy: 'service.name',
+          numberFormat: {
+            output: 'time',
+            factor: 0.001,
+            unit: 'ms',
+          },
+        },
+      };
+
       // Act
       const response = await authRequest('post', BASE_URL)
         .send({
@@ -2310,6 +2337,7 @@ describe('External API v2 Dashboards - new format', () => {
             numberChart,
             markdownChart,
             pieChart,
+            heatmapChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -2322,6 +2350,32 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(heatmapChart);
+    });
+
+    it('rejects raw SQL heatmap tile because heatmap is builder-only', async () => {
+      const heatmapRawSql = {
+        name: 'Heatmap Raw SQL',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'heatmap',
+          connectionId: connection._id.toString(),
+          sqlTemplate: 'SELECT 1 FROM otel_logs WHERE {timeFilter}',
+          sourceId: traceSource._id.toString(),
+        },
+      };
+
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Heatmap Raw SQL',
+          tiles: [heatmapRawSql],
+          tags: [],
+        })
+        .expect(400);
     });
 
     it('can round-trip all raw SQL chart config types', async () => {
@@ -3138,6 +3192,34 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const heatmapChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Heatmap Chart',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+              countExpression: 'count()',
+              alias: 'Duration Heatmap',
+              heatmapScaleType: 'linear',
+            },
+          ],
+          groupBy: 'service.name',
+          numberFormat: {
+            output: 'time',
+            factor: 0.001,
+            unit: 'ms',
+          },
+        },
+      };
+
       // Create an initial dashboard to update
       const initialDashboard = await createTestDashboard();
 
@@ -3148,7 +3230,14 @@ describe('External API v2 Dashboards - new format', () => {
       )
         .send({
           name: 'Dashboard with All Chart Types',
-          tiles: [lineChart, barChart, tableChart, numberChart, markdownChart],
+          tiles: [
+            lineChart,
+            barChart,
+            tableChart,
+            numberChart,
+            markdownChart,
+            heatmapChart,
+          ],
           tags: ['round-trip-test'],
         })
         .expect(200);
@@ -3168,6 +3257,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
         omit(markdownChart, ['id']),
+      );
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+        omit(heatmapChart, ['id']),
       );
     });
 

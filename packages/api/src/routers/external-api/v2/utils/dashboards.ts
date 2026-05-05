@@ -267,7 +267,28 @@ const convertToExternalTileChartConfig = (
         displayType: config.displayType,
         markdown: stringValueOrDefault(config.markdown, ''),
       };
-    case DisplayType.Heatmap:
+    case DisplayType.Heatmap: {
+      const item = Array.isArray(config.select) ? config.select[0] : undefined;
+      return {
+        displayType: DisplayType.Heatmap,
+        sourceId,
+        select: [
+          {
+            aggFn: 'heatmap',
+            valueExpression: item?.valueExpression ?? '',
+            ...(item?.countExpression
+              ? { countExpression: item.countExpression }
+              : {}),
+            ...(item?.alias ? { alias: item.alias } : {}),
+            ...(item?.heatmapScaleType
+              ? { heatmapScaleType: item.heatmapScaleType }
+              : {}),
+          },
+        ],
+        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        numberFormat: config.numberFormat,
+      };
+    }
     case undefined:
       logger.error(
         { config },
@@ -453,6 +474,37 @@ export function convertToInternalTileConfig(
           name,
         } satisfies BuilderSavedChartConfig;
         break;
+      case 'heatmap': {
+        // Heatmap is builder-only and uses a single select item with
+        // its own shape: aggFn is the literal 'heatmap' on the external
+        // surface, mapped to the internal 'count' aggFn that the editor
+        // form persists, with the heatmap-specific countExpression /
+        // heatmapScaleType fields preserved on the select item.
+        const item = externalConfig.select[0];
+        internalConfig = {
+          ...pick(externalConfig, ['groupBy', 'numberFormat']),
+          displayType: DisplayType.Heatmap,
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: item.valueExpression,
+              ...(item.countExpression !== undefined
+                ? { countExpression: item.countExpression }
+                : {}),
+              ...(item.alias !== undefined ? { alias: item.alias } : {}),
+              ...(item.heatmapScaleType !== undefined
+                ? { heatmapScaleType: item.heatmapScaleType }
+                : {}),
+            },
+          ],
+          source: externalConfig.sourceId,
+          where: '',
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      }
       case 'search':
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),

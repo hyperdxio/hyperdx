@@ -296,6 +296,30 @@ const externalDashboardPieChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+// Heatmap charts use a dedicated select item schema because `aggFn` is the
+// literal 'heatmap' (not part of AggregateFunctionSchema) and they carry the
+// heatmap-specific fields `countExpression` and `heatmapScaleType` from
+// DerivedColumnSchema in common-utils.
+const externalDashboardHeatmapSelectItemSchema = z.object({
+  aggFn: z.literal('heatmap'),
+  valueExpression: z.string().max(10000),
+  countExpression: z.string().max(10000).optional(),
+  alias: z.string().max(10000).optional(),
+  heatmapScaleType: z.enum(['log', 'linear']).optional(),
+});
+
+export type ExternalDashboardHeatmapSelectItem = z.infer<
+  typeof externalDashboardHeatmapSelectItemSchema
+>;
+
+const externalDashboardHeatmapChartConfigSchema = z.object({
+  displayType: z.literal('heatmap'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
@@ -317,6 +341,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ],
