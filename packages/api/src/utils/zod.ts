@@ -299,10 +299,13 @@ const externalDashboardPieChartConfigSchema = z.object({
 // Heatmap charts use a dedicated select item schema because `aggFn` is the
 // literal 'heatmap' (not part of AggregateFunctionSchema) and they carry the
 // heatmap-specific fields `countExpression` and `heatmapScaleType` from
-// DerivedColumnSchema in common-utils.
+// DerivedColumnSchema in common-utils. valueExpression must be non-empty
+// to match the editor-form rule (validateChartForm in
+// packages/app/src/components/ChartEditor/utils.ts: "Value expression is
+// required for heatmap charts").
 const externalDashboardHeatmapSelectItemSchema = z.object({
   aggFn: z.literal('heatmap'),
-  valueExpression: z.string().max(10000),
+  valueExpression: z.string().min(1).max(10000),
   countExpression: z.string().max(10000).optional(),
   alias: z.string().max(10000).optional(),
   heatmapScaleType: z.enum(['log', 'linear']).optional(),

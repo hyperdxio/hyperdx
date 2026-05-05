@@ -2379,6 +2379,92 @@ describe('External API v2 Dashboards - new format', () => {
         .expect(400);
     });
 
+    it('rejects heatmap tile with a non-Trace source (UI restricts to trace)', async () => {
+      const heatmapMetricSource = {
+        name: 'Heatmap Metric Source',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: metricSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Heatmap on Metric Source',
+          tiles: [heatmapMetricSource],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Heatmap tiles require a Trace source',
+      );
+    });
+
+    it('rejects heatmap tile with empty valueExpression', async () => {
+      const heatmapEmptyValue = {
+        name: 'Heatmap Empty Value',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: '',
+            },
+          ],
+        },
+      };
+
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Heatmap Empty Value',
+          tiles: [heatmapEmptyValue],
+          tags: [],
+        })
+        .expect(400);
+    });
+
+    it('rejects heatmap tile with multiple select items', async () => {
+      const heatmapMultiSelect = {
+        name: 'Heatmap Multi Select',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            { aggFn: 'heatmap', valueExpression: 'Duration' },
+            { aggFn: 'heatmap', valueExpression: 'OtherValue' },
+          ],
+        },
+      };
+
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Heatmap Multi Select',
+          tiles: [heatmapMultiSelect],
+          tags: [],
+        })
+        .expect(400);
+    });
+
     it('can round-trip all raw SQL chart config types', async () => {
       const connectionId = connection._id.toString();
       const sourceId = traceSource._id.toString();

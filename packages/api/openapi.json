@@ -1455,8 +1455,9 @@
           },
           "valueExpression": {
             "type": "string",
+            "minLength": 1,
             "maxLength": 10000,
-            "description": "SQL expression for the value being bucketed on the y-axis.",
+            "description": "SQL expression for the value being bucketed on the y-axis. Must be non-empty.",
             "example": "Duration"
           },
           "countExpression": {
