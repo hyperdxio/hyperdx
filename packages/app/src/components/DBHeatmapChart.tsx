@@ -681,7 +681,7 @@ function HeatmapContainer({
     return [time, bucket, count];
   }, [
     data,
-    timestampColumn?.name,
+    timestampColumn,
     generatedTsBuckets,
     scaleType,
     effectiveMin,
@@ -689,7 +689,7 @@ function HeatmapContainer({
     nBuckets,
   ]);
 
-  const [time, bucket, count] = heatmapData;
+  const time = heatmapData[0];
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
