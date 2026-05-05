@@ -110,11 +110,10 @@ export function useTimeQuery({
   );
 
   // Allow browser back/fwd button to modify the displayed time input value
-  const [inputTimeQuery, setInputTimeQuery] = useQueryState(
-    'tq',
-    parseAsString.withDefault(''),
-    { history: 'push' },
-  );
+  const [inputTimeQuery, setInputTimeQuery] = useQueryState('tq', {
+    ...parseAsString.withDefault(''),
+    history: 'push',
+  });
   const prevInputTimeQuery = usePrevious(inputTimeQuery);
 
   useEffect(() => {
