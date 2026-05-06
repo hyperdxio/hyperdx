@@ -51,7 +51,7 @@ const chartConfigByMetricType = ({
     whereLanguage: 'sql' as const,
     select: '',
     timestampValueExpression: metricSource.timestampValueExpression ?? '',
-    connection: metricSource.connection,
+    connection: metricSource.connection ?? '',
     dateRange: _dateRange,
   };
 };

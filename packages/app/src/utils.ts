@@ -1028,7 +1028,7 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
               metricType as unknown as keyof TMetricSource['metricTables']
             ] ?? '',
           databaseName: source.from.databaseName,
-          connectionId: source.connection,
+          connectionId: source.connection ?? '',
         }) satisfies TableConnection,
     );
 }

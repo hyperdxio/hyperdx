@@ -1087,10 +1087,12 @@ export const TableSourceSchema = BaseSourceSchema.extend({
   defaultColumns: z.array(z.string()).optional(),
   lastQueriedAt: z.coerce.date().optional(),
   // ---- Legacy fields retained for backward compatibility (deprecated) ----
-  // `connection` is still required because legacy chart configs (built by the
-  // ClickHouse-backed core/* modules) require it as `string`. Task 4 removes
-  // these once Athena swaps in.
-  connection: z.string().min(1, 'Server Connection is required'),
+  // `connection` is no longer modelled by the API (Connection was deleted in
+  // Task 3). We keep it as an inert empty-string field on the type so legacy
+  // chart-config paths that still read `source.connection` keep working
+  // without runtime errors. Will be dropped once those paths are ported to
+  // the Athena query lifecycle.
+  connection: z.string(),
   defaultTableSelectExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
   tableFilterExpression: z.string().optional(),

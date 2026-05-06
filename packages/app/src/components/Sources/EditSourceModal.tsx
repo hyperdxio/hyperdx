@@ -168,36 +168,33 @@ export function EditSourceModal(props: EditSourceModalProps) {
   const handleSubmit = () => {
     if (!validate()) return;
 
+    const tsCol =
+      form.timestampColumn === NO_TIME_VALUE || form.timestampColumn === ''
+        ? undefined
+        : form.timestampColumn;
+
+    // Berg-native source payload. The API model only persists the Berg
+    // fields; `name`, `from`, `timestampValueExpression`, and `connection`
+    // remain on the shared TableSource type purely so legacy chart-config
+    // plumbing keeps type-checking — we mirror them from the Berg fields
+    // (or pass an empty-string sentinel) rather than tracking them as
+    // separate state.
     const payload: TSourceNoId & { id?: string } = {
-      // Carry over the legacy fields from the existing source so the
-      // backwards-compat shim layer keeps validating; for net-new sources
-      // we set sensible defaults.
-      ...(source ?? {}),
-      kind: source?.kind ?? SourceKind.Table,
-      // Berg-native shape:
+      kind: SourceKind.Table,
       displayName: form.displayName.trim(),
       catalog: form.catalog,
       database: form.database,
       table: form.table,
-      timestampColumn:
-        form.timestampColumn === NO_TIME_VALUE || form.timestampColumn === ''
-          ? undefined
-          : form.timestampColumn,
+      timestampColumn: tsCol,
       defaultSort: form.defaultSort.trim() || undefined,
       defaultColumns: form.defaultColumns.length
         ? form.defaultColumns
         : undefined,
-      // Legacy fields kept by TableSourceSchema for backwards-compat:
-      name: source?.name ?? form.displayName.trim(),
-      from: source?.from ?? {
-        databaseName: form.database,
-        tableName: form.table,
-      },
-      timestampValueExpression:
-        form.timestampColumn === NO_TIME_VALUE || form.timestampColumn === ''
-          ? (source?.timestampValueExpression ?? '')
-          : form.timestampColumn,
-      connection: source?.connection ?? '',
+      // ---- Legacy mirrored fields (read by chart code, not persisted) ----
+      name: form.displayName.trim(),
+      from: { databaseName: form.database, tableName: form.table },
+      timestampValueExpression: tsCol ?? '',
+      connection: '',
       ...(source?.id ? { id: source.id } : {}),
     };
 

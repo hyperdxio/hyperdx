@@ -1147,7 +1147,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       tc.push({
         databaseName: source.from.databaseName,
         tableName: tableName,
-        connectionId: source.connection,
+        connectionId: source.connection ?? '',
       });
     }
 

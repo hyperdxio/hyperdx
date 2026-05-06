@@ -83,7 +83,8 @@ function useOptimizedKeyValuesCalls({
         const tableName = getMetricTableName(source, metricType) ?? '';
 
         const chartConfig: BuilderChartConfigWithDateRange = {
-          ...pick(source, ['timestampValueExpression', 'connection']),
+          timestampValueExpression: source.timestampValueExpression,
+          connection: source.connection ?? '',
           from: {
             databaseName: source.from.databaseName,
             tableName,

@@ -457,7 +457,7 @@ function HighlightedAttributeExpressionsFormRow({
     defaultValue: DEFAULT_DATABASE,
   });
   const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({ control, name: 'connection' }) ?? '';
 
   const {
     fields: highlightedAttributes,
@@ -576,7 +576,7 @@ function MaterializedViewFormSection({
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
   const brandName = useBrandDisplayName();
-  const connection = useWatch({ control, name: `connection` });
+  const connection = useWatch({ control, name: `connection` }) ?? '';
   const sourceDatabaseName = useWatch({
     control,
     name: `from.databaseName`,
@@ -757,7 +757,7 @@ function AggregatedColumnsFormSection({
   }, [appendAggregate]);
 
   const kind = useWatch({ control, name: 'kind' });
-  const connection = useWatch({ control, name: 'connection' });
+  const connection = useWatch({ control, name: 'connection' }) ?? '';
   const mvTableName = useWatch({
     control,
     name: `materializedViews.${mvIndex}.tableName`,
@@ -882,7 +882,7 @@ function AggregatedColumnRow({
   colIndex: number;
   onRemove: () => void;
 }) {
-  const connectionId = useWatch({ control, name: `connection` });
+  const connectionId = useWatch({ control, name: `connection` }) ?? '';
   const sourceDatabaseName = useWatch({
     control,
     name: `from.databaseName`,
@@ -1078,7 +1078,7 @@ function LogTableModelForm(props: TableModelProps) {
     defaultValue: DEFAULT_DATABASE,
   });
   const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({ control, name: 'connection' }) ?? '';
 
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
@@ -1339,7 +1339,7 @@ function TraceTableModelForm(props: TableModelProps) {
     defaultValue: DEFAULT_DATABASE,
   });
   const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({ control, name: 'connection' }) ?? '';
 
   return (
     <Stack gap="sm">
@@ -1645,7 +1645,7 @@ function SessionTableModelForm({ control }: TableModelProps) {
     name: 'from.databaseName',
     defaultValue: DEFAULT_DATABASE,
   });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({ control, name: 'connection' }) ?? '';
   const tableName = useWatch({ control, name: 'from.tableName' });
 
   return (
@@ -1701,7 +1701,7 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     name: 'from.databaseName',
     defaultValue: DEFAULT_DATABASE,
   });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({ control, name: 'connection' }) ?? '';
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
 
@@ -2201,11 +2201,12 @@ export function TableSourceForm({
     name: 'from.databaseName',
     defaultValue: source?.from?.databaseName || DEFAULT_DATABASE,
   });
-  const connectionId = useWatch({
-    control,
-    name: 'connection',
-    defaultValue: source?.connection,
-  });
+  const connectionId =
+    useWatch({
+      control,
+      name: 'connection',
+      defaultValue: source?.connection,
+    }) ?? '';
 
   const {
     fields: querySettingFields,

@@ -122,7 +122,7 @@ const DashboardFilterEditForm = ({
   const tableName = source && getMetricTableName(source, metricType);
   const tableConnection: TableConnection | undefined = tableName
     ? {
-        connectionId: source.connection,
+        connectionId: source.connection ?? '',
         databaseName: source.from.databaseName,
         tableName,
       }

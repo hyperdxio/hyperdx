@@ -116,7 +116,7 @@ const TableSchemaPreview = ({
 };
 
 interface SourceSchemaPreviewSource {
-  connection: TSource['connection'];
+  connection?: TSource['connection'];
   from: TSource['from'];
   metricTables?: TMetricSource['metricTables'];
   kind?: TSource['kind'];
@@ -158,7 +158,7 @@ const SourceSchemaPreview = ({
         .map(({ metricType, tableName }) => ({
           databaseName: source.from.databaseName,
           tableName: tableName!,
-          connectionId: source.connection,
+          connectionId: source.connection ?? '',
           title: METRIC_TYPE_NAMES[metricType],
         })),
     );
@@ -166,7 +166,7 @@ const SourceSchemaPreview = ({
     tables.push({
       databaseName: source.from.databaseName,
       tableName: source.from.tableName,
-      connectionId: source.connection,
+      connectionId: source.connection ?? '',
       title: source.name ?? source.from.tableName,
     });
   }
@@ -176,7 +176,7 @@ const SourceSchemaPreview = ({
     ...mvConfigs.map(({ tableName, databaseName }) => ({
       databaseName,
       tableName,
-      connectionId: source!.connection,
+      connectionId: source!.connection ?? '',
       title: `${tableName} (MV)`,
     })),
   );
