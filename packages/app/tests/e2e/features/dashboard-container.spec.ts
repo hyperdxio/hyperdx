@@ -19,6 +19,9 @@ import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
+  // Tests that PATCH the saved dashboard (round-trip / drag-persists) get
+  // an additional `@full-stack` tag so the backend-bearing CI lane picks
+  // them up. UI-only tests stay on `@dashboard` only.
   let dashboardPage: DashboardPage;
 
   test.beforeEach(async ({ page }) => {
@@ -47,21 +50,18 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
 
   test('group renders with default collapsible chevron and bordered style', async () => {
     const id = await addGroupAndGetId();
-    const group = dashboardPage.getGroup(id);
-    const chevron = dashboardPage.page.getByTestId(`group-chevron-${id}`);
+    const chevron = dashboardPage.getGroupChevron(id);
 
     await test.step('chevron is present and reports expanded by default', async () => {
       await expect(chevron).toBeVisible();
       await expect(chevron).toHaveAttribute('aria-expanded', 'true');
     });
 
-    await test.step('container body renders an inline border', async () => {
-      // DashboardContainer.tsx:243-246 sets inline `border` only when
-      // bordered=true. Reading el.style.border avoids resolving the CSS var.
-      const inlineBorder = await group.evaluate(
-        (el: HTMLElement) => el.style.border,
-      );
-      expect(inlineBorder.length).toBeGreaterThan(0);
+    await test.step('container reports bordered via data-bordered', async () => {
+      // The component sets `data-bordered="true|false"` on the container
+      // shell. Reading the attribute keeps the spec decoupled from the
+      // particular style strategy (inline `border`, CSS var, etc.).
+      expect(await dashboardPage.getGroupBorderedAttr(id)).toBe('true');
     });
 
     await test.step('clicking the chevron collapses the group', async () => {
@@ -75,44 +75,34 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
     });
   });
 
-  test('toggling bordered via the overflow menu flips the inline border', async () => {
+  test('toggling bordered via the overflow menu flips data-bordered', async () => {
     const id = await addGroupAndGetId();
-    const group = dashboardPage.getGroup(id);
 
-    const readBorder = () =>
-      group.evaluate((el: HTMLElement) => el.style.border);
-
-    await test.step('starts with an inline border', async () => {
-      expect((await readBorder()).length).toBeGreaterThan(0);
+    await test.step('starts as bordered', async () => {
+      expect(await dashboardPage.getGroupBorderedAttr(id)).toBe('true');
     });
 
-    await test.step('Hide Border removes the inline border', async () => {
+    await test.step('Hide Border flips data-bordered to false', async () => {
       await dashboardPage.toggleGroupBordered(id);
-      // The toggle is synchronous, but allow the inline style update to
-      // flush before reading.
       await expect
-        .poll(async () => (await readBorder()).length, { timeout: 5000 })
-        .toBe(0);
+        .poll(() => dashboardPage.getGroupBorderedAttr(id), { timeout: 5000 })
+        .toBe('false');
     });
 
     await test.step('the menu now offers Show Border and restores it', async () => {
       await dashboardPage.openGroupMenu(id);
-      await expect(
-        dashboardPage.page.getByTestId(`group-toggle-bordered-${id}`),
-      ).toHaveText('Show Border');
-      await dashboardPage.page
-        .getByTestId(`group-toggle-bordered-${id}`)
-        .click();
+      const borderedToggle = dashboardPage.getGroupBorderedToggle(id);
+      await expect(borderedToggle).toHaveText('Show Border');
+      await borderedToggle.click();
       await expect
-        .poll(async () => (await readBorder()).length, { timeout: 5000 })
-        .toBeGreaterThan(0);
+        .poll(() => dashboardPage.getGroupBorderedAttr(id), { timeout: 5000 })
+        .toBe('true');
     });
   });
 
   test('adding a tab reveals the tab bar and switching tabs updates URL state', async () => {
     const id = await addGroupAndGetId();
-    const group = dashboardPage.getGroup(id);
-    const tabsInGroup = group.getByRole('tab');
+    const tabsInGroup = dashboardPage.getGroupTabs(id);
 
     await test.step('a one-tab group does not render the tab bar', async () => {
       // DashboardContainer.tsx:82 sets `hasTabs = tabs.length >= 2`. The new
@@ -159,38 +149,46 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
 
   test('?collapsed URL param survives reload and restores the collapsed state', async () => {
     const id = await addGroupAndGetId();
-    const chevron = dashboardPage.page.getByTestId(`group-chevron-${id}`);
+    const chevron = dashboardPage.getGroupChevron(id);
+
+    // The two `useQueryState` setters (?collapsed and ?expanded) flush
+    // independently after a chevron click. Reading both as a tuple inside
+    // `expect.poll` avoids a one-shot read of the slow side after the
+    // fast side already resolved.
+    const readCollapseTuple = () => ({
+      collapsed: dashboardPage.getCollapsedParam(),
+      expanded: dashboardPage.getExpandedParam(),
+    });
 
     await test.step('collapsing a default-expanded group writes ?collapsed=', async () => {
       await chevron.click();
-      await expect.poll(() => dashboardPage.getCollapsedParam()).toContain(id);
-      expect(dashboardPage.getExpandedParam()).not.toContain(id);
+      await expect.poll(readCollapseTuple).toMatchObject({
+        collapsed: expect.arrayContaining([id]),
+        expanded: expect.not.arrayContaining([id]),
+      });
     });
 
     await test.step('the collapsed state persists across reload', async () => {
       await dashboardPage.page.reload();
-      await expect(
-        dashboardPage.page.getByTestId('dashboard-page'),
-      ).toBeVisible();
-      const reloadedChevron = dashboardPage.page.getByTestId(
-        `group-chevron-${id}`,
-      );
+      await dashboardPage.waitForLoaded();
+      const reloadedChevron = dashboardPage.getGroupChevron(id);
       await expect(reloadedChevron).toHaveAttribute('aria-expanded', 'false');
       expect(dashboardPage.getCollapsedParam()).toContain(id);
     });
 
     await test.step('expanding again moves the id to ?expanded= and survives reload', async () => {
-      await dashboardPage.page.getByTestId(`group-chevron-${id}`).click();
-      await expect.poll(() => dashboardPage.getExpandedParam()).toContain(id);
-      expect(dashboardPage.getCollapsedParam()).not.toContain(id);
+      await dashboardPage.getGroupChevron(id).click();
+      await expect.poll(readCollapseTuple).toMatchObject({
+        collapsed: expect.not.arrayContaining([id]),
+        expanded: expect.arrayContaining([id]),
+      });
 
       await dashboardPage.page.reload();
-      await expect(
-        dashboardPage.page.getByTestId('dashboard-page'),
-      ).toBeVisible();
-      await expect(
-        dashboardPage.page.getByTestId(`group-chevron-${id}`),
-      ).toHaveAttribute('aria-expanded', 'true');
+      await dashboardPage.waitForLoaded();
+      await expect(dashboardPage.getGroupChevron(id)).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
     });
   });
 
@@ -198,7 +196,7 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
     const id = await addGroupAndGetId();
     await dashboardPage.addTabToGroup(id);
 
-    const tabs = dashboardPage.getGroup(id).getByRole('tab');
+    const tabs = dashboardPage.getGroupTabs(id);
     await expect(tabs).toHaveCount(2);
 
     // The URL stores the active tab id; capture it as the source of truth.
@@ -222,10 +220,8 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
         .toBe(secondTabId);
 
       await dashboardPage.page.reload();
-      await expect(
-        dashboardPage.page.getByTestId('dashboard-page'),
-      ).toBeVisible();
-      const reloadedTabs = dashboardPage.getGroup(id).getByRole('tab');
+      await dashboardPage.waitForLoaded();
+      const reloadedTabs = dashboardPage.getGroupTabs(id);
       await expect(reloadedTabs.last()).toHaveAttribute(
         'aria-selected',
         'true',
@@ -236,106 +232,111 @@ test.describe('Dashboard container', { tag: ['@dashboard'] }, () => {
     });
   });
 
-  test('save-and-reload round-trip preserves containers and tabs', async () => {
-    // Two groups: group A is left default-bordered, group B gets a second
-    // tab. Bordered toggle is exercised in its own test (line 78) and is
-    // intentionally kept out of this round-trip. setDashboard for a
-    // remote dashboard fires PATCH /api/dashboards/{id} without an
-    // optimistic update, so back-to-back mutations that derive from the
-    // same in-memory snapshot can clobber each other; this test sequences
-    // its mutating actions deliberately and waits for the backend to
-    // confirm before navigating away.
-    const idA = await addGroupAndGetId();
-    const idB = await addGroupAndGetId();
+  test(
+    'save-and-reload round-trip preserves containers and tabs',
+    { tag: '@full-stack' },
+    async () => {
+      // Two groups: group A is left default-bordered, group B gets a second
+      // tab. Bordered toggle is exercised in its own test and is
+      // intentionally kept out of this round-trip. setDashboard for a
+      // remote dashboard fires PATCH /api/dashboards/{id} without an
+      // optimistic update, so back-to-back mutations that derive from the
+      // same in-memory snapshot can clobber each other; this test sequences
+      // its mutating actions deliberately and waits for the backend to
+      // confirm before navigating away.
+      const idA = await addGroupAndGetId();
+      const idB = await addGroupAndGetId();
 
-    await test.step('group B gets a second tab', async () => {
-      await dashboardPage.addTabToGroup(idB);
-      const groupBTabs = dashboardPage.getGroup(idB).getByRole('tab');
-      await expect(groupBTabs).toHaveCount(2);
-    });
+      // Start listening for the addTabToGroup PATCH before issuing it,
+      // because a fast handler can return before the spec reaches a
+      // post-hoc `waitForResponse`.
+      const tabPatch = dashboardPage.waitForDashboardPatch();
 
-    // Capture the dashboard id from the URL while we're still on the page.
-    const dashboardId = dashboardPage.page
-      .url()
-      .match(/\/dashboards\/([^/?#]+)/)?.[1];
-    if (!dashboardId) {
-      throw new Error(
-        `Could not extract dashboard id from ${dashboardPage.page.url()}`,
-      );
-    }
+      await test.step('group B gets a second tab', async () => {
+        await dashboardPage.addTabToGroup(idB);
+        const groupBTabs = dashboardPage.getGroupTabs(idB);
+        await expect(groupBTabs).toHaveCount(2);
+      });
 
-    await test.step('let pending mutations settle before leaving the page', async () => {
-      // setDashboard mutations are fire-and-forget; if we navigate before
-      // the PATCH lands, the change is dropped. Wait for the network to
-      // quiet before goto.
-      await dashboardPage.page.waitForLoadState('networkidle');
-    });
+      // Capture the dashboard id from the URL while we're still on the page.
+      const dashboardId = dashboardPage.getCurrentDashboardId();
 
-    await test.step('navigate away then back', async () => {
-      await dashboardPage.page.goto('/search');
-      await expect(dashboardPage.page).toHaveURL(/.*\/search/);
+      await test.step('wait for the addTab PATCH to land before leaving', async () => {
+        // setDashboard mutations are fire-and-forget; if we navigate
+        // before the PATCH lands, the change is dropped.
+        await tabPatch;
+      });
 
-      await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
-      await expect(
-        dashboardPage.page.getByTestId('dashboard-page'),
-      ).toBeVisible();
-    });
+      await test.step('navigate away then back', async () => {
+        await dashboardPage.page.goto('/search');
+        await expect(dashboardPage.page).toHaveURL(/.*\/search/);
 
-    await test.step('both containers are present in original order', async () => {
-      // Poll because the reloaded dashboard hydrates via a remote fetch.
-      await expect
-        .poll(() => dashboardPage.getGroupOrder())
-        .toEqual([idA, idB]);
-    });
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+        await dashboardPage.waitForLoaded();
+      });
 
-    await test.step('group B still has two tabs', async () => {
-      const tabs = dashboardPage.getGroup(idB).getByRole('tab');
-      await expect(tabs).toHaveCount(2);
-    });
-  });
+      await test.step('both containers are present in original order', async () => {
+        // Poll because the reloaded dashboard hydrates via a remote fetch.
+        await expect
+          .poll(() => dashboardPage.getGroupOrder())
+          .toEqual([idA, idB]);
+      });
 
-  test('drag-to-reorder rearranges groups and the new order persists', async () => {
-    test.setTimeout(60000);
+      await test.step('group B still has two tabs', async () => {
+        const tabs = dashboardPage.getGroupTabs(idB);
+        await expect(tabs).toHaveCount(2);
+      });
+    },
+  );
 
-    const idA = await addGroupAndGetId();
-    const idB = await addGroupAndGetId();
-    const idC = await addGroupAndGetId();
+  test(
+    'drag-to-reorder rearranges groups and the new order persists',
+    { tag: '@full-stack' },
+    async () => {
+      const idA = await addGroupAndGetId();
+      const idB = await addGroupAndGetId();
+      const idC = await addGroupAndGetId();
 
-    await test.step('initial order is [A, B, C]', async () => {
-      expect(await dashboardPage.getGroupOrder()).toEqual([idA, idB, idC]);
-    });
+      await test.step('initial order is [A, B, C]', async () => {
+        expect(await dashboardPage.getGroupOrder()).toEqual([idA, idB, idC]);
+      });
 
-    await test.step('drag onto self is a no-op', async () => {
-      // DashboardDndContext.tsx:67-70 guards
-      // `activeData.containerId !== overData.containerId`.
-      await dashboardPage.dragGroupTo(idA, idA);
-      expect(await dashboardPage.getGroupOrder()).toEqual([idA, idB, idC]);
-    });
+      await test.step('drag onto self is a no-op', async () => {
+        // DashboardDndContext.tsx:67-70 guards
+        // `activeData.containerId !== overData.containerId`.
+        await dashboardPage.dragGroupTo(idA, idA);
+        expect(await dashboardPage.getGroupOrder()).toEqual([idA, idB, idC]);
+      });
 
-    await test.step('dragging A onto C produces [B, C, A]', async () => {
-      // arrayMove(containers, indexOf(A)=0, indexOf(C)=2) yields the @dnd-kit
-      // documented "shift" semantics: [B, C, A]. See
-      // useDashboardContainers.handleReorderContainers and
-      // DashboardDndContext.handleDragEnd.
-      await dashboardPage.dragGroupTo(idA, idC);
-      await expect
-        .poll(() => dashboardPage.getGroupOrder())
-        .toEqual([idB, idC, idA]);
-    });
+      // Start listening for the reorder PATCH before issuing the drag.
+      const reorderPatch = dashboardPage.waitForDashboardPatch();
 
-    await test.step('the new order persists across navigation', async () => {
-      const dashboardUrl = dashboardPage.page.url();
-      const dashboardId = dashboardUrl.match(/\/dashboards\/([^/?#]+)/)?.[1];
-      await dashboardPage.page.goto('/search');
-      await expect(dashboardPage.page).toHaveURL(/.*\/search/);
-      await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
-      await expect(
-        dashboardPage.page.getByTestId('dashboard-page'),
-      ).toBeVisible();
+      await test.step('dragging A onto C produces [B, C, A]', async () => {
+        // arrayMove(containers, indexOf(A)=0, indexOf(C)=2) yields the @dnd-kit
+        // documented "shift" semantics: [B, C, A]. See
+        // useDashboardContainers.handleReorderContainers and
+        // DashboardDndContext.handleDragEnd.
+        await dashboardPage.dragGroupTo(idA, idC);
+        await expect
+          .poll(() => dashboardPage.getGroupOrder())
+          .toEqual([idB, idC, idA]);
+      });
 
-      await expect
-        .poll(() => dashboardPage.getGroupOrder())
-        .toEqual([idB, idC, idA]);
-    });
-  });
+      await test.step('the new order persists across navigation', async () => {
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        // Wait for the reorder PATCH before leaving the page; otherwise the
+        // mutation is dropped on the goto.
+        await reorderPatch;
+
+        await dashboardPage.page.goto('/search');
+        await expect(dashboardPage.page).toHaveURL(/.*\/search/);
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+        await dashboardPage.waitForLoaded();
+
+        await expect
+          .poll(() => dashboardPage.getGroupOrder())
+          .toEqual([idB, idC, idA]);
+      });
+    },
+  );
 });

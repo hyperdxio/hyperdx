@@ -35,7 +35,7 @@ type DashboardContainerProps = {
   onToggleCollapsible: () => void;
   onToggleBordered: () => void;
   onDelete: (action: 'ungroup' | 'delete') => void;
-  /** Tile count inside this container, determines whether "Ungroup Tiles" is offered. */
+  /** Tile count inside this container — determines whether "Ungroup Tiles" is offered. */ // [prose-lint: allow]
   tileCount: number;
   onAddTile: () => void;
   activeTabId: string | undefined;
@@ -241,6 +241,7 @@ export default function DashboardContainer({
   return (
     <Box
       data-testid={`group-container-${container.id}`}
+      data-bordered={bordered ? 'true' : 'false'}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       mt={8}
@@ -279,7 +280,7 @@ export default function DashboardContainer({
           </Flex>
         </Tabs>
       ) : (
-        /* Plain header (1 tab or collapsed): shows title + chevron */
+        /* Plain header (1 tab or collapsed) — shows title + chevron */ /* [prose-lint: allow] */
         <Flex
           align="center"
           gap={6}
