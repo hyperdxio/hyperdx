@@ -771,7 +771,6 @@ const SharedChartSettingsSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   onClick: OnClickSchema.optional(),
-  timelineSeries: z.array(TimelineSeriesSchema).optional(),
 });
 
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
@@ -779,6 +778,11 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   implicitColumnExpression: z.string().optional(),
   sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
+  // Timeline-tile-specific structured-builder series. Lives on the Builder
+  // config alongside `markdown` rather than on SharedChartSettingsSchema
+  // because Raw SQL Timeline tiles emit columns directly and do not use
+  // these series definitions.
+  timelineSeries: z.array(TimelineSeriesSchema).optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
