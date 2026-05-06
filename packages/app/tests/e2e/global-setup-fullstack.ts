@@ -38,13 +38,10 @@ const DEFAULT_TEST_USER = {
 // Port configuration from HDX_E2E_* env vars (set by scripts/test-e2e.sh)
 const API_PORT = process.env.HDX_E2E_API_PORT || '21000';
 const APP_PORT = process.env.HDX_E2E_APP_PORT || '21300';
-const MONGO_PORT = process.env.HDX_E2E_MONGO_PORT || '21100';
 
 const API_URL = process.env.E2E_API_URL || `http://localhost:${API_PORT}`;
 const APP_URL = process.env.E2E_APP_URL || `http://localhost:${APP_PORT}`;
 const AUTH_FILE = path.join(__dirname, '.auth/user.json');
-const MONGO_URI =
-  process.env.MONGO_URI || `mongodb://localhost:${MONGO_PORT}/hyperdx-e2e`;
 
 /**
  * Seeded test data with predictable identifiers so E2E tests can look it up.
@@ -224,10 +221,14 @@ async function globalSetup(_config: FullConfig) {
       failOnStatusCode: false,
     });
 
-    // Login returns 302 redirect on success
-    if (loginResponse.status() !== 302 && !loginResponse.ok()) {
+    // Login returns a 3xx redirect on success (303 See Other from the API,
+    // historically 302). Playwright's request.post follows redirects by
+    // default, so loginStatus is typically 200 (the dashboard page). Accept
+    // any 2xx OR 3xx — only 4xx/5xx indicate a real failure.
+    const loginStatus = loginResponse.status();
+    if (loginStatus >= 400) {
       const body = await loginResponse.text();
-      throw new Error(`Login failed: ${loginResponse.status()} ${body}`);
+      throw new Error(`Login failed: ${loginStatus} ${body}`);
     }
 
     // Navigate to the app to establish session

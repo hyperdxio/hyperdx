@@ -241,7 +241,7 @@ const convertToExternalTileChartConfig = (
       };
     case DisplayType.Table:
       return {
-        ...pick(config, ['having', 'numberFormat']),
+        ...pick(config, ['having', 'numberFormat', 'groupByColumnsOnLeft']),
         displayType: config.displayType,
         sourceId,
         asRatio:
@@ -423,6 +423,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'having',
             'orderBy',
+            'groupByColumnsOnLeft',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),

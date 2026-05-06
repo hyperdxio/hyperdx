@@ -1,24 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  parseAsInteger,
-  parseAsJson,
-  parseAsString,
-  useQueryState,
-} from 'nuqs';
+import { parseAsInteger, parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Code,
-  Grid,
-  Loader,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Button, Code, Grid, Stack, Table, Text, Title } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';

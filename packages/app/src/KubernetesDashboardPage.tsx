@@ -59,7 +59,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { NOW } from './config';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
@@ -955,7 +954,8 @@ const findSource = (
     s =>
       (kind === undefined || s.kind === kind) &&
       (id === undefined || s.id === id) &&
-      (connection === undefined || s.connection === connection),
+      (connection === undefined || s.connection === connection) &&
+      !s.disabled,
   );
 };
 
@@ -1008,7 +1008,8 @@ export const resolveSourceIds = (
     (s): s is TLogSource =>
       s.kind === SourceKind.Log &&
       !!s.metricSourceId &&
-      !!findSource(sources, { id: s.metricSourceId }),
+      !!findSource(sources, { id: s.metricSourceId }) &&
+      !s.disabled,
   );
 
   if (logSourceWithMetricSource) {

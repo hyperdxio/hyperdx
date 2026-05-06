@@ -3,8 +3,8 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { parseAsString, useQueryState } from 'nuqs';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
@@ -63,11 +63,7 @@ function FileSelection({
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
   });
 
@@ -218,7 +214,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
   const { data: existingTags } = api.useTags();
-  const [dashboardId] = useQueryParam('dashboardId', StringParam);
+  const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
   const { handleSubmit, getFieldState, control, setValue } =
     useForm<MappingFormValues>({

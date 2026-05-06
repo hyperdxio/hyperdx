@@ -1,4 +1,3 @@
-import { use } from 'react';
 import { screen } from '@testing-library/react';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -88,6 +87,57 @@ describe('DBPieChart', () => {
       <DBPieChart config={baseTestConfig} errorVariant="inline" />,
     );
     expect(screen.getByTestId('pie-chart-container')).toBeInTheDocument();
+  });
+
+  it('should render pie chart legend with labels', () => {
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: [
+          { status: 'success', count: 100 },
+          { status: 'error', count: 50 },
+          { status: 'timeout', count: 25 },
+        ],
+        meta: [
+          { name: 'status', type: 'String' },
+          { name: 'count', type: 'UInt64' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithMantine(<DBPieChart config={baseTestConfig} />);
+    const legend = screen.getByTestId('pie-chart-legend');
+    expect(legend).toBeInTheDocument();
+    expect(screen.getByText('success')).toBeInTheDocument();
+    expect(screen.getByText('error')).toBeInTheDocument();
+    expect(screen.getByText('timeout')).toBeInTheDocument();
+  });
+
+  it('should render scrollable legend with many groups', () => {
+    const manyGroups = Array.from({ length: 30 }, (_, i) => ({
+      status: `group-${i}`,
+      count: 100 - i,
+    }));
+
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: manyGroups,
+        meta: [
+          { name: 'status', type: 'String' },
+          { name: 'count', type: 'UInt64' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithMantine(<DBPieChart config={baseTestConfig} />);
+    const legend = screen.getByTestId('pie-chart-legend');
+    expect(legend).toBeInTheDocument();
+    expect(legend).toHaveStyle({ alignSelf: 'stretch' });
+    expect(screen.getByText('group-0')).toBeInTheDocument();
+    expect(screen.getByText('group-29')).toBeInTheDocument();
   });
 
   it('passes the same config to useMVOptimizationExplanation, useQueriedChartConfig, and MVOptimizationIndicator', () => {

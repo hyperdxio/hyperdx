@@ -1,5 +1,14 @@
 assert_test_data() {
-    local testdir=$1
+    _assert_test_data_on_port "9000" "$@"
+}
+
+assert_test_data_compat() {
+    _assert_test_data_on_port "29000" "$@"
+}
+
+_assert_test_data_on_port() {
+    local port=$1
+    local testdir=$2
     local query_file="${testdir}/assert_query.sql"
     local expected_file="${testdir}/expected.snap"
 
@@ -26,7 +35,7 @@ assert_test_data() {
     fi
 
     # Execute the query using clickhouse-client and capture the results
-    local query_result=$(clickhouse-client --queries-file="$query_file" 2>&1)
+    local query_result=$(clickhouse-client --port="$port" --queries-file="$query_file" 2>&1)
 
     # Check if the clickhouse-client command succeeded
     if [ $? -ne 0 ]; then

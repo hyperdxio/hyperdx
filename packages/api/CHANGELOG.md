@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 2.24.1
+
+### Patch Changes
+
+- b73f6fcc: fix: Prevent duplicate tile IDs in dashboard imports
+- 4c23e10a: feat: Allow displaying group-by columns on LHS of table
+- Updated dependencies [b73f6fcc]
+- Updated dependencies [4c23e10a]
+- Updated dependencies [e2fc25da]
+- Updated dependencies [7665fbe1]
+  - @hyperdx/common-utils@0.18.1
+
 ## 2.24.0
 
 ### Minor Changes

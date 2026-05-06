@@ -2,11 +2,9 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { NextAdapter } from 'next-query-params';
 import { env } from 'next-runtime-env';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
 import {
   MutationCache,
@@ -28,7 +26,6 @@ import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
-import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import {
   SystemColorSchemeScript,
   useResolvedColorScheme,
@@ -155,12 +152,14 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             service: _jsonData.serviceName,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
+            tracesUrl: _jsonData.collectorTracesUrl,
+            logsUrl: _jsonData.collectorLogsUrl,
           });
         } else {
           console.warn('No API key found to enable OTEL exporter');
         }
       })
-      .catch(err => {
+      .catch(() => {
         // ignore
       });
   }, []);
@@ -186,14 +185,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       <AppThemeProvider>
         <AppHeadContent />
         <DynamicFavicon />
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <AppContent Component={Component} pageProps={pageProps} />
-              <ReactQueryDevtools initialIsOpen={true} />
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppContent Component={Component} pageProps={pageProps} />
+          <ReactQueryDevtools initialIsOpen={true} />
+        </QueryClientProvider>
       </AppThemeProvider>
     </React.Fragment>
   );

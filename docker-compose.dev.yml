@@ -100,7 +100,7 @@ services:
       hdx.dev.service: clickhouse
       hdx.dev.port: '${HDX_DEV_CH_HTTP_PORT:-8123}'
       hdx.dev.url: 'http://localhost:${HDX_DEV_CH_HTTP_PORT:-8123}'
-    image: clickhouse/clickhouse-server:26.1-alpine
+    image: clickhouse/clickhouse-server:26.2-alpine
     ports:
       - '${HDX_DEV_CH_HTTP_PORT:-8123}:8123' # http api
       - '${HDX_DEV_CH_NATIVE_PORT:-9000}:9000' # native

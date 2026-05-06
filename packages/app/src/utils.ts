@@ -15,18 +15,6 @@ import { SortingState } from '@tanstack/react-table';
 
 import { MetricsDataType, NumberFormat } from './types';
 
-export function omit<T extends object, K extends keyof T>(
-  obj: T,
-  paths: K[],
-): Omit<T, K> {
-  return {
-    ...paths.reduce(
-      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
-      obj as object,
-    ),
-  } as Omit<T, K>;
-}
-
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
   // Initialize state with undefined width/height so server and client renders match
@@ -61,7 +49,7 @@ export const isValidUrl = (input: string) => {
   try {
     new URL(input);
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 };
@@ -86,7 +74,7 @@ export const getShortUrl = (url: string) => {
     }
 
     return shortUrl;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -258,7 +246,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   return [storedValue, setValue] as const;
 }
 
-export function useQueryHistory<T>(type: string | undefined) {
+export function useQueryHistory(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
   const setQueryHistory = useCallback(
@@ -913,6 +901,23 @@ export function formatDurationMs(ms: number): string {
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
 }
 
+/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
+export function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+}
+
 // format uptime as days, hours, minutes or seconds
 export const formatUptime = (seconds: number) => {
   if (seconds < 60) {
@@ -965,7 +970,7 @@ const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 

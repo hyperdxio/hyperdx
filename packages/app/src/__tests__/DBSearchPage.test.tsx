@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 
 import * as sourceModule from '@/source';
 
-import { useDefaultOrderBy } from '../DBSearchPage';
+import { getDefaultSourceId, useDefaultOrderBy } from '../DBSearchPage';
 import * as metadataModule from '../hooks/useMetadata';
 
 // Mock the dependencies
@@ -388,5 +388,59 @@ describe('useDefaultOrderBy', () => {
 
       expect(result.current).toBe('timestamp2 DESC');
     });
+  });
+});
+
+describe('getDefaultSourceId', () => {
+  it('returns "" when sources is undefined', () => {
+    expect(getDefaultSourceId(undefined, undefined)).toBe('');
+  });
+
+  it('returns "" when sources is empty', () => {
+    expect(getDefaultSourceId([], undefined)).toBe('');
+  });
+
+  it('returns "" when every source is disabled', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: true },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('');
+  });
+
+  it('returns the last-selected source when it is enabled', () => {
+    const sources = [
+      { id: 'a', disabled: false },
+      { id: 'b', disabled: false },
+      { id: 'c' }, // disabled is undefined => treated as enabled
+    ];
+    expect(getDefaultSourceId(sources, 'b')).toBe('b');
+    expect(getDefaultSourceId(sources, 'c')).toBe('c');
+  });
+
+  it('falls back to the first enabled source when last-selected is disabled', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+      { id: 'c', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('b');
+  });
+
+  it('falls back to the first enabled source when last-selected is unknown', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, 'unknown-id')).toBe('b');
+  });
+
+  it('returns the first enabled source when last-selected is undefined and the list is mixed', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+      { id: 'c', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('b');
   });
 });
