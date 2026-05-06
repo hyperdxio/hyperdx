@@ -328,7 +328,7 @@ export function translateAlertDocumentToExternalAlert(
     id: alertObj._id.toString(),
     name: alertObj.name,
     message: alertObj.message,
-    note: alertObj.note,
+    ...(alertObj.note != null && { note: alertObj.note }),
     threshold: alertObj.threshold,
     thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,

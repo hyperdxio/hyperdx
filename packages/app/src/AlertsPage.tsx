@@ -75,8 +75,8 @@ function AlertNote({ note }: { note: string }) {
   const [opened, { toggle }] = useDisclosure(false);
 
   return (
-    <div data-testid="alert-note-section">
-      <UnstyledButton onClick={toggle} mt={4}>
+    <div>
+      <UnstyledButton data-testid="alert-note-section" onClick={toggle} mt={4}>
         <Group gap={4}>
           <IconChevronDown
             size={12}
