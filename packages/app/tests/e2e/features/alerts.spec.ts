@@ -1,3 +1,4 @@
+import path from 'path';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
@@ -649,8 +650,9 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
   }
 
   test.beforeAll(async ({ browser }) => {
+    const authFile = path.join(__dirname, '../.auth/user.json');
     const context = await browser.newContext({
-      storageState: 'packages/app/tests/e2e/.auth/user.json',
+      storageState: authFile,
     });
     const page = await context.newPage();
     await seedFilterTestData(page);
