@@ -148,6 +148,7 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     // https://mongoosejs.com/docs/migrating_to_6.html#removed-omitundefined
     name: alert.name == null ? null : alert.name,
     message: alert.message == null ? null : alert.message,
+    note: alert.note == null ? null : alert.note,
 
     // Log alerts
     savedSearch: alert.savedSearchId as unknown as ObjectId,

@@ -461,6 +461,7 @@ export const AlertBaseObjectSchema = z.object({
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
+  note: z.string().max(4096).nullish(),
   silenced: z
     .object({
       by: z.string(),
@@ -1422,6 +1423,7 @@ export const AlertsPageItemSchema = z.object({
   tileId: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
+  note: z.string().nullish(),
   createdAt: z.string(),
   updatedAt: z.string(),
   history: z.array(AlertHistorySchema),

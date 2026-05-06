@@ -66,6 +66,9 @@ export interface IAlert {
   name?: string | null;
   message?: string | null;
 
+  // Freeform note (supports markdown)
+  note?: string | null;
+
   // SavedSearch alerts
   groupBy?: string;
   savedSearch?: ObjectId;
@@ -158,6 +161,10 @@ const AlertSchema = new Schema<IAlert>(
       required: false,
     },
     message: {
+      type: String,
+      required: false,
+    },
+    note: {
       type: String,
       required: false,
     },

@@ -32,6 +32,7 @@ import {
   Stack,
   Tabs,
   Text,
+  Textarea,
   TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -277,6 +278,25 @@ const AlertForm = ({
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
+          <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+            Note
+          </Text>
+          <Controller
+            control={control}
+            name="note"
+            render={({ field }) => (
+              <Textarea
+                data-testid="alert-note-input"
+                size="xs"
+                minRows={2}
+                maxRows={6}
+                autosize
+                placeholder="Why does this alert exist? Threshold history, links to runbooks, etc. Supports markdown."
+                {...field}
+                value={field.value ?? ''}
+              />
+            )}
+          />
           {groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||
               thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||

@@ -109,6 +109,14 @@ export class SearchPageAlertModalComponent {
   }
 
   /**
+   * Set the note field in the alert form.
+   */
+  async setNote(note: string) {
+    const noteInput = this.modal.getByTestId('alert-note-input');
+    await noteInput.fill(note);
+  }
+
+  /**
    * Submit the alert creation form and wait for the modal to close.
    */
   async createAlert() {
