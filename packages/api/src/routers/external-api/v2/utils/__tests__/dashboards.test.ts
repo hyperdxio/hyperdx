@@ -57,7 +57,9 @@ describe('convertToInternalTileConfig', () => {
       expect(result.y).toBe(8);
       expect(result.w).toBe(24);
       expect(result.h).toBe(3);
-      expect(result.name).toBe('How to Use');
+      // name is picked by convertToInternalTileConfig but not part of the
+      // Tile type — verify it round-trips via the runtime object.
+      expect(result).toHaveProperty('name', 'How to Use');
     });
 
     it('does not set a real sourceId on the internal config', () => {
