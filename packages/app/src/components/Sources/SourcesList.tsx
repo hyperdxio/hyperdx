@@ -107,13 +107,16 @@ export default function SourcesList() {
   );
 
   const handleOpenInSearch = useCallback((s: TSource) => {
+    // `?source=` matches the queryStateMap key used by `DBSearchPage` and
+    // by Catalog → Search deep-links; standardised across both flows.
     Router.push({ pathname: '/search', query: { source: s.id } });
   }, []);
 
   const handleOpenInSQL = useCallback((s: TSource) => {
     // The dedicated `/sql` editor route lands later; reuse `/clickhouse`
-    // for the SQL workspace — same query-string contract.
-    Router.push({ pathname: '/clickhouse', query: { sourceId: s.id } });
+    // for the SQL workspace. We use `?source=` here too so deep-linking to
+    // Search and to SQL share the same query-string convention.
+    Router.push({ pathname: '/clickhouse', query: { source: s.id } });
   }, []);
 
   return (
