@@ -2728,6 +2728,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@braintree/sanitize-url@npm:^7.1.1":
+  version: 7.1.2
+  resolution: "@braintree/sanitize-url@npm:7.1.2"
+  checksum: 10c0/62f2aa0cf58626e3880b2dc1025c42064b4639abd157ae4e1c35f4c2f5031e9273772046a423979845069c814e27ff818e8e669280dc53585e6f033d5b7a59cb
+  languageName: node
+  linkType: hard
+
 "@bundled-es-modules/cookie@npm:^2.0.0":
   version: 2.0.0
   resolution: "@bundled-es-modules/cookie@npm:2.0.0"
@@ -4322,12 +4329,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/api@workspace:packages/api":
+"@hyperdx/api@workspace:*, @hyperdx/api@workspace:packages/api":
   version: 0.0.0-use.local
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
+    "@braintree/sanitize-url": "npm:^7.1.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
@@ -4368,11 +4376,11 @@ __metadata:
     http-proxy-middleware: "npm:^3.0.5"
     jest: "npm:^30.2.0"
     jsonwebtoken: "npm:^9.0.0"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     migrate-mongo: "npm:^11.0.0"
     minimist: "npm:^1.2.7"
     mongodb: "npm:^6.15.0"
-    mongoose: "npm:^6.13.8"
+    mongoose: "npm:^6.13.9"
     ms: "npm:^2.1.3"
     nodemon: "npm:^2.0.20"
     on-headers: "npm:^1.1.0"
@@ -4416,6 +4424,7 @@ __metadata:
     "@eslint-react/eslint-plugin": "npm:^3.0.0"
     "@eslint/compat": "npm:^2.0.0"
     "@hookform/resolvers": "npm:^3.9.0"
+    "@hyperdx/api": "workspace:*"
     "@hyperdx/browser": "npm:^0.22.1"
     "@hyperdx/common-utils": "npm:^0.18.1"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
@@ -4481,19 +4490,18 @@ __metadata:
     knip: "npm:^5.33.2"
     ky: "npm:^0.30.0"
     ky-universal: "npm:^0.10.1"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     ms: "npm:^2.1.3"
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:^16.1.7"
-    next-query-params: "npm:^4.3.1"
     next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     numbro: "npm:^2.4.0"
     nuqs: "npm:1.17.0"
     object-hash: "npm:^3.0.0"
     papaparse: "npm:^5.4.1"
-    postcss: "npm:^8.4.38"
+    postcss: "npm:^8.5.10"
     postcss-preset-mantine: "npm:^1.18.0"
     postcss-simple-vars: "npm:^7.0.0"
     prettier: "npm:^3.3.2"
@@ -4511,7 +4519,6 @@ __metadata:
     rimraf: "npm:^4.4.1"
     rrweb: "npm:2.0.0-alpha.8"
     sass: "npm:^1.54.8"
-    serialize-query-params: "npm:^2.0.2"
     serve: "npm:^14.0.0"
     sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
@@ -4526,7 +4533,6 @@ __metadata:
     typescript: "npm:^5.9.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
-    use-query-params: "npm:^2.1.2"
     zod: "npm:3.25"
   languageName: unknown
   linkType: soft
@@ -4587,7 +4593,7 @@ __metadata:
     dotenv: "npm:^17.2.3"
     handlebars: "npm:^4.7.9"
     jest: "npm:^30.2.0"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     node-sql-parser: "npm:^5.3.5"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
@@ -11643,13 +11649,13 @@ __metadata:
   linkType: hard
 
 "axios@npm:^1.13.5, axios@npm:^1.8.3":
-  version: 1.13.5
-  resolution: "axios@npm:1.13.5"
+  version: 1.15.2
+  resolution: "axios@npm:1.15.2"
   dependencies:
     follow-redirects: "npm:^1.15.11"
     form-data: "npm:^4.0.5"
-    proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/abf468c34f2d145f3dc7dbc0f1be67e520630624307bda69a41bbe8d386bd672d87b4405c4ee77f9ff54b235ab02f96a9968fb00e75b13ce64706e352a3068fd
+    proxy-from-env: "npm:^2.1.0"
+  checksum: 10c0/4eeae0feeaa7fdc1ef24f81f8b378fdadedf4aebdd6bf224484675160f8744cf17b9b0d1c215279979940f7e8ce463beffa2f713099612e428eac238515c81d5
   languageName: node
   linkType: hard
 
@@ -19874,9 +19880,9 @@ __metadata:
   linkType: hard
 
 "lodash-es@npm:^4.17.21":
-  version: 4.17.23
-  resolution: "lodash-es@npm:4.17.23"
-  checksum: 10c0/3150fb6660c14c7a6b5f23bd11597d884b140c0e862a17fdb415aaa5ef7741523182904a6b7929f04e5f60a11edb5a79499eb448734381c99ffb3c4734beeddd
+  version: 4.18.1
+  resolution: "lodash-es@npm:4.18.1"
+  checksum: 10c0/35d4dcf87ef07f8d090f409447575800108057e360b445f590d0d25d09e3d1e33a163d2fc100d4d072b0f901d5e2fc533cd7c4bfd8eeb38a06abec693823c8b8
   languageName: node
   linkType: hard
 
@@ -19989,6 +19995,13 @@ __metadata:
   version: 4.17.23
   resolution: "lodash@npm:4.17.23"
   checksum: 10c0/1264a90469f5bb95d4739c43eb6277d15b6d9e186df4ac68c3620443160fc669e2f14c11e7d8b2ccf078b81d06147c01a8ccced9aab9f9f63d50dcf8cace6bf6
+  languageName: node
+  linkType: hard
+
+"lodash@npm:^4.18.1":
+  version: 4.18.1
+  resolution: "lodash@npm:4.18.1"
+  checksum: 10c0/757228fc68805c59789e82185135cf85f05d0b2d3d54631d680ca79ec21944ec8314d4533639a14b8bcfbd97a517e78960933041a5af17ecb693ec6eecb99a27
   languageName: node
   linkType: hard
 
@@ -21112,9 +21125,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mongoose@npm:^6.13.8":
-  version: 6.13.8
-  resolution: "mongoose@npm:6.13.8"
+"mongoose@npm:^6.13.9":
+  version: 6.13.9
+  resolution: "mongoose@npm:6.13.9"
   dependencies:
     bson: "npm:^4.7.2"
     kareem: "npm:2.5.1"
@@ -21123,7 +21136,7 @@ __metadata:
     mquery: "npm:4.0.3"
     ms: "npm:2.1.3"
     sift: "npm:16.0.1"
-  checksum: 10c0/37c21ca020991952e189cbdf18fa232531f650ed5a709aa45afc75d4c066be0c3c4158a51f20d903b020aa4146a61fec8a0da3de99bce1f92381b32d0357aebf
+  checksum: 10c0/87ece3129ecebbd5ebbf92eee4834e787eb29399600c20479a0f7d35f737437d1bf56c4a232a1e4fab7288c9b0209d1b350362517dcaf0bbbd0ed9462c871759
   languageName: node
   linkType: hard
 
@@ -21301,19 +21314,6 @@ __metadata:
   version: 2.6.2
   resolution: "neo-async@npm:2.6.2"
   checksum: 10c0/c2f5a604a54a8ec5438a342e1f356dff4bc33ccccdb6dc668d94fe8e5eccfc9d2c2eea6064b0967a767ba63b33763f51ccf2cd2441b461a7322656c1f06b3f5d
-  languageName: node
-  linkType: hard
-
-"next-query-params@npm:^4.3.1":
-  version: 4.3.1
-  resolution: "next-query-params@npm:4.3.1"
-  dependencies:
-    tslib: "npm:^2.0.3"
-  peerDependencies:
-    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    use-query-params: ^2.0.0
-  checksum: 10c0/d5752b77b7d3606f36703ac664cf95a75fe0bf1c297c1f06083fe61883a6c037d633558208d4f3e03744b31a079a712ced025da7bdb6f90216eb0ec17b7509a3
   languageName: node
   linkType: hard
 
@@ -23010,6 +23010,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"postcss@npm:^8.5.10":
+  version: 8.5.10
+  resolution: "postcss@npm:8.5.10"
+  dependencies:
+    nanoid: "npm:^3.3.11"
+    picocolors: "npm:^1.1.1"
+    source-map-js: "npm:^1.2.1"
+  checksum: 10c0/c592dffa0c4873b401f01955b265538d9942f425040df5e2b8f0ad34c83773a792ea0fa5859ccc99cfb5b955b4ebff118ab7056315388dc83b107b0fa8313576
+  languageName: node
+  linkType: hard
+
 "postcss@npm:^8.5.6":
   version: 8.5.6
   resolution: "postcss@npm:8.5.6"
@@ -23317,10 +23328,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"proxy-from-env@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "proxy-from-env@npm:1.1.0"
-  checksum: 10c0/fe7dd8b1bdbbbea18d1459107729c3e4a2243ca870d26d34c2c1bcd3e4425b7bcc5112362df2d93cc7fb9746f6142b5e272fd1cc5c86ddf8580175186f6ad42b
+"proxy-from-env@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "proxy-from-env@npm:2.1.0"
+  checksum: 10c0/ed01729fd4d094eab619cd7e17ce3698b3413b31eb102c4904f9875e677cd207392795d5b4adee9cec359dfd31c44d5ad7595a3a3ad51c40250e141512281c58
   languageName: node
   linkType: hard
 
@@ -25014,13 +25025,6 @@ __metadata:
   dependencies:
     randombytes: "npm:^2.1.0"
   checksum: 10c0/2dd09ef4b65a1289ba24a788b1423a035581bef60817bea1f01eda8e3bda623f86357665fe7ac1b50f6d4f583f97db9615b3f07b2a2e8cbcb75033965f771dd2
-  languageName: node
-  linkType: hard
-
-"serialize-query-params@npm:^2.0.2":
-  version: 2.0.2
-  resolution: "serialize-query-params@npm:2.0.2"
-  checksum: 10c0/fdef1e8eb45ce585b12535ab7e546a2583220a2deb969359ccef50519dc541dd6690c00c8de7a2465b9b0b0072a3308b55df77bd568284989df1e72869c9ee3f
   languageName: node
   linkType: hard
 
@@ -27803,18 +27807,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/f887488c6e6075cdad4962979da1714b217bcb1ee009a9e57ce9a844bcfc4c3a99e93983dfc2e5af9e0913824d24e730090ff255e902c516dcb58d2d3837e01c
-  languageName: node
-  linkType: hard
-
-"use-query-params@npm:^2.1.2":
-  version: 2.2.0
-  resolution: "use-query-params@npm:2.2.0"
-  dependencies:
-    serialize-query-params: "npm:^2.0.2"
-  peerDependencies:
-    react: ">=16.8.0"
-    react-dom: ">=16.8.0"
-  checksum: 10c0/5f92511b6643e91609d1a0f043be93f0d989260a2476214c9b98b5885ff03cebe4240bbe75527a8a73c05653dae2c8a5769f72ba5ae0eacc2b0001d4732cc6b3
   languageName: node
   linkType: hard
 

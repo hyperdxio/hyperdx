@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useMemo } from 'react';
 import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -214,7 +215,7 @@ const StacktraceRow = ({
 
   const frame = row.original;
 
-  const { isLoading, enrichedFrame } = useSourceMappedFrame(frame);
+  const { isLoading, enrichedFrame } = useSourceMappedFrame();
 
   const augmentedFrame = enrichedFrame ?? frame;
   const hasContext = !!augmentedFrame.context_line;

@@ -3,7 +3,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -31,6 +30,7 @@ import {
   HighlightedAttribute,
 } from './DBHighlightedAttributesList';
 import { RowSidePanelContext } from './DBRowSidePanel';
+import { DrawerFullWidthToggle } from './DrawerUtils';
 import LogLevel from './LogLevel';
 
 const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
@@ -135,6 +135,8 @@ export default function DBRowSidePanelHeader({
   rowData,
   breadcrumbPath,
   onBreadcrumbClick,
+  isFullWidth,
+  onToggleFullWidth,
 }: {
   date: Date;
   mainContent?: string;
@@ -144,10 +146,11 @@ export default function DBRowSidePanelHeader({
   rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
-  const { onPropertyAddClick, generateSearchUrl } =
-    useContext(RowSidePanelContext);
+  const { generateSearchUrl } = useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
   const mainContentDisplayed = React.useMemo(
@@ -214,18 +217,26 @@ export default function DBRowSidePanelHeader({
       />
 
       {/* Event timestamp and severity */}
-      <Flex>
-        {severityText && <LogLevel level={severityText} />}
-        {severityText && isValidDate(date) && (
-          <Text size="xs" mx="xs">
-            &middot;
-          </Text>
-        )}
-        {isValidDate(date) && (
-          <Text size="xs">
-            <FormatTime value={date} /> &middot;{' '}
-            {formatDistanceToNowStrictShort(date)} ago
-          </Text>
+      <Flex justify="space-between" align="center">
+        <Flex align="center">
+          {severityText && <LogLevel level={severityText} />}
+          {severityText && isValidDate(date) && (
+            <Text size="xs" mx="xs">
+              &middot;
+            </Text>
+          )}
+          {isValidDate(date) && (
+            <Text size="xs">
+              <FormatTime value={date} /> &middot;{' '}
+              {formatDistanceToNowStrictShort(date)} ago
+            </Text>
+          )}
+        </Flex>
+        {onToggleFullWidth && (
+          <DrawerFullWidthToggle
+            isFullWidth={isFullWidth}
+            onToggle={onToggleFullWidth}
+          />
         )}
       </Flex>
       {mainContent ? (

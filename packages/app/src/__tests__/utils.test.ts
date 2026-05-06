@@ -7,11 +7,13 @@ import * as utils from '../utils';
 import {
   formatAttributeClause,
   formatDurationMs,
+  formatDurationMsCompact,
   formatNumber,
   getAllMetricTables,
   getMetricTableName,
   mapKeyBy,
   orderByStringToSortingState,
+  parseTimestampToMs,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
@@ -1121,5 +1123,82 @@ describe('mapKeyBy', () => {
     const result = mapKeyBy(data, 'id');
     expect(result.size).toBe(1);
     expect(result.get('a')).toBe(data.at(1));
+  });
+});
+
+describe('parseTimestampToMs', () => {
+  it('returns integer ms when there are no sub-millisecond digits', () => {
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000000000Z');
+    expect(result).toBe(new Date('2024-01-01T00:00:01.000Z').getTime());
+  });
+
+  it('preserves sub-millisecond precision as a fractional ms', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('preserves whole-millisecond component when sub-ms digits are also present', () => {
+    const base = new Date('2024-01-01T00:00:01.500Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.500500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('handles max sub-millisecond value (999 µs + 999 ns)', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000999999Z');
+    expect(result).toBeCloseTo(base + 0.999999, 3);
+  });
+
+  it('orders two timestamps within the same millisecond correctly', () => {
+    const earlier = parseTimestampToMs('2024-01-01T00:00:01.000400000Z');
+    const later = parseTimestampToMs('2024-01-01T00:00:01.000800000Z');
+    expect(earlier).toBeLessThan(later);
+  });
+});
+
+describe('formatDurationMsCompact', () => {
+  it('returns 0 for zero', () => {
+    expect(formatDurationMsCompact(0)).toBe('0');
+  });
+
+  it('formats negative values', () => {
+    expect(formatDurationMsCompact(-5)).toBe('-5ms');
+  });
+
+  it('formats nanoseconds (< 0.001 ms)', () => {
+    expect(formatDurationMsCompact(0.0005)).toBe('500ns');
+    expect(formatDurationMsCompact(0.00012)).toBe('120ns');
+  });
+
+  it('formats microseconds (< 1 ms)', () => {
+    expect(formatDurationMsCompact(0.005)).toBe('5µs');
+    expect(formatDurationMsCompact(0.5)).toBe('500µs');
+    expect(formatDurationMsCompact(0.123)).toBe('123µs');
+  });
+
+  it('formats milliseconds (< 1000 ms)', () => {
+    expect(formatDurationMsCompact(5)).toBe('5ms');
+    expect(formatDurationMsCompact(5.67)).toBe('5.7ms');
+    expect(formatDurationMsCompact(100)).toBe('100ms');
+    expect(formatDurationMsCompact(999)).toBe('999ms');
+  });
+
+  it('formats seconds (< 2 min)', () => {
+    expect(formatDurationMsCompact(1000)).toBe('1s');
+    expect(formatDurationMsCompact(5432)).toBe('5.43s');
+    expect(formatDurationMsCompact(60_000)).toBe('60s');
+    expect(formatDurationMsCompact(119_999)).toBe('120s');
+  });
+
+  it('formats minutes (< 1 hour)', () => {
+    expect(formatDurationMsCompact(120_000)).toBe('2m');
+    expect(formatDurationMsCompact(300_000)).toBe('5m');
+    expect(formatDurationMsCompact(3_599_999)).toBe('60m');
+  });
+
+  it('formats hours (>= 1 hour)', () => {
+    expect(formatDurationMsCompact(3_600_000)).toBe('1h');
+    expect(formatDurationMsCompact(7_200_000)).toBe('2h');
   });
 });

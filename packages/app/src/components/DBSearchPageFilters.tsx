@@ -977,7 +977,7 @@ export const FilterGroup = ({
                       component="span"
                       size="xs"
                       c="dimmed"
-                    >{` (${totalAppliedFiltersSize})`}</Text>
+                    >{` (${totalAppliedFiltersSize > 0 ? totalAppliedFiltersSize : options.length})`}</Text>
                   )}
                 </Text>
               </Tooltip>
@@ -1048,7 +1048,6 @@ export const FilterGroup = ({
 
 const DBSearchPageFiltersComponent = ({
   filters: filterState,
-  clearAllFilters,
   clearFilter,
   setFilterValue: _setFilterValue,
   isLive,

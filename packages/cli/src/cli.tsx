@@ -17,8 +17,8 @@ import {
 } from '@hyperdx/common-utils/dist/drain';
 
 import App from '@/App';
-import { ApiClient } from '@/api/client';
-import { clearSession, loadSession } from '@/utils/config';
+import { ApiClient, type MeTeam } from '@/api/client';
+import { clearSession, loadSession, setActiveTeam } from '@/utils/config';
 import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
@@ -381,7 +381,7 @@ const program = new Command();
 program
   .name('hdx')
   .description('HyperDX CLI — search and tail events from the terminal')
-  .version('0.1.0')
+  .version(process.env.npm_package_version ?? '0.0.0')
   .enablePositionalOptions();
 
 // ---- Interactive mode (default) ------------------------------------
@@ -504,9 +504,224 @@ auth
       process.stdout.write(
         `${chalk.green('Logged in')} as ${chalk.bold(me.email)} (${session.appUrl})\n`,
       );
+      // Surface the active team so users always know which team's data
+      // their commands are scoped to.
+      const activeTeam = resolveActiveTeam(me, session.activeTeamId);
+      if (activeTeam) {
+        process.stdout.write(
+          `Team: ${chalk.bold(activeTeam.name)} ${chalk.dim(`[${activeTeam.id}]`)}\n`,
+        );
+      }
     } catch {
       process.stdout.write(chalk.green('Logged in') + ` (${session.appUrl})\n`);
     }
+  });
+
+/**
+ * Resolve which team is "currently active" for display purposes.
+ *
+ * - If `session.activeTeamId` is set and matches a team the user
+ *   belongs to, return that team.
+ * - Otherwise fall back to `me.team` (the server-side default).
+ */
+function resolveActiveTeam(
+  me: { team: MeTeam; teams?: MeTeam[] },
+  activeTeamId: string | undefined,
+): MeTeam | null {
+  const teams = me.teams && me.teams.length > 0 ? me.teams : [me.team];
+  if (activeTeamId) {
+    const match = teams.find(t => t.id === activeTeamId);
+    if (match) return match;
+  }
+  return me.team ?? null;
+}
+
+// ---- Teams ---------------------------------------------------------
+
+const team = program
+  .command('team')
+  .description(
+    'Manage the active team (kubectx-style switching for users in multiple teams)',
+  )
+  .enablePositionalOptions()
+  .passThroughOptions();
+
+team
+  .command('list')
+  .description('List all teams the authenticated user belongs to')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+About:
+  Lists every team the authenticated user belongs to. The team marked
+  with an arrow ('▸ ') is the currently active team — all subsequent
+  CLI commands query that team's data.
+
+  Use ${chalk.bold('hdx team use <name|id>')} to switch the active team.
+
+JSON output schema (--json):
+  {
+    "currentTeamId": "<id of the active team>",
+    "teams": [
+      { "id": "...", "name": "...", "isCurrent": true | false }
+    ]
+  }
+
+Examples:
+  $ hdx team list
+  $ hdx team list --json | jq '.teams[] | select(.isCurrent)'
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+    let teams: MeTeam[];
+    try {
+      teams = await client.getUserTeams();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to load teams: ${msg}\n`));
+      process.exit(1);
+    }
+
+    const session = loadSession();
+    const activeId =
+      session?.activeTeamId ??
+      // No saved override — show the first team as active (matches what
+      // the API will scope to without an x-hdx-team header).
+      teams[0]?.id;
+
+    if (opts.json) {
+      const output = {
+        currentTeamId: activeId ?? null,
+        teams: teams.map(t => ({
+          id: t.id,
+          name: t.name,
+          isCurrent: t.id === activeId,
+        })),
+      };
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    if (teams.length === 0) {
+      process.stdout.write('No teams found.\n');
+      return;
+    }
+
+    for (const t of teams) {
+      const isActive = t.id === activeId;
+      const marker = isActive ? chalk.green('▸ ') : '  ';
+      const name = isActive ? chalk.bold.cyan(t.name) : chalk.cyan(t.name);
+      process.stdout.write(`${marker}${name}  ${chalk.dim(`[${t.id}]`)}\n`);
+    }
+
+    if (teams.length === 1) {
+      process.stdout.write(
+        chalk.dim(
+          `\nYou belong to a single team. ${chalk.bold('hdx team use')} is a no-op here.\n`,
+        ),
+      );
+    }
+  });
+
+team
+  .command('current')
+  .description('Show the currently active team')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+    let me;
+    try {
+      me = await client.getMe();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to load user info: ${msg}\n`));
+      process.exit(1);
+    }
+
+    const session = loadSession();
+    const active = resolveActiveTeam(me, session?.activeTeamId);
+
+    if (opts.json) {
+      process.stdout.write(
+        JSON.stringify(
+          active ? { id: active.id, name: active.name } : null,
+          null,
+          2,
+        ) + '\n',
+      );
+      return;
+    }
+
+    if (!active) {
+      process.stdout.write('No active team.\n');
+      return;
+    }
+    process.stdout.write(
+      `${chalk.bold.cyan(active.name)}  ${chalk.dim(`[${active.id}]`)}\n`,
+    );
+  });
+
+team
+  .command('use <name-or-id>')
+  .description(
+    'Switch the active team. <name-or-id> matches either the team ID or its display name (case-insensitive).',
+  )
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .addHelpText(
+    'after',
+    `
+About:
+  Sets the active team for subsequent CLI commands. The choice is
+  persisted in ${chalk.bold('~/.config/hyperdx/cli/session.json')} so it
+  survives across CLI invocations.
+
+  The CLI sends the chosen team ID as an ${chalk.bold('x-hdx-team')} HTTP
+  header on every API and ClickHouse-proxy request. The server validates
+  membership — switching to a team the authenticated user does not
+  belong to fails with an auth error on the next request.
+
+  On single-team OSS deployments, all users belong to a single team, so
+  this command is effectively a no-op (it succeeds but does not change
+  any data scoping).
+
+Examples:
+  $ hdx team use my-team
+  $ hdx team use 6537a1d2c8b7f4e2a1d2c8b7
+`,
+  )
+  .action(async (nameOrId: string, opts) => {
+    const client = await ensureSession(opts.appUrl);
+    let teams: MeTeam[];
+    try {
+      teams = await client.getUserTeams();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to load teams: ${msg}\n`));
+      process.exit(1);
+    }
+
+    const lowered = nameOrId.toLowerCase();
+    const match =
+      teams.find(t => t.id === nameOrId) ??
+      teams.find(t => t.name.toLowerCase() === lowered);
+
+    if (!match) {
+      _origError(chalk.red(`No team matching "${nameOrId}".\n`));
+      _origError('Available teams:');
+      for (const t of teams) {
+        _origError(`  - ${t.name} [${t.id}]`);
+      }
+      process.exit(1);
+    }
+
+    setActiveTeam(match.id);
+    process.stdout.write(
+      `${chalk.green('Switched to')} ${chalk.bold.cyan(match.name)} ${chalk.dim(`[${match.id}]`)}\n`,
+    );
   });
 
 // ---- Sources -------------------------------------------------------

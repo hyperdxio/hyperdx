@@ -176,7 +176,6 @@ function splitOnFirstOutsideQuotes(
   let inString = false;
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
-    const char = text[i];
     if (isQuoteBoundary(text, i)) {
       if (inString) {
         const esc = handleQuoteEscape(text, i);

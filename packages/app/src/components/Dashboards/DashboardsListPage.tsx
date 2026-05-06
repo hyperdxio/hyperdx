@@ -3,7 +3,6 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ActionIcon,
   Anchor,

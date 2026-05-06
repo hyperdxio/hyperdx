@@ -15,6 +15,10 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
   isTimeSeriesDisplayType,
@@ -512,32 +516,23 @@ const getChartConfigFromAlert = (
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const { source } = details;
     const savedSearch = details.savedSearch;
-    return {
-      connection,
-      displayType: DisplayType.Line,
-      dateRange,
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: false,
-      from: source.from,
-      granularity: `${windowSizeInMins} minute`,
-      select: [
-        {
-          aggFn: 'count',
-          aggCondition: '',
-          valueExpression: '',
-        },
-      ],
+    // Delegate to the shared builder (in @hyperdx/common-utils) so the alert
+    // task, the alert preview chart, and the main app search page all
+    // assemble saved-search chart configs identically — keeping source-level
+    // fields like `tableFilterExpression` applied uniformly across paths.
+    return buildSearchChartConfig(source, {
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       filters: savedSearch.filters?.map(f => ({ ...f })),
       groupBy: alert.groupBy,
-      implicitColumnExpression:
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-    };
+      select: ALERT_COUNT_DEFAULT_SELECT,
+      displayType: DisplayType.Line,
+      connection,
+      dateRange,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+      granularity: `${windowSizeInMins} minute`,
+    });
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 

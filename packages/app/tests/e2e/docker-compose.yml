@@ -15,7 +15,7 @@ services:
           memory: 512M
           cpus: '0.5'
   ch-server:
-    image: clickhouse/clickhouse-server:26.1-alpine
+    image: clickhouse/clickhouse-server:26.2-alpine
     ports:
       - ${HDX_E2E_CH_PORT:-20500}:8123 # http api
       - ${HDX_E2E_CH_NATIVE_PORT:-20600}:9000 # native

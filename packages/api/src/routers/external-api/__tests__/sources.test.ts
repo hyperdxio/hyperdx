@@ -101,6 +101,7 @@ describe('External API v2 Sources', () => {
         name: 'Test Log Source',
         kind: SourceKind.Log,
         connection: connection._id.toString(),
+        disabled: false,
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: DEFAULT_LOGS_TABLE,
@@ -189,6 +190,7 @@ describe('External API v2 Sources', () => {
       expect(response.body.data[0]).toEqual({
         id: traceSource._id.toString(),
         name: 'Test Trace Source',
+        disabled: false,
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: 'otel_traces',
@@ -282,6 +284,7 @@ describe('External API v2 Sources', () => {
         name: 'Test Metric Source',
         kind: SourceKind.Metric,
         connection: connection._id.toString(),
+        disabled: false,
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: '',
@@ -343,6 +346,7 @@ describe('External API v2 Sources', () => {
         name: 'Test Session Source',
         kind: SourceKind.Session,
         connection: connection._id.toString(),
+        disabled: false,
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: 'rrweb_events',

@@ -137,6 +137,9 @@ export const DerivedColumnSchema = z.intersection(
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
     metricNameSql: z.string().optional(),
+    // Heatmap-specific fields (optional, only used when displayType is Heatmap)
+    countExpression: z.string().optional(),
+    heatmapScaleType: z.enum(['log', 'linear']).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -1090,6 +1093,7 @@ export const BaseSourceSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  disabled: z.boolean().optional(),
   querySettings: QuerySettingsSchema.optional(),
   timestampValueExpression: RequiredTimestampColumnSchema,
 });
@@ -1153,7 +1157,15 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
+  /**
+   * @deprecated Application-side SQL predicate AND'd into every query against
+   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
+   * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
+   *
+   * Existing values are still honored at query time; new sources should not
+   * set it. The Sources settings UI form input is disabled.
+   */
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
