@@ -4495,7 +4495,6 @@ __metadata:
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:^16.1.7"
-    next-query-params: "npm:^4.3.1"
     next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     numbro: "npm:^2.4.0"
@@ -4520,7 +4519,6 @@ __metadata:
     rimraf: "npm:^4.4.1"
     rrweb: "npm:2.0.0-alpha.8"
     sass: "npm:^1.54.8"
-    serialize-query-params: "npm:^2.0.2"
     serve: "npm:^14.0.0"
     sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
@@ -4535,7 +4533,6 @@ __metadata:
     typescript: "npm:^5.9.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
-    use-query-params: "npm:^2.1.2"
     zod: "npm:3.25"
   languageName: unknown
   linkType: soft
@@ -11652,13 +11649,13 @@ __metadata:
   linkType: hard
 
 "axios@npm:^1.13.5, axios@npm:^1.8.3":
-  version: 1.13.5
-  resolution: "axios@npm:1.13.5"
+  version: 1.15.2
+  resolution: "axios@npm:1.15.2"
   dependencies:
     follow-redirects: "npm:^1.15.11"
     form-data: "npm:^4.0.5"
-    proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/abf468c34f2d145f3dc7dbc0f1be67e520630624307bda69a41bbe8d386bd672d87b4405c4ee77f9ff54b235ab02f96a9968fb00e75b13ce64706e352a3068fd
+    proxy-from-env: "npm:^2.1.0"
+  checksum: 10c0/4eeae0feeaa7fdc1ef24f81f8b378fdadedf4aebdd6bf224484675160f8744cf17b9b0d1c215279979940f7e8ce463beffa2f713099612e428eac238515c81d5
   languageName: node
   linkType: hard
 
@@ -21313,19 +21310,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next-query-params@npm:^4.3.1":
-  version: 4.3.1
-  resolution: "next-query-params@npm:4.3.1"
-  dependencies:
-    tslib: "npm:^2.0.3"
-  peerDependencies:
-    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    use-query-params: ^2.0.0
-  checksum: 10c0/d5752b77b7d3606f36703ac664cf95a75fe0bf1c297c1f06083fe61883a6c037d633558208d4f3e03744b31a079a712ced025da7bdb6f90216eb0ec17b7509a3
-  languageName: node
-  linkType: hard
-
 "next-runtime-env@npm:1":
   version: 1.7.4
   resolution: "next-runtime-env@npm:1.7.4"
@@ -23337,10 +23321,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"proxy-from-env@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "proxy-from-env@npm:1.1.0"
-  checksum: 10c0/fe7dd8b1bdbbbea18d1459107729c3e4a2243ca870d26d34c2c1bcd3e4425b7bcc5112362df2d93cc7fb9746f6142b5e272fd1cc5c86ddf8580175186f6ad42b
+"proxy-from-env@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "proxy-from-env@npm:2.1.0"
+  checksum: 10c0/ed01729fd4d094eab619cd7e17ce3698b3413b31eb102c4904f9875e677cd207392795d5b4adee9cec359dfd31c44d5ad7595a3a3ad51c40250e141512281c58
   languageName: node
   linkType: hard
 
@@ -25034,13 +25018,6 @@ __metadata:
   dependencies:
     randombytes: "npm:^2.1.0"
   checksum: 10c0/2dd09ef4b65a1289ba24a788b1423a035581bef60817bea1f01eda8e3bda623f86357665fe7ac1b50f6d4f583f97db9615b3f07b2a2e8cbcb75033965f771dd2
-  languageName: node
-  linkType: hard
-
-"serialize-query-params@npm:^2.0.2":
-  version: 2.0.2
-  resolution: "serialize-query-params@npm:2.0.2"
-  checksum: 10c0/fdef1e8eb45ce585b12535ab7e546a2583220a2deb969359ccef50519dc541dd6690c00c8de7a2465b9b0b0072a3308b55df77bd568284989df1e72869c9ee3f
   languageName: node
   linkType: hard
 
@@ -27823,18 +27800,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/f887488c6e6075cdad4962979da1714b217bcb1ee009a9e57ce9a844bcfc4c3a99e93983dfc2e5af9e0913824d24e730090ff255e902c516dcb58d2d3837e01c
-  languageName: node
-  linkType: hard
-
-"use-query-params@npm:^2.1.2":
-  version: 2.2.0
-  resolution: "use-query-params@npm:2.2.0"
-  dependencies:
-    serialize-query-params: "npm:^2.0.2"
-  peerDependencies:
-    react: ">=16.8.0"
-    react-dom: ">=16.8.0"
-  checksum: 10c0/5f92511b6643e91609d1a0f043be93f0d989260a2476214c9b98b5885ff03cebe4240bbe75527a8a73c05653dae2c8a5769f72ba5ae0eacc2b0001d4732cc6b3
   languageName: node
   linkType: hard
 
