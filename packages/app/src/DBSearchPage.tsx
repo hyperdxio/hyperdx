@@ -34,7 +34,6 @@ import {
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
@@ -69,7 +68,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
-  IconBellFilled,
   IconBolt,
   IconPlayerPlay,
   IconPlus,
@@ -82,6 +80,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -1879,14 +1878,7 @@ export function DBSearchPage() {
               >
                 <Group gap={4}>
                   Alerts
-                  {savedSearch?.alerts?.some(
-                    a => a.state === AlertState.ALERT,
-                  ) && (
-                    <IconBellFilled
-                      size={14}
-                      color="var(--mantine-color-red-filled)"
-                    />
-                  )}
+                  <AlertStatusIcon alerts={savedSearch?.alerts} />
                 </Group>
               </Button>
             )}
