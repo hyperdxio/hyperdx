@@ -88,6 +88,12 @@ export function getDefaultTileSize(displayType?: DisplayType): {
     case DisplayType.Heatmap:
       return { w: 12, h: 10 };
 
+    case DisplayType.Timeline:
+      // Timeline events are point-in-time markers. They read like a horizontal
+      // strip, so default to full width and only ~6 grid rows tall. Users
+      // resize taller when they expand the events table underneath.
+      return { w: GRID_COLS, h: 6 };
+
     default:
       return { w: 12, h: 10 };
   }
