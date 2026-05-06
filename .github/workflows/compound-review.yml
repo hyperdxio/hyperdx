@@ -90,6 +90,19 @@ jobs:
               git fetch --no-tags --depth=50 "$BASE_REPO_URL" "${{ steps.pr.outputs.base_ref }}"
           fi
 
+      # Pre-clone the plugin marketplace at a pinned tag and pass it to the
+      # action as a local path. The action's `plugin_marketplaces` input
+      # validator rejects the `#<ref>` suffix that the underlying
+      # `/plugin marketplace add` CLI accepts, so we cannot pin via URL.
+      # See base-action/src/install-plugins.ts:MARKETPLACE_URL_REGEX.
+      # Bump `ref` deliberately; do not track main.
+      - name: Checkout compound-engineering plugin
+        uses: actions/checkout@v6
+        with:
+          repository: EveryInc/compound-engineering-plugin
+          ref: v2.42.0
+          path: ce-plugin
+
       - name: Run Compound Engineering review
         id: review
         uses: anthropics/claude-code-action@v1
@@ -99,10 +112,8 @@ jobs:
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
           allowed_non_write_users: '*' # allow fork contributors to trigger via label
 
-          # Pin the plugin to a tagged release. Bump deliberately; do not track main.
-          # See https://github.com/EveryInc/compound-engineering-plugin/releases
           plugin_marketplaces: |
-            https://github.com/EveryInc/compound-engineering-plugin.git#v2.42.0
+            ./ce-plugin
           plugins: |
             compound-engineering@compound-engineering-plugin
 
