@@ -85,6 +85,10 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
       ref: 'Connection',
     },
     name: String,
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
     from: {
       databaseName: String,
       tableName: String,

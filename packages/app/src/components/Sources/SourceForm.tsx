@@ -36,6 +36,7 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -2202,7 +2203,23 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Text mb="lg">Source Settings</Text>
+        <Flex justify="space-between" align="center" mb="lg">
+          <Text>Source Settings</Text>
+          {!isNew && (
+            <Controller
+              control={control}
+              name="disabled"
+              render={({ field: { value, onChange } }) => (
+                <Switch
+                  size="sm"
+                  checked={!value}
+                  onChange={event => onChange(!event.currentTarget.checked)}
+                  label={value ? 'Disabled' : 'Enabled'}
+                />
+              )}
+            />
+          )}
+        </Flex>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}
