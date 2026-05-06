@@ -34,6 +34,7 @@ import {
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
@@ -68,6 +69,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
+  IconBellFilled,
   IconBolt,
   IconPlayerPlay,
   IconPlus,
@@ -1875,7 +1877,17 @@ export function DBSearchPage() {
                 onClick={openAlertModal}
                 style={{ flexShrink: 0 }}
               >
-                Alerts
+                <Group gap={4}>
+                  Alerts
+                  {savedSearch?.alerts?.some(
+                    a => a.state === AlertState.ALERT,
+                  ) && (
+                    <IconBellFilled
+                      size={14}
+                      color="var(--mantine-color-red-filled)"
+                    />
+                  )}
+                </Group>
               </Button>
             )}
           </>
