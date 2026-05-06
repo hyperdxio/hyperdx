@@ -4380,7 +4380,7 @@ __metadata:
     migrate-mongo: "npm:^11.0.0"
     minimist: "npm:^1.2.7"
     mongodb: "npm:^6.15.0"
-    mongoose: "npm:^6.13.8"
+    mongoose: "npm:^6.13.9"
     ms: "npm:^2.1.3"
     nodemon: "npm:^2.0.20"
     on-headers: "npm:^1.1.0"
@@ -21125,9 +21125,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mongoose@npm:^6.13.8":
-  version: 6.13.8
-  resolution: "mongoose@npm:6.13.8"
+"mongoose@npm:^6.13.9":
+  version: 6.13.9
+  resolution: "mongoose@npm:6.13.9"
   dependencies:
     bson: "npm:^4.7.2"
     kareem: "npm:2.5.1"
@@ -21136,7 +21136,7 @@ __metadata:
     mquery: "npm:4.0.3"
     ms: "npm:2.1.3"
     sift: "npm:16.0.1"
-  checksum: 10c0/37c21ca020991952e189cbdf18fa232531f650ed5a709aa45afc75d4c066be0c3c4158a51f20d903b020aa4146a61fec8a0da3de99bce1f92381b32d0357aebf
+  checksum: 10c0/87ece3129ecebbd5ebbf92eee4834e787eb29399600c20479a0f7d35f737437d1bf56c4a232a1e4fab7288c9b0209d1b350362517dcaf0bbbd0ed9462c871759
   languageName: node
   linkType: hard
 
