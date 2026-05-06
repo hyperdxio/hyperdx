@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
+import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfig,
@@ -515,10 +516,17 @@ export function DBTraceWaterfallChartContainer({
       ...traceRowsData,
       ...logRowsData,
     ];
-    nextRows.sort(
-      (a, b) =>
-        parseTimestampToMs(a.Timestamp) - parseTimestampToMs(b.Timestamp),
-    );
+    nextRows.sort((a, b) => {
+      const aDate = TimestampNano.fromString(a.Timestamp);
+      const bDate = TimestampNano.fromString(b.Timestamp);
+      const secDiff = aDate.getTimeT() - bDate.getTimeT();
+
+      if (secDiff === 0) {
+        return aDate.getNano() - bDate.getNano();
+      }
+
+      return secDiff;
+    });
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
