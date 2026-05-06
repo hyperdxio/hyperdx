@@ -523,9 +523,9 @@ export function DBTraceWaterfallChartContainer({
 
       if (secDiff === 0) {
         return aDate.getNano() - bDate.getNano();
+      } else {
+        return secDiff;
       }
-
-      return secDiff;
     });
 
     return nextRows;
