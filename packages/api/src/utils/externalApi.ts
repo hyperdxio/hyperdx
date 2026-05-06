@@ -229,7 +229,7 @@ export type ExternalAlert = {
   id: string;
   name?: string | null;
   message?: string | null;
-  note?: string | null;
+  note?: string;
   threshold: number;
   thresholdMax?: number;
   interval: AlertInterval;

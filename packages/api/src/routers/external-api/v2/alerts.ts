@@ -181,8 +181,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "Test Alert Message"
  *         note:
  *           type: string
- *           description: Freeform note for the alert. Supports markdown formatting.
- *           nullable: true
+ *           description: Freeform note for the alert. Supports markdown formatting. Omitted when not set.
  *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
  *
  *     AlertResponse:
