@@ -37,8 +37,6 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
-  isTraceSource,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -117,8 +115,6 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
-import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
-import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
@@ -126,10 +122,6 @@ import {
 } from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
-import {
-  buildDirectTraceWhereClause,
-  getDefaultDirectTraceDateRange,
-} from './utils/directTrace';
 import {
   parseAsJsonEncoded,
   parseAsSortingStateString,
@@ -151,7 +143,9 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
 ];
 const DEFAULT_REFRESH_FREQUENCY = 10000;
 
-const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
+// NOTE (Berg / Task 9): Single Source kind ('Table'); no kind-allowlist
+// filtering happens here anymore. The picker just lists every Source the
+// team has saved.
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -394,7 +388,6 @@ function SaveSearchModalComponent({
 
   const { data: sourceObj } = useSource({
     id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const effectiveSelect =
     searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
@@ -678,7 +671,6 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -754,7 +746,6 @@ function optimizeDefaultOrderBy(
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({
     id: sourceID,
-    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
@@ -764,6 +755,14 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     if (!source) return undefined;
     const trimmedOrderBy = source.orderByExpression?.trim();
     if (trimmedOrderBy) return trimmedOrderBy;
+    // Berg / Task 9: prefer the Source's explicit `defaultSort` when set;
+    // otherwise build a default from the timestamp column (DESC). For
+    // sources without any time field we leave it undefined and let the
+    // row table fall back to its first column.
+    if (source.defaultSort?.trim()) return source.defaultSort.trim();
+    if (source.timestampColumn) {
+      return `${source.timestampColumn} DESC`;
+    }
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
       source.displayedTimestampValueExpression,
@@ -790,10 +789,6 @@ export function DBSearchPage() {
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
-  const [directTraceId, setDirectTraceId] = useQueryState(
-    'traceId',
-    parseAsStringEncoded,
-  );
 
   const { data: savedSearch } = useSavedSearch(
     { id: `${savedSearchId}` },
@@ -809,16 +804,20 @@ export function DBSearchPage() {
   );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
   });
-  const directTraceSource =
-    directTraceId != null && searchedSource?.kind === SourceKind.Trace
-      ? searchedSource
-      : undefined;
-  const chartSourceId =
-    directTraceId != null && !directTraceSource
-      ? ''
-      : (searchedConfig.source ?? '');
+  const chartSourceId = searchedConfig.source ?? '';
+
+  // Berg / Task 9: a Berg Source either declares a `timestampColumn`
+  // (Athena/Iceberg field name) or omits it. When set, the page renders
+  // the time-picker + histogram + time-DESC default sort. When unset,
+  // the time-related UI is hidden and the row table behaves as a flat
+  // browser ordered by `defaultSort` (or the first column).
+  //
+  // We fall back to the legacy `timestampValueExpression` so older
+  // Source documents keep working.
+  const hasTimestamp = !!(
+    searchedSource?.timestampColumn || searchedSource?.timestampValueExpression
+  );
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -868,9 +867,7 @@ export function DBSearchPage() {
         where: searchedConfig.where || '',
         whereLanguage:
           searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-        source:
-          searchedConfig.source ||
-          (savedSearchId || directTraceId ? '' : defaultSourceId),
+        source: searchedConfig.source || (savedSearchId ? '' : defaultSourceId),
         filters: searchedConfig.filters ?? [],
         orderBy: searchedConfig.orderBy ?? '',
       },
@@ -899,10 +896,9 @@ export function DBSearchPage() {
     return {
       select:
         _savedSearch?.select ??
-        (searchedSource?.kind === SourceKind.Log ||
-        searchedSource?.kind === SourceKind.Trace
-          ? searchedSource.defaultTableSelectExpression
-          : undefined),
+        (searchedSource?.defaultColumns
+          ? searchedSource.defaultColumns.join(', ')
+          : searchedSource?.defaultTableSelectExpression),
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
@@ -969,8 +965,31 @@ export function DBSearchPage() {
       return;
     }
 
-    if (savedSearchId == null && directTraceId != null && !source) {
-      return;
+    // Berg / Task 9: catalog deep-link — if /search?catalog=&database=&table=
+    // matches an existing Source, switch to it. Otherwise the page renders a
+    // banner suggesting "Save this table as a Source" (see header below).
+    const params = new URLSearchParams(window.location.search);
+    const catalog = params.get('catalog');
+    const database = params.get('database');
+    const table = params.get('table');
+    if (savedSearchId == null && catalog && database && table) {
+      const matched = sources?.find(
+        s =>
+          (s as any).catalog === catalog &&
+          (s as any).database === database &&
+          (s as any).table === table,
+      );
+      if (matched && matched.id !== source) {
+        setSearchedConfig({
+          source: matched.id,
+          where: '',
+          select: '',
+          whereLanguage: getStoredLanguage() ?? 'lucene',
+          filters: [],
+          orderBy: '',
+        });
+        return;
+      }
     }
 
     // Landed on a new search - ensure we have a source selected
@@ -991,13 +1010,46 @@ export function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
-    directTraceId,
     sources,
   ]);
+
+  // Berg / Task 9: read deep-link params and surface a banner when the
+  // referenced table has no Source yet — gives the user a one-click path
+  // to save it. The banner is rendered inside the page header further down.
+  // We re-derive whenever the URL source param changes — the deep-link
+  // params are ambient on window.location so we tag the dep manually.
+  const deepLinkParams = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const catalog = params.get('catalog');
+    const database = params.get('database');
+    const table = params.get('table');
+    if (!catalog || !database || !table) return null;
+    return { catalog, database, table };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchedConfig.source]);
+
+  const deepLinkHasMatchingSource = useMemo(() => {
+    if (!deepLinkParams || !sources) return false;
+    return sources.some(
+      s =>
+        (s as any).catalog === deepLinkParams.catalog &&
+        (s as any).database === deepLinkParams.database &&
+        (s as any).table === deepLinkParams.table,
+    );
+  }, [deepLinkParams, sources]);
 
   const [_queryErrors, setQueryErrors] = useState<{
     [key: string]: Error | ClickHouseQueryError;
   }>({});
+
+  // Berg / Task 9: cost-line state. Populated by useSearchQuery once the
+  // row table is migrated off the legacy ClickHouse path; until then the
+  // line just shows "Athena".
+  const [searchCostStats] = useState<{
+    scannedBytes?: number;
+    cached?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!isBrowser || !IS_LOCAL_MODE) return;
@@ -1374,67 +1426,15 @@ export function DBSearchPage() {
     [setIsLive, setQueryErrors],
   );
 
-  const directTraceRangeAppliedRef = useRef<string | null>(null);
-  const directTraceFilterAppliedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!isReady || !directTraceId) {
-      directTraceRangeAppliedRef.current = null;
-      return;
-    }
-
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.has('from') && searchParams.has('to')) {
-      return;
-    }
-
-    if (directTraceRangeAppliedRef.current === directTraceId) {
-      return;
-    }
-
-    directTraceRangeAppliedRef.current = directTraceId;
-    setIsLive(false);
-    const [start, end] = getDefaultDirectTraceDateRange();
-    onTimeRangeSelect(start, end, null);
-  }, [directTraceId, isReady, onTimeRangeSelect, setIsLive]);
-
-  useEffect(() => {
-    if (!directTraceId || !directTraceSource) {
-      directTraceFilterAppliedRef.current = null;
-      return;
-    }
-
-    const nextKey = `${directTraceSource.id}:${directTraceId}`;
-    if (directTraceFilterAppliedRef.current === nextKey) {
-      return;
-    }
-
-    directTraceFilterAppliedRef.current = nextKey;
-    setIsLive(false);
-    setSearchedConfig({
-      source: directTraceSource.id,
-      where: buildDirectTraceWhereClause(
-        directTraceSource.traceIdExpression,
-        directTraceId,
-      ),
-      whereLanguage: 'sql',
-      filters: [],
-    });
-  }, [directTraceId, directTraceSource, setIsLive, setSearchedConfig]);
-
   useEffect(() => {
     if (isReady && queryReady && !isChartConfigLoading) {
       // Only trigger if we haven't searched yet (no time range in URL)
       const searchParams = new URLSearchParams(window.location.search);
-      if (
-        directTraceId == null &&
-        !searchParams.has('from') &&
-        !searchParams.has('to')
-      ) {
+      if (!searchParams.has('from') && !searchParams.has('to')) {
         onSearch('Live Tail');
       }
     }
-  }, [directTraceId, isReady, queryReady, isChartConfigLoading, onSearch]);
+  }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
@@ -1445,15 +1445,11 @@ export function DBSearchPage() {
       return undefined;
     }
 
+    // NOTE (Berg / Task 9): the histogram is only meaningful for sources
+    // that carry a timestamp column. Source-kind-specific groupBy logic
+    // (severity for logs, status for traces) was dropped along with the
+    // observability strip; charts now group purely by user choice.
     const variableConfig: any = {};
-    switch (searchedSource?.kind) {
-      case SourceKind.Log:
-        variableConfig.groupBy = searchedSource?.severityTextExpression;
-        break;
-      case SourceKind.Trace:
-        variableConfig.groupBy = searchedSource?.statusCodeExpression;
-        break;
-    }
 
     return {
       ...chartConfig,
@@ -1478,7 +1474,6 @@ export function DBSearchPage() {
     };
   }, [
     chartConfig,
-    searchedSource,
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
@@ -1602,52 +1597,6 @@ export function DBSearchPage() {
     },
     [setIsLive, setInterval, onTimeRangeSelect],
   );
-  const directTraceFocusDate = useMemo(
-    () =>
-      new Date(
-        (searchedTimeRange[0].getTime() + searchedTimeRange[1].getTime()) / 2,
-      ),
-    [searchedTimeRange],
-  );
-
-  const onDirectTraceSourceChange = useCallback(
-    (sourceId: string | null) => {
-      setIsLive(false);
-      if (sourceId == null) {
-        directTraceFilterAppliedRef.current = null;
-        setSearchedConfig({
-          source: null,
-          where: '',
-          whereLanguage: getStoredLanguage() ?? 'lucene',
-          filters: [],
-        });
-        return;
-      }
-
-      const nextSource = sources?.find(
-        source => source.id === sourceId && isTraceSource(source),
-      );
-      if (!nextSource || !directTraceId) {
-        return;
-      }
-
-      setSearchedConfig({
-        source: nextSource.id,
-        where: buildDirectTraceWhereClause(
-          nextSource.traceIdExpression,
-          directTraceId,
-        ),
-        whereLanguage: 'sql',
-        filters: [],
-      });
-    },
-    [directTraceId, setIsLive, setSearchedConfig, sources],
-  );
-
-  const closeDirectTraceSidePanel = useCallback(() => {
-    setDirectTraceId(null);
-  }, [setDirectTraceId]);
-
   const clearSaveSearchModalState = useCallback(
     () => setSaveSearchModalState(undefined),
     [setSaveSearchModalState],
@@ -1691,6 +1640,37 @@ export function DBSearchPage() {
         </title>
       </Head>
       <OnboardingModal />
+      {deepLinkParams && !deepLinkHasMatchingSource && (
+        <Box
+          p="sm"
+          mx="sm"
+          mt="sm"
+          style={{
+            border: '1px solid var(--mantine-color-default-border)',
+            borderRadius: 4,
+          }}
+          data-testid="catalog-deeplink-cta"
+        >
+          <Group justify="space-between" align="center">
+            <Text size="sm">
+              No saved Source for{' '}
+              <Code>
+                {deepLinkParams.catalog}.{deepLinkParams.database}.
+                {deepLinkParams.table}
+              </Code>{' '}
+              yet.
+            </Text>
+            <Button
+              size="xs"
+              variant="primary"
+              onClick={openNewSourceModal}
+              data-testid="save-as-source-cta"
+            >
+              Save this table as a Source
+            </Button>
+          </Group>
+        </Box>
+      )}
       {savedSearch && (
         <Stack mt="lg" mx="xs">
           <Group justify="space-between">
@@ -1793,7 +1773,6 @@ export function DBSearchPage() {
             name="source"
             onCreate={openNewSourceModal}
             onEdit={onEditSources}
-            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             data-testid="source-selector"
             sourceSchemaPreview={sourceSchemaPreview}
             style={{ minWidth: 150 }}
@@ -1875,39 +1854,54 @@ export function DBSearchPage() {
             style={{ flex: '0 1 500px', minWidth: 0 }}
             align="center"
           >
-            <TimePicker
-              data-testid="time-picker"
-              inputValue={displayedTimeInputValue}
-              setInputValue={setDisplayedTimeInputValue}
-              onSearch={onTimePickerSearch}
-              onRelativeSearch={onTimePickerRelativeSearch}
-              showLive={analysisMode === 'results'}
-              isLiveMode={isLive}
-              // Default to relative time mode if the user has made changes to interval and reloaded.
-              defaultRelativeTimeMode={
-                isLive && interval !== LIVE_TAIL_DURATION_MS
-              }
-              width="100%"
-            />
-            {isLive && (
-              <Tooltip label="Live tail refresh interval">
-                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
-                  <Select
-                    size="sm"
-                    w="100%"
-                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                    value={String(refreshFrequency)}
-                    onChange={value =>
-                      setRefreshFrequency(value ? parseInt(value, 10) : null)
-                    }
-                    allowDeselect={false}
-                    comboboxProps={{
-                      withinPortal: true,
-                      zIndex: 1000,
-                    }}
-                  />
-                </Box>
-              </Tooltip>
+            {hasTimestamp ? (
+              <>
+                <TimePicker
+                  data-testid="time-picker"
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={onTimePickerSearch}
+                  onRelativeSearch={onTimePickerRelativeSearch}
+                  showLive={analysisMode === 'results'}
+                  isLiveMode={isLive}
+                  // Default to relative time mode if the user has made changes to interval and reloaded.
+                  defaultRelativeTimeMode={
+                    isLive && interval !== LIVE_TAIL_DURATION_MS
+                  }
+                  width="100%"
+                />
+                {isLive && (
+                  <Tooltip label="Live tail refresh interval">
+                    <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                      <Select
+                        size="sm"
+                        w="100%"
+                        data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                        value={String(refreshFrequency)}
+                        onChange={value =>
+                          setRefreshFrequency(
+                            value ? parseInt(value, 10) : null,
+                          )
+                        }
+                        allowDeselect={false}
+                        comboboxProps={{
+                          withinPortal: true,
+                          zIndex: 1000,
+                        }}
+                      />
+                    </Box>
+                  </Tooltip>
+                )}
+              </>
+            ) : (
+              <Text
+                size="xs"
+                c="dimmed"
+                data-testid="no-time-field-label"
+                style={{ flex: '1 1 auto' }}
+              >
+                no time field
+              </Text>
             )}
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
@@ -1923,15 +1917,6 @@ export function DBSearchPage() {
           savedSearchId={savedSearchId}
         />
       )}
-      <DirectTraceSidePanel
-        opened={directTraceId != null}
-        traceId={directTraceId ?? ''}
-        traceSourceId={directTraceSource?.id ?? null}
-        dateRange={searchedTimeRange}
-        focusDate={directTraceFocusDate}
-        onClose={closeDirectTraceSidePanel}
-        onSourceChange={onDirectTraceSourceChange}
-      />
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
@@ -1963,11 +1948,7 @@ export function DBSearchPage() {
                     setAnalysisMode={setAnalysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
-                    showDelta={
-                      !!(searchedSource?.kind === SourceKind.Trace
-                        ? searchedSource.durationExpression
-                        : undefined)
-                    }
+                    showDelta={false}
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
                     onCollapse={() => setIsFilterSidebarCollapsed(true)}
@@ -2000,7 +1981,7 @@ export function DBSearchPage() {
                         />
                       </Group>
                     </Box>
-                    {!hasQueryError && (
+                    {!hasQueryError && hasTimestamp && (
                       <Box
                         className={searchPageStyles.timeChartContainer}
                         mih="0"
@@ -2036,20 +2017,8 @@ export function DBSearchPage() {
                     </Box>
                   </Flex>
                 )}
-              {analysisMode === 'delta' &&
-                searchedSource != null &&
-                isTraceSource(searchedSource) && (
-                  <DBSearchHeatmapChart
-                    chartConfig={{
-                      ...chartConfig,
-                      dateRange: searchedTimeRange,
-                      with: aliasWith,
-                    }}
-                    isReady={isReady}
-                    source={searchedSource}
-                    onAddFilter={searchFilters.setFilterValue}
-                  />
-                )}
+              {/* NOTE (Berg / Task 9): the trace-latency-heatmap delta mode
+                  was observability-specific and has been removed. */}
               {analysisMode === 'results' && (
                 <Flex direction="column" mih="0" miw={0}>
                   {chartConfig && histogramTimeChartConfig && (
@@ -2085,7 +2054,7 @@ export function DBSearchPage() {
                           </Group>
                         </Group>
                       </Box>
-                      {!hasQueryError && (
+                      {!hasQueryError && hasTimestamp && (
                         <Box
                           className={searchPageStyles.timeChartContainer}
                           mih="0"
@@ -2256,9 +2225,42 @@ export function DBSearchPage() {
             </div>
           </>
         )}
+        {/* Berg / Task 9: cost line — Athena workgroup-level scan stats.
+            The exact bytes-scanned + cache flags come from the
+            /api/v1/query response; until the row table is ported off
+            DBSqlRowTable and onto useSearchQuery, this stays as a
+            placeholder that surfaces the engine name. */}
+        <Box
+          px="sm"
+          py={4}
+          data-testid="search-cost-line"
+          style={{
+            borderTop: '1px solid var(--mantine-color-default-border)',
+          }}
+        >
+          <Text size="xs" c="dimmed">
+            Athena
+            {searchCostStats?.scannedBytes != null && (
+              <>
+                {' · scanned '}
+                {formatBytesShort(searchCostStats.scannedBytes)}
+              </>
+            )}
+            {searchCostStats?.cached ? ' · cached' : ''}
+          </Text>
+        </Box>
       </Flex>
     </Flex>
   );
+}
+
+// Berg / Task 9: format bytes to a short MB/GB string for the cost line.
+function formatBytesShort(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 const DBSearchPageDynamic = dynamic(async () => DBSearchPage, { ssr: false });

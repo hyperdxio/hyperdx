@@ -544,3 +544,34 @@ const api = {
   },
 };
 export default api;
+
+// Berg / Task 9: search hook posts user-issued SQL to the Athena-backed
+// /api/v1/query endpoint. Replaces the legacy ClickHouse proxy path. The
+// endpoint resolves the Source's catalog/database/table, applies workgroup
+// scan limits, runs the query, and returns rows + scannedBytes/cached for
+// the cost line at the bottom of the search page.
+export type AthenaQueryResponse = {
+  rows: Record<string, unknown>[];
+  scannedBytes?: number;
+  cached?: boolean;
+  queryExecutionId?: string;
+};
+
+export const useSearchQuery = ({
+  sourceId,
+  sql,
+  enabled = true,
+}: {
+  sourceId: string;
+  sql: string;
+  enabled?: boolean;
+}) =>
+  useQuery({
+    queryKey: ['search', sourceId, sql],
+    enabled: !!sql && !!sourceId && enabled,
+    queryFn: () =>
+      hdxServer('v1/query', {
+        method: 'POST',
+        json: { sourceId, sql },
+      }).json<AthenaQueryResponse>(),
+  });

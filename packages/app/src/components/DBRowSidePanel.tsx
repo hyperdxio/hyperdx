@@ -7,14 +7,12 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { add } from 'date-fns';
 import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   isLogSource,
-  isSessionSource,
   isTraceSource,
   SourceKind,
   TLogSource,
@@ -22,7 +20,7 @@ import {
   TTraceSource,
 } from '@berg/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
-import { Box, Drawer, Flex, Stack } from '@mantine/core';
+import { Box, Drawer, Stack } from '@mantine/core';
 
 import DBRowSidePanelHeader, {
   BreadcrumbNavigationCallback,
@@ -37,23 +35,15 @@ import { SearchConfig } from '@/types';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
-import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 
-// NOTE (Berg / Task 2): the trace/session/infra side panels were
-// observability-specific and have been removed. Task 9 will rebuild the
-// row-side-panel surface for table data; for now stub these so the rest of
-// DBSearchPage continues to compile.
+// NOTE (Berg / Task 9): observability-specific side-panel tabs (trace,
+// service map, session replay, k8s infra) and their stubs have been
+// removed. The panel now renders only the Overview / Column Values /
+// Surrounding Context tabs against any Berg Source.
 const LogSidePanelKbdShortcuts = () => null;
-const DBInfraPanel: React.ComponentType<any> = () => null;
-const DBTracePanel: React.ComponentType<any> = () => null;
-const DBSessionPanel: React.ComponentType<any> = () => null;
-const useSessionId = (_: unknown) => ({
-  rumSessionId: undefined as string | undefined,
-  rumServiceName: undefined as string | undefined,
-});
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -114,7 +104,8 @@ const DBRowSidePanel = ({
   aliasWith,
   source,
   isNestedPanel = false,
-  setSubDrawerOpen,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  setSubDrawerOpen: _setSubDrawerOpen,
   onClose,
   breadcrumbPath,
   onBreadcrumbClick,
@@ -250,73 +241,10 @@ const DBRowSidePanel = ({
       : [];
   }, [source, rowData]);
 
-  const oneHourRange = useMemo(() => {
-    return [
-      add(timestampDate, { minutes: -60 }),
-      add(timestampDate, { minutes: 60 }),
-    ] as [Date, Date];
-  }, [timestampDate]);
-
-  // For session replay, we need +/-4 hours to get full session
-  const fourHourRange = useMemo(() => {
-    return [
-      add(timestampDate, { hours: -4 }),
-      add(timestampDate, { hours: 4 }),
-    ] as [Date, Date];
-  }, [timestampDate]);
-
-  const focusDate = timestampDate;
-  const traceId: string | undefined = normalizedRow?.['__hdx_trace_id'];
-
-  const childSourceId = isLogSource(source)
-    ? source.traceSourceId
-    : isTraceSource(source)
-      ? source.logSourceId
-      : undefined;
-
-  const traceSourceId = isTraceSource(source)
-    ? source.id
-    : isLogSource(source)
-      ? source.traceSourceId
-      : isSessionSource(source)
-        ? source.traceSourceId
-        : undefined;
-
-  const enableServiceMap = traceId && traceSourceId;
-
-  const { rumSessionId, rumServiceName } = useSessionId({
-    sourceId: traceSourceId,
-    traceId,
-    dateRange: oneHourRange,
-    enabled: rowId != null,
-  });
-
-  const hasK8sContext = useMemo(() => {
-    try {
-      if (!source?.resourceAttributesExpression || !normalizedRow) {
-        return false;
-      }
-
-      const resourceAttrs = normalizedRow['__hdx_resource_attributes'];
-      return (
-        resourceAttrs?.['k8s.pod.uid'] != null ||
-        resourceAttrs?.['k8s.node.name'] != null
-      );
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }, [source, normalizedRow]);
-
-  const initialRowHighlightHint = useMemo(() => {
-    if (normalizedRow) {
-      return {
-        timestamp: normalizedRow['__hdx_timestamp'],
-        spanId: normalizedRow['__hdx_span_id'],
-        body: normalizedRow['__hdx_body'],
-      };
-    }
-  }, [normalizedRow]);
+  // Berg / Task 9: trace/session replay span+/- ranges, traceId resolution,
+  // service-map gating and k8s-pod context detection were observability-only
+  // and have been removed along with the corresponding tabs. The Surrounding
+  // Context tab still uses the row's __hdx_timestamp via ContextSubpanel.
 
   if (isRowLoading) {
     return <div className={styles.loadingState}>Loading...</div>;
@@ -347,6 +275,11 @@ const DBRowSidePanel = ({
                 generateSearchUrl={generateSearchUrl}
                 onClose={_onClose}
               /> */}
+      {/* Berg / Task 9: replaced the OTel-shaped tab list (Trace, Service Map,
+          Session Replay, Infrastructure) with a flat row inspector. The
+          surviving tabs render the row's column values + surrounding context
+          rows. ARRAY/MAP/ROW types are rendered recursively by the existing
+          HyperJson renderer used inside RowDataPanel. */}
       <TabBar
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
@@ -364,37 +297,9 @@ const DBRowSidePanel = ({
             value: Tab.Parsed,
           },
           {
-            text: 'Trace',
-            value: Tab.Trace,
-          },
-          ...(enableServiceMap
-            ? [
-                {
-                  text: 'Service Map',
-                  value: Tab.ServiceMap,
-                },
-              ]
-            : []),
-          {
             text: 'Surrounding Context',
             value: Tab.Context,
           },
-          ...(rumSessionId != null
-            ? [
-                {
-                  text: 'Session Replay',
-                  value: Tab.Replay,
-                },
-              ]
-            : []),
-          ...(hasK8sContext
-            ? [
-                {
-                  text: 'Infrastructure',
-                  value: Tab.Infrastructure,
-                },
-              ]
-            : []),
         ]}
         activeItem={displayedTab}
         onClick={(v: any) => setTab(v)}
@@ -419,50 +324,7 @@ const DBRowSidePanel = ({
           />
         </ErrorBoundary>
       )}
-      {displayedTab === Tab.Trace && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-            <DBTracePanel
-              data-testid="side-panel-tab-trace"
-              parentSourceId={source.id}
-              childSourceId={childSourceId}
-              traceId={traceId}
-              dateRange={oneHourRange}
-              focusDate={focusDate}
-              initialRowHighlightHint={initialRowHighlightHint}
-            />
-          </Box>
-        </ErrorBoundary>
-      )}
-      {displayedTab === Tab.ServiceMap && enableServiceMap && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <Flex p="sm" flex={1}>
-            <ServiceMapSidePanel
-              traceId={traceId}
-              traceTableSourceId={traceSourceId}
-              dateRange={oneHourRange}
-            />
-          </Flex>
-        </ErrorBoundary>
-      )}
+      {/* Berg / Task 9: Trace and ServiceMap tabs removed. */}
       {displayedTab === Tab.Parsed && (
         <ErrorBoundary
           onError={err => {
@@ -504,52 +366,7 @@ const DBRowSidePanel = ({
           />
         </ErrorBoundary>
       )}
-      {displayedTab === Tab.Replay && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <div
-            className="overflow-hidden flex-grow-1"
-            data-testid="side-panel-tab-replay"
-          >
-            <DBSessionPanel
-              dateRange={fourHourRange}
-              focusDate={focusDate}
-              setSubDrawerOpen={setSubDrawerOpen}
-              traceSourceId={traceSourceId}
-              serviceName={rumServiceName}
-              rumSessionId={rumSessionId}
-            />
-          </div>
-        </ErrorBoundary>
-      )}
-      {displayedTab === Tab.Infrastructure && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-            <DBInfraPanel
-              data-testid="side-panel-tab-infrastructure"
-              source={source}
-              rowData={normalizedRow}
-            />
-          </Box>
-        </ErrorBoundary>
-      )}
+      {/* Berg / Task 9: Session Replay and Infrastructure tabs removed. */}
       <LogSidePanelKbdShortcuts />
     </>
   );

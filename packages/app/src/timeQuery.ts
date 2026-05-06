@@ -537,3 +537,30 @@ export function getLiveTailTimeRange(): [Date, Date] {
   const end = startOfSecond(new Date());
   return [sub(end, { minutes: 15 }), end];
 }
+
+// Berg / Task 9: emit a Trino-style time-range WHERE clause for the given
+// Source/range. Sources without a `timestampColumn` (or legacy
+// `timestampValueExpression`) declared yield a tautology so the surrounding
+// WHERE assembly stays well-formed.
+//
+// Trino expects `from_unixtime(<seconds>)` for unix-epoch coercion and
+// double-quoted column identifiers. Callers compose this with the user's
+// Lucene/SQL WHERE via AND.
+type TimeRangeSource = {
+  timestampColumn?: string;
+  timestampValueExpression?: string;
+};
+
+export function getTimeRangeWhereClause(
+  source: TimeRangeSource | null | undefined,
+  range: { start: Date; end: Date } | [Date, Date],
+): string {
+  if (!source) return '1=1';
+  const column = source.timestampColumn ?? source.timestampValueExpression;
+  if (!column) return '1=1';
+  const start = Array.isArray(range) ? range[0] : range.start;
+  const end = Array.isArray(range) ? range[1] : range.end;
+  const startSec = Math.floor(start.getTime() / 1000);
+  const endSec = Math.floor(end.getTime() / 1000);
+  return `"${column}" BETWEEN from_unixtime(${startSec}) AND from_unixtime(${endSec})`;
+}

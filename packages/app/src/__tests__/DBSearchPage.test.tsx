@@ -390,3 +390,73 @@ describe('useDefaultOrderBy', () => {
     });
   });
 });
+
+// Berg / Task 9: cover the timestamp-column-aware default order-by logic
+// for both modes — time-enabled (timestampColumn set) and no-time
+// (timestampColumn unset, defaultSort optional).
+describe('useDefaultOrderBy — Berg time-optional sources', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('uses `<timestampColumn> DESC` when source has timestampColumn set', () => {
+    jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+      data: {
+        kind: 'Table',
+        timestampColumn: 'event_time',
+      },
+      isLoading: false,
+      error: null,
+    } as any);
+    jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+    } as any);
+
+    const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+    expect(result.current).toBe('event_time DESC');
+  });
+
+  it('prefers `defaultSort` over `timestampColumn` DESC fallback', () => {
+    jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+      data: {
+        kind: 'Table',
+        timestampColumn: 'event_time',
+        defaultSort: 'priority ASC',
+      },
+      isLoading: false,
+      error: null,
+    } as any);
+    jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+    } as any);
+
+    const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+    expect(result.current).toBe('priority ASC');
+  });
+
+  it('falls back to legacy optimization when no Berg-native fields are set', () => {
+    // No-time mode (Berg-native): row table will fall back to its first column.
+    // The legacy optimizer still runs as a fallback for old Source documents.
+    jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+      data: {
+        kind: 'Table',
+        timestampValueExpression: 'Timestamp',
+        // no timestampColumn, no defaultSort
+      },
+      isLoading: false,
+      error: null,
+    } as any);
+    jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+    } as any);
+
+    const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+    expect(result.current).toBe('Timestamp DESC');
+  });
+});

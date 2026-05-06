@@ -11,6 +11,7 @@ import { TestRouter } from '@/fixtures';
 
 import {
   getLiveTailTimeRange,
+  getTimeRangeWhereClause,
   useNewTimeQuery,
   type UseTimeQueryInputType,
   type UseTimeQueryReturnType,
@@ -360,6 +361,53 @@ describe.skip('useTimeQuery tests', () => {
 
     expect(timeQueryRef.current?.displayedTimeInputValue).toBe(
       initialDisplayValue,
+    );
+  });
+});
+
+// Berg / Task 9: getTimeRangeWhereClause emits a Trino-style time predicate
+// when the source declares a timestamp column, and a tautology otherwise.
+describe('getTimeRangeWhereClause', () => {
+  const range: [Date, Date] = [
+    new Date('2026-05-04T00:00:00Z'),
+    new Date('2026-05-04T01:00:00Z'),
+  ];
+
+  it('returns 1=1 when source is null', () => {
+    expect(getTimeRangeWhereClause(null, range)).toBe('1=1');
+  });
+
+  it('returns 1=1 when source has no timestamp column', () => {
+    expect(getTimeRangeWhereClause({}, range)).toBe('1=1');
+  });
+
+  it('emits Trino from_unixtime BETWEEN when timestampColumn is set', () => {
+    const sql = getTimeRangeWhereClause(
+      { timestampColumn: 'event_time' },
+      range,
+    );
+    expect(sql).toBe(
+      '"event_time" BETWEEN from_unixtime(1777852800) AND from_unixtime(1777856400)',
+    );
+  });
+
+  it('falls back to legacy timestampValueExpression', () => {
+    const sql = getTimeRangeWhereClause(
+      { timestampValueExpression: 'Timestamp' },
+      range,
+    );
+    expect(sql).toBe(
+      '"Timestamp" BETWEEN from_unixtime(1777852800) AND from_unixtime(1777856400)',
+    );
+  });
+
+  it('accepts a {start, end} object as the range', () => {
+    const sql = getTimeRangeWhereClause(
+      { timestampColumn: 'ts' },
+      { start: range[0], end: range[1] },
+    );
+    expect(sql).toBe(
+      '"ts" BETWEEN from_unixtime(1777852800) AND from_unixtime(1777856400)',
     );
   });
 });
