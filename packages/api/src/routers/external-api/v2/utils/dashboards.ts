@@ -3,6 +3,7 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
   DisplayType,
@@ -605,7 +606,13 @@ const dashboardBodyBaseShape = {
   savedFilterValues: z
     .array(externalDashboardSavedFilterValueSchema)
     .optional(),
-  containers: z.array(DashboardContainerSchema).optional(),
+  // The internal `DashboardContainerSchema` already caps individual
+  // container/tab/title sizes; the array cap mirrors what the editor
+  // would ever generate.
+  containers: z
+    .array(DashboardContainerSchema)
+    .max(DASHBOARD_MAX_CONTAINERS)
+    .optional(),
 };
 
 // --------------------------------------------------------------------------------
@@ -726,38 +733,47 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       }
 
       const containers = data.containers ?? [];
-      const containerById = new Map<string, DashboardContainer>(
-        containers.map(c => [c.id, c]),
-      );
 
-      // Container id uniqueness across the dashboard.
+      // Single pass over containers: container-id uniqueness and per-container
+      // tab-id uniqueness. The container-by-id map is built INSIDE this pass
+      // and is only used for the tile-resolution loop below; building a Map
+      // up-front would last-write-win on duplicate ids, masking the duplicate
+      // before this loop reports it.
+      const containerById = new Map<string, DashboardContainer>();
       const seenContainerIds = new Set<string>();
+      let hasDuplicateContainerId = false;
       containers.forEach((container, containerIdx) => {
         if (seenContainerIds.has(container.id)) {
+          hasDuplicateContainerId = true;
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `Container IDs must be unique: "${container.id}"`,
             path: ['containers', containerIdx, 'id'],
           });
+        } else {
+          seenContainerIds.add(container.id);
+          containerById.set(container.id, container);
         }
-        seenContainerIds.add(container.id);
+
+        if (container.tabs) {
+          const seenTabIds = new Set<string>();
+          container.tabs.forEach((tab, tabIdx) => {
+            if (seenTabIds.has(tab.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Duplicate tab id "${tab.id}" in container "${container.id}"`,
+                path: ['containers', containerIdx, 'tabs', tabIdx, 'id'],
+              });
+            }
+            seenTabIds.add(tab.id);
+          });
+        }
       });
 
-      // Tab id uniqueness within each container.
-      containers.forEach((container, containerIdx) => {
-        if (!container.tabs) return;
-        const seenTabIds = new Set<string>();
-        container.tabs.forEach((tab, tabIdx) => {
-          if (seenTabIds.has(tab.id)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Duplicate tab id "${tab.id}" in container "${container.id}"`,
-              path: ['containers', containerIdx, 'tabs', tabIdx, 'id'],
-            });
-          }
-          seenTabIds.add(tab.id);
-        });
-      });
+      // If container ids weren't unique, tile-level resolution would
+      // produce confusing errors on top of the duplicate-id ones; skip
+      // the tile pass and let the user fix the container layer first.
+      if (hasDuplicateContainerId) return;
 
       // Each tile's containerId resolves to a real container,
       // and each tile's tabId resolves to a tab in that container.
