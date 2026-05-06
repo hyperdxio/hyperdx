@@ -1,16 +1,18 @@
 import { useMemo } from 'react';
 import {
   Field,
+  parseKeyPath,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import { NOW } from '@/config';
 import {
   deduplicate2dArray,
-  useAllKeyValues,
+  useGetKeyValues,
   useMultipleAllFields,
 } from '@/hooks/useMetadata';
-import { toArray, useDebounce } from '@/utils';
+import { mergePath, toArray, useDebounce } from '@/utils';
 
 export type TokenInfo = {
   /** The full token at the cursor position */
@@ -208,28 +210,60 @@ export function useAutoCompleteOptions(
     [fieldCompleteMap, fieldNameAtCursor],
   );
 
-  // Debounced fetch of values for the selected key from rollup tables
-  const firstTc = tcs.length > 0 ? tcs[0] : undefined;
-  const { data: keyValues, isFetching: isLoadingValues } = useAllKeyValues({
-    tableConnection: firstTc,
-    searchField,
-    dateRange: effectiveDateRange,
+  // Build chart config and keys for fetching values from rollup tables
+  const chartConfig = useMemo<BuilderChartConfigWithDateRange | undefined>(
+    () =>
+      tcs.length > 0
+        ? {
+            connection: tcs[0].connectionId,
+            from: {
+              databaseName: tcs[0].databaseName,
+              tableName: tcs[0].tableName,
+            },
+            timestampValueExpression: '',
+            select: '',
+            where: '',
+            dateRange: effectiveDateRange,
+          }
+        : undefined,
+    [tcs, effectiveDateRange],
+  );
+
+  const searchKeys = useMemo(
+    () => (searchField ? [mergePath(searchField.path)] : []),
+    [searchField],
+  );
+
+  const { data: keyValues, isFetching: isLoadingValues } = useGetKeyValues({
+    mode: 'all',
+    chartConfig,
+    keys: searchKeys,
   });
 
   // Build key-value pair suggestions
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {
-    if (!keyValues || !searchField || keyValues.length === 0) return [];
+    if (!keyValues || keyValues.length === 0) return [];
 
-    return keyValues.map(v => {
-      const formatted = formatter.formatKeyValPair(
-        formatter.formatFieldValue(searchField),
-        v,
-      );
-      return { value: formatted, label: formatted };
+    return keyValues.flatMap(kv => {
+      const fieldName = parseKeyPath(kv.key).join('.');
+      return kv.value.flatMap((v: string | Record<string, string>) => {
+        if (typeof v === 'object' && v !== null) {
+          // Map columns can return objects like { 'service.name': 'frontend' }
+          return Object.entries(v).map(([subKey, subVal]) => {
+            const formatted = formatter.formatKeyValPair(
+              `${fieldName}.${subKey}`,
+              subVal,
+            );
+            return { value: formatted, label: formatted };
+          });
+        }
+        const formatted = formatter.formatKeyValPair(fieldName, v);
+        return { value: formatted, label: formatted };
+      });
     });
-  }, [keyValues, searchField, formatter]);
+  }, [keyValues, formatter]);
 
   // Combine all autocomplete options
   const options = useMemo(() => {

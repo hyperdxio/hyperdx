@@ -5,13 +5,13 @@ import { renderHook } from '@testing-library/react';
 import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';
 import { tokenizeAtCursor } from '../useAutoCompleteOptions';
-import { useAllKeyValues, useMultipleAllFields } from '../useMetadata';
+import { useGetKeyValues, useMultipleAllFields } from '../useMetadata';
 
 // Mock dependencies
 jest.mock('../useMetadata', () => ({
   ...jest.requireActual('../useMetadata.tsx'),
   useMultipleAllFields: jest.fn(),
-  useAllKeyValues: jest.fn(),
+  useGetKeyValues: jest.fn(),
 }));
 
 const luceneFormatter = new LuceneLanguageFormatter();
@@ -50,7 +50,7 @@ describe('useAutoCompleteOptions', () => {
       data: mockFields,
     });
 
-    (useAllKeyValues as jest.Mock).mockReturnValue({
+    (useGetKeyValues as jest.Mock).mockReturnValue({
       data: null,
       isFetching: false,
     });
@@ -80,8 +80,13 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should return key value options with correct lucene formatting', () => {
-    (useAllKeyValues as jest.Mock).mockReturnValue({
-      data: ['frontend', 'backend'],
+    (useGetKeyValues as jest.Mock).mockReturnValue({
+      data: [
+        {
+          key: 'ResourceAttributes.service.name',
+          value: ['frontend', 'backend'],
+        },
+      ],
       isFetching: false,
     });
 
@@ -115,6 +120,52 @@ describe('useAutoCompleteOptions', () => {
       {
         value: 'ResourceAttributes.service.name:"backend"',
         label: 'ResourceAttributes.service.name:"backend"',
+      },
+    ]);
+  });
+
+  it('should handle nested key value options', () => {
+    (useGetKeyValues as jest.Mock).mockReturnValue({
+      data: [
+        {
+          key: 'ResourceAttributes',
+          value: [
+            {
+              'service.name': 'frontend',
+              'deployment.environment': 'production',
+            },
+          ],
+        },
+      ],
+      isFetching: false,
+    });
+
+    const { result } = renderHook(() =>
+      useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+        tableConnection: mockTableConnection,
+      }),
+    );
+
+    expect(result.current.options).toEqual([
+      {
+        value: 'ResourceAttributes',
+        label: 'ResourceAttributes (map)',
+      },
+      {
+        value: 'ResourceAttributes.service.name',
+        label: 'ResourceAttributes.service.name (string)',
+      },
+      {
+        value: 'TraceAttributes.trace.id',
+        label: 'TraceAttributes.trace.id (string)',
+      },
+      {
+        value: 'ResourceAttributes.service.name:"frontend"',
+        label: 'ResourceAttributes.service.name:"frontend"',
+      },
+      {
+        value: 'ResourceAttributes.deployment.environment:"production"',
+        label: 'ResourceAttributes.deployment.environment:"production"',
       },
     ]);
   });

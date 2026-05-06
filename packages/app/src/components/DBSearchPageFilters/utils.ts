@@ -1,5 +1,7 @@
 // Utility functions for parsing and grouping map-like field names
 
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
@@ -16,17 +18,13 @@ export function cleanClickHouseExpression(key: string): string {
 export function parseMapFieldName(
   key: string,
 ): { baseName: string; propertyPath: string } | null {
-  // First clean the ClickHouse expression
   const cleanKey = cleanClickHouseExpression(key);
+  const path = parseKeyPath(cleanKey);
 
-  // Match patterns like: ResourceAttributes['some.property'], SpanAttributes['key'], or json_column.key
-  const mapPattern = /^([^[]+)\[['"]([^'"]+)['"]\]$/;
-  const match = cleanKey.match(mapPattern);
-
-  if (match) {
+  if (path.length >= 2) {
     return {
-      baseName: match[1],
-      propertyPath: match[2],
+      baseName: path[0],
+      propertyPath: path.slice(1).join('.'),
     };
   }
 
