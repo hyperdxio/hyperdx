@@ -142,8 +142,8 @@ export class AlertsPage {
   }
 
   async selectTag(tag: string) {
-    await this.tagFilter.getByRole('searchbox').click();
-    await this.page.getByRole('option', { name: tag }).click();
+    await this.tagFilter.getByRole('searchbox').fill(tag);
+    await this.page.getByRole('option', { name: tag, exact: true }).click();
   }
 
   async clearTagFilter() {
@@ -151,8 +151,8 @@ export class AlertsPage {
   }
 
   async selectCreator(creator: string) {
-    await this.creatorFilter.getByRole('searchbox').click();
-    await this.page.getByRole('option', { name: creator }).click();
+    await this.creatorFilter.getByRole('searchbox').fill(creator);
+    await this.page.getByRole('option', { name: creator, exact: true }).click();
   }
 
   async clearCreatorFilter() {

@@ -512,11 +512,12 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     const sources = await getSources(page, 'log');
     const logSourceId = sources[0]._id;
 
+    const uniqueUrl = `${webhookUrl}-${Date.now()}`;
     const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
       data: {
         name: `E2E Filter Webhook ${ts}`,
         service: 'generic',
-        url: webhookUrl,
+        url: uniqueUrl,
       },
     });
     const webhook = (await webhookRes.json()).data;
