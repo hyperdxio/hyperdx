@@ -16,7 +16,7 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
-  getHeatmapTilesWithNonTraceSources,
+  getHeatmapTilesWithIncompatibleSources,
   getMissingConnections,
   getMissingSources,
   isConfigTile,
@@ -702,7 +702,7 @@ async function getSourceConnectionMismatches(
  *           description: Scale type used to bucket values on the y-axis.
  *           example: "log"
  *
- *     HeatmapBuilderChartConfig:
+ *     HeatmapChartConfig:
  *       type: object
  *       required:
  *         - displayType
@@ -993,7 +993,7 @@ async function getSourceConnectionMismatches(
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
- *         - $ref: '#/components/schemas/HeatmapBuilderChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
@@ -1004,7 +1004,7 @@ async function getSourceConnectionMismatches(
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
- *           heatmap: '#/components/schemas/HeatmapBuilderChartConfig'
+ *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
@@ -1692,7 +1692,7 @@ router.post(
         getMissingSources(teamId, tiles, filters),
         getMissingConnections(teamId, tiles),
         getSourceConnectionMismatches(teamId, tiles),
-        getHeatmapTilesWithNonTraceSources(teamId, tiles),
+        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
       ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
@@ -1927,7 +1927,7 @@ router.put(
         getMissingSources(teamId, tiles, filters),
         getMissingConnections(teamId, tiles),
         getSourceConnectionMismatches(teamId, tiles),
-        getHeatmapTilesWithNonTraceSources(teamId, tiles),
+        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
       ]);
       if (missingSources.length > 0) {
         return res.status(400).json({

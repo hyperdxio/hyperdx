@@ -2354,32 +2354,72 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[6], ['id'])).toEqual(heatmapChart);
     });
 
-    it('rejects raw SQL heatmap tile because heatmap is builder-only', async () => {
-      const heatmapRawSql = {
-        name: 'Heatmap Raw SQL',
-        x: 0,
-        y: 0,
-        w: 6,
-        h: 3,
+    // Schema-level rejections that exercise pure Zod constraints
+    // (discriminated-union absence, `min(1)` on valueExpression, and
+    // `length(1)` on the select array). The non-Trace-source case
+    // exercises the new `getHeatmapTilesWithIncompatibleSources` path
+    // and stays its own test below.
+    it.each([
+      {
+        label: 'raw SQL heatmap tile (heatmap is builder-only)',
         config: {
           configType: 'sql',
           displayType: 'heatmap',
-          connectionId: connection._id.toString(),
+          connectionId: () => connection._id.toString(),
           sqlTemplate: 'SELECT 1 FROM otel_logs WHERE {timeFilter}',
-          sourceId: traceSource._id.toString(),
+          sourceId: () => traceSource._id.toString(),
         },
-      };
-
+      },
+      {
+        label: 'heatmap tile with empty valueExpression',
+        config: {
+          displayType: 'heatmap',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ aggFn: 'heatmap', valueExpression: '' }],
+        },
+      },
+      {
+        label: 'heatmap tile with multiple select items',
+        config: {
+          displayType: 'heatmap',
+          sourceId: () => traceSource._id.toString(),
+          select: [
+            { aggFn: 'heatmap', valueExpression: 'Duration' },
+            { aggFn: 'heatmap', valueExpression: 'OtherValue' },
+          ],
+        },
+      },
+    ])('rejects $label', async ({ config }) => {
+      // Resolve any lazy id fns now that the test setup has run.
+      const resolved = Object.fromEntries(
+        Object.entries(config).map(([key, value]) => [
+          key,
+          typeof value === 'function' ? value() : value,
+        ]),
+      );
       await authRequest('post', BASE_URL)
         .send({
-          name: 'Dashboard with Heatmap Raw SQL',
-          tiles: [heatmapRawSql],
+          name: 'Dashboard with rejected heatmap',
+          tiles: [
+            {
+              name: 'Heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: resolved,
+            },
+          ],
           tags: [],
         })
         .expect(400);
     });
 
     it('rejects heatmap tile with a non-Trace source (UI restricts to trace)', async () => {
+      // Exercises the runtime check in
+      // `getHeatmapTilesWithIncompatibleSources` rather than a pure Zod
+      // constraint, kept as its own test so the assertion on the error
+      // message stays pinned to the new code path.
       const heatmapMetricSource = {
         name: 'Heatmap Metric Source',
         x: 0,
@@ -2409,60 +2449,6 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body.message).toContain(
         'Heatmap tiles require a Trace source',
       );
-    });
-
-    it('rejects heatmap tile with empty valueExpression', async () => {
-      const heatmapEmptyValue = {
-        name: 'Heatmap Empty Value',
-        x: 0,
-        y: 0,
-        w: 6,
-        h: 3,
-        config: {
-          displayType: 'heatmap',
-          sourceId: traceSource._id.toString(),
-          select: [
-            {
-              aggFn: 'heatmap',
-              valueExpression: '',
-            },
-          ],
-        },
-      };
-
-      await authRequest('post', BASE_URL)
-        .send({
-          name: 'Dashboard with Heatmap Empty Value',
-          tiles: [heatmapEmptyValue],
-          tags: [],
-        })
-        .expect(400);
-    });
-
-    it('rejects heatmap tile with multiple select items', async () => {
-      const heatmapMultiSelect = {
-        name: 'Heatmap Multi Select',
-        x: 0,
-        y: 0,
-        w: 6,
-        h: 3,
-        config: {
-          displayType: 'heatmap',
-          sourceId: traceSource._id.toString(),
-          select: [
-            { aggFn: 'heatmap', valueExpression: 'Duration' },
-            { aggFn: 'heatmap', valueExpression: 'OtherValue' },
-          ],
-        },
-      };
-
-      await authRequest('post', BASE_URL)
-        .send({
-          name: 'Dashboard with Heatmap Multi Select',
-          tiles: [heatmapMultiSelect],
-          tags: [],
-        })
-        .expect(400);
     });
 
     it('round-trips a heatmap tile with only required fields', async () => {

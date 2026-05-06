@@ -1483,7 +1483,7 @@
           }
         }
       },
-      "HeatmapBuilderChartConfig": {
+      "HeatmapChartConfig": {
         "type": "object",
         "required": [
           "displayType",
@@ -1885,7 +1885,7 @@
             "$ref": "#/components/schemas/PieChartConfig"
           },
           {
-            "$ref": "#/components/schemas/HeatmapBuilderChartConfig"
+            "$ref": "#/components/schemas/HeatmapChartConfig"
           },
           {
             "$ref": "#/components/schemas/SearchChartConfig"
@@ -1902,7 +1902,7 @@
             "table": "#/components/schemas/TableChartConfig",
             "number": "#/components/schemas/NumberChartConfig",
             "pie": "#/components/schemas/PieChartConfig",
-            "heatmap": "#/components/schemas/HeatmapBuilderChartConfig",
+            "heatmap": "#/components/schemas/HeatmapChartConfig",
             "search": "#/components/schemas/SearchChartConfig",
             "markdown": "#/components/schemas/MarkdownChartConfig"
           }
