@@ -14,7 +14,7 @@ import { getSqlEditor } from '../utils/locators';
  * Used with verifyTileFormFromConfig
  */
 export type TileConfig = {
-  displayType: Exclude<DisplayType, 'heatmap' | 'timeline'>;
+  displayType: Exclude<DisplayType, DisplayType.Heatmap | DisplayType.Timeline>;
   sourceId?: string;
   select?:
     | {

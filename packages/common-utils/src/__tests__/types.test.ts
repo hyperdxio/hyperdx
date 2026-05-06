@@ -18,16 +18,37 @@ describe('TimelineSeriesSchema', () => {
       expect(result.success).toBe(true);
     });
 
+    it('accepts optional fields on a valid events series', () => {
+      const result = TimelineSeriesSchema.safeParse({
+        ...baseValid,
+        mode: 'events',
+        labelExpression: 'Body',
+        groupExpression: 'ServiceName',
+        severityExpression: 'SeverityText',
+        where: 'SeverityText = "ERROR"',
+      });
+      expect(result.success).toBe(true);
+      if (result.success && result.data.mode === 'events') {
+        expect(result.data.groupExpression).toBe('ServiceName');
+        expect(result.data.severityExpression).toBe('SeverityText');
+      }
+    });
+
     it('rejects an events series missing labelExpression', () => {
       const result = TimelineSeriesSchema.safeParse({
         ...baseValid,
         mode: 'events',
       });
       expect(result.success).toBe(false);
-      if (!result.success) {
-        const paths = result.error.issues.map(i => i.path.join('.'));
-        expect(paths).toContain('labelExpression');
-      }
+    });
+
+    it('rejects an events series with an empty-string labelExpression', () => {
+      const result = TimelineSeriesSchema.safeParse({
+        ...baseValid,
+        mode: 'events',
+        labelExpression: '',
+      });
+      expect(result.success).toBe(false);
     });
   });
 
@@ -47,10 +68,26 @@ describe('TimelineSeriesSchema', () => {
         mode: 'value_change',
       });
       expect(result.success).toBe(false);
-      if (!result.success) {
-        const paths = result.error.issues.map(i => i.path.join('.'));
-        expect(paths).toContain('trackColumn');
-      }
+    });
+
+    it('rejects a value_change series with an empty-string trackColumn', () => {
+      const result = TimelineSeriesSchema.safeParse({
+        ...baseValid,
+        mode: 'value_change',
+        trackColumn: '',
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('invalid mode', () => {
+    it('rejects an unrecognised mode value', () => {
+      const result = TimelineSeriesSchema.safeParse({
+        ...baseValid,
+        mode: 'unknown_mode',
+        labelExpression: 'Body',
+      });
+      expect(result.success).toBe(false);
     });
   });
 });

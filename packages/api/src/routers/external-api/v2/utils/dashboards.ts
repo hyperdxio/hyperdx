@@ -166,6 +166,7 @@ const convertToExternalTileChartConfig = (
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      // TODO(#2226): add Timeline raw-SQL external-API support when renderer lands
       case DisplayType.Timeline:
         logger.error(
           { config },
@@ -269,6 +270,7 @@ const convertToExternalTileChartConfig = (
         markdown: stringValueOrDefault(config.markdown, ''),
       };
     case DisplayType.Heatmap:
+    // TODO(#2226): add Timeline builder external-API support when renderer lands
     case DisplayType.Timeline:
     case undefined:
       logger.error(
