@@ -280,6 +280,11 @@ const mcpHeatmapSelectItemSchema = z.object({
     .describe('Color scale for the heatmap. Defaults to "log".'),
 });
 
+// Heatmap charts apply where/whereLanguage at the chart-config level rather
+// than per-series. The HeatmapSeriesEditor in the UI doesn't render per-row
+// filters and the persisted shape (BuilderChartConfig via SelectSQLStatement)
+// stores them at the top level, mirrored by the external API at
+// packages/api/src/utils/zod.ts.
 const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z
@@ -290,6 +295,12 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Source ID. Call hyperdx_list_sources to find available sources.',
       ),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
     select: z
       .array(mcpHeatmapSelectItemSchema)
       .length(1)
@@ -396,5 +407,6 @@ export const mcpTilesParam = z
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "time", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Distribution", "config": { "displayType": "heatmap", "sourceId": "<from list_sources>", ' +
+      '"where": "SpanKind:SPAN_KIND_SERVER", "whereLanguage": "lucene", ' +
       '"select": [{ "aggFn": "heatmap", "valueExpression": "Duration", "heatmapScaleType": "log" }] } }',
   );
