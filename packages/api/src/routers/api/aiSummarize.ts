@@ -12,6 +12,11 @@
 // Scope (initial release): only `event` and `pattern` kinds. The `alert`
 // kind, conversation history (`messages`), and trace-context enrichment
 // land in follow-up PRs as their UI consumers ship.
+//
+// Tones: `default` is the only tone exposed in the standard UI. `noir` is
+// kept on the API surface as a hidden-gem alternate the front-end gates
+// behind a debug flag (wired in PR D). New tones are added here when (and
+// only when) the UI is ready to consume them.
 
 import { z } from 'zod';
 
@@ -22,12 +27,7 @@ import { z } from 'zod';
 export const SUMMARIZE_KINDS = ['event', 'pattern'] as const;
 export type SummarizeKind = (typeof SUMMARIZE_KINDS)[number];
 
-export const TONE_VALUES = [
-  'default',
-  'noir',
-  'attenborough',
-  'shakespeare',
-] as const;
+export const TONE_VALUES = ['default', 'noir'] as const;
 export type Tone = (typeof TONE_VALUES)[number];
 
 export const summarizeBodySchema = z.object({
@@ -42,9 +42,6 @@ export const summarizeBodySchema = z.object({
 
 const TONE_SUFFIXES: Record<Exclude<Tone, 'default'>, string> = {
   noir: 'Write in the style of a hard-boiled detective noir narrator.',
-  attenborough:
-    'Write in the style of Sir David Attenborough narrating a nature documentary.',
-  shakespeare: 'Write in the style of a Shakespearean dramatic monologue.',
 };
 
 // ---------------------------------------------------------------------------
