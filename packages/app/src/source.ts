@@ -231,12 +231,51 @@ export function useDeleteSource() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id }: { id: string }) => {
+    mutationFn: async (arg: string | { id: string }) => {
+      const id = typeof arg === 'string' ? arg : arg.id;
       if (IS_LOCAL_MODE) {
         localSources.delete(id);
         return;
       }
       return hdxServer(`sources/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] });
+    },
+  });
+}
+
+/**
+ * Berg-flavoured save mutation: PUT for an existing source (`id` set),
+ * POST otherwise. Used by the SourcesList page and the EditSourceModal
+ * shared between "Save as Source" (Catalog) and "Edit" (list).
+ */
+export function useSaveSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      source: TSourceNoId & { id?: string },
+    ): Promise<TSource> => {
+      if (IS_LOCAL_MODE) {
+        if (source.id) {
+          localSources.update(source.id, source as TSource);
+          return source as TSource;
+        }
+        return localSources.create(source);
+      }
+      if (source.id) {
+        // PUT returns no body in our API — round-trip through the cached list.
+        await hdxServer(`sources/${source.id}`, {
+          method: 'PUT',
+          json: source,
+        });
+        return source as TSource;
+      }
+      return hdxServer(`sources`, {
+        method: 'POST',
+        json: source,
+      }).json<TSource>();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sources'] });

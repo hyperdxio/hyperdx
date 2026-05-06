@@ -104,7 +104,7 @@ const DBRowSidePanel = ({
   aliasWith,
   source,
   isNestedPanel = false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   setSubDrawerOpen: _setSubDrawerOpen,
   onClose,
   breadcrumbPath,

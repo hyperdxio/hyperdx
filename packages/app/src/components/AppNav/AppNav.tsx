@@ -21,6 +21,7 @@ import {
   IconFolderOpen,
   IconLayoutGrid,
   IconSettings,
+  IconStack,
   IconTable,
 } from '@tabler/icons-react';
 
@@ -389,6 +390,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </div>
               </Collapse>
             )}
+            {/* Sources */}
+            <AppNavLink
+              label="Sources"
+              href="/sources/list"
+              icon={<IconStack size={16} />}
+              isActive={pathname?.startsWith('/sources')}
+            />
+
             {/* Simple nav links from config */}
             {NAV_LINKS.filter(link => !link.cloudOnly || !IS_LOCAL_MODE).map(
               link => (

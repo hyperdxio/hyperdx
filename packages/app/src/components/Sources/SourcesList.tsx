@@ -1,241 +1,330 @@
-import React, { useState } from 'react';
-import { SourceKind } from '@berg/common-utils/dist/types';
+import React, { useCallback, useMemo, useState } from 'react';
+import Head from 'next/head';
+import Link from 'next/link';
+import Router from 'next/router';
+import { formatDistanceToNow } from 'date-fns';
+import type { TSource } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
-  Box,
-  Button,
-  Card,
-  Divider,
-  Flex,
+  Container,
   Group,
   Loader,
   Stack,
+  Table,
   Text,
-  Title,
+  TextInput,
+  Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   IconAlertCircle,
-  IconChevronDown,
-  IconChevronUp,
-  IconPlus,
-  IconRefresh,
-  IconServer,
+  IconClock,
+  IconDatabase,
+  IconPencil,
+  IconSearch,
   IconStack,
+  IconTerminal2,
+  IconTrash,
 } from '@tabler/icons-react';
 
-import { IS_LOCAL_MODE } from '@/config';
-import { useConnections } from '@/connection';
-import { useSources } from '@/source';
-import { capitalizeFirstLetter } from '@/utils';
+import EmptyState from '@/components/EmptyState';
+import { PageHeader } from '@/components/PageHeader';
+import { useDeleteSource, useSources } from '@/source';
+import { useConfirm } from '@/useConfirm';
 
-import { TableSourceForm } from './SourceForm';
+import { EditSourceModal } from './EditSourceModal';
 
-import styles from './Sources.module.scss';
-
-export interface SourcesListProps {
-  /** Callback when add source button is clicked */
-  onAddSource?: () => void;
-  /** Whether to wrap content in a Card component (default: true) */
-  withCard?: boolean;
-  /** Whether the card has a border (default: true) */
-  withBorder?: boolean;
-  /** Custom className for the card */
-  cardClassName?: string;
-  /** Visual variant: 'compact' for smaller text, 'default' for standard sizing */
-  variant?: 'compact' | 'default';
-  /** Whether to show empty state UI (default: true) */
-  showEmptyState?: boolean;
+/**
+ * Build the dotted reference shown in the Table column. Berg-native sources
+ * carry `catalog/database/table`; older sources still use the legacy
+ * `from.databaseName/tableName` pair, so we fall back to that.
+ */
+function tableRef(s: TSource): string {
+  if (s.catalog && s.database && s.table) {
+    return `${s.catalog}/${s.database}/${s.table}`;
+  }
+  if (s.from?.databaseName && s.from?.tableName) {
+    return `${s.from.databaseName}/${s.from.tableName}`;
+  }
+  return '—';
 }
 
-export function SourcesList({
-  onAddSource,
-  withCard = true,
-  withBorder = true,
-  cardClassName,
-  variant = 'compact',
-  showEmptyState = true,
-}: SourcesListProps) {
-  const {
-    data: connections,
-    isLoading: isLoadingConnections,
-    error: connectionsError,
-    refetch: refetchConnections,
-  } = useConnections();
-  const {
-    data: sources,
-    isLoading: isLoadingSources,
-    error: sourcesError,
-    refetch: refetchSources,
-  } = useSources();
+function displayName(s: TSource): string {
+  return s.displayName || s.name || '(unnamed)';
+}
 
-  const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
-  const [isCreatingSource, setIsCreatingSource] = useState(false);
+function timeColumnOf(s: TSource): string | undefined {
+  return s.timestampColumn || s.timestampValueExpression || undefined;
+}
 
-  const isLoading = isLoadingConnections || isLoadingSources;
-  const error = connectionsError || sourcesError;
+export default function SourcesList() {
+  const { data: sources, isLoading, isError, error, refetch } = useSources();
+  const deleteSource = useDeleteSource();
+  const confirm = useConfirm();
 
-  const handleRetry = () => {
-    refetchConnections();
-    refetchSources();
-  };
+  const [filter, setFilter] = useState('');
+  const [editing, setEditing] = useState<TSource | null>(null);
 
-  // Sizing based on variant
-  const textSize = variant === 'compact' ? 'sm' : 'md';
-  const subtextSize = variant === 'compact' ? 'xs' : 'sm';
-  const iconSize = variant === 'compact' ? 11 : 14;
-  const buttonSize = variant === 'compact' ? 'xs' : 'sm';
+  const filtered = useMemo(() => {
+    if (!sources) return [];
+    const q = filter.trim().toLowerCase();
+    if (!q)
+      return [...sources].sort((a, b) =>
+        displayName(a).localeCompare(displayName(b)),
+      );
+    return sources
+      .filter(s => {
+        const name = displayName(s).toLowerCase();
+        const ref = tableRef(s).toLowerCase();
+        return name.includes(q) || ref.includes(q);
+      })
+      .sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  }, [sources, filter]);
 
-  const Wrapper = withCard ? Card : React.Fragment;
-  const wrapperProps = withCard
-    ? {
-        withBorder,
-        p: 'md',
-        radius: 'sm',
-        className: cardClassName ?? styles.sourcesCard,
-      }
-    : {};
+  const handleDelete = useCallback(
+    async (source: TSource) => {
+      const ok = await confirm(
+        `Delete source "${displayName(source)}"? This action cannot be undone.`,
+        'Delete',
+        { variant: 'danger' },
+      );
+      if (!ok) return;
+      deleteSource.mutate(
+        { id: source.id },
+        {
+          onSuccess: () =>
+            notifications.show({ message: 'Source deleted', color: 'green' }),
+          onError: () =>
+            notifications.show({
+              message: 'Failed to delete source',
+              color: 'red',
+            }),
+        },
+      );
+    },
+    [confirm, deleteSource],
+  );
 
-  if (isLoading) {
-    return (
-      <Wrapper {...wrapperProps}>
-        <Flex justify="center" align="center" py="xl">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed" ml="sm">
-            Loading sources...
-          </Text>
-        </Flex>
-      </Wrapper>
-    );
-  }
+  const handleOpenInSearch = useCallback((s: TSource) => {
+    Router.push({ pathname: '/search', query: { source: s.id } });
+  }, []);
 
-  if (error) {
-    return (
-      <Wrapper {...wrapperProps}>
-        <Alert
-          icon={<IconAlertCircle size={16} />}
-          title="Failed to load sources"
-          color="red"
-          variant="light"
-        >
-          <Text size="sm" mb="sm">
-            {error instanceof Error
-              ? error.message
-              : 'An error occurred while loading data sources.'}
-          </Text>
-          <Button
-            size="xs"
-            variant="danger"
-            leftSection={<IconRefresh size={14} />}
-            onClick={handleRetry}
-          >
-            Retry
-          </Button>
-        </Alert>
-      </Wrapper>
-    );
-  }
-
-  const isEmpty = !sources || sources.length === 0;
+  const handleOpenInSQL = useCallback((s: TSource) => {
+    // The dedicated `/sql` editor route lands later; reuse `/clickhouse`
+    // for the SQL workspace — same query-string contract.
+    Router.push({ pathname: '/clickhouse', query: { sourceId: s.id } });
+  }, []);
 
   return (
-    <Wrapper {...wrapperProps}>
-      <Stack gap="md">
-        {isEmpty && !isCreatingSource && showEmptyState && (
-          <Flex direction="column" align="center" py="xl" gap="sm">
-            <IconStack size={32} color="var(--color-text-muted)" />
-            <Title size="sm" ta="center" c="var(--color-text-muted)">
-              No data sources configured yet.
-            </Title>
-            <Text size="xs" ta="center" c="var(--color-text-muted)">
-              Add a source to start querying your data.
-            </Text>
-          </Flex>
-        )}
-
-        {sources?.map((s, index) => (
-          <React.Fragment key={s.id}>
-            <Flex justify="space-between" align="center">
-              <div>
-                <Text size={textSize} fw={500}>
-                  {s.name}
-                </Text>
-                <Text size={subtextSize} c="dimmed" mt={4}>
-                  <Group gap="xs">
-                    {capitalizeFirstLetter(s.kind)}
-                    <Group gap={4}>
-                      <IconServer size={iconSize} />
-                      {connections?.find(c => c.id === s.connection)?.name}
-                    </Group>
-                    <Group gap={4}>
-                      {s.from && (
-                        <>
-                          <IconStack size={iconSize} />
-                          {s.from.databaseName}
-                          {s.kind === SourceKind.Metric ? '' : '.'}
-                          {s.from.tableName}
-                        </>
-                      )}
-                    </Group>
-                  </Group>
-                </Text>
-              </div>
-              <ActionIcon
-                variant="secondary"
-                size={buttonSize}
-                onClick={() =>
-                  setEditedSourceId(editedSourceId === s.id ? null : s.id)
-                }
-              >
-                {editedSourceId === s.id ? (
-                  <IconChevronUp size={iconSize + 2} />
-                ) : (
-                  <IconChevronDown size={iconSize + 2} />
-                )}
-              </ActionIcon>
-            </Flex>
-            {editedSourceId === s.id && (
-              <Box mt="xs">
-                <TableSourceForm
-                  sourceId={s.id}
-                  onSave={() => setEditedSourceId(null)}
-                />
-              </Box>
-            )}
-            {index < (sources?.length ?? 0) - 1 && <Divider />}
-          </React.Fragment>
-        ))}
-
-        {isCreatingSource && (
-          <>
-            {sources && sources.length > 0 && <Divider />}
-            <TableSourceForm
-              isNew
-              onCreate={() => setIsCreatingSource(false)}
-              onCancel={() => setIsCreatingSource(false)}
+    <div
+      data-testid="sources-list-page"
+      style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
+    >
+      <Head>
+        <title>Sources</title>
+      </Head>
+      <PageHeader>Sources</PageHeader>
+      <Container
+        maw={1200}
+        py="lg"
+        px="lg"
+        w="100%"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
+        <Stack gap="md">
+          <Group justify="space-between" align="center">
+            <TextInput
+              placeholder="Filter by name or table reference"
+              leftSection={<IconSearch size={16} />}
+              value={filter}
+              onChange={e => setFilter(e.currentTarget.value)}
+              style={{ flex: 1, maxWidth: 400 }}
+              aria-label="Filter sources"
             />
-          </>
-        )}
+            <Text size="sm" c="dimmed">
+              {filtered.length} source{filtered.length === 1 ? '' : 's'}
+            </Text>
+          </Group>
 
-        {!IS_LOCAL_MODE && !isCreatingSource && (
-          <Flex
-            justify="flex-end"
-            pt={sources && sources.length > 0 ? 'md' : 0}
-          >
-            <Button
-              variant="secondary"
-              size={buttonSize}
-              leftSection={<IconPlus size={14} />}
-              onClick={() => {
-                setIsCreatingSource(true);
-                onAddSource?.();
-              }}
+          {isLoading && (
+            <Group gap="xs" py="md">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                Loading sources…
+              </Text>
+            </Group>
+          )}
+
+          {isError && (
+            <Alert
+              icon={<IconAlertCircle size={16} />}
+              color="red"
+              variant="light"
+              title="Failed to load sources"
             >
-              Add source
-            </Button>
-          </Flex>
-        )}
-      </Stack>
-    </Wrapper>
+              <Text size="sm">{(error as Error)?.message}</Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                mt="xs"
+                component="button"
+                onClick={() => refetch()}
+                style={{ cursor: 'pointer', background: 'none', border: 0 }}
+              >
+                Retry
+              </Text>
+            </Alert>
+          )}
+
+          {!isLoading && !isError && filtered.length === 0 && (
+            <EmptyState
+              variant="card"
+              icon={<IconStack size={28} />}
+              title={
+                sources && sources.length > 0
+                  ? 'No sources match this filter'
+                  : 'No sources yet'
+              }
+              description={
+                sources && sources.length > 0 ? (
+                  'Try a different search term.'
+                ) : (
+                  <>
+                    Pick a table from the <Link href="/catalog">Catalog</Link>{' '}
+                    and click "Save as Source" to register it here.
+                  </>
+                )
+              }
+            />
+          )}
+
+          {!isLoading && !isError && filtered.length > 0 && (
+            <Table
+              withTableBorder
+              verticalSpacing="xs"
+              striped
+              highlightOnHover
+            >
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Table</Table.Th>
+                  <Table.Th>Time column</Table.Th>
+                  <Table.Th>Default sort</Table.Th>
+                  <Table.Th>Last queried</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {filtered.map(s => {
+                  const ts = timeColumnOf(s);
+                  return (
+                    <Table.Tr key={s.id} data-testid={`source-row-${s.id}`}>
+                      <Table.Td>
+                        <Group gap={6} wrap="nowrap">
+                          {ts && (
+                            <Tooltip label={`time column: ${ts}`}>
+                              <IconClock size={14} aria-label="time-enabled" />
+                            </Tooltip>
+                          )}
+                          <Text size="sm" fw={500}>
+                            {displayName(s)}
+                          </Text>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="nowrap">
+                          <IconDatabase size={12} />
+                          <Text size="xs" ff="monospace">
+                            {tableRef(s)}
+                          </Text>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        {ts ? (
+                          <Text size="xs" ff="monospace">
+                            {ts}
+                          </Text>
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            — flat
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs" ff="monospace" c="dimmed">
+                          {s.defaultSort || s.orderByExpression || '—'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs" c="dimmed">
+                          {s.lastQueriedAt
+                            ? `${formatDistanceToNow(new Date(s.lastQueriedAt))} ago`
+                            : 'Never'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right' }}>
+                        <Group gap={4} justify="flex-end" wrap="nowrap">
+                          <Tooltip label="Open in Search">
+                            <ActionIcon
+                              variant="subtle"
+                              size="sm"
+                              aria-label={`Open ${displayName(s)} in Search`}
+                              onClick={() => handleOpenInSearch(s)}
+                            >
+                              <IconSearch size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Open in SQL">
+                            <ActionIcon
+                              variant="subtle"
+                              size="sm"
+                              aria-label={`Open ${displayName(s)} in SQL`}
+                              onClick={() => handleOpenInSQL(s)}
+                            >
+                              <IconTerminal2 size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Edit">
+                            <ActionIcon
+                              variant="subtle"
+                              size="sm"
+                              aria-label={`Edit ${displayName(s)}`}
+                              onClick={() => setEditing(s)}
+                            >
+                              <IconPencil size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Delete">
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              size="sm"
+                              aria-label={`Delete ${displayName(s)}`}
+                              onClick={() => handleDelete(s)}
+                            >
+                              <IconTrash size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          )}
+        </Stack>
+      </Container>
+
+      {editing && (
+        <EditSourceModal
+          opened
+          onClose={() => setEditing(null)}
+          source={editing}
+        />
+      )}
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Router from 'next/router';
 import {
   Alert,
@@ -13,7 +13,6 @@ import {
   Tabs,
   Text,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import {
   IconAlertCircle,
   IconCode,
@@ -27,9 +26,11 @@ import {
 
 import { useTableSchema } from '@/hooks/useTableSchema';
 
+import { EditSourceModal } from '../Sources/EditSourceModal';
+
 import { CatalogTabDDL } from './CatalogTabDDL';
 import { CatalogTabSample } from './CatalogTabSample';
-import { CatalogTabSchema } from './CatalogTabSchema';
+import { CatalogTabSchema, pickRecommendedTimestamp } from './CatalogTabSchema';
 import { CatalogTabStats } from './CatalogTabStats';
 
 export interface CatalogTableDetailProps {
@@ -54,16 +55,10 @@ export function CatalogTableDetail({
     error,
   } = useTableSchema(catalogId, database, table);
 
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+
   const handleSaveAsSource = () => {
-    // Task 10 owns the Edit Source modal. For now we just acknowledge —
-    // the catalog/database/table reference will be passed through to the
-    // modal once that lands. Keeping this as a stub avoids us forcing the
-    // shape of the modal API before Task 10 picks it.
-    notifications.show({
-      title: 'Coming soon',
-      message:
-        'Save as Source opens the Edit Source modal — Task 10 builds this.',
-    });
+    setSaveModalOpen(true);
   };
 
   const handleOpenInSearch = () => {
@@ -163,6 +158,20 @@ export function CatalogTableDetail({
           >
             <Text size="sm">{(error as Error)?.message}</Text>
           </Alert>
+        )}
+
+        {schema && saveModalOpen && (
+          <EditSourceModal
+            opened={saveModalOpen}
+            onClose={() => setSaveModalOpen(false)}
+            defaults={{
+              catalog: catalogId,
+              database,
+              table,
+              displayName: table,
+              timestampColumn: pickRecommendedTimestamp(schema.columns),
+            }}
+          />
         )}
 
         {schema && (

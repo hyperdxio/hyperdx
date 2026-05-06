@@ -10,12 +10,11 @@ import {
   TSource,
   TTraceSource,
 } from '@berg/common-utils/dist/types';
-import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
+import { Button, Flex, Loader, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';
 
-import { ConnectionForm } from '@/components/ConnectionForm';
-import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
@@ -27,8 +26,8 @@ import {
 } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
+import { OnboardingSourcesList } from './Sources/OnboardingSourcesList';
 import { TableSourceForm } from './Sources/SourceForm';
-import { SourcesList } from './Sources/SourcesList';
 
 async function addOtelDemoSources({
   connectionId,
@@ -592,7 +591,7 @@ function OnboardingModalComponent({
     hasAutodetected,
   ]);
 
-  const handleDemoServerClick = useCallback(async () => {
+  const _handleDemoServerClick = useCallback(async () => {
     if (IS_CLICKHOUSE_BUILD) return;
     try {
       if (sources) {
@@ -763,63 +762,21 @@ function OnboardingModalComponent({
     >
       {step === 'connection' && connections != null && (
         <>
+          {/*
+            Berg compatibility shim: the Connection model is gone, so the
+            connection step is a no-op. We jump straight to the source step
+            so the modal still renders something while the legacy onboarding
+            flow gets reworked alongside Glue/Athena auth.
+          */}
           <Text size="sm" mb="md">
-            Lets set up your connection to ClickHouse
+            Connections are managed via IAM in Berg — pick a table to get
+            started.
           </Text>
-          {connections.length === 0 ? (
-            <ConnectionForm
-              connection={{
-                id: '',
-                name: 'Default',
-                host: IS_CLICKHOUSE_BUILD
-                  ? window.location.origin
-                  : 'http://localhost:8123',
-                username: 'default',
-                password: '',
-              }}
-              onSave={() => {
-                if (hasAutodetected) {
-                  setStep('source');
-                } else {
-                  setStep('auto-detect');
-                }
-              }}
-              isNew={true}
-            />
-          ) : (
-            <ConnectionForm
-              connection={connections[0]}
-              isNew={false}
-              onSave={() => {
-                // If we've already auto-detected, just go to manual source setup
-                if (hasAutodetected) {
-                  setStep('source');
-                } else {
-                  setStep('auto-detect');
-                }
-              }}
-              showCancelButton={false}
-              showDeleteButton={false}
-            />
-          )}
-          {!IS_LOCAL_MODE && (
-            <Text size="xs" mt="md">
-              You can always add and edit connections later.
-            </Text>
-          )}
-          {!IS_CLICKHOUSE_BUILD && (
-            <>
-              <Divider label="OR" my="md" />
-              <Button
-                data-testid="demo-server-button"
-                variant="secondary"
-                w="100%"
-                onClick={handleDemoServerClick}
-              >
-                Connect to Demo Server
-              </Button>
-            </>
-          )}
+          <Flex justify="flex-end">
+            <Button variant="primary" onClick={() => setStep('source')}>
+              Continue
+            </Button>
+          </Flex>
         </>
       )}
       {step === 'auto-detect' && (
@@ -859,7 +816,7 @@ function OnboardingModalComponent({
                 {autoDetectedSources.length > 1 ? 's' : ''} from your
                 connection. You can review, edit, or continue.
               </Text>
-              <SourcesList
+              <OnboardingSourcesList
                 withCard={false}
                 variant="default"
                 showEmptyState={false}
