@@ -143,7 +143,7 @@ export class AlertsPage {
 
   async selectTag(tag: string) {
     await this.tagFilter.click();
-    await this.tagFilter.getByRole('searchbox').fill(tag);
+    await this.tagFilter.getByRole('searchbox').pressSequentially(tag);
     await this.page.getByRole('option', { name: tag, exact: true }).click();
   }
 
