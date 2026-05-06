@@ -8,6 +8,17 @@ const SESSION_FILE = path.join(CONFIG_DIR, 'session.json');
 export interface SessionConfig {
   appUrl: string;
   cookies: string[];
+  /**
+   * Active team ID for multi-team users. When set, the CLI sends an
+   * `x-hdx-team` header on every API/ClickHouse-proxy request so the
+   * server scopes data to that team. Persisted across CLI invocations
+   * so the user doesn't have to re-pick on every command.
+   *
+   * Only meaningful when the deployment supports multi-team membership
+   * (e.g. HyperDX Cloud / EE). On single-team OSS deployments this is
+   * either undefined or set to the only team's ID.
+   */
+  activeTeamId?: string;
 }
 
 function ensureConfigDir() {
@@ -44,6 +55,18 @@ export function loadSession(): SessionConfig | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Update the saved session's active team without touching cookies or appUrl.
+ * Pass `undefined` to clear the active team.
+ *
+ * No-op if there's no saved session.
+ */
+export function setActiveTeam(activeTeamId: string | undefined): void {
+  const session = loadSession();
+  if (!session) return;
+  saveSession({ ...session, activeTeamId });
 }
 
 export function clearSession(): void {

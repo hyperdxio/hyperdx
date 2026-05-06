@@ -75,7 +75,7 @@ import {
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
 import { useCsvExport } from '@/hooks/useCsvExport';
-import { useTableMetadata } from '@/hooks/useMetadata';
+import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
 import useRowWhere, {
@@ -1362,14 +1362,15 @@ export const RawLogTable = memo(
   },
 );
 
-export function appendSelectWithPrimaryAndPartitionKey(
+export function appendSelectWithAdditionalKeys(
   select: SelectList,
   primaryKeys: string,
   partitionKey: string,
+  extraKeys: string[] = [],
 ): { select: SelectList; additionalKeysLength: number } {
   const partitionKeyArr = extractColumnReferencesFromKey(partitionKey);
   const primaryKeyArr = extractColumnReferencesFromKey(primaryKeys);
-  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr]);
+  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr, ...extraKeys]);
   if (typeof select === 'string') {
     const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
@@ -1395,8 +1396,9 @@ function getSelectLength(select: SelectList): number {
   }
 }
 
-export function useConfigWithPrimaryAndPartitionKey(
+export function useConfigWithAdditionalSelect(
   config: BuilderChartConfigWithDateRange,
+  sourceId?: string,
 ) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -1404,24 +1406,50 @@ export function useConfigWithPrimaryAndPartitionKey(
     connectionId: config.connection,
   });
 
+  // Only check for row-ID columns for row-level queries (sourceId present).
+  // Skip for aggregate queries (e.g. patterns) where extra keys are irrelevant.
+  const { data: columns } = useColumns(
+    {
+      databaseName: config.from.databaseName,
+      tableName: config.from.tableName,
+      connectionId: config.connection,
+    },
+    { enabled: !!sourceId },
+  );
+
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;
 
-  const mergedConfig = useMemo(() => {
+  return useMemo(() => {
     if (primaryKey == null || partitionKey == null) {
       return undefined;
     }
 
-    const { select, additionalKeysLength } =
-      appendSelectWithPrimaryAndPartitionKey(
-        config.select,
-        primaryKey,
-        partitionKey,
-      );
-    return { ...config, select, additionalKeysLength };
-  }, [primaryKey, partitionKey, config]);
+    let extraKeys: string[] = [];
 
-  return mergedConfig;
+    if (sourceId) {
+      const engineFull = tableMetadata?.engine_full ?? '';
+
+      const hasBlockColumns =
+        engineFull.includes('enable_block_number_column = 1') &&
+        engineFull.includes('enable_block_offset_column = 1');
+
+      if (hasBlockColumns) {
+        extraKeys = ['_block_number', '_block_offset'];
+      } else if (columns?.some(c => c.name === '__hdx_id')) {
+        extraKeys = ['__hdx_id'];
+      }
+    }
+
+    const { select, additionalKeysLength } = appendSelectWithAdditionalKeys(
+      config.select,
+      primaryKey,
+      partitionKey,
+      extraKeys,
+    );
+
+    return { ...config, select, additionalKeysLength };
+  }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
 }
 
 function selectColumnMapWithoutAdditionalKeys(
@@ -1552,7 +1580,7 @@ function DBSqlRowTableComponent({
     return base;
   }, [me, config, orderByArray]);
 
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey(mergedConfigObj);
+  const mergedConfig = useConfigWithAdditionalSelect(mergedConfigObj, sourceId);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
