@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { pick } from 'lodash';
 import {
   GetKeyValueCall,
   optimizeGetKeyValuesCalls,

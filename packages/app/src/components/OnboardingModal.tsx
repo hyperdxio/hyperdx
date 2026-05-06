@@ -52,8 +52,8 @@ function OnboardingModalComponent({
           credentials are stored in {brandName}.
         </Text>
         <Text size="sm">
-          Browse the Catalog to find a table, then save it as a Source to use
-          it in Search and Dashboards.
+          Browse the Catalog to find a table, then save it as a Source to use it
+          in Search and Dashboards.
         </Text>
         <Flex justify="flex-end" gap="sm">
           <Button variant="subtle" onClick={() => setDismissed(true)}>

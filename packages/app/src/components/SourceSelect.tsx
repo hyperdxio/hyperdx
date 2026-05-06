@@ -79,18 +79,15 @@ function SourceSelectControlledComponent({
   SelectProps) {
   const { data } = useSources();
 
-  const renderOption = useCallback(
-    ({ option }: { option: ComboboxItem }) => {
-      const icon = OPTION_ICONS[option.value] ?? <IconStack size={14} />;
-      return (
-        <Group gap="xs" wrap="nowrap">
-          {icon}
-          {option.label}
-        </Group>
-      );
-    },
-    [],
-  );
+  const renderOption = useCallback(({ option }: { option: ComboboxItem }) => {
+    const icon = OPTION_ICONS[option.value] ?? <IconStack size={14} />;
+    return (
+      <Group gap="xs" wrap="nowrap">
+        {icon}
+        {option.label}
+      </Group>
+    );
+  }, []);
 
   const hasActions = !!onCreate || !!onEdit;
 
