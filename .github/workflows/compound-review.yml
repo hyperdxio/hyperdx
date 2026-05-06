@@ -150,8 +150,12 @@ jobs:
             `✅ No critical issues found.` and put any P2 advice underneath.
 
             CRITICAL OUTPUT REQUIREMENTS:
-            1. Return a JSON object with a single "review" field containing the
-               full markdown report.
+            1. Return a JSON object with a single "review" field whose VALUE
+               is a plain markdown STRING. Do NOT put another JSON object
+               inside the "review" string -- the workflow has observed the
+               skill's tier-2 output looking JSON-shaped and the model
+               wrapping it a second time, which posts raw JSON in the
+               comment. The `review` value must be markdown text only.
             2. The review markdown MUST start with EXACTLY these two lines:
                <!-- compound-engineering-review -->
                ## Compound Engineering Review
@@ -173,16 +177,26 @@ jobs:
           direction: last
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
-      # unparsed for the sibling claude-code-review workflow. Extract the
-      # review field via jq for reliability.
+      # unparsed for the sibling claude-code-review workflow. Extract via jq.
+      #
+      # Defensive double-unwrap: the model has been observed to return
+      # `{"review": "{\"review\": \"<markdown>\"}"}` -- wrapping its own JSON
+      # output a second time when the underlying skill returns a JSON-shaped
+      # response. Detect that case (the inner string parses as an object with
+      # a `review` key) and unwrap once more so we post markdown, not JSON.
       - name: Extract review from structured output
         id: extract
         env:
           STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
         run: |
+          REVIEW="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review')"
+          if printf '%s' "$REVIEW" | jq -e 'type == "object" and has("review")' >/dev/null 2>&1; then
+            REVIEW="$(printf '%s' "$REVIEW" | jq -r '.review')"
+          fi
           {
             echo 'review<<COMPOUND_REVIEW_EOF'
-            printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review'
+            printf '%s' "$REVIEW"
+            echo
             echo 'COMPOUND_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 
