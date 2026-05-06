@@ -747,14 +747,26 @@ export function DBTraceWaterfallChartContainer({
     });
   }, [flattenedNodes, showSpans, showLogs]);
 
-  const spanCount = visibleNodes.length;
+  const spanCount = visibleNodes.filter(
+    node => node.type !== SourceKind.Log,
+  ).length;
+  const logCount = visibleNodes.filter(
+    node => node.type === SourceKind.Log,
+  ).length;
   const errorCount = visibleNodes.filter(
     node =>
       node.StatusCode === 'Error' ||
       node.SeverityText?.toLowerCase() === 'error',
   ).length;
 
-  const spanCountString = `${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+  const countParts: string[] = [];
+  if (spanCount > 0) {
+    countParts.push(`${spanCount} span${spanCount !== 1 ? 's' : ''}`);
+  }
+  if (logCount > 0) {
+    countParts.push(`${logCount} log${logCount !== 1 ? 's' : ''}`);
+  }
+  const itemCountString = countParts.join(', ') || '0 spans';
   const errorCountString = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
 
   // TODO: Add duration filter?
@@ -1017,7 +1029,7 @@ export function DBTraceWaterfallChartContainer({
       <Group my="xs" justify="space-between">
         <Group gap="md">
           <Text size="xs">
-            {spanCountString},{' '}
+            {itemCountString},{' '}
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
