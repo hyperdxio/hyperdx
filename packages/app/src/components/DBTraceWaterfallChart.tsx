@@ -766,7 +766,7 @@ export function DBTraceWaterfallChartContainer({
   if (logCount > 0) {
     countParts.push(`${logCount} log${logCount !== 1 ? 's' : ''}`);
   }
-  const itemCountString = countParts.join(', ') || '0 spans';
+  const itemCountString = countParts.join(', ') || '0 items';
   const errorCountString = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
 
   // TODO: Add duration filter?
@@ -1070,6 +1070,7 @@ export function DBTraceWaterfallChartContainer({
                 color="gray"
                 checked={showSpanEvents}
                 onChange={() => setShowSpanEvents(!showSpanEvents)}
+                disabled={!showSpans}
                 data-testid="show-span-events-chip"
                 styles={{
                   label: { paddingInline: 8, height: 22, minHeight: 22 },
