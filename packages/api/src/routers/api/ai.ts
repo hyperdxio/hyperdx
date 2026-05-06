@@ -145,11 +145,21 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 const SUMMARIZE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const SUMMARIZE_RATE_LIMIT_MAX = 30;
 
+// Hard ceiling on model output. Summaries are 4 sentences max per the prompt
+// rules, so ~150 tokens covers the legitimate range; 1024 leaves headroom for
+// future prompt expansion while preventing a misbehaving model from streaming
+// an unbounded response within the per-minute rate limit.
+const SUMMARIZE_MAX_OUTPUT_TOKENS = 1024;
+
 const summarizeRateLimiter = rateLimiter({
   windowMs: SUMMARIZE_RATE_LIMIT_WINDOW_MS,
   max: SUMMARIZE_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  // The /ai router is mounted behind isUserAuthenticated, so req.user is set
+  // in production and the user-id branch is the only one taken. The header /
+  // IP fallback exists for the test harness and as defense-in-depth if the
+  // mount ever changes.
   keyGenerator: req => {
     const userId = req.user?._id?.toString();
     if (userId) return `user:${userId}`;
@@ -174,6 +184,7 @@ router.post(
           model,
           system: systemPrompt,
           experimental_telemetry: { isEnabled: true },
+          maxOutputTokens: SUMMARIZE_MAX_OUTPUT_TOKENS,
           prompt: wrappedPrompt,
         });
 

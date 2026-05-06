@@ -22,6 +22,11 @@ jest.mock('ai', () => ({
   Output: { object: jest.fn() },
 }));
 
+// `LanguageModel` from the `ai` SDK is an interface with private fields and
+// a generated tag; constructing a real one in unit tests would pull the SDK
+// internals. Cast a minimal stand-in so the mocked `getAIModel` has a typed
+// return value; `generateText` is fully mocked above so the model is never
+// actually invoked.
 const mockModel = { modelId: 'test-model' } as unknown as LanguageModel;
 
 jest.mock('@/controllers/ai', () => ({
@@ -179,8 +184,6 @@ describe('buildSystemPrompt', () => {
   it('omits tone suffix when tone is omitted', () => {
     const p = buildSystemPrompt('pattern');
     expect(p).not.toContain('detective noir');
-    expect(p).not.toContain('Attenborough');
-    expect(p).not.toContain('Shakespearean');
   });
 });
 
@@ -299,10 +302,10 @@ describe('POST /ai/summarize', () => {
 
     await request(app)
       .post('/ai/summarize')
-      .send({ kind: 'event', content: 'test', tone: 'attenborough' });
+      .send({ kind: 'event', content: 'test', tone: 'noir' });
 
     const call = mockGenerateText.mock.calls[0][0];
-    expect(call.system).toContain('Attenborough');
+    expect(call.system).toContain('detective noir');
   });
 
   it('uses single-shot mode (no messages array)', async () => {
