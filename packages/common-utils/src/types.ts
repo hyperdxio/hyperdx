@@ -1144,6 +1144,7 @@ export const BaseSourceSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  disabled: z.boolean().optional(),
   querySettings: QuerySettingsSchema.optional(),
   timestampValueExpression: RequiredTimestampColumnSchema,
 });
