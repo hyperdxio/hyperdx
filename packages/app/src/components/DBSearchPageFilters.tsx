@@ -977,7 +977,7 @@ export const FilterGroup = ({
                       component="span"
                       size="xs"
                       c="dimmed"
-                    >{` (${totalAppliedFiltersSize})`}</Text>
+                    >{` (${totalAppliedFiltersSize > 0 ? totalAppliedFiltersSize : options.length})`}</Text>
                   )}
                 </Text>
               </Tooltip>
