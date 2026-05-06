@@ -142,6 +142,7 @@ export class AlertsPage {
   }
 
   async selectTag(tag: string) {
+    await this.tagFilter.click();
     await this.tagFilter.getByRole('searchbox').fill(tag);
     await this.page.getByRole('option', { name: tag, exact: true }).click();
   }
@@ -151,6 +152,7 @@ export class AlertsPage {
   }
 
   async selectCreator(creator: string) {
+    await this.creatorFilter.click();
     await this.creatorFilter.getByRole('searchbox').fill(creator);
     await this.page.getByRole('option', { name: creator, exact: true }).click();
   }
