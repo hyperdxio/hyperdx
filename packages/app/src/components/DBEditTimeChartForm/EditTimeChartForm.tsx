@@ -192,6 +192,21 @@ export default function EditTimeChartForm({
   const showSampleEvents =
     tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
 
+  // Time-axis chart types only make sense when the Source has a configured
+  // time column. For Berg sources without `timestampColumn`, hide line and
+  // heatmap from the chart-type picker.
+  const hasTimeColumn = useMemo(() => {
+    if (!tableSource) {
+      // When the source hasn't loaded yet, don't filter anything out — the
+      // user is typically editing an existing chart that already targets a
+      // time-enabled source.
+      return true;
+    }
+    return Boolean(
+      tableSource.timestampColumn || tableSource.timestampValueExpression,
+    );
+  }, [tableSource]);
+
   const [
     alignDateRangeToGranularity,
     fillNulls,
@@ -554,12 +569,14 @@ export default function EditTimeChartForm({
               data-testid="chart-type-input"
             >
               <Tabs.List>
-                <Tabs.Tab
-                  value={DisplayType.Line}
-                  leftSection={<IconChartLine size={16} />}
-                >
-                  Line/Bar
-                </Tabs.Tab>
+                {hasTimeColumn && (
+                  <Tabs.Tab
+                    value={DisplayType.Line}
+                    leftSection={<IconChartLine size={16} />}
+                  >
+                    Line/Bar
+                  </Tabs.Tab>
+                )}
                 <Tabs.Tab
                   value={DisplayType.Table}
                   leftSection={<IconTable size={16} />}
@@ -584,12 +601,14 @@ export default function EditTimeChartForm({
                 >
                   Search
                 </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Heatmap}
-                  leftSection={<IconGrid3x3 size={16} />}
-                >
-                  Heatmap
-                </Tabs.Tab>
+                {hasTimeColumn && (
+                  <Tabs.Tab
+                    value={DisplayType.Heatmap}
+                    leftSection={<IconGrid3x3 size={16} />}
+                  >
+                    Heatmap
+                  </Tabs.Tab>
+                )}
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}

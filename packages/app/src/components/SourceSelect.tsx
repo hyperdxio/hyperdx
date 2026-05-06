@@ -1,6 +1,5 @@
 import { memo, useCallback, useMemo } from 'react';
-import { UseControllerProps, useWatch } from 'react-hook-form';
-import { SourceKind } from '@berg/common-utils/dist/types';
+import { UseControllerProps } from 'react-hook-form';
 import {
   ComboboxChevron,
   ComboboxItem,
@@ -8,15 +7,7 @@ import {
   SelectProps,
   UnstyledButton,
 } from '@mantine/core';
-import {
-  IconChartLine,
-  IconConnection,
-  IconDeviceLaptop,
-  IconLogs,
-  IconPlus,
-  IconSettings,
-  IconStack,
-} from '@tabler/icons-react';
+import { IconPlus, IconSettings, IconStack } from '@tabler/icons-react';
 
 import SelectControlled, {
   SelectControlledSpecialValues,
@@ -57,13 +48,6 @@ export const SourceSelectRightSection = ({
   };
 };
 
-const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
-  [SourceKind.Log]: <IconLogs size={16} />,
-  [SourceKind.Trace]: <IconConnection size={16} />,
-  [SourceKind.Session]: <IconDeviceLaptop size={16} />,
-  [SourceKind.Metric]: <IconChartLine size={16} />,
-};
-
 const OPTION_ICONS: Record<string, React.ReactNode> = {
   [SelectControlledSpecialValues.CreateNewValue]: <IconPlus size={14} />,
   [SelectControlledSpecialValues.EditValue]: <IconSettings size={14} />,
@@ -73,8 +57,6 @@ function SourceSelectControlledComponent({
   size,
   onCreate,
   onEdit,
-  allowedSourceKinds,
-  connectionId,
   comboboxProps,
   sourceSchemaPreview,
   ...props
@@ -82,38 +64,24 @@ function SourceSelectControlledComponent({
   size?: string;
   onCreate?: () => void;
   onEdit?: () => void;
-  allowedSourceKinds?: SourceKind[];
+  /**
+   * @deprecated Berg has a single Source kind (`Table`); kind-based filtering
+   * is a no-op and retained only so legacy call sites still type-check.
+   */
+  allowedSourceKinds?: unknown;
+  /**
+   * @deprecated Connections are no longer modelled in Berg. Retained as an
+   * inert prop so legacy call sites still type-check.
+   */
   connectionId?: string;
   sourceSchemaPreview?: React.ReactNode;
 } & UseControllerProps<any> &
   SelectProps) {
   const { data } = useSources();
-  const selectedSourceId = useWatch({
-    control: props.control,
-    name: props.name,
-  });
-
-  const selectedSourceKind = useMemo(
-    () => data?.find(s => s.id === selectedSourceId)?.kind,
-    [data, selectedSourceId],
-  );
-
-  const leftIcon = SOURCE_KIND_ICONS[selectedSourceKind ?? ''] ?? (
-    <IconStack size={16} />
-  );
-
-  const sourceKindMap = useMemo(() => {
-    const map = new Map<string, SourceKind>();
-    data?.forEach(s => map.set(s.id, s.kind));
-    return map;
-  }, [data]);
 
   const renderOption = useCallback(
     ({ option }: { option: ComboboxItem }) => {
-      const icon =
-        OPTION_ICONS[option.value] ??
-        SOURCE_KIND_ICONS[sourceKindMap.get(option.value) ?? ''];
-      if (!icon) return option.label;
+      const icon = OPTION_ICONS[option.value] ?? <IconStack size={14} />;
       return (
         <Group gap="xs" wrap="nowrap">
           {icon}
@@ -121,23 +89,17 @@ function SourceSelectControlledComponent({
         </Group>
       );
     },
-    [sourceKindMap],
+    [],
   );
 
   const hasActions = !!onCreate || !!onEdit;
 
   const values = useMemo(() => {
     const sourceItems = (
-      data
-        ?.filter(
-          source =>
-            (!allowedSourceKinds || allowedSourceKinds.includes(source.kind)) &&
-            (!connectionId || source.connection === connectionId),
-        )
-        .map(d => ({
-          value: d.id,
-          label: d.name,
-        })) ?? []
+      data?.map(d => ({
+        value: d.id,
+        label: d.name,
+      })) ?? []
     ).sort((a, b) => a.label.localeCompare(b.label));
 
     if (!hasActions) {
@@ -159,7 +121,7 @@ function SourceSelectControlledComponent({
     }
 
     return [...sourceItems, { group: 'Actions', items: actionItems }];
-  }, [data, onCreate, onEdit, allowedSourceKinds, connectionId, hasActions]);
+  }, [data, onCreate, onEdit, hasActions]);
 
   const rightSectionProps = SourceSelectRightSection({ sourceSchemaPreview });
 
@@ -172,7 +134,7 @@ function SourceSelectControlledComponent({
       renderOption={renderOption}
       searchable
       placeholder="Data Source"
-      leftSection={leftIcon}
+      leftSection={<IconStack size={16} />}
       maxDropdownHeight={280}
       size={size}
       onCreate={onCreate}
