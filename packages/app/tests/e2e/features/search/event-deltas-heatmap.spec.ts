@@ -1,6 +1,6 @@
 import { SearchPage } from '../../page-objects/SearchPage';
-import { DEFAULT_TRACES_SOURCE_NAME } from '../../utils/constants';
 import { expect, test } from '../../utils/base-test';
+import { DEFAULT_TRACES_SOURCE_NAME } from '../../utils/constants';
 
 /**
  * Regression coverage for HDX-4147 (PR #2189): the dashed drag-select
@@ -8,6 +8,10 @@ import { expect, test } from '../../utils/base-test';
  * after mouseup unless u.select is mirrored from the URL state. These
  * tests assert the visible rectangle survives the round-trip through
  * the URL (drag, reload, click-to-clear).
+ *
+ * nuqs setFields and uPlot's ready hook both flush asynchronously, so
+ * URL and bounding-box reads use expect.poll rather than one-shot
+ * reads.
  */
 test.describe('Event Deltas heatmap drag-select', { tag: '@search' }, () => {
   let searchPage: SearchPage;
@@ -23,30 +27,48 @@ test.describe('Event Deltas heatmap drag-select', { tag: '@search' }, () => {
     await searchPage.dragHeatmapSelection();
 
     // URL gains the four selection params nuqs writes via setFields.
-    const url = searchPage.page.url();
-    expect(url, 'URL should carry xMin').toContain('xMin=');
-    expect(url, 'URL should carry xMax').toContain('xMax=');
-    expect(url, 'URL should carry yMin').toContain('yMin=');
-    expect(url, 'URL should carry yMax').toContain('yMax=');
+    for (const param of ['xMin=', 'xMax=', 'yMin=', 'yMax=']) {
+      await expect
+        .poll(() => searchPage.page.url(), {
+          message: `URL should carry ${param.slice(0, -1)}`,
+        })
+        .toContain(param);
+    }
 
     // The dashed rectangle stays visible after mouseup. The bug shipped
     // a 2x2 px collapse pinned to (0, 0); a healthy selection has both
     // dimensions well above that residue.
+    await expect
+      .poll(
+        async () =>
+          (await searchPage.getHeatmapSelectionRect().boundingBox())?.width ??
+          0,
+        { message: 'selection width should reflect the drag' },
+      )
+      .toBeGreaterThan(20);
     const rect = await searchPage.getHeatmapSelectionRect().boundingBox();
     expect(rect, 'selection element should be in the DOM').not.toBeNull();
-    expect(rect!.width, 'selection width should reflect the drag').toBeGreaterThan(20);
-    expect(rect!.height, 'selection height should reflect the drag').toBeGreaterThan(20);
+    expect(
+      rect!.height,
+      'selection height should reflect the drag',
+    ).toBeGreaterThan(20);
   });
 
   test('reloading the page restores the rectangle from URL state', async () => {
     await searchPage.dragHeatmapSelection();
 
-    // Capture the rectangle right after the drag for cross-check.
+    // Wait for the rectangle to settle, then capture it for cross-check.
+    await expect
+      .poll(
+        async () =>
+          (await searchPage.getHeatmapSelectionRect().boundingBox())?.width ??
+          0,
+      )
+      .toBeGreaterThan(20);
     const beforeReload = await searchPage
       .getHeatmapSelectionRect()
       .boundingBox();
     expect(beforeReload).not.toBeNull();
-    expect(beforeReload!.width).toBeGreaterThan(20);
 
     // Round-trip through the URL: a fresh page load goes through the
     // uPlot ready hook path, which is what the on-create path got wrong
@@ -55,14 +77,23 @@ test.describe('Event Deltas heatmap drag-select', { tag: '@search' }, () => {
     await searchPage.page.reload();
     await searchPage.getHeatmap().waitFor({ state: 'visible' });
 
+    // The ready hook fires after the first draw, which is async relative
+    // to the canvas being visible; poll until the rectangle re-renders.
+    await expect
+      .poll(
+        async () =>
+          (await searchPage.getHeatmapSelectionRect().boundingBox())?.width ??
+          0,
+        { message: 'rectangle width should be restored from URL on reload' },
+      )
+      .toBeGreaterThan(20);
     const afterReload = await searchPage
       .getHeatmapSelectionRect()
       .boundingBox();
-    expect(afterReload, 'selection element should be in the DOM after reload').not.toBeNull();
     expect(
-      afterReload!.width,
-      'rectangle width should be restored from URL on reload',
-    ).toBeGreaterThan(20);
+      afterReload,
+      'selection element should be in the DOM after reload',
+    ).not.toBeNull();
     expect(
       afterReload!.height,
       'rectangle height should be restored from URL on reload',
@@ -77,8 +108,8 @@ test.describe('Event Deltas heatmap drag-select', { tag: '@search' }, () => {
   test('clicking off the rectangle clears both URL state and the rectangle', async () => {
     await searchPage.dragHeatmapSelection();
 
-    // Sanity: the drag set the URL state.
-    expect(searchPage.page.url()).toContain('xMin=');
+    // Sanity: the drag set the URL state. nuqs flushes async, so poll.
+    await expect.poll(() => searchPage.page.url()).toContain('xMin=');
 
     // Click somewhere on the chart canvas that isn't inside the
     // selection. Top edge of the canvas is far enough from the mid-band
@@ -99,16 +130,22 @@ test.describe('Event Deltas heatmap drag-select', { tag: '@search' }, () => {
       })
       .not.toContain('xMin=');
 
-    const afterClear = await searchPage
-      .getHeatmapSelectionRect()
-      .boundingBox();
-    expect(afterClear, 'selection element should still be in the DOM').not.toBeNull();
     // uPlot resets u.select to width=0/height=0; the element collapses
     // to its 1 px border on each side (2x2 with the border included).
+    // The collapse goes through React state, so poll.
+    await expect
+      .poll(
+        async () =>
+          (await searchPage.getHeatmapSelectionRect().boundingBox())?.width ??
+          0,
+        { message: 'rectangle width should collapse on clear' },
+      )
+      .toBeLessThan(5);
+    const afterClear = await searchPage.getHeatmapSelectionRect().boundingBox();
     expect(
-      afterClear!.width,
-      'rectangle width should collapse on clear',
-    ).toBeLessThan(5);
+      afterClear,
+      'selection element should still be in the DOM',
+    ).not.toBeNull();
     expect(
       afterClear!.height,
       'rectangle height should collapse on clear',
