@@ -1,0 +1,184 @@
+name: Compound Engineering Code Review
+
+# Opt-in, multi-agent PR review using EveryInc/compound-engineering-plugin's
+# /ce-code-review skill. Runs alongside the default Claude review (which lives
+# in claude-code-review.yml). Gated behind the `compound-review` label so it
+# does not run on every PR -- the multi-agent fan-out is significantly more
+# expensive than the default single-pass review.
+#
+# To trigger:
+#   - Add the `compound-review` label to a PR, or
+#   - Run the workflow manually via the Actions tab and pass a PR number.
+#
+# To compare quality vs. the default review, look for the two distinct sticky
+# comments (markers: <!-- claude-code-review --> and
+# <!-- compound-engineering-review -->).
+
+on:
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
+
+concurrency:
+  group:
+    compound-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  compound-review:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'compound-review')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber =
+              context.eventName === 'workflow_dispatch'
+                ? Number('${{ inputs.pr_number }}')
+                : context.payload.pull_request.number;
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('base_repo', pr.base.repo.full_name);
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('base_sha', pr.base.sha);
+
+      # Check out the PR head so reviewer sub-agents can read the actual code.
+      # Works for both same-repo and forked PRs.
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      # Make the PR base SHA reachable in the local git object graph so the
+      # skill's `base:<sha>` argument works for `git diff`. For fork PRs the
+      # base lives in a different repo than `origin`.
+      - name: Fetch PR base SHA
+        run: |
+          set -e
+          BASE_REPO_URL="https://github.com/${{ steps.pr.outputs.base_repo }}.git"
+          BASE_SHA="${{ steps.pr.outputs.base_sha }}"
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=50 "$BASE_REPO_URL" "$BASE_SHA" || \
+              git fetch --no-tags --depth=50 "$BASE_REPO_URL" "${{ steps.pr.outputs.base_ref }}"
+          fi
+
+      - name: Run Compound Engineering review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }} # bypasses OIDC auth (required for pull_request_target)
+          allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
+          allowed_non_write_users: '*' # allow fork contributors to trigger via label
+
+          # Pin the plugin to a tagged release. Bump deliberately; do not track main.
+          # See https://github.com/EveryInc/compound-engineering-plugin/releases
+          plugin_marketplaces: |
+            https://github.com/EveryInc/compound-engineering-plugin.git#v2.42.0
+          plugins: |
+            compound-engineering@compound-engineering-plugin
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            BASE SHA: ${{ steps.pr.outputs.base_sha }}
+
+            Run the compound-engineering multi-agent code review against this
+            PR's diff. The PR head is already checked out and the base SHA is
+            reachable locally.
+
+            Step 1. Invoke the plugin skill (note the namespace prefix --
+            `/compound-engineering:ce-code-review`, NOT `/review`):
+
+              /compound-engineering:ce-code-review mode:report-only base:${{ steps.pr.outputs.base_sha }}
+
+            - `mode:report-only` is required: it disables file edits, commits,
+              and on-disk artifacts, and is the only mode that is parallel-safe
+              with the default Claude review running on the same PR.
+            - `base:<sha>` short-circuits the skill's own scope detection so it
+              does not try to `gh pr checkout` (which `report-only` would block).
+
+            The skill will fan out to ~6-12 specialist reviewer sub-agents
+            (correctness, security, performance, maintainability, etc.) and
+            return a merged, deduplicated findings report.
+
+            Step 2. Condense the merged findings into the JSON envelope below.
+            Be concise -- one line per finding, grouped by severity (P0, P1,
+            P2, P3). Each finding: `**P{n}** file:line - issue -> fix`. Skip
+            P3 nitpicks unless there are no higher-severity findings.
+
+            If there are no P0/P1 findings, lead with
+            `✅ No critical issues found.` and put any P2 advice underneath.
+
+            CRITICAL OUTPUT REQUIREMENTS:
+            1. Return a JSON object with a single "review" field containing the
+               full markdown report.
+            2. The review markdown MUST start with EXACTLY these two lines:
+               <!-- compound-engineering-review -->
+               ## Compound Engineering Review
+            3. Do NOT post the review yourself with `gh` or any comment tool --
+               the workflow posts the structured output as a sticky comment.
+
+          claude_args: |
+            --setting-sources user
+            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
+            --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- compound-engineering-review --> on the first line and ## Compound Engineering Review on the second line"}},"required":["review"]}'
+
+      - name: Find existing compound review comment
+        uses: peter-evans/find-comment@v4
+        id: find-comment
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- compound-engineering-review -->'
+          direction: last
+
+      # fromJSON() in `with:` has been observed to leave structured_output JSON
+      # unparsed for the sibling claude-code-review workflow. Extract the
+      # review field via jq for reliability.
+      - name: Extract review from structured output
+        id: extract
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
+        run: |
+          {
+            echo 'review<<COMPOUND_REVIEW_EOF'
+            printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review'
+            echo 'COMPOUND_REVIEW_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post or update compound review
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          body: ${{ steps.extract.outputs.review }}
+          edit-mode: replace
