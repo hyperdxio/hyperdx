@@ -1,7 +1,6 @@
 /**
  * AlertsPage - Page object for the /alerts page
  * Encapsulates all interactions with the alerts interface
- * Currently not used until Alerts tests are implemented
  */
 import { Locator, Page } from '@playwright/test';
 
@@ -10,12 +9,20 @@ export class AlertsPage {
   private readonly alertsPageContainer: Locator;
   private readonly alertsButton: Locator;
   private readonly alertsModal: Locator;
+  private readonly searchInput: Locator;
+  private readonly tagFilter: Locator;
+  private readonly creatorFilter: Locator;
+  private readonly filtersContainer: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.alertsPageContainer = page.locator('[data-testid="alerts-page"]');
     this.alertsButton = page.locator('[data-testid="alerts-button"]');
     this.alertsModal = page.locator('[data-testid="alerts-modal"]');
+    this.searchInput = page.locator('[data-testid="alerts-search-input"]');
+    this.tagFilter = page.locator('[data-testid="alerts-tag-filter"]');
+    this.creatorFilter = page.locator('[data-testid="alerts-creator-filter"]');
+    this.filtersContainer = page.locator('[data-testid="alerts-filters"]');
   }
 
   /**
@@ -108,7 +115,53 @@ export class AlertsPage {
     await icon.click();
   }
 
-  // Getters for assertions
+  // --- Filter interactions ---
+
+  get filters() {
+    return this.filtersContainer;
+  }
+
+  get searchField() {
+    return this.searchInput;
+  }
+
+  get tagFilterDropdown() {
+    return this.tagFilter;
+  }
+
+  get creatorFilterDropdown() {
+    return this.creatorFilter;
+  }
+
+  async searchByName(text: string) {
+    await this.searchInput.fill(text);
+  }
+
+  async clearSearch() {
+    await this.searchInput.fill('');
+  }
+
+  async selectTag(tag: string) {
+    await this.tagFilter.getByRole('searchbox').click();
+    await this.page.getByRole('option', { name: tag }).click();
+  }
+
+  async clearTagFilter() {
+    await this.tagFilter.getByRole('button', { name: 'Clear value' }).click();
+  }
+
+  async selectCreator(creator: string) {
+    await this.creatorFilter.getByRole('searchbox').click();
+    await this.page.getByRole('option', { name: creator }).click();
+  }
+
+  async clearCreatorFilter() {
+    await this.creatorFilter
+      .getByRole('button', { name: 'Clear value' })
+      .click();
+  }
+
+  // --- Getters for assertions ---
 
   get pageContainer() {
     return this.alertsPageContainer;

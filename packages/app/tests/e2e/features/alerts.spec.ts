@@ -4,6 +4,7 @@ import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SearchPage } from '../page-objects/SearchPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
@@ -486,3 +487,302 @@ test.describe(
     });
   },
 );
+
+test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
+  let alertsPage: AlertsPage;
+  const ts = Date.now();
+
+  const dashboardA = {
+    name: `E2E Filter Dash A ${ts}`,
+    tags: [`team-alpha-${ts}`, `production-${ts}`],
+    tileName: `E2E Tile A ${ts}`,
+  };
+  const dashboardB = {
+    name: `E2E Filter Dash B ${ts}`,
+    tags: [`team-beta-${ts}`, `staging-${ts}`],
+    tileName: `E2E Tile B ${ts}`,
+  };
+  const savedSearch = {
+    name: `E2E Filter Search ${ts}`,
+    tags: [`team-alpha-${ts}`, `staging-${ts}`],
+  };
+  const webhookName = `E2E Filter Webhook ${ts}`;
+  const webhookUrl = `https://example.com/filter-${ts}`;
+
+  /**
+   * Seeds two dashboard alerts and one saved-search alert with distinct
+   * tags so the filtering tests have data to work with.
+   */
+  async function seedFilterTestData(page: import('@playwright/test').Page) {
+    const apiUrl = getApiUrl();
+    const sources = await getSources(page, 'log');
+    const logSourceId = sources[0]._id;
+
+    // Webhook
+    const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
+      data: {
+        name: webhookName,
+        service: 'generic',
+        url: webhookUrl,
+      },
+    });
+    const webhook = (await webhookRes.json()).data;
+    const channel = {
+      type: 'webhook',
+      webhookId: webhook._id ?? webhook.id,
+    };
+
+    // Dashboard A
+    const dashARes = await page.request.post(`${apiUrl}/dashboards`, {
+      data: {
+        name: dashboardA.name,
+        tiles: [
+          {
+            id: `tileA-${ts}`,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: dashboardA.tileName,
+              type: 'time',
+              series: [
+                {
+                  type: 'time',
+                  sourceId: logSourceId,
+                  aggFn: 'count',
+                  where: '',
+                  whereLanguage: 'lucene',
+                  groupBy: [],
+                },
+              ],
+            },
+          },
+        ],
+        tags: dashboardA.tags,
+      },
+    });
+    const dashA = await dashARes.json();
+
+    // Dashboard B
+    const dashBRes = await page.request.post(`${apiUrl}/dashboards`, {
+      data: {
+        name: dashboardB.name,
+        tiles: [
+          {
+            id: `tileB-${ts}`,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: dashboardB.tileName,
+              type: 'time',
+              series: [
+                {
+                  type: 'time',
+                  sourceId: logSourceId,
+                  aggFn: 'count',
+                  where: '',
+                  whereLanguage: 'lucene',
+                  groupBy: [],
+                },
+              ],
+            },
+          },
+        ],
+        tags: dashboardB.tags,
+      },
+    });
+    const dashB = await dashBRes.json();
+
+    // Saved search
+    const ssRes = await page.request.post(`${apiUrl}/saved-search`, {
+      data: {
+        name: savedSearch.name,
+        select: '',
+        where: '',
+        whereLanguage: 'lucene',
+        source: logSourceId,
+        tags: savedSearch.tags,
+      },
+    });
+    const ss = await ssRes.json();
+
+    // Alert on Dashboard A
+    await page.request.post(`${apiUrl}/alerts`, {
+      data: {
+        source: 'tile',
+        dashboardId: dashA._id ?? dashA.id,
+        tileId: `tileA-${ts}`,
+        channel,
+        interval: '5m',
+        threshold: 100,
+        thresholdType: 'above',
+      },
+    });
+
+    // Alert on Dashboard B
+    await page.request.post(`${apiUrl}/alerts`, {
+      data: {
+        source: 'tile',
+        dashboardId: dashB._id ?? dashB.id,
+        tileId: `tileB-${ts}`,
+        channel,
+        interval: '5m',
+        threshold: 50,
+        thresholdType: 'above',
+      },
+    });
+
+    // Alert on Saved Search
+    await page.request.post(`${apiUrl}/alerts`, {
+      data: {
+        source: 'saved_search',
+        savedSearchId: ss._id ?? ss.id,
+        channel,
+        interval: '5m',
+        threshold: 10,
+        thresholdType: 'above',
+      },
+    });
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext({
+      storageState: 'packages/app/tests/e2e/.auth/user.json',
+    });
+    const page = await context.newPage();
+    await seedFilterTestData(page);
+    await context.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    alertsPage = new AlertsPage(page);
+    await alertsPage.goto();
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should show search and filter controls', async () => {
+    await expect(alertsPage.searchField).toBeVisible();
+    await expect(alertsPage.tagFilterDropdown).toBeVisible();
+    await expect(alertsPage.creatorFilterDropdown).toBeVisible();
+  });
+
+  test('should filter alerts by name search', async () => {
+    await test.step('All three seeded alerts are visible', async () => {
+      await expect(
+        alertsPage.getAlertCardByName(dashboardA.tileName),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(
+        alertsPage.getAlertCardByName(dashboardB.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(savedSearch.name),
+      ).toBeVisible();
+    });
+
+    await test.step('Searching filters to matching alerts', async () => {
+      await alertsPage.searchByName(dashboardA.tileName);
+      await expect(
+        alertsPage.getAlertCardByName(dashboardA.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardB.tileName),
+      ).toBeHidden();
+      await expect(
+        alertsPage.getAlertCardByName(savedSearch.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Search is persisted in the URL', async () => {
+      await expect(alertsPage.page).toHaveURL(/search=/);
+    });
+
+    await test.step('Clearing search restores all alerts', async () => {
+      await alertsPage.clearSearch();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardA.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardB.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(savedSearch.name),
+      ).toBeVisible();
+    });
+  });
+
+  test('should filter alerts by tag', async () => {
+    await expect(
+      alertsPage.getAlertCardByName(dashboardA.tileName),
+    ).toBeVisible({ timeout: 10000 });
+
+    await test.step('Selecting a tag filters to matching alerts', async () => {
+      await alertsPage.selectTag(`team-beta-${ts}`);
+      await expect(
+        alertsPage.getAlertCardByName(dashboardB.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardA.tileName),
+      ).toBeHidden();
+      await expect(
+        alertsPage.getAlertCardByName(savedSearch.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Tag filter is persisted in the URL', async () => {
+      await expect(alertsPage.page).toHaveURL(/tag=/);
+    });
+
+    await test.step('Clearing tag filter restores all alerts', async () => {
+      await alertsPage.clearTagFilter();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardA.tileName),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(dashboardB.tileName),
+      ).toBeVisible();
+    });
+  });
+
+  test('should filter alerts by tag shared across sources', async () => {
+    await expect(
+      alertsPage.getAlertCardByName(dashboardA.tileName),
+    ).toBeVisible({ timeout: 10000 });
+
+    await alertsPage.selectTag(`staging-${ts}`);
+    await expect(
+      alertsPage.getAlertCardByName(dashboardB.tileName),
+    ).toBeVisible();
+    await expect(alertsPage.getAlertCardByName(savedSearch.name)).toBeVisible();
+    await expect(
+      alertsPage.getAlertCardByName(dashboardA.tileName),
+    ).toBeHidden();
+  });
+
+  test('should show empty state when no alerts match filters', async () => {
+    await expect(
+      alertsPage.getAlertCardByName(dashboardA.tileName),
+    ).toBeVisible({ timeout: 10000 });
+
+    await alertsPage.searchByName(`nonexistent-${ts}`);
+    await expect(
+      alertsPage.pageContainer.getByText('No matching alerts'),
+    ).toBeVisible();
+  });
+
+  test('should load filtered view from URL params', async ({ page }) => {
+    await page.goto(`/alerts?tag=team-beta-${ts}`);
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+
+    await expect(
+      alertsPage.getAlertCardByName(dashboardB.tileName),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      alertsPage.getAlertCardByName(dashboardA.tileName),
+    ).toBeHidden();
+  });
+});
