@@ -142,25 +142,27 @@ export class AlertsPage {
   }
 
   async selectTag(tag: string) {
-    await this.tagFilter.click();
-    await this.tagFilter.getByRole('searchbox').pressSequentially(tag);
+    // In Mantine v9, data-testid on Select is applied to the <input> element
+    // directly (via ...others spread). Fill opens the dropdown and filters options.
+    await this.tagFilter.fill(tag);
     await this.page.getByRole('option', { name: tag, exact: true }).click();
   }
 
   async clearTagFilter() {
-    await this.tagFilter.getByRole('button', { name: 'Clear value' }).click();
+    // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
+    // won't find it. Use a CSS selector to target the button directly.
+    await this.tagFilter.locator('..').locator('button').click();
   }
 
   async selectCreator(creator: string) {
-    await this.creatorFilter.click();
-    await this.creatorFilter.getByRole('searchbox').fill(creator);
+    await this.creatorFilter.fill(creator);
     await this.page.getByRole('option', { name: creator, exact: true }).click();
   }
 
   async clearCreatorFilter() {
-    await this.creatorFilter
-      .getByRole('button', { name: 'Clear value' })
-      .click();
+    // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
+    // won't find it. Use a CSS selector to target the button directly.
+    await this.creatorFilter.locator('..').locator('button').click();
   }
 
   // --- Getters for assertions ---

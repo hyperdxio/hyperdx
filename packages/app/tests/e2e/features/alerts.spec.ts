@@ -490,6 +490,9 @@ test.describe(
 );
 
 test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
+  // Run serially so beforeAll seeding runs exactly once (not once per worker).
+  test.describe.configure({ mode: 'serial' });
+
   let alertsPage: AlertsPage;
   const ts = Date.now();
 
