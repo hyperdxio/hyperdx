@@ -64,7 +64,7 @@ export class DashboardPage {
   private readonly createDashboardButton: Locator;
   private readonly addDropdownButton: Locator;
   private readonly addTileMenuItem: Locator;
-  private readonly addSectionMenuItem: Locator;
+  private readonly addGroupMenuItem: Locator;
   private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
@@ -101,8 +101,8 @@ export class DashboardPage {
     this.addTileMenuItem = page.locator(
       '[data-testid="add-new-tile-menu-item"]',
     );
-    this.addSectionMenuItem = page.locator(
-      '[data-testid="add-new-section-menu-item"]',
+    this.addGroupMenuItem = page.locator(
+      '[data-testid="add-new-group-menu-item"]',
     );
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchSubmitButton = page.locator(
@@ -219,11 +219,136 @@ export class DashboardPage {
   }
 
   /**
-   * Add a new section to the dashboard
+   * Add a new group (container) to the dashboard via the "+ Add" dropdown.
    */
-  async addSection() {
+  async addGroup() {
     await this.addDropdownButton.click();
-    await this.addSectionMenuItem.click();
+    await this.addGroupMenuItem.click();
+  }
+
+  /**
+   * Get the group container element by its container id.
+   */
+  getGroup(containerId: string): Locator {
+    return this.page.getByTestId(`group-container-${containerId}`);
+  }
+
+  /**
+   * Get all rendered group containers in DOM order.
+   */
+  getGroups(): Locator {
+    return this.page.locator('[data-testid^="group-container-"]');
+  }
+
+  /**
+   * Read the container ids of all groups in DOM order. Each id is parsed
+   * out of the `group-container-${id}` testid.
+   */
+  async getGroupOrder(): Promise<string[]> {
+    const groups = this.getGroups();
+    const ids = await groups.evaluateAll(elements =>
+      elements.map(el => {
+        const testId = el.getAttribute('data-testid') ?? '';
+        return testId.replace(/^group-container-/, '');
+      }),
+    );
+    return ids;
+  }
+
+  /**
+   * Hover the group then open its overflow ("...") menu so subsequent
+   * menu-item helpers can click into it.
+   */
+  async openGroupMenu(containerId: string) {
+    const group = this.getGroup(containerId);
+    await group.hover();
+    await this.page.getByTestId(`group-menu-${containerId}`).click();
+  }
+
+  /**
+   * Toggle the bordered visual style via the overflow menu.
+   */
+  async toggleGroupBordered(containerId: string) {
+    await this.openGroupMenu(containerId);
+    await this.page.getByTestId(`group-toggle-bordered-${containerId}`).click();
+  }
+
+  /**
+   * Add a new tab to the group via the overflow menu.
+   */
+  async addTabToGroup(containerId: string) {
+    await this.openGroupMenu(containerId);
+    await this.page.getByTestId(`group-add-tab-${containerId}`).click();
+  }
+
+  /**
+   * Read the `?activeTabs` query param as a `{ containerId: tabId }` map.
+   * Returns an empty object when the param is missing.
+   */
+  getActiveTabsParam(): Record<string, string> {
+    const url = new URL(this.page.url());
+    const raw = url.searchParams.get('activeTabs');
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Read the `?collapsed` query param as an array of container ids. nuqs
+   * serializes arrays as comma-separated values (`?collapsed=id1,id2`).
+   * Returns an empty array when the param is missing.
+   */
+  getCollapsedParam(): string[] {
+    const raw = new URL(this.page.url()).searchParams.get('collapsed');
+    return raw ? raw.split(',') : [];
+  }
+
+  /**
+   * Read the `?expanded` query param as an array of container ids. Mirrors
+   * `getCollapsedParam` semantics.
+   */
+  getExpandedParam(): string[] {
+    const raw = new URL(this.page.url()).searchParams.get('expanded');
+    return raw ? raw.split(',') : [];
+  }
+
+  /**
+   * Drag a group's drag handle onto another group, reordering them.
+   *
+   * @dnd-kit's MouseSensor uses `activationConstraint: { distance: 8 }`
+   * (see DashboardDndContext.tsx). The handle has to traverse 8+ pixels
+   * before the drag activates, so a single-shot drop never registers.
+   * The multi-step `mouse.move` mirrors the existing histogram-brush
+   * pattern in SearchPage.ts.
+   */
+  async dragGroupTo(fromContainerId: string, toContainerId: string) {
+    const handle = this.page.getByTestId(
+      `group-drag-handle-${fromContainerId}`,
+    );
+    const target = this.getGroup(toContainerId);
+    await handle.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+
+    const handleBox = await handle.boundingBox();
+    const targetBox = await target.boundingBox();
+    if (!handleBox || !targetBox) {
+      throw new Error('Drag source or target not visible');
+    }
+
+    const startX = handleBox.x + handleBox.width / 2;
+    const startY = handleBox.y + handleBox.height / 2;
+    const endX = targetBox.x + targetBox.width / 2;
+    const endY = targetBox.y + targetBox.height / 2;
+
+    await this.page.mouse.move(startX, startY);
+    await this.page.mouse.down();
+    // Nudge to cross the 8px activation threshold, then traverse to target.
+    await this.page.mouse.move(startX + 12, startY, { steps: 5 });
+    await this.page.mouse.move(endX, endY, { steps: 15 });
+    await this.page.mouse.up();
   }
 
   /**
@@ -628,7 +753,7 @@ export class DashboardPage {
 
   /**
    * Get the `title` attribute of a cell (by column index) in the first row of
-   * a table tile. The <td> title mirrors the cell's stringified value — useful
+   * a table tile. The <td> title mirrors the cell's stringified value, useful
    * for extracting column values (e.g. a ServiceName) for later assertions.
    */
   async getFirstTableRowValue(tileIndex = 0, columnIndex = 0): Promise<string> {
@@ -642,7 +767,7 @@ export class DashboardPage {
 
   /**
    * Click the first row's first cell of a table tile. Each cell contains a
-   * div[role="link"] that owns the onRowClick handler — click that directly
+   * div[role="link"] that owns the onRowClick handler. Click that directly
    * to trigger the configured action.
    */
   async clickFirstTableRow(tileIndex = 0) {
