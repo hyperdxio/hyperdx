@@ -325,7 +325,11 @@ const externalDashboardHeatmapChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
   where: z.string().max(10000).optional().default(''),
-  whereLanguage: whereLanguageSchema.optional(),
+  // `whereLanguageSchema` (an alias for `SearchConditionLanguageSchema`)
+  // is already `.optional()` internally; sibling chart-config schemas
+  // in this file (e.g. `externalDashboardSearchChartConfigSchema`) drop
+  // the redundant outer `.optional()`.
+  whereLanguage: whereLanguageSchema,
   numberFormat: NumberFormatSchema.optional(),
 });
 

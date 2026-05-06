@@ -6,7 +6,10 @@ import {
   UseFormSetValue,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  HEATMAP_ALLOWED_SOURCE_KINDS,
+  isBuilderChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -102,7 +105,7 @@ export function ChartEditorControls({
             data-testid="source-selector"
             allowedSourceKinds={
               displayType === DisplayType.Heatmap
-                ? [SourceKind.Trace]
+                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
                 : undefined
             }
             sourceSchemaPreview={
