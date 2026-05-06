@@ -378,43 +378,51 @@ export class Metadata {
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
-      return this.cache.getOrFetch<string[]>(cacheKey, async () => {
-        const startExpr = renderStartOfBucketExpr(
-          metadataMVs.granularity,
-          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
-        );
-        const endExpr = renderStartOfBucketExpr(
-          metadataMVs.granularity,
-          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
-        );
-        const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-        const sql = chSql`
-          SELECT Key
-          FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
-          WHERE ColumnIdentifier = ${{ String: column }}
-            ${timeFilter}
-          GROUP BY Key
-          ORDER BY sum(count) DESC
-          LIMIT ${{ Int32: maxKeys }}
-        `;
+      const rollupKeys = await this.cache.getOrFetch<string[]>(
+        cacheKey,
+        async () => {
+          try {
+            const startExpr = renderStartOfBucketExpr(
+              metadataMVs.granularity,
+              chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+            );
+            const endExpr = renderStartOfBucketExpr(
+              metadataMVs.granularity,
+              chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+            );
+            const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+            const sql = chSql`
+              SELECT Key
+              FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
+              WHERE ColumnIdentifier = ${{ String: column }}
+                ${timeFilter}
+              GROUP BY Key
+              ORDER BY sum(count) DESC
+              LIMIT ${{ Int32: maxKeys }}
+            `;
 
-        const keys = await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              ...this.getClickHouseSettings(),
-              timeout_overflow_mode: 'break',
-              max_execution_time: 15,
-              max_rows_to_read: '0',
-            },
-          })
-          .then(res => res.json<{ Key: string }>())
-          .then(d => d.data.map(row => row.Key).filter(k => k));
+            return await this.clickhouseClient
+              .query<'JSON'>({
+                query: sql.sql,
+                query_params: sql.params,
+                connectionId,
+                clickhouse_settings: {
+                  ...this.getClickHouseSettings(),
+                  timeout_overflow_mode: 'break',
+                  max_execution_time: 15,
+                  max_rows_to_read: '0',
+                },
+              })
+              .then(res => res.json<{ Key: string }>())
+              .then(d => d.data.map(row => row.Key).filter(k => k));
+          } catch (e) {
+            console.warn('getMapKeys rollup query failed', e);
+            return [];
+          }
+        },
+      );
 
-        return keys;
-      });
+      if (rollupKeys.length > 0) return rollupKeys;
     }
 
     // Original path: scan main table
