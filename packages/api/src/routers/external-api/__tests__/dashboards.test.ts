@@ -2490,9 +2490,13 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
-      // The Zod schema applies `where: z.string().optional().default('')`,
-      // so the round-trip surfaces an empty string. whereLanguage and the
-      // optional select-item fields stay undefined.
+      // Persistence applies two normalizations:
+      //   `where: z.string().optional().default('')` (Zod schema), and
+      //   the deserializer at v2/utils/dashboards.ts:514 fills
+      //   `whereLanguage` with 'lucene' when omitted so the Mongo doc
+      //   stays consistent across heatmap and non-heatmap chart types.
+      // Both surface on read-back. The optional select-item fields stay
+      // undefined.
       const expectedResponse: ExternalDashboardTile = {
         ...heatmapMinimalRequest,
         config: {
@@ -2505,6 +2509,7 @@ describe('External API v2 Dashboards - new format', () => {
             },
           ],
           where: '',
+          whereLanguage: 'lucene',
         },
       };
 
