@@ -97,7 +97,19 @@ function AlertNote({ note }: { note: string }) {
           style={{ opacity: 0.8, paddingLeft: 20 }}
           data-testid="alert-note-content"
         >
-          <ReactMarkdown>{note}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              a: props => (
+                <a
+                  {...props}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                />
+              ),
+            }}
+          >
+            {note}
+          </ReactMarkdown>
         </div>
       </Collapse>
     </div>
