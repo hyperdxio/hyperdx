@@ -252,7 +252,7 @@ export default function AlertsPage() {
 
   const alerts = React.useMemo(() => data?.data || [], [data?.data]);
 
-  const [search, setSearch] = React.useState('');
+  const [search, setSearch] = useQueryState('search');
   const [tagFilter, setTagFilter] = useQueryState('tag');
   const [creatorFilter, setCreatorFilter] = useQueryState('creator');
 
@@ -279,7 +279,7 @@ export default function AlertsPage() {
     if (creatorFilter) {
       result = result.filter(a => getAlertCreatorLabel(a) === creatorFilter);
     }
-    if (search.trim()) {
+    if (search?.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
         a =>
@@ -290,7 +290,7 @@ export default function AlertsPage() {
     return result;
   }, [alerts, search, tagFilter, creatorFilter]);
 
-  const hasFilters = !!(search.trim() || tagFilter || creatorFilter);
+  const hasFilters = !!(search?.trim() || tagFilter || creatorFilter);
 
   return (
     <div
@@ -329,8 +329,8 @@ export default function AlertsPage() {
               <TextInput
                 placeholder="Search by name"
                 leftSection={<IconSearch size={16} />}
-                value={search}
-                onChange={e => setSearch(e.currentTarget.value)}
+                value={search ?? ''}
+                onChange={e => setSearch(e.currentTarget.value || null)}
                 style={{ flex: 1, maxWidth: 400 }}
                 miw={100}
                 data-testid="alerts-search-input"
