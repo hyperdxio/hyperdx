@@ -2256,6 +2256,22 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          onClick: {
+            type: 'search',
+            target: {
+              mode: 'id',
+              id: traceSource._id.toString(),
+            },
+            whereLanguage: 'sql',
+            whereTemplate: "ServiceName = '{{service.name}}'",
+            filters: [
+              {
+                kind: 'expressionTemplate',
+                expression: 'ServiceName',
+                template: '{{service.name}}',
+              },
+            ],
+          },
         },
       };
 
@@ -2379,6 +2395,15 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          onClick: {
+            type: 'search',
+            target: {
+              mode: 'template',
+              template: '{{source_name}}',
+            },
+            whereLanguage: 'lucene',
+            whereTemplate: 'ServiceName:"{{ServiceName}}"',
+          },
         },
       };
 
@@ -2513,6 +2538,238 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body).toEqual({
         message: `The following source IDs do not match the specified connections: ${traceSource._id.toString()}`,
       });
+    });
+
+    it('should return 400 when a table tile onClick references a non-existent source', async () => {
+      const nonExistentSourceId = new ObjectId().toString();
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with invalid onClick source',
+          tiles: [
+            {
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'search',
+                  target: { mode: 'id', id: nonExistentSourceId },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
+    });
+
+    it('should return 400 when a table tile onClick search target references a metric source', async () => {
+      // The /search destination only supports log and trace sources.
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with metric onClick source',
+          tiles: [
+            {
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'search',
+                  target: {
+                    mode: 'id',
+                    id: metricSource._id.toString(),
+                  },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `The following onClick search source IDs are not log or trace sources: ${metricSource._id.toString()}`,
+      });
+    });
+
+    it('should return 400 when a table tile onClick references a non-existent dashboard', async () => {
+      const nonExistentDashboardId = new ObjectId().toString();
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with invalid onClick dashboard',
+          tiles: [
+            {
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'dashboard',
+                  target: { mode: 'id', id: nonExistentDashboardId },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following onClick dashboard IDs: ${nonExistentDashboardId}`,
+      });
+    });
+
+    it('should return 400 when an onClick dashboard belongs to another team', async () => {
+      const otherTeamDashboard = await new Dashboard({
+        name: 'Other Team Dashboard',
+        tiles: [],
+        team: new ObjectId(),
+      }).save();
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard referencing cross-team dashboard',
+          tiles: [
+            {
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'dashboard',
+                  target: {
+                    mode: 'id',
+                    id: otherTeamDashboard._id.toString(),
+                  },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following onClick dashboard IDs: ${otherTeamDashboard._id.toString()}`,
+      });
+    });
+
+    it('should accept a table tile onClick with valid id references', async () => {
+      const targetDashboard = await createTestDashboard({
+        name: 'OnClick Target Dashboard',
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with valid onClick references',
+          tiles: [
+            {
+              name: 'Search Link Table',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'search',
+                  target: { mode: 'id', id: traceSource._id.toString() },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+            {
+              name: 'Dashboard Link Table',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'dashboard',
+                  target: {
+                    mode: 'id',
+                    id: targetDashboard._id.toString(),
+                  },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config.onClick).toEqual({
+        type: 'search',
+        target: { mode: 'id', id: traceSource._id.toString() },
+        whereLanguage: 'sql',
+      });
+      expect(response.body.data.tiles[1].config.onClick).toEqual({
+        type: 'dashboard',
+        target: { mode: 'id', id: targetDashboard._id.toString() },
+        whereLanguage: 'sql',
+      });
+    });
+
+    it('should return 400 when a table tile onClick target.id is not a valid ObjectId', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with invalid onClick id',
+          tiles: [
+            {
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'dashboard',
+                  target: { mode: 'id', id: 'not-a-valid-object-id' },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/Invalid|validation|id/i);
     });
 
     it('should create a dashboard with filters', async () => {
@@ -3093,6 +3350,15 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          onClick: {
+            type: 'search',
+            target: {
+              mode: 'id',
+              id: traceSource._id.toString(),
+            },
+            whereLanguage: 'sql',
+            whereTemplate: "ServiceName = '{{service.name}}'",
+          },
         },
       };
 
@@ -3229,6 +3495,14 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          onClick: {
+            type: 'dashboard',
+            target: {
+              mode: 'template',
+              template: '{{dashboardName}}',
+            },
+            whereLanguage: 'lucene',
+          },
         },
       };
 
@@ -3386,6 +3660,78 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body).toEqual({
         message: `The following source IDs do not match the specified connections: ${traceSource._id.toString()}`,
+      });
+    });
+
+    it('should return 400 on update when a table tile onClick references a non-existent dashboard', async () => {
+      const dashboard = await createTestDashboard();
+      const nonExistentDashboardId = new ObjectId().toString();
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tiles: [
+            {
+              id: new ObjectId().toString(),
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'dashboard',
+                  target: { mode: 'id', id: nonExistentDashboardId },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following onClick dashboard IDs: ${nonExistentDashboardId}`,
+      });
+    });
+
+    it('should return 400 on update when a table tile onClick references a non-existent source', async () => {
+      const dashboard = await createTestDashboard();
+      const nonExistentSourceId = new ObjectId().toString();
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tiles: [
+            {
+              id: new ObjectId().toString(),
+              name: 'Table Chart',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'search',
+                  target: { mode: 'id', id: nonExistentSourceId },
+                  whereLanguage: 'sql',
+                },
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
       });
     });
 
