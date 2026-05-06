@@ -234,12 +234,14 @@ export function useAutoCompleteOptions(
     [searchField],
   );
 
-  const mode = tcs[0]?.metadataMVs ? 'all' : 'exact';
+  const metadataMVs = tcs[0]?.metadataMVs;
+  const mode = metadataMVs ? 'all' : 'exact';
 
   const { data: keyValues, isFetching: isLoadingValues } = useGetKeyValues({
     mode,
     chartConfig,
     keys: searchKeys,
+    metadataMVs,
   });
 
   // Build key-value pair suggestions

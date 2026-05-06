@@ -14,6 +14,7 @@ import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
+  MetadataMaterializedViews,
 } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -224,6 +225,7 @@ export function useMultipleGetKeyValues(
     limit,
     disableRowLimit,
     mode = 'exact',
+    metadataMVs: metadataMVsOverride,
   }: {
     chartConfigs:
       | BuilderChartConfigWithDateRange
@@ -232,6 +234,8 @@ export function useMultipleGetKeyValues(
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
+    /** Pass directly to skip source-based resolution (e.g. when chartConfig has no source) */
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -256,17 +260,19 @@ export function useMultipleGetKeyValues(
     ],
     queryFn: async ({ signal }) => {
       if (mode === 'all') {
-        // For 'all' mode, resolve source to get metadataMVs
         const firstConfig = chartConfigsArr[0];
         if (!firstConfig || keys.length === 0) return [];
+
+        // Use explicit override, or resolve from source
         const firstSource = firstConfig.source
           ? sources?.find(s => s.id === firstConfig.source)
           : undefined;
         const metadataMVs =
-          firstSource &&
+          metadataMVsOverride ??
+          (firstSource &&
           (isLogSource(firstSource) || isTraceSource(firstSource))
             ? firstSource.metadataMaterializedViews
-            : undefined;
+            : undefined);
 
         const { databaseName, tableName } = firstConfig.from;
         const connectionId = firstConfig.connection;
@@ -361,12 +367,14 @@ export function useGetKeyValues(
     limit,
     disableRowLimit,
     mode,
+    metadataMVs,
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -377,6 +385,7 @@ export function useGetKeyValues(
       limit,
       disableRowLimit,
       mode,
+      metadataMVs,
     },
     options,
   );

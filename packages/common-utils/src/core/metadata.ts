@@ -1276,7 +1276,8 @@ export class Metadata {
             })
             .then(res => res.json<{ Value: string }>())
             .then(d => d.data.map(r => r.Value));
-        } catch {
+        } catch (e) {
+          console.warn('getAllKeyValues rollup query failed', e);
           return [];
         }
       });
