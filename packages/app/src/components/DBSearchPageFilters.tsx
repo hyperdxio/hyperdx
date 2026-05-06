@@ -929,10 +929,12 @@ export const FilterGroup = ({
     }
   }, [isDefaultExpanded]);
 
-  const totalAppliedFiltersSize =
+  const selectedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
     (hasRange ? 1 : 0);
+  const totalAppliedFiltersSize =
+    selectedFiltersSize > 0 ? selectedFiltersSize : options.length;
 
   const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
