@@ -61,6 +61,10 @@ function applySelectionToChart(
   bounds: SelectionBounds | null | undefined,
   scaleType: HeatmapScaleType,
 ) {
+  // The clear path runs BEFORE the scale-not-populated guard below so a
+  // null bounds always clears the rectangle, even on first paint when
+  // u.scales.y is not yet populated. Keep this ordering when refactoring;
+  // swapping it would suppress clears while scales are loading.
   if (bounds == null) {
     u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
     return;
@@ -1032,6 +1036,8 @@ function Heatmap({
   // stable across selection/scale changes.
   const selectionBoundsRef = useRef(selectionBounds);
   const scaleTypeRef = useRef(scaleType);
+  // Runs every commit; mirrors latest props into refs (no deps array on
+  // purpose).
   useEffect(() => {
     selectionBoundsRef.current = selectionBounds;
     scaleTypeRef.current = scaleType;
@@ -1063,6 +1069,13 @@ function Heatmap({
   // optionsUpdateState and treat the change as 'create', destroying the
   // chart and wiping u.select. Hashing the contents lets the memo skip
   // when the actual format is unchanged. (HDX-4147)
+  //
+  // Relies on NumberFormat being JSON-serializable: today it is plain
+  // config (string + number fields), so JSON.stringify is a faithful
+  // fingerprint. If the type ever grows a function-valued field
+  // (e.g. a custom `formatter` callback), switch to a shallow-equal
+  // helper keyed on the known fields, because functions stringify to
+  // undefined and would silently skip rebuilds.
   const numberFormatKey = useMemo(
     () => (numberFormat ? JSON.stringify(numberFormat) : ''),
     [numberFormat],
