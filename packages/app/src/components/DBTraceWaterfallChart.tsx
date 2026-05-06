@@ -520,7 +520,6 @@ export function DBTraceWaterfallChartContainer({
       const aDate = TimestampNano.fromString(a.Timestamp);
       const bDate = TimestampNano.fromString(b.Timestamp);
       const secDiff = aDate.getTimeT() - bDate.getTimeT();
-
       if (secDiff === 0) {
         return aDate.getNano() - bDate.getNano();
       } else {
