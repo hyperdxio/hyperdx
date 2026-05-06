@@ -35,7 +35,7 @@ type DashboardContainerProps = {
   onToggleCollapsible: () => void;
   onToggleBordered: () => void;
   onDelete: (action: 'ungroup' | 'delete') => void;
-  /** Tile count inside this container — determines whether "Ungroup Tiles" is offered. */
+  /** Tile count inside this container, determines whether "Ungroup Tiles" is offered. */
   tileCount: number;
   onAddTile: () => void;
   activeTabId: string | undefined;
@@ -162,7 +162,11 @@ export default function DashboardContainer({
         </ActionIcon>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Item leftSection={<IconPlus size={14} />} onClick={onAddTab}>
+        <Menu.Item
+          leftSection={<IconPlus size={14} />}
+          onClick={onAddTab}
+          data-testid={`group-add-tab-${container.id}`}
+        >
           Add Tab
         </Menu.Item>
         <Menu.Divider />
@@ -275,7 +279,7 @@ export default function DashboardContainer({
           </Flex>
         </Tabs>
       ) : (
-        /* Plain header (1 tab or collapsed) — shows title + chevron */
+        /* Plain header (1 tab or collapsed): shows title + chevron */
         <Flex
           align="center"
           gap={6}
