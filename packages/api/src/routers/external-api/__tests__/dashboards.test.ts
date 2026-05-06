@@ -2465,6 +2465,62 @@ describe('External API v2 Dashboards - new format', () => {
         .expect(400);
     });
 
+    it('round-trips a heatmap tile with only required fields', async () => {
+      // Covers the minimal payload path: countExpression, alias,
+      // heatmapScaleType, where, whereLanguage, and numberFormat are all
+      // omitted on the request. Guards against a regression where the
+      // deserializer's `!== undefined` checks (v2/utils/dashboards.ts)
+      // drop optional fields silently or coerce defaults that don't
+      // survive the read-back.
+      const heatmapMinimalRequest = {
+        name: 'Minimal Heatmap',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+        },
+      };
+
+      // The Zod schema applies `where: z.string().optional().default('')`,
+      // so the round-trip surfaces an empty string. whereLanguage and the
+      // optional select-item fields stay undefined.
+      const expectedResponse: ExternalDashboardTile = {
+        ...heatmapMinimalRequest,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+          where: '',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Minimal Heatmap',
+          tiles: [heatmapMinimalRequest],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        expectedResponse,
+      );
+    });
+
     it('can round-trip all raw SQL chart config types', async () => {
       const connectionId = connection._id.toString();
       const sourceId = traceSource._id.toString();
