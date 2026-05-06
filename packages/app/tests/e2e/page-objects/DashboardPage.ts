@@ -283,16 +283,30 @@ export class DashboardPage {
 
   /**
    * Read the `?activeTabs` query param as a `{ containerId: tabId }` map.
-   * Returns an empty object when the param is missing.
+   * Returns an empty object when the param is missing or malformed.
+   *
+   * The serializer is `parseAsJsonEncoded` (see
+   * `packages/app/src/utils/queryParsers.ts`), which double-encodes its
+   * value to survive the Microsoft-Teams `+` -> `%2B` re-encoding. nuqs
+   * writes `encodeURIComponent(JSON.stringify(value))` AND then nuqs's
+   * URL machinery encodes the resulting `%XX` sequences a second time.
+   * `searchParams.get(...)` decodes one level, so we have to decode the
+   * second level ourselves before `JSON.parse` to recover the object.
+   * The fallback to plain `JSON.parse` keeps us compatible with the
+   * old single-encoded format, mirroring the parser.
    */
   getActiveTabsParam(): Record<string, string> {
     const url = new URL(this.page.url());
     const raw = url.searchParams.get('activeTabs');
     if (!raw) return {};
     try {
-      return JSON.parse(raw);
+      return JSON.parse(decodeURIComponent(raw));
     } catch {
-      return {};
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return {};
+      }
     }
   }
 
