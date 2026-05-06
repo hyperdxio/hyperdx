@@ -125,12 +125,25 @@ jobs:
           body-includes: '<!-- claude-code-review -->'
           direction: last
 
+      # fromJSON() in a `with:` expression has been observed to leave the
+      # structured_output JSON string unparsed, posting the raw envelope as
+      # the comment body. Extract the review field via jq for reliability.
+      - name: Extract review from structured output
+        id: extract-review
+        env:
+          STRUCTURED_OUTPUT:
+            ${{ steps.claude-review.outputs.structured_output }}
+        run: |
+          {
+            echo 'review<<CLAUDE_REVIEW_EOF'
+            printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review'
+            echo 'CLAUDE_REVIEW_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Post or update Claude review
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-claude-comment.outputs.comment-id }}
           issue-number: ${{ steps.pr.outputs.number }}
-          body:
-            ${{ fromJSON(steps.claude-review.outputs.structured_output).review
-            }}
+          body: ${{ steps.extract-review.outputs.review }}
           edit-mode: replace
