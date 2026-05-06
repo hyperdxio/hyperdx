@@ -18,6 +18,7 @@ import {
   IconArrowBarToLeft,
   IconChartDots,
   IconDeviceFloppy,
+  IconFolderOpen,
   IconLayoutGrid,
   IconSettings,
   IconTable,
@@ -343,6 +344,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           className={styles.scrollContainer}
         >
           <div style={{ width: navWidth }} className={styles.navLinks}>
+            {/* Catalog */}
+            <AppNavLink
+              label="Catalog"
+              icon={<IconFolderOpen size={16} />}
+              href="/catalog"
+              isActive={
+                pathname === '/catalog' || pathname?.startsWith('/catalog/')
+              }
+            />
+
             {/* Search */}
             <AppNavLink
               label="Search"
