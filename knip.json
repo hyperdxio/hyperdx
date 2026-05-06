@@ -15,6 +15,7 @@
       "entry": [
         "src/index.ts",
         "src/tasks/index.ts",
+        "src/serverless.ts",
         "scripts/*.ts",
         "src/fixtures.ts"
       ],
