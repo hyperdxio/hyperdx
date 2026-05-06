@@ -8,6 +8,7 @@ import {
   type Alert,
   AlertIntervalSchema,
   AlertSource,
+  AlertState,
   AlertThresholdType,
   Filter,
   isRangeThresholdType,
@@ -37,6 +38,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
+  IconBellFilled,
   IconChartLine,
   IconInfoCircleFilled,
   IconPlus,
@@ -581,7 +583,15 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
+                  {alert.state === AlertState.ALERT ? (
+                    <IconBellFilled
+                      size={14}
+                      color="var(--mantine-color-red-filled)"
+                    />
+                  ) : (
+                    getWebhookChannelIcon(alert.channel.type)
+                  )}{' '}
+                  Alert {index + 1}
                 </Group>
               </Tabs.Tab>
             ))}
