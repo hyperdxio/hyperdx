@@ -270,7 +270,7 @@ export function useMultipleGetKeyValues(
 
         const { databaseName, tableName } = firstConfig.from;
         const connectionId = firstConfig.connection;
-        const dateRange = firstConfig.dateRange as [Date, Date] | undefined;
+        const dateRange = firstConfig.dateRange;
 
         return Promise.all(
           keys.slice(0, maxKeys).map(async keyExpression => {
