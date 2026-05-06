@@ -35,6 +35,81 @@ import { SQLPreview } from './ChartSQLPreview';
 
 type Mode2DataArray = [number[], number[], number[]];
 
+/**
+ * Drag-select bounds in data space: x in seconds (URL convention), y in
+ * the y-axis's natural unit (NOT log-space; callers pass the actual value
+ * users would expect to see, e.g. ms latency). yMin may be 0 when the
+ * selection touched the bottom bucket; the renderer clamps to the chart's
+ * visible y-axis floor.
+ */
+export type SelectionBounds = {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+};
+
+/**
+ * Reapply a persisted selection rectangle to a uPlot instance. Called on
+ * chart create and whenever the bounds prop changes; uPlot's `u.select`
+ * is owned by the chart, so it gets wiped on any chart recreation. We use
+ * the URL-backed bounds as the source of truth and mirror them onto the
+ * chart imperatively. fireHook=false avoids re-entering the setSelect hook.
+ */
+function applySelectionToChart(
+  u: uPlot,
+  bounds: SelectionBounds | null | undefined,
+  scaleType: HeatmapScaleType,
+) {
+  if (bounds == null) {
+    u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+    return;
+  }
+
+  const { xMin, xMax, yMin, yMax } = bounds;
+
+  // x is in seconds in the URL; uPlot's x-axis is configured ms:1 so
+  // values are stored as ms.
+  const xMinPx = u.valToPos(xMin * 1000, 'x');
+  const xMaxPx = u.valToPos(xMax * 1000, 'x');
+
+  const yScaleMin = u.scales.y?.min;
+  const yScaleMax = u.scales.y?.max;
+  if (yScaleMin == null || yScaleMax == null) {
+    return;
+  }
+
+  // For log scale, y-axis values are stored in log-space. Convert and
+  // clamp to the visible axis: yMin may be 0 (bottom-bucket adjustment in
+  // HeatmapContainer's onFilter wrapper); yMax may exceed the axis.
+  let yLowPlot: number;
+  let yHighPlot: number;
+  if (scaleType === 'log') {
+    yHighPlot = yMax > 0 ? Math.min(Math.log(yMax), yScaleMax) : yScaleMax;
+    yLowPlot = yMin > 0 ? Math.max(Math.log(yMin), yScaleMin) : yScaleMin;
+  } else {
+    yHighPlot = Math.min(yMax, yScaleMax);
+    yLowPlot = Math.max(yMin, yScaleMin);
+  }
+
+  // uPlot's y-axis: high data values map to small pixel y (top of chart).
+  const yHighPx = u.valToPos(yHighPlot, 'y');
+  const yLowPx = u.valToPos(yLowPlot, 'y');
+
+  const left = Math.min(xMinPx, xMaxPx);
+  const right = Math.max(xMinPx, xMaxPx);
+
+  u.setSelect(
+    {
+      left,
+      top: yHighPx,
+      width: right - left,
+      height: Math.max(0, yLowPx - yHighPx),
+    },
+    false,
+  );
+}
+
 // From: https://github.com/leeoniya/uPlot/blob/a4edb297a9b80baf781f4d05a40fb52fae737bff/demos/latency-heatmap.html#L436
 function heatmapPaths(opts: {
   disp: { fill: { lookup: string[]; values: any } };
@@ -534,6 +609,7 @@ function HeatmapContainer({
   enabled = true,
   onFilter,
   onClearFilter,
+  selectionBounds,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -544,6 +620,14 @@ function HeatmapContainer({
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
   onClearFilter?: () => void;
+  /**
+   * The currently-applied drag-select bounds. When provided, the heatmap
+   * draws the dashed selection rectangle and reapplies it after any uPlot
+   * recreation (theme switch, prop change, resize) so the user always sees
+   * which slice they filtered. Caller owns the URL/query-state plumbing;
+   * this is purely a visual mirror of that state.
+   */
+  selectionBounds?: SelectionBounds | null;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
@@ -611,10 +695,11 @@ function HeatmapContainer({
     [fromMs, toMs, granularity],
   );
 
-  // Memoize: URL-filter-only re-renders (drag-select writes xMin/xMax/
-  // yMin/yMax to the URL) must not change the data ref, or uplot-react
-  // calls setData(data, true), which wipes uPlot's u.select rectangle.
-  // Stable refs keep the dashed selection visible after mouseup. (HDX-4147)
+  // Stable [time, bucket, count] arrays let uplot-react skip its setData
+  // path when only URL-state (xMin/xMax/yMin/yMax) changed. Pairs with the
+  // selectionBounds prop on Heatmap below: the prop reapplies u.select on
+  // any chart recreation, this memo prevents the recreation in the
+  // common case.
   const heatmapData = useMemo<Mode2DataArray>(() => {
     const time: number[] = [];
     const bucket: number[] = [];
@@ -770,7 +855,7 @@ function HeatmapContainer({
                   // clamped by greatest(value, effectiveMin).  If the
                   // selection touches that bucket, widen yMin to 0 so
                   // the downstream SQL filter captures all those spans.
-                  // The 1.1× threshold adds 10% headroom to account for
+                  // The 1.1x threshold adds 10% headroom to account for
                   // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
                     scaleType === 'log' && yMin <= effectiveMin * 1.1
@@ -783,6 +868,7 @@ function HeatmapContainer({
           onClearFilter={onClearFilter}
           scaleType={scaleType}
           palette={palette}
+          selectionBounds={selectionBounds}
         />
       )}
     </ChartContainer>
@@ -893,6 +979,7 @@ function Heatmap({
   onClearFilter,
   scaleType = 'linear',
   palette,
+  selectionBounds,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
@@ -900,6 +987,7 @@ function Heatmap({
   onClearFilter?: () => void;
   scaleType?: HeatmapScaleType;
   palette: string[];
+  selectionBounds?: SelectionBounds | null;
 }) {
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
@@ -937,6 +1025,17 @@ function Heatmap({
   // persisted u.select rectangle (which is owned by uPlot, not React).
   const uplotRef = useRef<uPlot | null>(null);
 
+  // Reapply the URL-backed selection whenever the bounds prop changes
+  // (e.g. a fresh drag-select arrives via the round-trip through the
+  // parent's URL state, or the parent clears the filter). This complements
+  // the onCreate path: that handles chart creation, this handles bounds
+  // changes against an existing chart.
+  useEffect(() => {
+    if (uplotRef.current) {
+      applySelectionToChart(uplotRef.current, selectionBounds, scaleType);
+    }
+  }, [selectionBounds, scaleType]);
+
   // Timestamp of the most recent drag-end. Guards the container's onClick
   // handler from clearing the selection when the synthetic click event
   // that fires on mouseup-after-drag arrives.
@@ -944,6 +1043,17 @@ function Heatmap({
 
   const { ref, width, height } = useElementSize();
 
+  // Stabilize on numberFormat content, not reference. Callers (e.g.
+  // DBSearchHeatmapChart) build a fresh `numberFormat` object on every
+  // render; depending on its identity would rebuild tickFormatter, then
+  // the options memo, then uplot-react would see new top-level keys via
+  // optionsUpdateState and treat the change as 'create', destroying the
+  // chart and wiping u.select. Hashing the contents lets the memo skip
+  // when the actual format is unchanged. (HDX-4147)
+  const numberFormatKey = useMemo(
+    () => (numberFormat ? JSON.stringify(numberFormat) : ''),
+    [numberFormat],
+  );
   const tickFormatter = useCallback(
     (value: number) => {
       // y-values are stored in log space for log scale; exponentiate back
@@ -969,7 +1079,8 @@ function Heatmap({
             compactDisplay: 'short',
           }).format(actualValue);
     },
-    [numberFormat, scaleType],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [numberFormatKey, scaleType],
   );
 
   const options: uPlot.Options = useMemo(() => {
@@ -1161,6 +1272,12 @@ function Heatmap({
         resetScales={true}
         onCreate={chart => {
           uplotRef.current = chart;
+          // Reapply the persisted selection on every uPlot construction.
+          // uplot-react destroys+recreates the chart whenever options
+          // identity changes (and various deps make options unstable in
+          // practice), wiping u.select. Re-mirroring from the URL-backed
+          // bounds is the source-of-truth fix. (HDX-4147)
+          applySelectionToChart(chart, selectionBounds, scaleType);
         }}
         onDelete={() => {
           uplotRef.current = null;
