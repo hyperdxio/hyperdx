@@ -929,12 +929,10 @@ export const FilterGroup = ({
     }
   }, [isDefaultExpanded]);
 
-  const selectedFiltersSize =
+  const totalAppliedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
     (hasRange ? 1 : 0);
-  const totalAppliedFiltersSize =
-    selectedFiltersSize > 0 ? selectedFiltersSize : options.length;
 
   const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
@@ -979,7 +977,7 @@ export const FilterGroup = ({
                       component="span"
                       size="xs"
                       c="dimmed"
-                    >{` (${totalAppliedFiltersSize})`}</Text>
+                    >{` (${totalAppliedFiltersSize > 0 ? totalAppliedFiltersSize : options.length})`}</Text>
                   )}
                 </Text>
               </Tooltip>
