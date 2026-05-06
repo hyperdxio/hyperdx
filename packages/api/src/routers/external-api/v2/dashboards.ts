@@ -25,6 +25,23 @@ import {
   updateDashboardBodySchema,
 } from './utils/dashboards';
 
+/**
+ * Projection used by the GET-list and GET-by-id Dashboard endpoints, kept in
+ * one place so adding a new field doesn't need touching both call sites.
+ * Mirrors the shape consumed by `convertToExternalDashboard`.
+ */
+const EXTERNAL_DASHBOARD_PROJECTION = {
+  _id: 1,
+  name: 1,
+  tiles: 1,
+  tags: 1,
+  filters: 1,
+  savedQuery: 1,
+  savedQueryLanguage: 1,
+  savedFilterValues: 1,
+  containers: 1,
+} as const;
+
 async function getSourceConnectionMismatches(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
@@ -1381,17 +1398,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      {
-        _id: 1,
-        name: 1,
-        tiles: 1,
-        tags: 1,
-        filters: 1,
-        savedQuery: 1,
-        savedQueryLanguage: 1,
-        savedFilterValues: 1,
-        containers: 1,
-      },
+      EXTERNAL_DASHBOARD_PROJECTION,
     ).sort({ name: -1 });
 
     res.json({
@@ -1499,17 +1506,7 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        {
-          _id: 1,
-          name: 1,
-          tiles: 1,
-          tags: 1,
-          filters: 1,
-          savedQuery: 1,
-          savedQueryLanguage: 1,
-          savedFilterValues: 1,
-          containers: 1,
-        },
+        EXTERNAL_DASHBOARD_PROJECTION,
       );
 
       if (dashboard == null) {

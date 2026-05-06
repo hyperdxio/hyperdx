@@ -3903,6 +3903,86 @@ describe('External API v2 Dashboards - new format', () => {
       expect(getResponse.body.data.containers).toBeUndefined();
     });
 
+    it('rejects duplicate container ids on PUT (update path)', async () => {
+      // The duplicate-id refine has to fire on the PUT body schema as
+      // well as POST. Without this guard a client could downgrade an
+      // already-valid dashboard to one with duplicate ids by editing it.
+      const sourceId = traceSource._id.toString();
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'PUT Duplicate Containers',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers: [
+            { id: 'a', title: 'A', collapsed: false },
+            { id: 'b', title: 'B', collapsed: false },
+          ],
+        })
+        .expect(200);
+      const dashboardId = createResponse.body.data.id;
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'PUT Duplicate Containers',
+          tiles: [buildTile(sourceId)],
+          tags: [],
+          containers: [
+            { id: 'dupe', title: 'A', collapsed: false },
+            { id: 'dupe', title: 'B', collapsed: false },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('Container IDs must be unique');
+    });
+
+    it('rejects a tile with containerId set when the dashboard omits containers entirely', async () => {
+      // Without an explicit `containers: []` and without resolving the
+      // `data.containers ?? []` default, the tile-level superRefine
+      // would NPE on `containerById.get`. This guards that the
+      // containerId still has to resolve even when the field is
+      // absent.
+      const sourceId = traceSource._id.toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Tile with containerId, no containers field',
+          tiles: [buildTile(sourceId, { containerId: 'service-health' })],
+          tags: [],
+        })
+        .expect(400);
+      expect(response.body.message).toContain(
+        'unknown containerId "service-health"',
+      );
+    });
+
+    it('does not require tabId when a tile is in a tabbed container (tile renders without a tab)', async () => {
+      // The contract is: tabId is only required if the tile WANTS to
+      // be inside a specific tab. A tile with containerId set to a
+      // container that has tabs but no tabId of its own renders in the
+      // container shell rather than under any tab. This guards that
+      // the schema doesn't accidentally force tabId onto every tile in
+      // a tabbed container.
+      const sourceId = traceSource._id.toString();
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Tabbed container with tile that has no tabId',
+          tiles: [buildTile(sourceId, { containerId: 'service-health' })],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [
+                { id: 'errors', title: 'Errors' },
+                { id: 'latency', title: 'Latency' },
+              ],
+            },
+          ],
+        })
+        .expect(200);
+    });
+
     it('rejects an empty-string containerId or tabId on a tile', async () => {
       const sourceId = traceSource._id.toString();
       const containerResp = await authRequest('post', BASE_URL)

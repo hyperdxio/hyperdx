@@ -896,9 +896,11 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
-  containerId: z.string().optional(),
+  // `min(1)` matches the external API; an empty string isn't a valid
+  // id and would silently pass `tile.containerId !== undefined` checks.
+  containerId: z.string().min(1).optional(),
   // For tiles inside a tab container: which tab this tile belongs to
-  tabId: z.string().optional(),
+  tabId: z.string().min(1).optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -910,14 +912,26 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+// Reasonable bounds on identifiers and titles. The UI never asks the
+// user to type either an id or a title longer than ~64 chars; capping
+// at 256 leaves room for slugified or composed ids without inviting
+// Mongo-doc bloat.
+const DASHBOARD_CONTAINER_ID_MAX = 256;
+const DASHBOARD_CONTAINER_TITLE_MAX = 256;
+// Caps the per-container tab fan-out. The tab bar visually breaks
+// past ~10 tabs and the editor offers no bulk-add affordance.
+export const DASHBOARD_CONTAINER_MAX_TABS = 20;
+// Caps the per-dashboard container fan-out.
+export const DASHBOARD_MAX_CONTAINERS = 50;
+
 export const DashboardContainerTabSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
 });
 
 export const DashboardContainerSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
   collapsed: z.boolean(),
   // Whether the group can be collapsed (default true)
   collapsible: z.boolean().optional(),
@@ -925,7 +939,10 @@ export const DashboardContainerSchema = z.object({
   bordered: z.boolean().optional(),
   // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
   // Tiles reference a specific tab via tabId.
-  tabs: z.array(DashboardContainerTabSchema).optional(),
+  tabs: z
+    .array(DashboardContainerTabSchema)
+    .max(DASHBOARD_CONTAINER_MAX_TABS)
+    .optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -987,6 +1004,7 @@ export const DashboardSchema = z.object({
   savedFilterValues: z.array(FilterSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
+    .max(DASHBOARD_MAX_CONTAINERS)
     .refine(
       containers => {
         const ids = containers.map(c => c.id);
