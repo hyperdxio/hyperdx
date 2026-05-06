@@ -1025,11 +1025,24 @@ function Heatmap({
   // persisted u.select rectangle (which is owned by uPlot, not React).
   const uplotRef = useRef<uPlot | null>(null);
 
+  // Hold selectionBounds and scaleType in refs so the uPlot `ready` hook
+  // (captured inside the options useMemo via closure) always sees the
+  // latest values without needing them in the memo's dep array. Mutating
+  // a ref doesn't trigger re-renders, so the options identity stays
+  // stable across selection/scale changes.
+  const selectionBoundsRef = useRef(selectionBounds);
+  const scaleTypeRef = useRef(scaleType);
+  useEffect(() => {
+    selectionBoundsRef.current = selectionBounds;
+    scaleTypeRef.current = scaleType;
+  });
+
   // Reapply the URL-backed selection whenever the bounds prop changes
   // (e.g. a fresh drag-select arrives via the round-trip through the
   // parent's URL state, or the parent clears the filter). This complements
-  // the onCreate path: that handles chart creation, this handles bounds
-  // changes against an existing chart.
+  // the uPlot `ready` hook below: that handles initial chart creation
+  // (and any recreation), this handles bounds changes against an existing
+  // chart.
   useEffect(() => {
     if (uplotRef.current) {
       applySelectionToChart(uplotRef.current, selectionBounds, scaleType);
@@ -1209,6 +1222,17 @@ function Heatmap({
         }),
         {
           hooks: {
+            // Fires once after uPlot finishes initial layout/draw. At
+            // onCreate time scales aren't reliably populated for mode-2
+            // facet data, so reapplying the URL-backed selection from
+            // here ensures valToPos has the bounds it needs. (HDX-4147)
+            ready: u => {
+              applySelectionToChart(
+                u,
+                selectionBoundsRef.current,
+                scaleTypeRef.current,
+              );
+            },
             setSelect: u => {
               // Ignore zero-size selections (e.g. single-click)
               if (u.select.width <= 0 || u.select.height <= 0) {
@@ -1272,12 +1296,6 @@ function Heatmap({
         resetScales={true}
         onCreate={chart => {
           uplotRef.current = chart;
-          // Reapply the persisted selection on every uPlot construction.
-          // uplot-react destroys+recreates the chart whenever options
-          // identity changes (and various deps make options unstable in
-          // practice), wiping u.select. Re-mirroring from the URL-backed
-          // bounds is the source-of-truth fix. (HDX-4147)
-          applySelectionToChart(chart, selectionBounds, scaleType);
         }}
         onDelete={() => {
           uplotRef.current = null;
