@@ -60,12 +60,6 @@ export const ATHENA_REGION = lazyRequireEnv('ATHENA_REGION');
 export const ATHENA_WORKGROUP = lazyRequireEnv('ATHENA_WORKGROUP');
 export const ATHENA_OUTPUT_LOCATION = lazyRequireEnv('ATHENA_OUTPUT_LOCATION');
 
-// Legacy ClickHouse env vars retained for integration-test fixtures during the
-// Berg migration. Task 4 removes the in-tree clickhouse/ modules; once those
-// are gone these can also be deleted.
-export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
-export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
-export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 export const ATHENA_SYNC_TIMEOUT_MS = Number.parseInt(
   env.ATHENA_SYNC_TIMEOUT_MS ?? '30000',
   10,

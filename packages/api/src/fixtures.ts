@@ -1,10 +1,3 @@
-// NOTE (Berg / Task 4): @berg/common-utils/dist/clickhouse/node was deleted
-// in Task 4 along with the rest of the runtime ClickHouse client.  This
-// integration-test fixture file still imports it because it pre-dates the
-// Athena migration; Tasks 9/11 own porting the integration tests to the
-// new Athena-backed client.  The `@ts-ignore` keeps tsc happy until then.
-// @ts-ignore - module deleted in Task 4; integration tests owned by Task 9/11
-import { createNativeClient } from '@berg/common-utils/dist/clickhouse/node';
 import {
   DisplayType,
   RawSqlSavedChartConfig,
@@ -12,7 +5,6 @@ import {
   Tile,
 } from '@berg/common-utils/dist/types';
 import mongoose from 'mongoose';
-import ms from 'ms';
 import request from 'supertest';
 
 import * as config from '@/config';
@@ -20,7 +12,6 @@ import { getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
 import Server from '@/server';
-import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
 
 import { ExternalDashboardTile } from './utils/zod';
@@ -28,103 +19,6 @@ import { ExternalDashboardTile } from './utils/zod';
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
   password: 'TacoCat!2#4X',
-};
-
-export const DEFAULT_DATABASE = 'default';
-export const DEFAULT_LOGS_TABLE = 'otel_logs';
-export const DEFAULT_TRACES_TABLE = 'otel_traces';
-export const DEFAULT_METRICS_TABLE = {
-  GAUGE: 'otel_metrics_gauge',
-  SUM: 'otel_metrics_sum',
-  HISTOGRAM: 'otel_metrics_histogram',
-  SUMMARY: 'otel_metrics_summary',
-  EXPONENTIAL_HISTOGRAM: 'otel_metrics_exponential_histogram',
-};
-
-let clickhouseClient: any;
-
-export const getTestFixtureClickHouseClient = async () => {
-  if (!clickhouseClient) {
-    clickhouseClient = createNativeClient({
-      url: config.CLICKHOUSE_HOST,
-      username: config.CLICKHOUSE_USER,
-      password: config.CLICKHOUSE_PASSWORD,
-      request_timeout: ms('1m'),
-      compression: {
-        request: false,
-        response: false, // has to be off to enable streaming
-      },
-      clickhouse_settings: {
-        connect_timeout: ms('1m') / 1000,
-        date_time_output_format: 'iso',
-        max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
-        max_download_threads: 32,
-        max_execution_time: ms('2m') / 1000,
-      },
-    });
-  }
-  return clickhouseClient;
-};
-
-export const closeTestFixtureClickHouseClient = async () => {
-  if (clickhouseClient) {
-    await clickhouseClient.close();
-    clickhouseClient = null;
-  }
-};
-
-const healthCheck = async () => {
-  const client = await getTestFixtureClickHouseClient();
-  const result = await client.ping();
-  if (!result.success) {
-    logger.error({ error: result.error }, 'ClickHouse health check failed');
-    throw result.error;
-  }
-};
-
-const REQUIRED_TABLES = [
-  DEFAULT_LOGS_TABLE,
-  DEFAULT_TRACES_TABLE,
-  DEFAULT_METRICS_TABLE.GAUGE,
-  DEFAULT_METRICS_TABLE.SUM,
-  DEFAULT_METRICS_TABLE.HISTOGRAM,
-  DEFAULT_METRICS_TABLE.SUMMARY,
-  DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
-];
-
-const waitForClickhouseSchema = async () => {
-  await healthCheck();
-
-  const client = await getTestFixtureClickHouseClient();
-  const maxWaitMs = 30_000;
-  const pollIntervalMs = 500;
-  const start = Date.now();
-
-  while (Date.now() - start < maxWaitMs) {
-    const result = await client
-      .query({
-        query: `SELECT name FROM system.tables WHERE database = '${DEFAULT_DATABASE}'`,
-        format: 'JSONEachRow',
-      })
-      .then((res: any) => res.json());
-
-    const existingTables = new Set(result.map((row: any) => row.name));
-    const missing = REQUIRED_TABLES.filter(t => !existingTables.has(t));
-
-    if (missing.length === 0) {
-      logger.info('All required ClickHouse tables are ready');
-      return;
-    }
-
-    logger.info(
-      `Waiting for ClickHouse tables: ${missing.join(', ')} (${Math.round((Date.now() - start) / 1000)}s elapsed)`,
-    );
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-  }
-
-  throw new Error(
-    `Timed out waiting for ClickHouse tables after ${maxWaitMs / 1000}s`,
-  );
 };
 
 export const connectDB = async () => {
@@ -162,9 +56,7 @@ export const initCiEnvs = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-
   // Populate fake persistent data here...
-  await waitForClickhouseSchema();
 };
 
 class MockServer extends Server {
@@ -196,12 +88,11 @@ class MockServer extends Server {
         resolve();
       });
     });
-    await closeTestFixtureClickHouseClient();
     await super.shutdown();
   }
 
   clearDBs() {
-    return Promise.all([clearClickhouseTables(), clearDBCollections()]);
+    return clearDBCollections();
   }
 }
 
@@ -233,151 +124,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
     team,
     user,
   };
-};
-
-// ------------------------------------------------
-// ------------------ Clickhouse ------------------
-// ------------------------------------------------
-export const executeSqlCommand = async (sql: string) => {
-  const client = await getTestFixtureClickHouseClient();
-  return await client.command({
-    query: sql,
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-};
-
-export const clearClickhouseTables = async () => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  const tables = [
-    `${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
-    // `${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`,
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUMMARY}`,
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM}`,
-  ];
-
-  const promises: any = [];
-  const client = await getTestFixtureClickHouseClient();
-  for (const table of tables) {
-    promises.push(
-      client.command({
-        query: `TRUNCATE TABLE ${table}`,
-        clickhouse_settings: {
-          wait_end_of_query: 1,
-        },
-      }),
-    );
-  }
-  await Promise.all(promises);
-};
-
-export const selectAllLogs = async () => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  return clickhouseClient
-    .query({
-      query: `SELECT * FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
-      format: 'JSONEachRow',
-    })
-    .then(res => res.json());
-};
-
-export const bulkInsertData = async (
-  table: string,
-  data: Record<string, any>[],
-) => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  const client = await getTestFixtureClickHouseClient();
-  await client.insert({
-    table,
-    values: data,
-    format: 'JSONEachRow',
-    clickhouse_settings: {
-      // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
-      date_time_input_format: 'best_effort',
-      wait_end_of_query: 1,
-    },
-  });
-};
-
-export const bulkInsertLogs = async (
-  events: {
-    Body: string;
-    ServiceName: string;
-    SeverityText: string;
-    Timestamp: Date;
-  }[],
-) => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
-};
-
-export const bulkInsertMetricsGauge = async (
-  metrics: {
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    ServiceName: string;
-    TimeUnix: Date;
-    Value: number;
-  }[],
-) => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await bulkInsertData(
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
-    metrics,
-  );
-};
-
-export const bulkInsertMetricsSum = async (
-  metrics: {
-    AggregationTemporality: number;
-    IsMonotonic: boolean;
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    ServiceName: string;
-    TimeUnix: Date;
-    Value: number;
-  }[],
-) => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await bulkInsertData(
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
-    metrics,
-  );
-};
-
-export const bulkInsertMetricsHistogram = async (
-  metrics: {
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    TimeUnix: Date;
-    BucketCounts: number[];
-    ExplicitBounds: number[];
-    AggregationTemporality: number;
-  }[],
-) => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await bulkInsertData(
-    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
-    metrics,
-  );
 };
 
 enum MetricsDataType {
