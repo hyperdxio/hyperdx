@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
   isHeatmapCompatibleSource,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -210,6 +211,11 @@ const convertToExternalTileChartConfig = (
     }
 
     config.displayType satisfies never | undefined;
+    return undefined;
+  }
+
+  // PromQL configs are not yet supported in the external API
+  if (isPromqlSavedChartConfig(config)) {
     return undefined;
   }
 

@@ -34,14 +34,33 @@
     <timezone>UTC</timezone>
     <mlock_executable>false</mlock_executable>
 
-    <!-- Prometheus exporter -->
+    <access_control_path>/var/lib/clickhouse/access</access_control_path>
+
+    <!-- Prometheus metrics exporter + remote write/read ingestion -->
     <prometheus>
-        <endpoint>/metrics</endpoint>
         <port>9363</port>
         <metrics>true</metrics>
         <events>true</events>
         <asynchronous_metrics>true</asynchronous_metrics>
         <errors>true</errors>
+        <handlers>
+            <remote_write_handler>
+                <url>/write</url>
+                <handler>
+                    <type>remote_write</type>
+                    <database>default</database>
+                    <table>otel_metrics_ts</table>
+                </handler>
+            </remote_write_handler>
+            <remote_read_handler>
+                <url>/read</url>
+                <handler>
+                    <type>remote_read</type>
+                    <database>default</database>
+                    <table>otel_metrics_ts</table>
+                </handler>
+            </remote_read_handler>
+        </handlers>
     </prometheus>
 
     <!-- Query log. Used only for queries with setting log_queries = 1. -->

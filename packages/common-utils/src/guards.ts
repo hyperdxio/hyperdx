@@ -4,6 +4,8 @@ import {
   ChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
+  PromqlChartConfig,
+  PromqlSavedChartConfig,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -41,10 +43,16 @@ export function isRawSqlChartConfig(
   return 'configType' in chartConfig && chartConfig.configType === 'sql';
 }
 
+export function isPromqlChartConfig(
+  chartConfig: ChartConfig | ChartConfigWithOptDateRange,
+): chartConfig is PromqlChartConfig {
+  return 'configType' in chartConfig && chartConfig.configType === 'promql';
+}
+
 export function isBuilderChartConfig(
   chartConfig: ChartConfig | ChartConfigWithOptDateRange,
 ): chartConfig is BuilderChartConfig {
-  return !isRawSqlChartConfig(chartConfig);
+  return !isRawSqlChartConfig(chartConfig) && !isPromqlChartConfig(chartConfig);
 }
 
 export function isRawSqlSavedChartConfig(
@@ -53,10 +61,19 @@ export function isRawSqlSavedChartConfig(
   return 'configType' in chartConfig && chartConfig.configType === 'sql';
 }
 
+export function isPromqlSavedChartConfig(
+  chartConfig: SavedChartConfig,
+): chartConfig is PromqlSavedChartConfig {
+  return 'configType' in chartConfig && chartConfig.configType === 'promql';
+}
+
 export function isBuilderSavedChartConfig(
   chartConfig: SavedChartConfig,
 ): chartConfig is BuilderSavedChartConfig {
-  return !isRawSqlSavedChartConfig(chartConfig);
+  return (
+    !isRawSqlSavedChartConfig(chartConfig) &&
+    !isPromqlSavedChartConfig(chartConfig)
+  );
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   ISourceInput,
   LogSource,
   MetricSource,
+  PromqlSource,
   SessionSource,
   Source,
   TraceSource,
@@ -22,6 +23,8 @@ function getModelForKind(kind: SourceKind) {
       return SessionSource;
     case SourceKind.Metric:
       return MetricSource;
+    case SourceKind.Promql:
+      return PromqlSource;
     default:
       kind satisfies never;
       throw new Error(`${kind} is not a valid SourceKind`);

@@ -569,6 +569,11 @@ const getChartConfigFromAlert = (
       return undefined;
     }
 
+    // PromQL tiles don't support alerts yet
+    if (!isBuilderSavedChartConfig(tile.config)) {
+      return undefined;
+    }
+
     const { source } = details;
     if (!source) {
       logger.error(

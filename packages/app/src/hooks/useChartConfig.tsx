@@ -14,6 +14,7 @@ import {
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
@@ -431,6 +432,16 @@ export function useAliasMapFromChartConfig(
     queryFn: async () => {
       if (config == null) {
         return {};
+      }
+
+      // PromQL queries use prometheusQuery() which node-sql-parser can't parse.
+      // Return a fixed alias map since the column names are known.
+      if (isPromqlChartConfig(config)) {
+        return {
+          __hdx_time_bucket: '__hdx_time_bucket',
+          value: 'value',
+          series_name: 'series_name',
+        };
       }
 
       const query = await renderChartConfig(

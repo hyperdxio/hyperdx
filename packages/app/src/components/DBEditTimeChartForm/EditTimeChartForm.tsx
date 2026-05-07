@@ -45,6 +45,7 @@ import { getPreviousDateRange } from '@/ChartUtils';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
+import PromqlChartEditor from '@/components/ChartEditor/PromqlChartEditor';
 import RawSqlChartEditor from '@/components/ChartEditor/RawSqlChartEditor';
 import {
   ChartEditorFormState,
@@ -65,6 +66,7 @@ import HeatmapSettingsDrawer, {
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
+import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
 import {
   getDurationMsExpression,
@@ -188,6 +190,7 @@ export default function EditTimeChartForm({
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
+  const isPromqlInput = configType === 'promql';
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -666,6 +669,9 @@ export default function EditTimeChartForm({
                   data={[
                     { label: 'Builder', value: 'builder' },
                     { label: 'SQL', value: 'sql' },
+                    ...(IS_PROMQL_ENABLED
+                      ? [{ label: 'PromQL', value: 'promql' }]
+                      : []),
                   ]}
                 />
               )}
@@ -694,6 +700,8 @@ export default function EditTimeChartForm({
               />
             </Box>
           </div>
+        ) : isPromqlInput ? (
+          <PromqlChartEditor control={control} onSubmit={onSubmit} />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}
