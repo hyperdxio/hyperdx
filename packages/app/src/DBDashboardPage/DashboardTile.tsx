@@ -14,6 +14,7 @@ import {
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
@@ -66,10 +67,6 @@ import { getMetricTableName } from '@/utils';
 
 import { HeatmapTile } from './HeatmapTile';
 import { type MoveTarget } from './types';
-
-const displayTypeRequiresSource = (
-  displayType: DisplayType | undefined,
-): boolean => displayType !== DisplayType.Markdown;
 
 type DashboardTileProps = {
   chart: Tile;

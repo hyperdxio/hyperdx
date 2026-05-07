@@ -25,9 +25,9 @@ import {
   Dashboard,
   type Tile,
   useCreateDashboard,
+  useDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
-import { useDashboard } from '@/dashboard';
 import DashboardFilters from '@/DashboardFilters';
 import DashboardFiltersModal from '@/DashboardFiltersModal';
 import useDashboardContainers from '@/hooks/useDashboardContainers';
@@ -47,7 +47,7 @@ import { DashboardHeader } from './DashboardHeader';
 import { DashboardTile } from './DashboardTile';
 import { DashboardToolbar } from './DashboardToolbar';
 import { EditTileModal } from './EditTileModal';
-import { DashboardQueryFormValues, type MoveTarget } from './types';
+import type { DashboardQueryFormValues, MoveTarget } from './types';
 import {
   buildMoveTargets,
   downloadObjectAsJson,
