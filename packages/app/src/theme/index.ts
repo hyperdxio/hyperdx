@@ -5,7 +5,7 @@ import { clickstackTheme } from './themes/clickstack';
 import { hyperdxTheme } from './themes/hyperdx';
 import { nordTheme } from './themes/nord';
 import { onedarkTheme } from './themes/onedark';
-import { ThemeConfig, ThemeName } from './types';
+import { THEME_NAMES, ThemeConfig, ThemeName } from './types';
 
 /**
  * Brand Theme System
@@ -54,7 +54,7 @@ const faviconConfigSchema = z.object({
 });
 
 const themeConfigSchema = z.object({
-  name: z.enum(['hyperdx', 'clickstack', 'nord', 'catppuccin', 'onedark']),
+  name: z.enum(THEME_NAMES),
   displayName: z.string().min(1),
   cssClass: z.string().min(1),
   favicon: faviconConfigSchema,

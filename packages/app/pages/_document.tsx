@@ -2,19 +2,12 @@ import { Head, Html, Main, NextScript } from 'next/document';
 
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { THEME_NAMES, ThemeName } from '@/theme/types';
 
-const VALID_THEME_NAMES = [
-  'hyperdx',
-  'clickstack',
-  'nord',
-  'catppuccin',
-  'onedark',
-] as const;
+const VALID_THEME_NAMES = THEME_NAMES satisfies readonly ThemeName[];
 
-type ValidThemeName = (typeof VALID_THEME_NAMES)[number];
-
-function isValidThemeName(name: string | undefined): name is ValidThemeName {
-  return VALID_THEME_NAMES.includes(name as ValidThemeName);
+function isValidThemeName(name: string | undefined): name is ThemeName {
+  return VALID_THEME_NAMES.includes(name as ThemeName);
 }
 
 // Get theme class for SSR - must match ThemeProvider's resolution

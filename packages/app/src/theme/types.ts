@@ -32,15 +32,23 @@ import { MantineThemeOverride } from '@mantine/core';
  */
 
 /**
+ * Canonical list of brand theme identifiers.
+ * Single source of truth for ThemeName type, the Zod enum in index.ts,
+ * and the SSR theme-class allowlist in pages/_document.tsx.
+ */
+export const THEME_NAMES = [
+  'hyperdx',
+  'clickstack',
+  'nord',
+  'catppuccin',
+  'onedark',
+] as const;
+
+/**
  * Brand theme identifier.
  * This is DEPLOYMENT-CONFIGURED, not user-selectable in production.
  */
-export type ThemeName =
-  | 'hyperdx'
-  | 'clickstack'
-  | 'nord'
-  | 'catppuccin'
-  | 'onedark';
+export type ThemeName = (typeof THEME_NAMES)[number];
 
 /**
  * Favicon configuration for a theme.

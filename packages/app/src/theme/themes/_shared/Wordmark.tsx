@@ -1,5 +1,3 @@
-import React from 'react';
-
 import Logomark from './Logomark';
 
 export default function Wordmark() {
