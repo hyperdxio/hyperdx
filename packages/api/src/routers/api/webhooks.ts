@@ -50,13 +50,8 @@ const sanitizeWebhook = <T extends Record<string, unknown>>(webhook: T): T =>
     ),
   }) as T;
 
-const isMaskedUrl = (url: string): boolean => {
-  try {
-    return new URL(url).pathname === `/${REDACTED_VALUE}`;
-  } catch {
-    return false;
-  }
-};
+const isMaskedUrl = (url: string, existingUrl?: string): boolean =>
+  !!existingUrl && url === maskUrl(existingUrl);
 
 const mergeRedactedMap = (
   existing: Record<string, string> | undefined,
@@ -233,7 +228,9 @@ router.put(
       };
 
       // Resolve masked/redacted fields against stored values
-      const resolvedUrl = isMaskedUrl(url) ? existingPlain.url : url;
+      const resolvedUrl = isMaskedUrl(url, existingPlain.url)
+        ? existingPlain.url
+        : url;
       const resolvedHeaders = mergeRedactedMap(existingPlain.headers, headers);
       const resolvedQueryParams = mergeRedactedMap(
         existingPlain.queryParams,
@@ -334,6 +331,7 @@ router.post(
       queryParams: z.record(z.string()).optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
+      webhookId: z.string().optional(),
     }),
   }),
   async (req, res: express.Response<WebhookTestApiResponse>, next) => {
@@ -343,7 +341,29 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { service, url, queryParams, headers, body } = req.body;
+      const { service, webhookId, body } = req.body;
+      let { url, queryParams, headers } = req.body;
+
+      // When testing an existing webhook, resolve any masked/redacted values
+      if (webhookId) {
+        const existing = await Webhook.findOne({
+          _id: webhookId,
+          team: teamId,
+        });
+        if (existing) {
+          const plain = existing.toJSON({ flattenMaps: true }) as {
+            url?: string;
+            headers?: Record<string, string>;
+            queryParams?: Record<string, string>;
+          };
+          if (isMaskedUrl(url, plain.url)) {
+            url = plain.url ?? url;
+          }
+          headers = mergeRedactedMap(plain.headers, headers) ?? headers;
+          queryParams =
+            mergeRedactedMap(plain.queryParams, queryParams) ?? queryParams;
+        }
+      }
 
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
