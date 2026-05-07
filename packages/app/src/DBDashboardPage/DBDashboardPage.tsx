@@ -4,8 +4,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import produce from 'immer';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
-import { ErrorBoundary } from 'react-error-boundary';
-import RGL, { WidthProvider } from 'react-grid-layout';
+import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
@@ -17,20 +16,10 @@ import {
   Filter,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Flex, Menu, Paper, Text } from '@mantine/core';
+import { Box, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import {
-  IconChartBar,
-  IconPlus,
-  IconSquaresDiagonal,
-} from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import { SortableContainerWrapper } from '@/components/DashboardDndComponents';
-import {
-  DashboardDndProvider,
-  type DragHandleProps,
-} from '@/components/DashboardDndContext';
 import {
   Dashboard,
   type Tile,
@@ -58,7 +47,7 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useConfirm } from '@/useConfirm';
 import { getMetricTableName } from '@/utils';
 
-import { DashboardContainerRow } from './DashboardContainerRow';
+import { DashboardGrid } from './DashboardGrid';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardToolbar } from './DashboardToolbar';
 import { DashboardTile, type MoveTarget } from './DashboardTile';
@@ -67,8 +56,6 @@ import { EditTileModal } from './EditTileModal';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-
-const ReactGridLayout = WidthProvider(RGL);
 
 const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   i: chart.id,
@@ -1028,149 +1015,36 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />
-      {/* Selection indicator */}
-      {selectedTileIds.size > 0 && (
-        <Paper p="xs" mt="sm" withBorder>
-          <Flex align="center" gap="sm">
-            <Text size="sm">
-              {selectedTileIds.size} tile{selectedTileIds.size > 1 ? 's' : ''}{' '}
-              selected
-            </Text>
-            <Button
-              size="xs"
-              variant="primary"
-              onClick={handleGroupSelected}
-              title="Group selected tiles (Cmd+G)"
-            >
-              Group
-            </Button>
-            <Button
-              size="xs"
-              variant="secondary"
-              onClick={() => setSelectedTileIds(new Set())}
-            >
-              Clear
-            </Button>
-          </Flex>
-        </Paper>
-      )}
-      <Box mt="sm">
-        {dashboard != null && dashboard.tiles != null ? (
-          <ErrorBoundary
-            onError={console.error}
-            fallback={
-              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                An error occurred while rendering the dashboard.
-              </div>
-            }
-          >
-            <DashboardDndProvider
-              containers={containers}
-              onReorderContainers={handleReorderContainers}
-            >
-              {ungroupedTiles.length > 0 && (
-                <ReactGridLayout
-                  layout={ungroupedTiles.map(tileToLayoutItem)}
-                  containerPadding={[0, 0]}
-                  onLayoutChange={onUngroupedLayoutChange}
-                  cols={24}
-                  rowHeight={32}
-                >
-                  {ungroupedTiles.map(renderTileComponent)}
-                </ReactGridLayout>
-              )}
-              {containers.map(container => (
-                <SortableContainerWrapper
-                  key={container.id}
-                  containerId={container.id}
-                  containerTitle={container.title}
-                >
-                  {(dragHandleProps: DragHandleProps) => (
-                    <DashboardContainerRow
-                      container={container}
-                      containerTiles={
-                        tilesByContainerId.get(container.id) ?? []
-                      }
-                      isCollapsed={isContainerCollapsed(container)}
-                      activeTabId={getActiveTabId(container)}
-                      alertingTabIds={alertingTabIdsByContainer.get(
-                        container.id,
-                      )}
-                      onToggleCollapse={() =>
-                        handleToggleCollapse(container.id)
-                      }
-                      onToggleDefaultCollapsed={() =>
-                        handleToggleDefaultCollapsed(container.id)
-                      }
-                      onToggleCollapsible={() =>
-                        handleToggleCollapsible(container.id)
-                      }
-                      onToggleBordered={() =>
-                        handleToggleBordered(container.id)
-                      }
-                      onDeleteContainer={action =>
-                        handleDeleteContainer(container.id, action)
-                      }
-                      onAddTile={onAddTile}
-                      onAddTab={() => {
-                        const newTabId = handleAddTab(container.id);
-                        if (newTabId) handleTabChange(container.id, newTabId);
-                      }}
-                      onRenameTab={(tabId, title) =>
-                        handleRenameTab(container.id, tabId, title)
-                      }
-                      onDeleteTab={(tabId, action) =>
-                        handleDeleteTab(container.id, tabId, action)
-                      }
-                      onRenameContainer={title =>
-                        handleRenameContainer(container.id, title)
-                      }
-                      onTabChange={tabId =>
-                        handleTabChange(container.id, tabId)
-                      }
-                      dragHandleProps={dragHandleProps}
-                      makeLayoutChangeHandler={makeOnLayoutChange}
-                      tileToLayoutItem={tileToLayoutItem}
-                      renderTileComponent={renderTileComponent}
-                    />
-                  )}
-                </SortableContainerWrapper>
-              ))}
-            </DashboardDndProvider>
-          </ErrorBoundary>
-        ) : null}
-      </Box>
-      <Menu position="top" width={200}>
-        <Menu.Target>
-          <Button
-            data-testid="add-dropdown-button"
-            variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-            mt="sm"
-            fw={400}
-            w="100%"
-            leftSection={<IconPlus size={16} />}
-          >
-            Add
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item
-            data-testid="add-new-tile-menu-item"
-            leftSection={<IconChartBar size={16} />}
-            onClick={() => onAddTile()}
-          >
-            New Tile
-          </Menu.Item>
-          <Menu.Divider />
-          <Menu.Item
-            data-testid="add-new-group-menu-item"
-            leftSection={<IconSquaresDiagonal size={16} />}
-            onClick={() => handleAddContainer()}
-          >
-            New Group
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+      <DashboardGrid
+        canRenderDashboard={dashboard != null && dashboard.tiles != null}
+        hasTiles={Boolean(dashboard?.tiles.length)}
+        containers={containers}
+        ungroupedTiles={ungroupedTiles}
+        selectedTileIds={selectedTileIds}
+        setSelectedTileIds={setSelectedTileIds}
+        onGroupSelected={handleGroupSelected}
+        onReorderContainers={handleReorderContainers}
+        onUngroupedLayoutChange={onUngroupedLayoutChange}
+        renderTileComponent={renderTileComponent}
+        tileToLayoutItem={tileToLayoutItem}
+        tilesByContainerId={tilesByContainerId}
+        isContainerCollapsed={isContainerCollapsed}
+        getActiveTabId={getActiveTabId}
+        alertingTabIdsByContainer={alertingTabIdsByContainer}
+        onToggleCollapse={handleToggleCollapse}
+        onToggleDefaultCollapsed={handleToggleDefaultCollapsed}
+        onToggleCollapsible={handleToggleCollapsible}
+        onToggleBordered={handleToggleBordered}
+        onDeleteContainer={handleDeleteContainer}
+        onAddTile={onAddTile}
+        onAddContainer={handleAddContainer}
+        onAddTab={handleAddTab}
+        onRenameTab={handleRenameTab}
+        onDeleteTab={handleDeleteTab}
+        onRenameContainer={handleRenameContainer}
+        onTabChange={handleTabChange}
+        makeLayoutChangeHandler={makeOnLayoutChange}
+      />
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
