@@ -151,13 +151,46 @@ jobs:
             selected by the orchestrator based on the diff -- and return a
             merged, deduplicated findings report.
 
-            Step 2. Condense the merged findings into the JSON envelope below.
-            Be concise -- one line per finding, grouped by severity (P0, P1,
-            P2, P3). Each finding: `**P{n}** file:line - issue -> fix`. Skip
-            P3 nitpicks unless there are no higher-severity findings.
+            Step 2. Format the merged findings as scannable markdown using
+            the structure below. Group by severity. Do NOT prefix each
+            finding line with `P{n}` -- severity is conveyed by the section
+            heading.
+
+            Per-finding two-line structure:
+                - **`path/to/file.ext:line`** -- one tight sentence on the issue.
+                  - **Fix:** one imperative sentence.
+                  - <sub>*reviewer-a, reviewer-b*</sub>
+            Omit the <sub> line when only a single reviewer flagged the issue.
+
+            Section headings (omit any section with zero findings):
+                ### 🔴 P0/P1 -- must fix
+                ### 🟡 P2 -- recommended
+
+            Wrap all P3 findings inside a collapsed details block so they
+            do not dominate the comment:
+                <details>
+                <summary>🔵 P3 nitpicks (N)</summary>
+
+                - **`path:line`** -- issue.
+                  - **Fix:** remediation.
+
+                </details>
 
             If there are no P0/P1 findings, lead with
-            `✅ No critical issues found.` and put any P2 advice underneath.
+            `✅ No critical issues found.` then any P2 advice underneath.
+
+            After all findings, append a horizontal rule and footer:
+                ---
+                **Reviewers (N):** comma-separated list of reviewers that ran.
+
+                **Testing gaps:** (include only if substantive) one-line bullets.
+
+            Style rules:
+            - Wrap every file path in an inline code span.
+            - Keep the issue line and fix line each to a single sentence;
+              no inline parentheticals such as "(corroborated by ...)" --
+              reviewer credit belongs only in the <sub> line.
+            - Use code spans for identifiers, type names, and config keys.
 
             CRITICAL OUTPUT REQUIREMENTS:
             1. Return a JSON object with a single "review" field whose VALUE
