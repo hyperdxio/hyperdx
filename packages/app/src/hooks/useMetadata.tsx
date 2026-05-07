@@ -253,6 +253,7 @@ export function useMultipleGetKeyValues(
     queryKey: [
       'useMetadata.useGetKeyValues',
       mode,
+      metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
