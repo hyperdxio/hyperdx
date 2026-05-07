@@ -34,15 +34,26 @@ const DBRowTableFieldWithPopover = ({
   const [hoverDisabled, setHoverDisabled] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hoverDisableTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  // Tracks the post-copy "isCopied -> isCopied=false" reset so unmount can
+  // cancel it (popover and its parent row are virtualised; either can recycle
+  // mid-await).
+  const copyResetTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const isMountedRef = useRef(true);
 
-  // Cleanup timeouts on unmount to prevent memory leaks
+  // Cleanup timeouts on unmount to prevent memory leaks and setState-after-
+  // unmount warnings.
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
       if (hoverDisableTimeoutRef.current) {
         clearTimeout(hoverDisableTimeoutRef.current);
+      }
+      if (copyResetTimeoutRef.current) {
+        clearTimeout(copyResetTimeoutRef.current);
       }
     };
   }, []);
@@ -88,10 +99,16 @@ const DBRowTableFieldWithPopover = ({
     const value =
       typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
     const ok = await copyTextWithToast(value, 'Copied field value');
-    if (ok) {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+    if (!ok || !isMountedRef.current) return;
+    setIsCopied(true);
+    if (copyResetTimeoutRef.current) {
+      clearTimeout(copyResetTimeoutRef.current);
     }
+    copyResetTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setIsCopied(false);
+      }
+    }, 2000);
   };
 
   const addFilter = () => {
@@ -181,6 +198,7 @@ const DBRowTableFieldWithPopover = ({
               variant="copy"
               isActive={isCopied}
               title={isCopied ? 'Copied!' : 'Copy field value'}
+              data-testid="field-copy-value-button"
             >
               <IconCopy size={14} />
             </DBRowTableIconButton>

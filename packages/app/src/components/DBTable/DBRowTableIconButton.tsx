@@ -14,6 +14,7 @@ interface DBRowTableIconButtonProps {
   variant?: 'copy' | 'default';
   isActive?: boolean;
   iconSize?: number;
+  'data-testid'?: string;
 }
 
 export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
@@ -25,6 +26,7 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
   variant = 'default',
   isActive = false,
   iconSize = 14,
+  'data-testid': dataTestId,
 }) => {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,6 +57,7 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
         className={baseClasses}
         tabIndex={tabIndex}
         role="button"
+        data-testid={dataTestId}
       >
         {isActive ? <IconCheck size={iconSize} /> : children}
       </UnstyledButton>

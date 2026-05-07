@@ -55,35 +55,55 @@ const ValueRenderer = React.memo(
     }
     if (isString(value)) {
       return (
-        <span ref={ref} className={styles.string}>
+        <span
+          ref={ref}
+          className={styles.string}
+          data-testid="hyperjson-value-string"
+        >
           {value}
         </span>
       );
     }
     if (isNumber(value)) {
       return (
-        <span ref={ref} className={styles.number}>
+        <span
+          ref={ref}
+          className={styles.number}
+          data-testid="hyperjson-value-number"
+        >
           {value}
         </span>
       );
     }
     if (isBoolean(value)) {
       return (
-        <span ref={ref} className={styles.boolean}>
+        <span
+          ref={ref}
+          className={styles.boolean}
+          data-testid="hyperjson-value-boolean"
+        >
           {value ? 'true' : 'false'}
         </span>
       );
     }
     if (isPlainObject(value)) {
       return (
-        <span ref={ref} className={styles.object}>
+        <span
+          ref={ref}
+          className={styles.object}
+          data-testid="hyperjson-value-object"
+        >
           {'{}'} {Object.keys(value).length} keys
         </span>
       );
     }
     if (isArray(value)) {
       return (
-        <span ref={ref} className={styles.array}>
+        <span
+          ref={ref}
+          className={styles.array}
+          data-testid="hyperjson-value-array"
+        >
           {'[]'} {value.length} items
         </span>
       );

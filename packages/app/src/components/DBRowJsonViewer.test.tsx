@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -159,40 +159,56 @@ describe('DBRowJsonViewer', () => {
     const mockClipboard = jest.fn();
 
     beforeEach(() => {
+      // copyTextToClipboard short-circuits to the execCommand fallback unless
+      // both `window.isSecureContext` is true AND `navigator.clipboard.writeText`
+      // exists, so seed both for these unit tests.
+      Object.defineProperty(window, 'isSecureContext', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+      mockClipboard.mockReset();
+      mockClipboard.mockResolvedValue(undefined);
       Object.assign(navigator, {
         clipboard: { writeText: mockClipboard },
       });
     });
 
-    it('copies array elements from expanded stringified JSON', () => {
+    it('copies array elements from expanded stringified JSON', async () => {
       const arrayObject = { status: 'True', type: 'PodReady' };
       const data = { conditions: JSON.stringify([arrayObject]) };
 
       renderComponent(data);
       expandAndClickButton('conditions', '0', 'Copy Object');
 
-      expect(mockClipboard).toHaveBeenCalledWith(
-        JSON.stringify(arrayObject, null, 2),
-      );
+      await waitFor(() => {
+        expect(mockClipboard).toHaveBeenCalledWith(
+          JSON.stringify(arrayObject, null, 2),
+        );
+      });
     });
 
-    it('copies entire stringified value when not expanded', () => {
+    it('copies entire stringified value when not expanded', async () => {
       const arrayData = [{ type: 'Ready' }, { type: 'Init' }];
       const data = { conditions: JSON.stringify(arrayData) };
 
       renderComponent(data);
       clickLineButton('conditions', 'Copy Value');
 
-      expect(mockClipboard).toHaveBeenCalledWith(JSON.stringify(arrayData));
+      await waitFor(() => {
+        expect(mockClipboard).toHaveBeenCalledWith(JSON.stringify(arrayData));
+      });
     });
 
-    it('copies regular nested objects', () => {
+    it('copies regular nested objects', async () => {
       renderComponent(logData);
       clickLineButton('nested', 'Copy Object');
 
-      expect(mockClipboard).toHaveBeenCalledWith(
-        JSON.stringify({ field3: 'nested value' }, null, 2),
-      );
+      await waitFor(() => {
+        expect(mockClipboard).toHaveBeenCalledWith(
+          JSON.stringify({ field3: 'nested value' }, null, 2),
+        );
+      });
     });
   });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
@@ -25,6 +25,20 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
+  // Rows are virtualised and recycle on scroll; cancel pending state resets on
+  // unmount so we don't setState on a recycled row.
+  const copyResetRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const urlCopyResetRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+      if (urlCopyResetRef.current) clearTimeout(urlCopyResetRef.current);
+    };
+  }, []);
 
   const copyRowData = async () => {
     // Filter out internal metadata fields that start with __ or are generated IDs
@@ -53,10 +67,12 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 
     const rowData = JSON.stringify(parsedRow, null, 2);
     const ok = await copyTextWithToast(rowData, 'Copied row as JSON');
-    if (ok) {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    }
+    if (!ok || !isMountedRef.current) return;
+    setIsCopied(true);
+    if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    copyResetRef.current = setTimeout(() => {
+      if (isMountedRef.current) setIsCopied(false);
+    }, 2000);
   };
 
   const copyRowUrl = async () => {
@@ -71,10 +87,12 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       currentUrl.toString(),
       'Copied shareable link',
     );
-    if (ok) {
-      setIsUrlCopied(true);
-      setTimeout(() => setIsUrlCopied(false), 2000);
-    }
+    if (!ok || !isMountedRef.current) return;
+    setIsUrlCopied(true);
+    if (urlCopyResetRef.current) clearTimeout(urlCopyResetRef.current);
+    urlCopyResetRef.current = setTimeout(() => {
+      if (isMountedRef.current) setIsUrlCopied(false);
+    }, 2000);
   };
 
   return (
@@ -95,6 +113,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         title={
           isCopied ? 'Copied entire row as JSON!' : 'Copy entire row as JSON'
         }
+        data-testid="row-copy-json-button"
       >
         <IconCopy size={16} />
       </DBRowTableIconButton>
@@ -107,6 +126,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
             ? 'Copied shareable link!'
             : 'Copy shareable link to this specific row'
         }
+        data-testid="row-copy-link-button"
       >
         <IconLink size={16} />
       </DBRowTableIconButton>

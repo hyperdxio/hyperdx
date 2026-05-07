@@ -220,8 +220,9 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
     <Group>
       {rowData != null && (
         <UnstyledButton
+          data-testid="json-viewer-copy-row"
           onClick={() => {
-            copyTextWithToast(
+            void copyTextWithToast(
               typeof rowData === 'string'
                 ? rowData
                 : JSON.stringify(rowData, null, 2),
@@ -557,7 +558,7 @@ export function DBRowJsonViewer({
           copiedObj = keyPath.length === 0 ? rowData : get(rowData, keyPath);
         }
 
-        copyTextWithToast(
+        void copyTextWithToast(
           JSON.stringify(copiedObj, null, 2),
           'Copied object to clipboard',
         );
@@ -579,7 +580,7 @@ export function DBRowJsonViewer({
             </Group>
           ),
           onClick: () => {
-            copyTextWithToast(
+            void copyTextWithToast(
               typeof value === 'string'
                 ? value
                 : JSON.stringify(value, null, 2),
