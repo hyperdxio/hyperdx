@@ -29,6 +29,13 @@ function execCommandFallback(text: string): boolean {
     return false;
   }
 
+  // Capture focus and selection state before we mount the scratch textarea so
+  // we can restore both in the finally block.
+  const previouslyFocused = document.activeElement as HTMLElement | null;
+  const selection = document.getSelection();
+  const previousRange =
+    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.setAttribute('readonly', '');
@@ -38,11 +45,6 @@ function execCommandFallback(text: string): boolean {
   textarea.style.opacity = '0';
   textarea.style.pointerEvents = 'none';
 
-  // Preserve any existing selection so we can restore it after the copy.
-  const selection = document.getSelection();
-  const previousRange =
-    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-
   document.body.appendChild(textarea);
   textarea.select();
 
@@ -51,13 +53,14 @@ function execCommandFallback(text: string): boolean {
     succeeded = document.execCommand('copy');
   } catch {
     succeeded = false;
-  }
-
-  document.body.removeChild(textarea);
-
-  if (previousRange && selection) {
-    selection.removeAllRanges();
-    selection.addRange(previousRange);
+  } finally {
+    document.body.removeChild(textarea);
+    if (previousRange && selection) {
+      selection.removeAllRanges();
+      selection.addRange(previousRange);
+    }
+    // Restore focus so typing context is not silently lost on HTTP fallback.
+    previouslyFocused?.focus();
   }
 
   return succeeded;
