@@ -15,27 +15,13 @@ import {
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   Filter,
-  SearchCondition,
-  SearchConditionLanguage,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Box,
-  Button,
-  Flex,
-  Menu,
-  Paper,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Box, Button, Flex, Menu, Paper, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconChartBar,
-  IconFilterEdit,
-  IconPlayerPlay,
   IconPlus,
-  IconRefresh,
   IconSquaresDiagonal,
 } from '@tabler/icons-react';
 
@@ -45,7 +31,6 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
-import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
   type Tile,
@@ -56,9 +41,7 @@ import useDashboardContainers from '@/hooks/useDashboardContainers';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import OnboardingModal from '@/components/OnboardingModal';
-import SearchWhereInput, {
-  getStoredLanguage,
-} from '@/components/SearchInput/SearchWhereInput';
+import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import useDashboardFilters from '@/hooks/useDashboardFilters';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import useTileSelection from '@/hooks/useTileSelection';
@@ -69,7 +52,6 @@ import { useConnections } from '@/connection';
 import { useDashboard } from '@/dashboard';
 import DashboardFilters from '@/DashboardFilters';
 import DashboardFiltersModal from '@/DashboardFiltersModal';
-import { GranularityPickerControlled } from '@/GranularityPicker';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
@@ -78,7 +60,9 @@ import { getMetricTableName } from '@/utils';
 
 import { DashboardContainerRow } from './DashboardContainerRow';
 import { DashboardHeader } from './DashboardHeader';
+import { DashboardToolbar } from './DashboardToolbar';
 import { DashboardTile, type MoveTarget } from './DashboardTile';
+import { DashboardQueryFormValues } from './types';
 import { EditTileModal } from './EditTileModal';
 
 import 'react-grid-layout/css/styles.css';
@@ -232,20 +216,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isLive, setIsLive] = useState(false);
 
-  const { control, setValue, getValues, handleSubmit } = useForm<{
-    granularity: SQLInterval | 'auto';
-    where: SearchCondition;
-    whereLanguage: SearchConditionLanguage;
-  }>({
-    defaultValues: {
-      granularity: granularity ?? 'auto',
-      where: where ?? '',
-      whereLanguage:
-        (whereLanguage as SearchConditionLanguage) ??
-        getStoredLanguage() ??
-        'lucene',
-    },
-  });
+  const { control, setValue, getValues, handleSubmit } =
+    useForm<DashboardQueryFormValues>({
+      defaultValues: {
+        granularity: granularity ?? 'auto',
+        where: where ?? '',
+        whereLanguage:
+          whereLanguage === 'sql' || whereLanguage === 'lucene'
+            ? whereLanguage
+            : (getStoredLanguage() ?? 'lucene'),
+      },
+    });
 
   const watchedGranularity = useWatch({ control, name: 'granularity' });
 
@@ -278,8 +259,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(data => {
-      setWhere(data.where as SearchCondition);
-      setWhereLanguage((data.whereLanguage as SearchConditionLanguage) ?? null);
+      setWhere(data.where);
+      setWhereLanguage(data.whereLanguage ?? null);
     })();
   }, [
     displayedTimeInputValue,
@@ -1025,89 +1006,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           })
         }
       />
-      <Flex
-        gap="sm"
-        mt="sm"
-        wrap="wrap"
-        component="form"
-        onSubmit={e => {
-          e.preventDefault();
-          onSubmit();
-        }}
-      >
-        <SearchWhereInput
-          tableConnections={tableConnections}
-          control={control}
-          name="where"
-          onSubmit={onSubmit}
-          onLanguageChange={(lang: 'sql' | 'lucene') =>
-            setValue('whereLanguage', lang)
-          }
-          label="WHERE"
-          enableHotkey
-          allowMultiline
-          minWidth={300}
-          data-testid="search-input"
-        />
-        <TimePicker
-          inputValue={displayedTimeInputValue}
-          setInputValue={setDisplayedTimeInputValue}
-          onSearch={range => {
-            onSearch(range);
-          }}
-        />
-        <GranularityPickerControlled control={control} name="granularity" />
-        <Tooltip
-          withArrow
-          label={
-            isRefreshEnabled
-              ? `Auto-refreshing with ${granularityOverride} interval`
-              : 'Enable auto-refresh'
-          }
-          fz="xs"
-          color="gray"
-        >
-          <Button
-            onClick={() => setIsLive(prev => !prev)}
-            size="sm"
-            variant={isLive ? 'primary' : 'secondary'}
-            title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
-          >
-            Live
-          </Button>
-        </Tooltip>
-        <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-          <ActionIcon
-            onClick={refresh}
-            loading={manualRefreshCooloff}
-            disabled={manualRefreshCooloff}
-            variant="secondary"
-            title="Refresh dashboard"
-            size="input-sm"
-          >
-            <IconRefresh size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-          <ActionIcon
-            variant="secondary"
-            onClick={() => setShowFiltersModal(true)}
-            data-testid="edit-filters-button"
-            size="input-sm"
-          >
-            <IconFilterEdit size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Button
-          data-testid="search-submit-button"
-          variant="primary"
-          type="submit"
-          leftSection={<IconPlayerPlay size={16} />}
-          style={{ flexShrink: 0 }}
-        >
-          Run
-        </Button>
-      </Flex>
+      <DashboardToolbar
+        tableConnections={tableConnections}
+        control={control}
+        setValue={setValue}
+        displayedTimeInputValue={displayedTimeInputValue}
+        setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+        onSubmit={onSubmit}
+        onSearch={onSearch}
+        isRefreshEnabled={isRefreshEnabled}
+        granularityOverride={granularityOverride}
+        isLive={isLive}
+        setIsLive={setIsLive}
+        refresh={refresh}
+        manualRefreshCooloff={manualRefreshCooloff}
+        onOpenFilters={() => setShowFiltersModal(true)}
+      />
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}
