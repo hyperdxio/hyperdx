@@ -289,6 +289,15 @@ export class TeamPage {
       .click();
   }
 
+  async editWebhookByName(webhookName: string) {
+    const webhookItem = this.integrationsSection
+      .locator('div')
+      .filter({ hasText: webhookName })
+      .filter({ has: this.page.getByRole('button', { name: 'Edit' }) })
+      .last();
+    await webhookItem.getByRole('button', { name: 'Edit' }).click();
+  }
+
   async deleteWebhookByName(webhookName: string) {
     const webhookItem = this.integrationsSection
       .locator('div')

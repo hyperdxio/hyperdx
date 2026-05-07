@@ -1,4 +1,5 @@
 import type {
+  WebhookApiData,
   WebhookCreateApiResponse,
   WebhooksApiResponse,
   WebhookTestApiResponse,
@@ -18,6 +19,76 @@ import {
 } from '@/tasks/checkAlerts/template';
 
 const router = express.Router();
+
+// -- Redaction protocol --
+// API responses replace sensitive values with a sentinel so clients can see
+// which fields are configured without exposing the real secrets.
+//   URL  →  <origin>/****          (hides path that may embed tokens)
+//   header / queryParam values  →  ****   (keys are preserved)
+// On PUT and POST /test the server recognises these sentinels and resolves
+// them back to the stored values.  The assumption is that literal "****" is
+// never a legitimate secret value.
+const REDACTED_VALUE = '****';
+
+const maskUrl = (url?: string): string | undefined => {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/${REDACTED_VALUE}`;
+  } catch {
+    return REDACTED_VALUE;
+  }
+};
+
+const redactMapValues = (
+  map?: Record<string, string>,
+): Record<string, string> | undefined => {
+  if (!map || Object.keys(map).length === 0) return map;
+  return Object.fromEntries(Object.keys(map).map(key => [key, REDACTED_VALUE]));
+};
+
+const sanitizeWebhook = (webhook: WebhookApiData): WebhookApiData => ({
+  ...webhook,
+  url: maskUrl(webhook.url),
+  headers: redactMapValues(webhook.headers),
+  queryParams: redactMapValues(webhook.queryParams),
+});
+
+const isMaskedUrl = (url: string, existingUrl?: string): boolean =>
+  !!existingUrl && url === maskUrl(existingUrl);
+
+type WebhookPlain = {
+  url?: string;
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  service?: string;
+};
+
+const toWebhookPlain = (doc: mongoose.Document): WebhookPlain =>
+  doc.toJSON({ flattenMaps: true }) as WebhookPlain;
+
+const mergeRedactedMap = (
+  existing: Record<string, string> | undefined,
+  incoming: Record<string, string> | undefined,
+): Record<string, string> | undefined => {
+  if (incoming === undefined || incoming === null) return existing;
+  if (Object.keys(incoming).length === 0) return undefined;
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === REDACTED_VALUE) {
+      if (existing != null && key in existing) {
+        result[key] = existing[key];
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const mapHasRedactedValues = (map?: Record<string, string>): boolean =>
+  map != null && Object.values(map).some(v => v === REDACTED_VALUE);
 
 router.get(
   '/',
@@ -41,7 +112,9 @@ router.get(
         { __v: 0, team: 0 },
       );
       res.json({
-        data: webhooks.map(w => w.toJSON({ flattenMaps: true })),
+        data: webhooks.map(w =>
+          sanitizeWebhook(w.toJSON({ flattenMaps: true }) as WebhookApiData),
+        ),
       });
     } catch (err) {
       next(err);
@@ -110,7 +183,9 @@ router.post(
       });
       await webhook.save();
       res.json({
-        data: webhook.toJSON({ flattenMaps: true }),
+        data: sanitizeWebhook(
+          webhook.toJSON({ flattenMaps: true }) as WebhookApiData,
+        ),
       });
     } catch (err) {
       next(err);
@@ -163,11 +238,42 @@ router.put(
         });
       }
 
-      // Check if another webhook with same service and url already exists (excluding current webhook)
+      const existingPlain = toWebhookPlain(existingWebhook);
+
+      // Resolve masked/redacted fields against stored values
+      const resolvedUrl = isMaskedUrl(url, existingPlain.url)
+        ? existingPlain.url
+        : url;
+      const urlChanged = resolvedUrl !== existingPlain.url;
+
+      // Prevent secret exfiltration: if the URL is changing, reject any
+      // masked header/queryParam values — they would attach stored secrets
+      // to the new (potentially attacker-controlled) destination.
+      if (
+        urlChanged &&
+        (mapHasRedactedValues(headers) || mapHasRedactedValues(queryParams))
+      ) {
+        return res.status(400).json({
+          message:
+            'Cannot preserve masked secrets when changing the webhook URL. Re-enter all secret values.',
+        });
+      }
+
+      const resolvedHeaders = mergeRedactedMap(existingPlain.headers, headers);
+      const resolvedQueryParams = mergeRedactedMap(
+        existingPlain.queryParams,
+        queryParams,
+      );
+
+      // When URL is preserved via masked roundtrip, use the existing service
+      // for the duplicate check to avoid an existence oracle across services.
+      const duplicateCheckService = urlChanged
+        ? service
+        : existingPlain.service;
       const duplicateWebhook = await Webhook.findOne({
         team: teamId,
-        service,
-        url,
+        service: duplicateCheckService,
+        url: resolvedUrl,
         _id: { $ne: id },
       });
       if (duplicateWebhook) {
@@ -176,18 +282,35 @@ router.put(
         });
       }
 
-      // Update webhook
+      // Build update: use $unset for cleared map fields so Mongoose removes them
+      const $set: Record<string, unknown> = {
+        name,
+        service,
+        url: resolvedUrl,
+        description,
+        body,
+      };
+      const $unset: Record<string, 1> = {};
+
+      if (resolvedHeaders !== undefined) {
+        $set.headers = resolvedHeaders;
+      } else {
+        $unset.headers = 1;
+      }
+      if (resolvedQueryParams !== undefined) {
+        $set.queryParams = resolvedQueryParams;
+      } else {
+        $unset.queryParams = 1;
+      }
+
+      const updateOp: Record<string, unknown> = { $set };
+      if (Object.keys($unset).length > 0) {
+        updateOp.$unset = $unset;
+      }
+
       const updatedWebhook = await Webhook.findOneAndUpdate(
         { _id: id, team: teamId },
-        {
-          name,
-          service,
-          url,
-          description,
-          queryParams,
-          headers,
-          body,
-        },
+        updateOp,
         { new: true, select: { __v: 0, team: 0 } },
       );
 
@@ -198,7 +321,9 @@ router.put(
       }
 
       res.json({
-        data: updatedWebhook.toJSON({ flattenMaps: true }),
+        data: sanitizeWebhook(
+          updatedWebhook.toJSON({ flattenMaps: true }) as WebhookApiData,
+        ),
       });
     } catch (err) {
       next(err);
@@ -240,24 +365,55 @@ router.post(
       queryParams: z.record(z.string()).optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
+      webhookId: z
+        .string()
+        .refine(val => mongoose.Types.ObjectId.isValid(val))
+        .optional(),
     }),
   }),
-  async (req, res: express.Response<WebhookTestApiResponse>, next) => {
+  async (
+    req,
+    res: express.Response<WebhookTestApiResponse | { message: string }>,
+    next,
+  ) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
         return res.sendStatus(403);
       }
 
-      const { service, url, queryParams, headers, body } = req.body;
+      const { service, webhookId, body } = req.body;
+      let { url, queryParams, headers } = req.body;
+
+      // When testing an existing webhook, resolve masked/redacted values
+      // only when the submitted URL still points at the stored destination.
+      // This prevents exfiltrating stored secrets to an attacker-controlled URL.
+      if (webhookId) {
+        const existing = await Webhook.findOne({
+          _id: webhookId,
+          team: teamId,
+        });
+        if (!existing) {
+          return res.status(404).json({ message: 'Webhook not found' });
+        }
+        const plain = toWebhookPlain(existing);
+        const urlMatchesStored =
+          url === plain.url || isMaskedUrl(url, plain.url);
+        if (urlMatchesStored) {
+          url = plain.url ?? url;
+          headers = mergeRedactedMap(plain.headers, headers) ?? headers;
+          queryParams =
+            mergeRedactedMap(plain.queryParams, queryParams) ?? queryParams;
+        }
+      }
 
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
         team: new ObjectId(teamId),
         service,
         url,
-        queryParams: queryParams,
-        headers: headers,
+        queryParams,
+        headers,
         body,
       });
 

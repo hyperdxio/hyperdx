@@ -493,9 +493,17 @@ const api = {
         queryParams?: Record<string, string>;
         headers?: Record<string, string>;
         body?: string;
+        webhookId?: string;
       }
     >({
-      mutationFn: async ({ service, url, queryParams, headers, body }) =>
+      mutationFn: async ({
+        service,
+        url,
+        queryParams,
+        headers,
+        body,
+        webhookId,
+      }) =>
         hdxServer(`webhooks/test`, {
           method: 'POST',
           json: {
@@ -504,6 +512,7 @@ const api = {
             queryParams: queryParams || {},
             headers: headers || {},
             body,
+            ...(webhookId && { webhookId }),
           },
         }).json<WebhookTestApiResponse>(),
     });
