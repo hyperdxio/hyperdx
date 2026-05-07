@@ -1,22 +1,31 @@
-name: Compound Engineering Code Review
+name: Deep Code Review
 
-# Opt-in, multi-agent PR review using EveryInc/compound-engineering-plugin's
+# Multi-agent PR review using EveryInc/compound-engineering-plugin's
 # /ce-code-review skill. Runs alongside the default Claude review (which lives
-# in claude-code-review.yml). Gated behind the `compound-review` label so it
-# does not run on every PR -- the multi-agent fan-out is significantly more
-# expensive than the default single-pass review.
+# in claude-code-review.yml).
 #
-# To trigger:
-#   - Add the `compound-review` label to a PR, or
-#   - Run the workflow manually via the Actions tab and pass a PR number.
+# Reviewer selection is orchestrator-driven by the plugin in v3.x. 4 always-on
+# personas (correctness, testing, maintainability, project-standards) run on
+# every PR; cross-cutting and stack-specific reviewers (security, performance,
+# api-contract, reliability, frontend-races, architecture, adversarial, etc.)
+# are LLM-selected from the diff. Roster is not pinnable -- the v2.x
+# `compound-engineering.local.md` / `review_agents:` mechanism was removed.
+# Expect ~6-13 reviewers per PR depending on diff scope.
+#
+# Triggers automatically on every non-draft PR. The multi-agent fan-out is
+# significantly more expensive than the default single-pass review, so expect
+# higher Anthropic API spend and longer wall-clock latency than
+# claude-code-review.yml.
+#
+# Author can request automated fixes for the findings by commenting
+# `/just-fix-it` on the PR -- see deep-resolve.yml.
 #
 # To compare quality vs. the default review, look for the two distinct sticky
-# comments (markers: <!-- claude-code-review --> and
-# <!-- compound-engineering-review -->).
+# comments (markers: <!-- claude-code-review --> and <!-- deep-review -->).
 
 on:
   pull_request_target:
-    types: [labeled]
+    types: [opened, synchronize, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -25,15 +34,14 @@ on:
         type: string
 
 concurrency:
-  group:
-    compound-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  group: deep-review-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
-  compound-review:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'compound-review')
+  deep-review:
+    if:
+      github.event_name == 'workflow_dispatch' || github.event.action ==
+      'ready_for_review' || !github.event.pull_request.draft
 
     runs-on: ubuntu-latest
     permissions:
@@ -100,17 +108,17 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: EveryInc/compound-engineering-plugin
-          ref: v2.42.0
+          ref: compound-engineering-v3.6.1
           path: ce-plugin
 
-      - name: Run Compound Engineering review
+      - name: Run deep review
         id: review
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }} # bypasses OIDC auth (required for pull_request_target)
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
-          allowed_non_write_users: '*' # allow fork contributors to trigger via label
+          allowed_non_write_users: '*' # allow fork-PR contributors to trigger reviews
 
           plugin_marketplaces: |
             ./ce-plugin
@@ -137,9 +145,11 @@ jobs:
             - `base:<sha>` short-circuits the skill's own scope detection so it
               does not try to `gh pr checkout` (which `report-only` would block).
 
-            The skill will fan out to ~6-12 specialist reviewer sub-agents
-            (correctness, security, performance, maintainability, etc.) and
-            return a merged, deduplicated findings report.
+            The skill will fan out to ~6-13 reviewer sub-agents -- 4
+            always-on (correctness, testing, maintainability, project-
+            standards) plus cross-cutting and stack-specific reviewers
+            selected by the orchestrator based on the diff -- and return a
+            merged, deduplicated findings report.
 
             Step 2. Condense the merged findings into the JSON envelope below.
             Be concise -- one line per finding, grouped by severity (P0, P1,
@@ -157,23 +167,23 @@ jobs:
                wrapping it a second time, which posts raw JSON in the
                comment. The `review` value must be markdown text only.
             2. The review markdown MUST start with EXACTLY these two lines:
-               <!-- compound-engineering-review -->
-               ## Compound Engineering Review
+               <!-- deep-review -->
+               ## Deep Review
             3. Do NOT post the review yourself with `gh` or any comment tool --
                the workflow posts the structured output as a sticky comment.
 
           claude_args: |
             --setting-sources user
             --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
-            --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- compound-engineering-review --> on the first line and ## Compound Engineering Review on the second line"}},"required":["review"]}'
+            --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
-      - name: Find existing compound review comment
+      - name: Find existing deep review comment
         uses: peter-evans/find-comment@v4
         id: find-comment
         with:
           issue-number: ${{ steps.pr.outputs.number }}
           comment-author: github-actions[bot]
-          body-includes: '<!-- compound-engineering-review -->'
+          body-includes: '<!-- deep-review -->'
           direction: last
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
@@ -194,13 +204,13 @@ jobs:
             REVIEW="$(printf '%s' "$REVIEW" | jq -r '.review')"
           fi
           {
-            echo 'review<<COMPOUND_REVIEW_EOF'
+            echo 'review<<DEEP_REVIEW_EOF'
             printf '%s' "$REVIEW"
             echo
-            echo 'COMPOUND_REVIEW_EOF'
+            echo 'DEEP_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Post or update compound review
+      - name: Post or update deep review
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
