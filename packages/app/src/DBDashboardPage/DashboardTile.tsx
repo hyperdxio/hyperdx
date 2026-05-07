@@ -8,12 +8,12 @@ import {
 } from 'react';
 import { formatRelative } from 'date-fns';
 import { pick } from 'lodash';
+import { ErrorBoundary } from 'react-error-boundary';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
@@ -34,7 +34,6 @@ import {
   ActionIcon,
   Box,
   Flex,
-  Group,
   Indicator,
   Menu,
   Stack,
@@ -61,11 +60,16 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import { type Tile } from '@/dashboard';
+import HDXMarkdownChart from '@/HDXMarkdownChart';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { getMetricTableName } from '@/utils';
 
 import { HeatmapTile } from './HeatmapTile';
 import { type MoveTarget } from './types';
+
+const displayTypeRequiresSource = (
+  displayType: DisplayType | undefined,
+): boolean => displayType !== DisplayType.Markdown;
 
 type DashboardTileProps = {
   chart: Tile;
