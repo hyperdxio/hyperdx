@@ -1,5 +1,6 @@
 // Easter egg: April Fools 2026 — shared presentational component for AI Summarize.
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Anchor,
   Button,
@@ -51,7 +52,7 @@ export default function AISummaryPanel({
             color="gray"
             onClick={onRegenerate}
           >
-            Regenerate
+            <Trans>Regenerate</Trans>
           </Button>
         )}
       </Flex>
@@ -82,7 +83,7 @@ export default function AISummaryPanel({
                       marginRight: 4,
                     }}
                   />
-                  AI Summary
+                  <Trans>AI Summary</Trans>
                   {result && (
                     <Text span c="dimmed" fw={400} ms={6}>
                       {THEME_LABELS[result.theme]}
@@ -110,9 +111,11 @@ export default function AISummaryPanel({
                   </Popover.Target>
                   <Popover.Dropdown>
                     <Text size="xs" mb={6}>
-                      Happy April Fools! No AI was used. This summary was
-                      generated locally from hand-written phrase templates. Your
-                      data never left the browser.
+                      <Trans>
+                        Happy April Fools! No AI was used. This summary was
+                        generated locally from hand-written phrase templates.
+                        Your data never left the browser.
+                      </Trans>
                     </Text>
                     <Anchor
                       size="xs"
@@ -123,7 +126,7 @@ export default function AISummaryPanel({
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      Don&apos;t show again
+                      <Trans>Don't show again</Trans>
                     </Anchor>
                   </Popover.Dropdown>
                 </Popover>

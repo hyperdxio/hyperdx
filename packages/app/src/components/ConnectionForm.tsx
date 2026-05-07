@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
@@ -226,7 +227,7 @@ export function ConnectionForm({
       <Stack gap="md">
         <Box>
           <Text size="xs" mb="xs">
-            Connection Name
+            <Trans>Connection Name</Trans>
           </Text>
           <InputControlled
             data-testid="connection-name-input"
@@ -238,7 +239,7 @@ export function ConnectionForm({
         </Box>
         <Box>
           <Text size="xs" mb="xs">
-            Host
+            <Trans>Host</Trans>
           </Text>
           <InputControlled
             data-testid="connection-host-input"
@@ -254,7 +255,7 @@ export function ConnectionForm({
         </Box>
         <Box>
           <Text size="xs" mb="xs">
-            Username
+            <Trans>Username</Trans>
           </Text>
           <InputControlled
             data-testid="connection-username-input"
@@ -265,7 +266,7 @@ export function ConnectionForm({
         </Box>
         <Box>
           <Text size="xs" mb="xs">
-            Password
+            <Trans>Password</Trans>
           </Text>
           {!showUpdatePassword && !isNew && (
             <Button
@@ -275,7 +276,7 @@ export function ConnectionForm({
                 setShowUpdatePassword(true);
               }}
             >
-              Update Password
+              <Trans>Update Password</Trans>
             </Button>
           )}
           {(showUpdatePassword || isNew) && (
@@ -296,7 +297,7 @@ export function ConnectionForm({
                     resetField('password');
                   }}
                 >
-                  Cancel
+                  <Trans>Cancel</Trans>
                 </Button>
               )}
             </Flex>
@@ -311,7 +312,7 @@ export function ConnectionForm({
             >
               <Group gap="xs">
                 <IconSettings size={14} />
-                Advanced Settings
+                <Trans>Advanced Settings</Trans>
               </Group>
             </Anchor>
           )}
@@ -321,7 +322,7 @@ export function ConnectionForm({
               size="xs"
               variant="subtle"
             >
-              Hide Advanced Settings
+              <Trans>Hide Advanced Settings</Trans>
             </Button>
           )}
         </Box>
@@ -331,7 +332,9 @@ export function ConnectionForm({
           }}
         >
           <Group gap="xs" mb="xs">
-            <Text size="xs">Query Log Setting Prefix</Text>
+            <Text size="xs">
+              <Trans>Query Log Setting Prefix</Trans>
+            </Text>
             <Tooltip
               label="Tracks query origins by adding the current user's email to ClickHouse queries (as {prefix}_user in system.query_log). Requires 'custom_settings_prefixes' in your ClickHouse config.xml to include this exact value, otherwise queries will be rejected."
               color="dark"
@@ -368,9 +371,13 @@ export function ConnectionForm({
               loading={testConnectionState === TestConnectionState.Loading}
             >
               {testConnectionState === TestConnectionState.Valid ? (
-                <>Connection successful</>
+                <>
+                  <Trans>Connection successful</Trans>
+                </>
               ) : testConnectionState === TestConnectionState.Invalid ? (
-                <>Unable to connect</>
+                <>
+                  <Trans>Unable to connect</Trans>
+                </>
               ) : (
                 'Test Connection'
               )}
@@ -379,7 +386,7 @@ export function ConnectionForm({
           <Group gap="xs">
             {onClose && showCancelButton && (
               <Button variant="secondary" onClick={onClose}>
-                Cancel
+                <Trans>Cancel</Trans>
               </Button>
             )}
             {!isNew && showDeleteButton !== false && (
@@ -404,7 +411,7 @@ export function ConnectionForm({
                 isNew ? createConnection.isPending : updateConnection.isPending
               }
             >
-              {isNew ? 'Create' : 'Save'} Connection
+              {isNew ? 'Create' : 'Save'} <Trans>Connection</Trans>
             </Button>
           </Group>
         </Group>

@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { formatDistanceToNow, formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
@@ -279,7 +280,7 @@ function HeatmapTile({
               >
                 <Group gap="xs">
                   <IconSearch size={16} />
-                  View in Event Deltas
+                  <Trans>View in Event Deltas</Trans>
                 </Group>
               </Link>
             </Popover.Dropdown>
@@ -610,10 +611,12 @@ const Tile = forwardRef(
                 </Tooltip>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Label>Move to Group</Menu.Label>
+                <Menu.Label>
+                  <Trans>Move to Group</Trans>
+                </Menu.Label>
                 {chart.containerId && (
                   <Menu.Item onClick={() => onMoveToGroup(undefined)}>
-                    (Ungrouped)
+                    <Trans>(Ungrouped)</Trans>
                   </Menu.Item>
                 )}
                 {moveTargets
@@ -716,7 +719,7 @@ const Tile = forwardRef(
             onError={console.error}
             fallback={
               <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                An error occurred while rendering the chart.
+                <Trans>An error occurred while rendering the chart.</Trans>
               </div>
             }
           >
@@ -724,8 +727,10 @@ const Tile = forwardRef(
               <ChartContainer title={title} toolbarItems={toolbar}>
                 <Stack align="center" justify="center" h="100%" p="md">
                   <Text size="sm" c="dimmed" ta="center">
-                    The data source for this tile no longer exists. Edit the
-                    tile to select a new source.
+                    <Trans>
+                      The data source for this tile no longer exists. Edit the
+                      tile to select a new source.
+                    </Trans>
                   </Text>
                 </Stack>
               </ChartContainer>
@@ -733,8 +738,10 @@ const Tile = forwardRef(
               <ChartContainer title={title} toolbarItems={toolbar}>
                 <Stack align="center" justify="center" h="100%" p="md">
                   <Text size="sm" c="dimmed" ta="center">
-                    The data source for this tile is not set. Edit the tile to
-                    select a data source.
+                    <Trans>
+                      The data source for this tile is not set. Edit the tile to
+                      select a data source.
+                    </Trans>
                   </Text>
                 </Stack>
               </ChartContainer>
@@ -1620,7 +1627,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (
               !(await confirm(
                 <>
-                  Duplicate {'"'}
+                  <Trans>Duplicate</Trans> {'"'}
                   <Text component="span" fw={700}>
                     {chart.config.name}
                   </Text>
@@ -1652,7 +1659,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (
               !(await confirm(
                 <>
-                  Delete{' '}
+                  <Trans>Delete</Trans>{' '}
                   <Text component="span" fw={700}>
                     {chart.config.name}
                   </Text>
@@ -1938,7 +1945,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               color: 'red',
               message: (
                 <>
-                  An error occurred. <ContactSupportText />
+                  <Trans>An error occurred.</Trans> <ContactSupportText />
                 </>
               ),
             });
@@ -1975,7 +1982,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – {brandName}</title>
+        <title>
+          <Trans>Dashboard –</Trans> {brandName}
+        </title>
       </Head>
       <OnboardingModal />
       <EditTileModal
@@ -2018,16 +2027,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <>
           <Breadcrumbs mb="xs" mt="xs" fz="sm">
             <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
+              <Trans>Dashboards</Trans>
             </Anchor>
             <Text fz="sm" c="dimmed">
-              Temporary Dashboard
+              <Trans>Temporary Dashboard</Trans>
             </Text>
           </Breadcrumbs>
           <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
             <Flex justify="space-between" align="center">
               <Text size="sm">
-                This is a temporary dashboard and can not be saved.
+                <Trans>
+                  This is a temporary dashboard and can not be saved.
+                </Trans>
               </Text>
               <Button
                 variant="primary"
@@ -2035,7 +2046,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 onClick={onCreateDashboard}
                 data-testid="create-dashboard-button"
               >
-                Create New Saved Dashboard
+                <Trans>Create New Saved Dashboard</Trans>
               </Button>
             </Flex>
           </Paper>
@@ -2044,7 +2055,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <Group align="flex-start" mb="xs" mt="xs" justify="space-between">
           <Breadcrumbs fz="sm">
             <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
+              <Trans>Dashboards</Trans>
             </Anchor>
             <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
               {dashboard?.name ?? 'Untitled'}
@@ -2054,7 +2065,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Text size="xs" c="dimmed">
               {dashboard.createdBy && (
                 <span>
-                  Created by{' '}
+                  <Trans>Created by</Trans>{' '}
                   {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
                 </span>
               )}
@@ -2149,7 +2160,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       );
                     }}
                   >
-                    Export Dashboard
+                    <Trans>Export Dashboard</Trans>
                   </Menu.Item>
                 )}
                 <Menu.Item
@@ -2183,7 +2194,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     color="red"
                     onClick={handleRemoveSavedQuery}
                   >
-                    Remove Default Query & Filters
+                    <Trans>Remove Default Query & Filters</Trans>
                   </Menu.Item>
                 )}
                 <Menu.Divider />
@@ -2198,7 +2209,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     })
                   }
                 >
-                  Delete Dashboard
+                  <Trans>Delete Dashboard</Trans>
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>
@@ -2256,7 +2267,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             variant={isLive ? 'primary' : 'secondary'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
           >
-            Live
+            <Trans>Live</Trans>
           </Button>
         </Tooltip>
         <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
@@ -2288,7 +2299,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           leftSection={<IconPlayerPlay size={16} />}
           style={{ flexShrink: 0 }}
         >
-          Run
+          <Trans>Run</Trans>
         </Button>
       </Flex>
       <DashboardFilters
@@ -2302,8 +2313,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <Paper p="xs" mt="sm" withBorder>
           <Flex align="center" gap="sm">
             <Text size="sm">
-              {selectedTileIds.size} tile{selectedTileIds.size > 1 ? 's' : ''}{' '}
-              selected
+              {selectedTileIds.size} <Trans>tile</Trans>
+              {selectedTileIds.size > 1 ? 's' : ''} <Trans>selected</Trans>
             </Text>
             <Button
               size="xs"
@@ -2311,14 +2322,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               onClick={handleGroupSelected}
               title="Group selected tiles (Cmd+G)"
             >
-              Group
+              <Trans>Group</Trans>
             </Button>
             <Button
               size="xs"
               variant="secondary"
               onClick={() => setSelectedTileIds(new Set())}
             >
-              Clear
+              <Trans>Clear</Trans>
             </Button>
           </Flex>
         </Paper>
@@ -2329,7 +2340,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onError={console.error}
             fallback={
               <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                An error occurred while rendering the dashboard.
+                <Trans>An error occurred while rendering the dashboard.</Trans>
               </div>
             }
           >
@@ -2419,7 +2430,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             w="100%"
             leftSection={<IconPlus size={16} />}
           >
-            Add
+            <Trans>Add</Trans>
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
@@ -2428,7 +2439,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             leftSection={<IconChartBar size={16} />}
             onClick={() => onAddTile()}
           >
-            New Tile
+            <Trans>New Tile</Trans>
           </Menu.Item>
           <Menu.Divider />
           <Menu.Item
@@ -2436,7 +2447,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             leftSection={<IconSquaresDiagonal size={16} />}
             onClick={() => handleAddContainer()}
           >
-            New Group
+            <Trans>New Group</Trans>
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Popover, Textarea, UnstyledButton } from '@mantine/core';
@@ -284,7 +285,7 @@ export default function AutocompleteInput({
                   </div>
                   {suggestedProperties.length > suggestionsLimit && (
                     <div className={styles.suggestionsLimit}>
-                      (Showing Top {suggestionsLimit})
+                      <Trans>(Showing Top</Trans> {suggestionsLimit})
                     </div>
                   )}
                 </div>
@@ -317,7 +318,9 @@ export default function AutocompleteInput({
           <div>
             {showSearchHistory && (
               <div className={styles.historySection}>
-                <div className={styles.historyTitle}>Search History:</div>
+                <div className={styles.historyTitle}>
+                  <Trans>Search History:</Trans>
+                </div>
                 {queryHistoryList.map(({ value, label }, i) => {
                   return (
                     <UnstyledButton

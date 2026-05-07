@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
 import {
@@ -90,7 +91,7 @@ export default function ServiceDashboardEndpointSidePanel({
           <DrawerHeader
             header={
               <>
-                Details for {endpoint}
+                <Trans>Details for</Trans> {endpoint}
                 {service && (
                   <Text component="span" c="gray" fz="xs">
                     <IconServer size={14} className="ms-3 me-1" />

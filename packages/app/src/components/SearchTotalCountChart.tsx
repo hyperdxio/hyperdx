@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -107,7 +108,9 @@ export default function SearchTotalCountChart({
   return (
     <Text size="xs" lh="normal">
       {isLoading ? (
-        <span className="effect-pulse">&middot;&middot;&middot; Results</span>
+        <span className="effect-pulse">
+          <Trans>··· Results</Trans>
+        </span>
       ) : totalCount !== null && !isError ? (
         `${totalCount?.toLocaleString()} Results`
       ) : (

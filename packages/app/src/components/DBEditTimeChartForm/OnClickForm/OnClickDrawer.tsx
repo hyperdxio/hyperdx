@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
@@ -123,8 +124,10 @@ function ModeFields({ control }: { control: DrawerControl }) {
 
   return (
     <Text size="sm" c="dimmed">
-      Clicking a row opens the search page, filtered by the row&apos;s group-by
-      column values and selected time range.
+      <Trans>
+        Clicking a row opens the search page, filtered by the row's group-by
+        column values and selected time range.
+      </Trans>
     </Text>
   );
 }
@@ -210,7 +213,9 @@ export default function OnClickDrawer({
     >
       <Stack data-testid="onclick-drawer">
         <Text size="xs" c="dimmed">
-          Configure the action taken when clicking on a table row.
+          <Trans>
+            Configure the action taken when clicking on a table row.
+          </Trans>
         </Text>
 
         <Controller
@@ -244,7 +249,7 @@ export default function OnClickDrawer({
         <Divider />
         <Group justify="space-between">
           <Button variant="subtle" onClick={handleClose}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           <Button
             variant="primary"
@@ -252,7 +257,7 @@ export default function OnClickDrawer({
             disabled={isTargetMissing}
             data-testid="onclick-apply-button"
           >
-            Apply
+            <Trans>Apply</Trans>
           </Button>
         </Group>
       </Stack>

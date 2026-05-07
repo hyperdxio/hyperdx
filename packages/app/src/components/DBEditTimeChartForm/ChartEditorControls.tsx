@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   FieldArrayWithId,
@@ -93,7 +94,7 @@ export function ChartEditorControls({
       <Flex mb="md" align="center" justify="space-between">
         <Group>
           <Text pe="md" size="sm">
-            Data Source
+            <Trans>Data Source</Trans>
           </Text>
           <SourceSelectControlled
             size="xs"
@@ -182,7 +183,7 @@ export function ChartEditorControls({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Group By
+                    <Trans>Group By</Trans>
                   </Text>
                 </div>
                 <div>
@@ -205,7 +206,7 @@ export function ChartEditorControls({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Having
+                        <Trans>Having</Trans>
                       </Text>
                     </div>
                     <div>
@@ -242,7 +243,7 @@ export function ChartEditorControls({
                     }}
                   >
                     <IconCirclePlus size={14} className="me-2" />
-                    Add Series
+                    <Trans>Add Series</Trans>
                   </Button>
                 )}
               {fields.length == 2 && displayType !== DisplayType.Number && (
@@ -274,7 +275,7 @@ export function ChartEditorControls({
                     onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
                   >
                     <IconBell size={14} className="me-2" />
-                    Add Alert
+                    <Trans>Add Alert</Trans>
                   </Button>
                 )}
             </Group>
@@ -291,7 +292,7 @@ export function ChartEditorControls({
                 size="compact-sm"
                 variant="secondary"
               >
-                Display Settings
+                <Trans>Display Settings</Trans>
               </Button>
             </Group>
           </Flex>

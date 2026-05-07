@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import dagre from '@dagrejs/dagre';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
@@ -179,8 +180,10 @@ function ServiceMapPresentation({
     return (
       <Center className="w-100 h-100">
         <Text size="sm" c="gray.5">
-          No services found. The Service Map shows links between services with
-          related Client- and Server-kind spans.
+          <Trans>
+            No services found. The Service Map shows links between services with
+            related Client- and Server-kind spans.
+          </Trans>
         </Text>
       </Center>
     );
@@ -190,7 +193,7 @@ function ServiceMapPresentation({
     return (
       <Box>
         <Text my="sm" size="sm">
-          Error message:
+          <Trans>Error message:</Trans>
         </Text>
         <Code
           block
@@ -203,7 +206,7 @@ function ServiceMapPresentation({
         {error instanceof ClickHouseQueryError && (
           <Box mt="lg">
             <Text my="sm" size="sm">
-              Original query:
+              <Trans>Original query:</Trans>
             </Text>
             <Code
               block

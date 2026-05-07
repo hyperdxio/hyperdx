@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { formatDistanceToNow } from 'date-fns';
 import {
   ActionIcon,
@@ -86,7 +87,7 @@ export function ListingCard({
                   onDelete();
                 }}
               >
-                Delete
+                <Trans>Delete</Trans>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -103,7 +104,7 @@ export function ListingCard({
           }
         >
           <Text size="xs" c="dimmed" mt={2}>
-            Updated{' '}
+            <Trans>Updated</Trans>{' '}
             {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
           </Text>
         </Tooltip>

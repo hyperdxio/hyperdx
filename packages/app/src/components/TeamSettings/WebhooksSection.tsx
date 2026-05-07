@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { HTTPError } from 'ky';
 import {
   WebhookApiData,
@@ -71,7 +72,7 @@ function DeleteWebhookButton({
       onClick={handleDelete}
       loading={deleteWebhook.isPending}
     >
-      Delete
+      <Trans>Delete</Trans>
     </Button>
   );
 }
@@ -100,7 +101,9 @@ export default function WebhooksSection() {
 
   return (
     <>
-      <Text mb="xs">Webhooks</Text>
+      <Text mb="xs">
+        <Trans>Webhooks</Trans>
+      </Text>
 
       <Stack>
         {groupedWebhooks.length === 0 ? (
@@ -111,7 +114,7 @@ export default function WebhooksSection() {
             ta="center"
             py="xl"
           >
-            No webhooks configured yet
+            <Trans>No webhooks configured yet</Trans>
           </Text>
         ) : (
           groupedWebhooks.map(([serviceType, webhooks]) => {
@@ -155,7 +158,7 @@ export default function WebhooksSection() {
                                 size="compact-xs"
                                 leftSection={<IconPencil size={14} />}
                               >
-                                Edit
+                                <Trans>Edit</Trans>
                               </Button>
                               <DeleteWebhookButton
                                 webhookId={webhook._id}
@@ -170,7 +173,7 @@ export default function WebhooksSection() {
                               onClick={() => setEditedWebhookId(null)}
                               size="compact-xs"
                             >
-                              <IconX size={16} /> Cancel
+                              <IconX size={16} /> <Trans>Cancel</Trans>
                             </Button>
                           )}
                         </Group>
@@ -201,7 +204,7 @@ export default function WebhooksSection() {
           variant="secondary"
           onClick={openWebhookModal}
         >
-          Add Webhook
+          <Trans>Add Webhook</Trans>
         </Button>
       ) : (
         <WebhookForm

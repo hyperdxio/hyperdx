@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { Control, UseFormHandleSubmit } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
@@ -63,7 +64,7 @@ export function ChartActionBar({
             variant="primary"
             onClick={handleSubmit(handleSave)}
           >
-            Save
+            <Trans>Save</Trans>
           </Button>
         )}
         {onClose != null && (
@@ -73,7 +74,7 @@ export function ChartActionBar({
             onClick={onClose}
             disabled={isSaving}
           >
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
         )}
       </Flex>
@@ -120,7 +121,7 @@ export function ChartActionBar({
             leftSection={<IconPlayerPlay size={16} />}
             style={{ flexShrink: 0 }}
           >
-            Run
+            <Trans>Run</Trans>
           </Button>
         )}
         {!IS_LOCAL_MODE && !dashboardId && (
@@ -135,7 +136,7 @@ export function ChartActionBar({
                 leftSection={<IconLayoutGrid size={16} />}
                 onClick={() => setSaveToDashboardModalOpen(true)}
               >
-                Save to Dashboard
+                <Trans>Save to Dashboard</Trans>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>

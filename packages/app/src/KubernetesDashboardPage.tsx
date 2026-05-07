@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
@@ -356,7 +357,7 @@ export const InfraPodsStatusTable = ({
     <Card p="md" data-testid="k8s-pods-table">
       <Card.Section p="md" py="xs">
         <Group align="center" justify="space-between">
-          Pods
+          <Trans>Pods</Trans>
           <SegmentedControl
             size="xs"
             value={phaseFilter}
@@ -374,8 +375,8 @@ export const InfraPodsStatusTable = ({
       {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
         <Card.Section px="md" py="xs">
           <Alert variant="light" color="blue">
-            Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
-            filters above to narrow your search.
+            <Trans>Showing first</Trans> {TABLE_FETCH_LIMIT.toLocaleString()}{' '}
+            <Trans>pods. Use the filters above to narrow your search.</Trans>
           </Alert>
         </Card.Section>
       )}
@@ -391,31 +392,39 @@ export const InfraPodsStatusTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load pod metrics
+              <Trans>Unable to load pod metrics</Trans>
             </div>
           ) : podsList.length === 0 ? (
-            <div className="p-4 text-center text-muted fs-8">No pods found</div>
+            <div className="p-4 text-center text-muted fs-8">
+              <Trans>No pods found</Trans>
+            </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Th>Name</Th>
-                  <Th>Namespace</Th>
-                  <Th>Node</Th>
+                  <Th>
+                    <Trans>Name</Trans>
+                  </Th>
+                  <Th>
+                    <Trans>Namespace</Trans>
+                  </Th>
+                  <Th>
+                    <Trans>Node</Trans>
+                  </Th>
                   <Th {...getThSortProps('phase')} style={{ width: 130 }}>
-                    Status
+                    <Trans>Status</Trans>
                   </Th>
                   <Th {...getThSortProps('cpuLimit')} style={{ width: 100 }}>
-                    CPU/Limit
+                    <Trans>CPU/Limit</Trans>
                   </Th>
                   <Th {...getThSortProps('memLimit')} style={{ width: 100 }}>
-                    Mem/Limit
+                    <Trans>Mem/Limit</Trans>
                   </Th>
                   <Th {...getThSortProps('uptime')} style={{ width: 80 }}>
-                    Age
+                    <Trans>Age</Trans>
                   </Th>
                   <Th {...getThSortProps('restarts')} style={{ width: 100 }}>
-                    Restarts
+                    <Trans>Restarts</Trans>
                   </Th>
                 </Table.Tr>
               </Table.Thead>
@@ -627,7 +636,7 @@ const NodesTable = ({
   return (
     <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs">
-        Nodes
+        <Trans>Nodes</Trans>
       </Card.Section>
       <Card.Section>
         <div
@@ -641,21 +650,31 @@ const NodesTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load nodes
+              <Trans>Unable to load nodes</Trans>
             </div>
           ) : nodesList.length === 0 ? (
             <div className="p-4 text-center text-muted fs-8">
-              No nodes found
+              <Trans>No nodes found</Trans>
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Table.Th>Node</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Status</Table.Th>
-                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
+                  <Table.Th>
+                    <Trans>Node</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>Status</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>CPU</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>Memory</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>Uptime</Trans>
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -690,7 +709,7 @@ const NodesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Ready
+                              <Trans>Ready</Trans>
                             </Badge>
                           ) : (
                             <Badge
@@ -700,7 +719,7 @@ const NodesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Not Ready
+                              <Trans>Not Ready</Trans>
                             </Badge>
                           )}
                         </Table.Td>
@@ -826,7 +845,7 @@ const NamespacesTable = ({
   return (
     <Card p="md" data-testid="k8s-namespaces-table">
       <Card.Section p="md" py="xs">
-        Namespaces
+        <Trans>Namespaces</Trans>
       </Card.Section>
       <Card.Section>
         <div
@@ -840,20 +859,28 @@ const NamespacesTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load namespaces
+              <Trans>Unable to load namespaces</Trans>
             </div>
           ) : namespacesList.length === 0 ? (
             <div className="p-4 text-center text-muted fs-8">
-              No namespaces found
+              <Trans>No namespaces found</Trans>
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Table.Th>Namespace</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Phase</Table.Th>
-                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
+                  <Table.Th>
+                    <Trans>Namespace</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>Phase</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>CPU</Trans>
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    <Trans>Memory</Trans>
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -888,7 +915,7 @@ const NamespacesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Ready
+                              <Trans>Ready</Trans>
                             </Badge>
                           ) : (
                             <Badge
@@ -898,7 +925,7 @@ const NamespacesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Terminating
+                              <Trans>Terminating</Trans>
                             </Badge>
                           )}
                         </Table.Td>
@@ -1248,10 +1275,10 @@ function KubernetesDashboardPage() {
     <Box data-testid="kubernetes-dashboard-page" p="sm">
       <Breadcrumbs mb="xs" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          <Trans>Dashboards</Trans>
         </Anchor>
         <Text fz="sm" c="dimmed">
-          Kubernetes
+          <Trans>Kubernetes</Trans>
         </Text>
       </Breadcrumbs>
       <OnboardingModal requireSource={false} />
@@ -1275,7 +1302,9 @@ function KubernetesDashboardPage() {
       )}
       <Group justify="space-between">
         <Group>
-          <Text size="xl">Kubernetes Dashboard</Text>
+          <Text size="xl">
+            <Trans>Kubernetes Dashboard</Trans>
+          </Text>
           <SourceSelectControlled
             name="logSourceId"
             control={control}
@@ -1347,9 +1376,15 @@ function KubernetesDashboardPage() {
         value={activeTab}
       >
         <Tabs.List>
-          <Tabs.Tab value="pods">Pods</Tabs.Tab>
-          <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
-          <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
+          <Tabs.Tab value="pods">
+            <Trans>Pods</Trans>
+          </Tabs.Tab>
+          <Tabs.Tab value="nodes">
+            <Trans>Nodes</Trans>
+          </Tabs.Tab>
+          <Tabs.Tab value="namespaces">
+            <Trans>Namespaces</Trans>
+          </Tabs.Tab>
           {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
         </Tabs.List>
 
@@ -1439,7 +1474,7 @@ function KubernetesDashboardPage() {
                 <Card p="md" data-testid="k8s-warning-events-table">
                   <Card.Section p="md" py="xs">
                     <Flex justify="space-between">
-                      Latest Kubernetes Warning Events
+                      <Trans>Latest Kubernetes Warning Events</Trans>
                     </Flex>
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
@@ -1664,7 +1699,9 @@ function KubernetesDashboardPage() {
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
-          <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
+          <Tabs.Panel value="clusters">
+            <Trans>Clusters</Trans>
+          </Tabs.Panel>
         </div>
       </Tabs>
     </Box>

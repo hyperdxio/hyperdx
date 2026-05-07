@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
@@ -151,14 +152,14 @@ function ActiveTimeTooltip({
             >
               <Group gap="xs">
                 <IconSearch size={16} />
-                View All Events
+                <Trans>View All Events</Trans>
               </Group>
             </Link>
             {validPayloads.length > 1 && (
               <>
                 <Divider />
                 <Text c="gray.5" size="xs">
-                  Filter by group:
+                  <Trans>Filter by group:</Trans>
                 </Text>
                 {validPayloads.map((payload, idx) => {
                   const seriesUrl = buildSearchUrl(
@@ -692,7 +693,7 @@ function DBTimeChartComponent({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -707,7 +708,7 @@ function DBTimeChartComponent({
         />
       ) : graphResults.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         <>

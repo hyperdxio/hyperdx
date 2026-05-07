@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import * as React from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { JSONTree } from 'react-json-tree';
 import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
@@ -324,7 +325,11 @@ const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return <div className="text-truncate">{row.original.message}</div>;
       }
 
-      return <span className="text-muted">Empty</span>;
+      return (
+        <span className="text-muted">
+          <Trans>Empty</Trans>
+        </span>
+      );
     },
   },
   {
@@ -504,13 +509,22 @@ export const LogSidePanelKbdShortcuts = () => {
       <div className="d-flex justify-content-between align-items-center ">
         <div className="d-flex align-items-center gap-3">
           <div>
-            Use <Kbd className="me-1">←</Kbd>
-            <Kbd>→</Kbd> arrow keys or <Kbd className="me-1">k</Kbd>
-            <Kbd>j</Kbd> to move through events
+            <Trans>Use</Trans> <Kbd className="me-1">←</Kbd>
+            <Kbd>→</Kbd> <Trans>arrow keys or</Trans>{' '}
+            <Kbd className="me-1">
+              <Trans>k</Trans>
+            </Kbd>
+            <Kbd>
+              <Trans>j</Trans>
+            </Kbd>{' '}
+            <Trans>to move through events</Trans>
           </div>
           <div className={styles.kbdDivider} />
           <div>
-            <Kbd>ESC</Kbd> to close
+            <Kbd>
+              <Trans>ESC</Trans>
+            </Kbd>{' '}
+            <Trans>to close</Trans>
           </div>
         </div>
         <CloseButton aria-label="Hide" onClick={handleDismiss} />
@@ -538,13 +552,15 @@ const SourceMapsFtux = () => {
       onClose={() => setIsDismissed(true)}
     >
       <Text size="xs">
-        <IconCode size={16} /> Some of the stack frames are pointing to minified
-        files. Use hyperdx-cli to upload your source maps and see the original
-        code.
+        <IconCode size={16} />{' '}
+        <Trans>
+          Some of the stack frames are pointing to minified files. Use
+          hyperdx-cli to upload your source maps and see the original code.
+        </Trans>
       </Text>
       <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
         <Button size="compact-xs" variant="primary" mt="xs">
-          See docs
+          <Trans>See docs</Trans>
         </Button>
       </Link>
     </Alert>

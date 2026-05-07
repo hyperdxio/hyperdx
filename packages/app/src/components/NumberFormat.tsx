@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   Controller,
@@ -239,7 +240,7 @@ export const NumberFormatForm: React.FC<{
                 fontSize: 11,
               }}
             >
-              Example
+              <Trans>Example</Trans>
             </div>
             {formatNumber(TEST_NUMBER || 0, {
               ...format,
@@ -254,7 +255,9 @@ export const NumberFormatForm: React.FC<{
 
         {format.output !== 'time' && format.output !== 'duration' && (
           <div>
-            <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
+            <div className="fs-8 mt-2 fw-bold mb-1">
+              <Trans>Decimals</Trans>
+            </div>
             <Controller
               control={control}
               key="numberFormat.mantissa"

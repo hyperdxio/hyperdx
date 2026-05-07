@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
@@ -241,7 +242,7 @@ function AttributeValueList({
             leftSection={<IconPlus size={14} />}
             onClick={handleAddToGroupBy}
           >
-            Group By
+            <Trans>Group By</Trans>
           </Button>
         )}
       </Group>
@@ -282,7 +283,7 @@ function AttributeValueList({
                   leftSection={<IconFilter size={12} />}
                   onClick={() => handleAddValueToWhere(value)}
                 >
-                  Where
+                  <Trans>Where</Trans>
                 </Button>
               </Group>
             ))}
@@ -435,7 +436,7 @@ export function MetricAttributeHelperPanel({
             {metricMetadata?.unit && (
               <Group gap={4} mt={2}>
                 <Text size="xs" c="dimmed">
-                  Unit:
+                  <Trans>Unit:</Trans>
                 </Text>
                 <Badge size="xs" variant="light">
                   {formatUnitDisplay(metricMetadata.unit)}
@@ -446,7 +447,7 @@ export function MetricAttributeHelperPanel({
           <Group gap="xs" wrap="nowrap">
             {attributeKeys.length > 0 && (
               <Badge size="xs" variant="light">
-                {attributeKeys.length} attributes
+                {attributeKeys.length} <Trans>attributes</Trans>
               </Badge>
             )}
             <IconChevronDown
@@ -468,7 +469,7 @@ export function MetricAttributeHelperPanel({
             </Flex>
           ) : attributeKeys.length === 0 ? (
             <Text size="xs" c="dimmed" ta="center" py="md">
-              No attributes found for this metric
+              <Trans>No attributes found for this metric</Trans>
             </Text>
           ) : selectedAttribute ? (
             <AttributeValueList

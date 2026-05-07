@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
@@ -109,11 +110,11 @@ export default function ChartSQLPreview({
     >
       {isLoading ? (
         <Text className="text-muted" size="xs">
-          Loading query preview...
+          <Trans>Loading query preview...</Trans>
         </Text>
       ) : error ? (
         <Text className="text-danger" size="xs">
-          Unable to format query. {error.message}
+          <Trans>Unable to format query.</Trans> {error.message}
         </Text>
       ) : (
         <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />

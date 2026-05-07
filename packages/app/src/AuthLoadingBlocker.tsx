@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
@@ -25,7 +26,7 @@ export default function AuthLoadingBlocker() {
             zIndex: 2147483647,
           }}
         >
-          Loading {brandName}
+          <Trans>Loading</Trans> {brandName}
           <span style={{ width: 0 }}>{'.'.repeat(periods)}</span>
         </div>
       )}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   MetricsDataType,
   TLogSource,
@@ -47,7 +48,7 @@ const SourceSchemaInfoIcon = ({
           className="text-sucess-hover"
           style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
         >
-          Schema
+          <Trans>Schema</Trans>
         </Text>
       ) : (
         <IconCode size={16} />
@@ -89,7 +90,7 @@ const TableSchemaPreview = ({
         <Stack gap="sm">
           {data?.create_local_table_query && (
             <Text size="xs" fw={600} c="dimmed">
-              Distributed Table
+              <Trans>Distributed Table</Trans>
             </Text>
           )}
           <SQLPreview
@@ -100,7 +101,7 @@ const TableSchemaPreview = ({
           {data?.create_local_table_query && (
             <>
               <Text size="xs" fw={600} c="dimmed">
-                Local Table
+                <Trans>Local Table</Trans>
               </Text>
               <SQLPreview
                 data={data.create_local_table_query}

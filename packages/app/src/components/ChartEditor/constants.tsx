@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Code, List, Text } from '@mantine/core';
 
@@ -51,38 +52,49 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
 const TIMESERIES_INSTRUCTIONS = (
   <>
     <Text size="xs" fw="bold">
-      Result columns are plotted as follows:
+      <Trans>Result columns are plotted as follows:</Trans>
     </Text>
     <List size="xs" withPadding spacing={3} mb="xs">
       <List.Item>
         <Text span size="xs" fw={600}>
-          Timestamp
+          <Trans>Timestamp</Trans>
         </Text>
         <Text span size="xs">
           {' '}
-          — The first <Code fz="xs">Date</Code> or <Code fz="xs">DateTime</Code>{' '}
-          column.
+          <Trans>— The first</Trans>{' '}
+          <Code fz="xs">
+            <Trans>Date</Trans>
+          </Code>{' '}
+          <Trans>or</Trans>{' '}
+          <Code fz="xs">
+            <Trans>DateTime</Trans>
+          </Code>{' '}
+          <Trans>column.</Trans>
         </Text>
       </List.Item>
       <List.Item>
         <Text span size="xs" fw={600}>
-          Series Value
+          <Trans>Series Value</Trans>
         </Text>
         <Text span size="xs">
           {' '}
-          — Each numeric column will be plotted as a separate series. These
-          columns are generally aggregate function values.
+          <Trans>
+            — Each numeric column will be plotted as a separate series. These
+            columns are generally aggregate function values.
+          </Trans>
         </Text>
       </List.Item>
       <List.Item>
         <Text span size="xs" fw={600}>
-          Group Names
+          <Trans>Group Names</Trans>
         </Text>
         <Text span size="xs">
           {' '}
-          (optional) — Any string, map, or array type result column will be
-          treated as a group column. Result rows with different group column
-          values will be plotted as separate series.
+          <Trans>
+            (optional) — Any string, map, or array type result column will be
+            treated as a group column. Result rows with different group column
+            values will be plotted as separate series.
+          </Trans>
         </Text>
       </List.Item>
     </List>
@@ -97,26 +109,30 @@ export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
   [DisplayType.Pie]: (
     <>
       <Text size="xs" fw="bold">
-        Result columns are plotted as follows:
+        <Trans>Result columns are plotted as follows:</Trans>
       </Text>
       <List size="xs" withPadding spacing={3} mb="xs">
         <List.Item>
           <Text span size="xs" fw={600}>
-            Slice Value
+            <Trans>Slice Value</Trans>
           </Text>
           <Text span size="xs">
             {' '}
-            — The first numeric column determines each slice&apos;s size.
+            <Trans>
+              — The first numeric column determines each slice's size.
+            </Trans>
           </Text>
         </List.Item>
         <List.Item>
           <Text span size="xs" fw={600}>
-            Slice Label
+            <Trans>Slice Label</Trans>
           </Text>
           <Text span size="xs">
             {' '}
-            (optional) — Each unique value of each string, map, and array type
-            columns will be used as a slice label.
+            <Trans>
+              (optional) — Each unique value of each string, map, and array type
+              columns will be used as a slice label.
+            </Trans>
           </Text>
         </List.Item>
       </List>
@@ -125,17 +141,19 @@ export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
   [DisplayType.Number]: (
     <>
       <Text size="xs" fw="bold">
-        Result columns are displayed as follows:
+        <Trans>Result columns are displayed as follows:</Trans>
       </Text>
       <List size="xs" withPadding spacing={3} mb="xs">
         <List.Item>
           <Text span size="xs" fw={600}>
-            Number
+            <Trans>Number</Trans>
           </Text>
           <Text span size="xs">
             {' '}
-            — The value of the first numeric column in the first result row is
-            displayed as the number.
+            <Trans>
+              — The value of the first numeric column in the first result row is
+              displayed as the number.
+            </Trans>
           </Text>
         </List.Item>
       </List>

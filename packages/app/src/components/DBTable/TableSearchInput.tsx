@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Box,
   Group,
@@ -235,7 +236,7 @@ export const TableSearchInput = ({
               style={{ whiteSpace: 'nowrap' }}
               aria-live="polite"
             >
-              {currentMatchIndex + 1} of {matchIndices.length}
+              {currentMatchIndex + 1} <Trans>of</Trans> {matchIndices.length}
             </Text>
             <Group gap={4}>
               <UnstyledButton
@@ -266,7 +267,7 @@ export const TableSearchInput = ({
             role="status"
             aria-live="polite"
           >
-            No matches
+            <Trans>No matches</Trans>
           </Text>
         ) : null}
         <UnstyledButton

@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import {
   Avatar,
@@ -44,7 +45,9 @@ export const AppNavContext = React.createContext<{
 export const AppNavCloudBanner = () => {
   return (
     <div className="my-3 bg-muted rounded p-2 text-center">
-      <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
+      <span className="fs-8">
+        <Trans>Ready to deploy on ClickHouse Cloud?</Trans>
+      </span>
       <div className="mt-2 mb-2">
         <Button
           variant="primary"
@@ -54,7 +57,7 @@ export const AppNavCloudBanner = () => {
           target="_blank"
           rel="noopener noreferrer"
         >
-          Get Started for Free
+          <Trans>Get Started for Free</Trans>
         </Button>
       </div>
     </div>
@@ -141,7 +144,9 @@ export const AppNavUserMenu = ({
       </Menu.Target>
       <Menu.Dropdown>
         {IS_LOCAL_MODE ? (
-          <Menu.Label fz="xs">Local mode</Menu.Label>
+          <Menu.Label fz="xs">
+            <Trans>Local mode</Trans>
+          </Menu.Label>
         ) : (
           <Menu.Item
             data-testid="team-settings-menu-item"
@@ -149,7 +154,7 @@ export const AppNavUserMenu = ({
             component={Link}
             leftSection={<IconSettings size={16} />}
           >
-            Team Settings
+            <Trans>Team Settings</Trans>
           </Menu.Item>
         )}
         <Menu.Item
@@ -157,7 +162,7 @@ export const AppNavUserMenu = ({
           leftSection={<IconUserCog size={16} />}
           onClick={onClickUserPreferences}
         >
-          User Preferences
+          <Trans>User Preferences</Trans>
         </Menu.Item>
         {logoutUrl && (
           <>
@@ -169,7 +174,7 @@ export const AppNavUserMenu = ({
               component={Link}
               href={logoutUrl}
             >
-              Logout
+              <Trans>Logout</Trans>
             </Menu.Item>
           </>
         )}
@@ -200,16 +205,16 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
               <span className={styles.navItemIcon}>
                 <IconHelp size={16} />
               </span>
-              {!isCollapsed && <span>Help</span>}
+              {!isCollapsed && <Trans>Help</Trans>}
             </span>
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>
-            Help{' '}
+            <Trans>Help</Trans>{' '}
             {version && (
               <Text size="xs" component="span">
-                v{version}
+                <Trans values={{ version }}>v{{ version }}</Trans>
               </Text>
             )}
           </Menu.Label>
@@ -222,7 +227,7 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
             rel="noopener noreferrer"
             leftSection={<IconBook size={16} />}
           >
-            Documentation
+            <Trans>Documentation</Trans>
           </Menu.Item>
           <Menu.Item
             data-testid="setup-instructions-menu-item"
@@ -232,14 +237,14 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Setup Instructions
+            <Trans>Setup Instructions</Trans>
           </Menu.Item>
           <Menu.Item
             data-testid="keyboard-shortcuts-menu-item"
             leftSection={<IconKeyboard size={16} />}
             onClick={openShortcutsModal}
           >
-            Keyboard shortcuts
+            <Trans>Keyboard shortcuts</Trans>
           </Menu.Item>
           <Menu.Item
             data-testid="discord-menu-item"
@@ -249,7 +254,7 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Discord Community
+            <Trans>Discord Community</Trans>
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
@@ -318,7 +323,7 @@ export const AppNavLink = ({
           variant="light"
           className={styles.navItemBadge}
         >
-          Beta
+          <Trans>Beta</Trans>
         </Badge>
       )}
       {!isCollapsed && onToggle && (

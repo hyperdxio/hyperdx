@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Control, UseFormSetValue } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -43,7 +44,7 @@ export function HeatmapSeriesEditor({
           size="compact-sm"
           variant="secondary"
         >
-          Display Settings
+          <Trans>Display Settings</Trans>
         </Button>
       </Flex>
     </Flex>

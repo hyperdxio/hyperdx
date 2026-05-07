@@ -1,5 +1,6 @@
 import React from 'react';
 import router from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -172,11 +173,11 @@ const AlertForm = ({
       <Paper px="sm" py="xs" radius="xs">
         <Stack gap="xs">
           <Text size="xxs" opacity={0.5}>
-            Trigger
+            <Trans>Trigger</Trans>
           </Text>
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
-              Alert when
+              <Trans>Alert when</Trans>
             </Text>
             <Controller
               control={control}
@@ -208,7 +209,7 @@ const AlertForm = ({
             {isRangeThresholdType(thresholdType as AlertThresholdType) && (
               <>
                 <Text size="sm" opacity={0.7}>
-                  and
+                  <Trans>and</Trans>
                 </Text>
                 <Controller
                   control={control}
@@ -225,7 +226,7 @@ const AlertForm = ({
               </>
             )}
             <Text size="sm" opacity={0.7}>
-              lines appear within
+              <Trans>lines appear within</Trans>
             </Text>
             <Controller
               control={control}
@@ -239,7 +240,7 @@ const AlertForm = ({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              via
+              <Trans>via</Trans>
             </Text>
             <Controller
               control={control}
@@ -263,7 +264,7 @@ const AlertForm = ({
             offsetWindowLabel={`from each ${intervalLabel} window`}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
-            grouped by
+            <Trans>grouped by</Trans>
           </Text>
           <SQLInlineEditorControlled
             tableConnection={tcFromSource(source)}
@@ -274,7 +275,7 @@ const AlertForm = ({
             size="xs"
           />
           <Text size="xxs" opacity={0.5} mb={4}>
-            Send to
+            <Trans>Send to</Trans>
           </Text>
           <AlertChannelForm control={control} type={channelType} />
           {groupBy &&
@@ -288,9 +289,10 @@ const AlertForm = ({
                 py="xs"
               >
                 <Text size="sm" opacity={0.7}>
-                  Warning: Alerts with this threshold type and a &quot;grouped
-                  by&quot; value will not alert for periods with no data for a
-                  group.
+                  <Trans>
+                    Warning: Alerts with this threshold type and a "grouped by"
+                    value will not alert for periods with no data for a group.
+                  </Trans>
                 </Text>
               </MantineAlert>
             )}
@@ -302,8 +304,10 @@ const AlertForm = ({
               py="xs"
             >
               <Text size="sm" opacity={0.7}>
-                Note: Floating-point query results are not rounded during
-                equality comparison.
+                <Trans>
+                  Note: Floating-point query results are not rounded during
+                  equality comparison.
+                </Trans>
               </Text>
             </MantineAlert>
           )}
@@ -316,7 +320,7 @@ const AlertForm = ({
             {defaultValues?.createdBy && (
               <Box>
                 <Text size="xxs" opacity={0.5} mb={4}>
-                  Created by
+                  <Trans>Created by</Trans>
                 </Text>
                 <Text size="sm" opacity={0.8}>
                   {defaultValues.createdBy.name ||
@@ -342,7 +346,9 @@ const AlertForm = ({
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
         <Accordion.Item value="chart">
           <Accordion.Control icon={<IconChartLine size={16} />}>
-            <Text size="sm">Threshold chart</Text>
+            <Text size="sm">
+              <Trans>Threshold chart</Trans>
+            </Text>
           </Accordion.Control>
           <Accordion.Panel>
             {source && (
@@ -373,13 +379,13 @@ const AlertForm = ({
               onClick={() => onDelete(defaultValues.id!)}
               loading={deleteLoading}
             >
-              Delete Alert
+              <Trans>Delete Alert</Trans>
             </Button>
           )}
         </div>
         <Group gap="xs">
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           <Button variant="primary" type="submit" loading={loading}>
             {defaultValues
@@ -541,7 +547,7 @@ export const DBSearchPageAlertModal = ({
         <Stack gap={0} mb="md">
           <Group>
             <Text size="sm">
-              Alerts for <strong>{savedSearch?.name}</strong>
+              <Trans>Alerts for</Trans> <strong>{savedSearch?.name}</strong>
             </Text>
             {!id && (
               <TextInput
@@ -561,14 +567,15 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
+                  {getWebhookChannelIcon(alert.channel.type)}{' '}
+                  <Trans>Alert</Trans> {index + 1}
                 </Group>
               </Tabs.Tab>
             ))}
             <Tabs.Tab value="stage">
               <Group gap={4}>
                 <IconPlus size={18} style={{ marginLeft: -8 }} />
-                New Alert
+                <Trans>New Alert</Trans>
               </Group>
             </Tabs.Tab>
           </Tabs.List>

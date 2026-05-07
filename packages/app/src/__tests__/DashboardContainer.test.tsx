@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -31,7 +32,11 @@ function renderDashboardContainer(
     onRenameTab: jest.fn(),
     onDeleteTab: jest.fn(),
     onRename: jest.fn(),
-    children: () => <div data-testid="group-children">Content</div>,
+    children: () => (
+      <div data-testid="group-children">
+        <Trans>Content</Trans>
+      </div>
+    ),
     ...props,
   };
   return render(

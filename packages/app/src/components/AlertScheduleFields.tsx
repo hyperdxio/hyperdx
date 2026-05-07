@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   Controller,
@@ -92,21 +93,23 @@ export function AlertScheduleFields<T extends FieldValues>({
             <IconChevronRight size={14} opacity={0.5} />
           )}
           <Text size="xs" c="dimmed">
-            Advanced Settings
+            <Trans>Advanced Settings</Trans>
           </Text>
         </Group>
       </UnstyledButton>
       <Collapse expanded={opened}>
         <Box data-testid="alert-advanced-settings-panel">
           <Text size="xs" c="dimmed" mt="xs">
-            Optional schedule controls for aligning alert windows.
+            <Trans>
+              Optional schedule controls for aligning alert windows.
+            </Trans>
           </Text>
           {showScheduleOffsetInput && (
             <>
               <Group gap="xs" mt="xs">
                 <Group gap={4}>
                   <Text size="sm" opacity={0.7}>
-                    Start offset (min)
+                    <Trans>Start offset (min)</Trans>
                   </Text>
                   <Tooltip
                     label="Delays the start of each evaluation window by this many minutes. Useful when data is ingested with a lag."
@@ -141,7 +144,9 @@ export function AlertScheduleFields<T extends FieldValues>({
               </Group>
               {hasScheduleStartAtAnchor && (
                 <Text size="xs" opacity={0.6} mt={4}>
-                  Start offset is ignored while an anchor start time is set.
+                  <Trans>
+                    Start offset is ignored while an anchor start time is set.
+                  </Trans>
                 </Text>
               )}
             </>
@@ -149,7 +154,7 @@ export function AlertScheduleFields<T extends FieldValues>({
           <Group gap="xs" mt="xs" align="start">
             <Group gap={4} mt={6}>
               <Text size="sm" opacity={0.7}>
-                Anchor start time
+                <Trans>Anchor start time</Trans>
               </Text>
               <Tooltip
                 label="Pins alert windows to a fixed starting point instead of the default rolling schedule. Windows repeat at the configured interval from this time."
@@ -186,7 +191,7 @@ export function AlertScheduleFields<T extends FieldValues>({
               )}
             />
             <Text size="xs" opacity={0.6} mt={6}>
-              Displayed in local time, stored as UTC
+              <Trans>Displayed in local time, stored as UTC</Trans>
             </Text>
           </Group>
         </Box>

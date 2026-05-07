@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   Controller,
@@ -102,7 +103,7 @@ const WebhookChannelForm = <T extends FieldValues>({
           color="gray"
           onClick={open}
         >
-          Add New Incoming Webhook
+          <Trans>Add New Incoming Webhook</Trans>
         </Button>
       </Group>
 

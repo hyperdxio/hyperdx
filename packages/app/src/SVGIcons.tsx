@@ -1,5 +1,7 @@
 // Only use this file if you can't find any icon in tabler icons
 
+import { Trans } from 'next-i18next/pages';
+
 type IconProps = {
   style?: React.CSSProperties;
   width?: number;
@@ -16,7 +18,9 @@ export function IncidentIOIcon({ style, width }: IconProps) {
       preserveAspectRatio="xMidYMid"
       style={style}
     >
-      <title>Incident.io</title>
+      <title>
+        <Trans>Incident.io</Trans>
+      </title>
       <g clipPath="url(#clip0_1361_12546)">
         <path
           fillRule="evenodd"

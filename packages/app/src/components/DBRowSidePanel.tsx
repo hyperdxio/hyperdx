@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
@@ -310,11 +311,19 @@ const DBRowSidePanel = ({
   }, [normalizedRow]);
 
   if (isRowLoading) {
-    return <div className={styles.loadingState}>Loading...</div>;
+    return (
+      <div className={styles.loadingState}>
+        <Trans>Loading...</Trans>
+      </div>
+    );
   }
 
   if (!isRowSuccess) {
-    return <div className={styles.loadingState}>Error loading row data</div>;
+    return (
+      <div className={styles.loadingState}>
+        <Trans>Error loading row data</Trans>
+      </div>
+    );
   }
 
   return (
@@ -397,7 +406,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -417,7 +426,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -441,7 +450,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -461,7 +470,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -480,7 +489,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -502,7 +511,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -528,7 +537,7 @@ const DBRowSidePanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              <Trans>An error occurred while rendering this event.</Trans>
             </div>
           )}
         >
@@ -611,7 +620,7 @@ export default function DBRowSidePanelErrorBoundary({
             fallbackRender={error => (
               <Stack>
                 <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                  An error occurred while rendering this event.
+                  <Trans>An error occurred while rendering this event.</Trans>
                 </div>
 
                 <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">

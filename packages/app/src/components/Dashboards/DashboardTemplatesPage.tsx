@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import {
   Anchor,
   Breadcrumbs,
@@ -45,14 +46,16 @@ export default function DashboardTemplatesPage() {
   return (
     <div data-testid="dashboard-templates-page">
       <Head>
-        <title>Dashboard Templates - {brandName}</title>
+        <title>
+          <Trans>Dashboard Templates -</Trans> {brandName}
+        </title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          <Trans>Dashboards</Trans>
         </Anchor>
         <Text fz="sm" c="dimmed">
-          Templates
+          <Trans>Templates</Trans>
         </Text>
       </Breadcrumbs>
       <Container maw={1200} py="lg" px="lg">
@@ -89,7 +92,7 @@ export default function DashboardTemplatesPage() {
                         size="xs"
                         data-testid={`import-template-${t.id}`}
                       >
-                        Import
+                        <Trans>Import</Trans>
                       </Button>
                     </Stack>
                   </Card>

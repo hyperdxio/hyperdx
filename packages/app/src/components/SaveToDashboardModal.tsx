@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
@@ -119,7 +120,7 @@ export default function SaveToDashboardModal({
           title: 'Chart saved to dashboard',
           message: (
             <>
-              View on{' '}
+              <Trans>View on</Trans>{' '}
               <a
                 href={`/dashboards/${result.id}`}
                 style={{ color: 'inherit', textDecoration: 'underline' }}
@@ -172,7 +173,7 @@ export default function SaveToDashboardModal({
           title: 'Chart saved to dashboard',
           message: (
             <>
-              View on{' '}
+              <Trans>View on</Trans>{' '}
               <a
                 href={`/dashboards/${targetDashboard.id}`}
                 style={{ color: 'inherit', textDecoration: 'underline' }}
@@ -213,18 +214,18 @@ export default function SaveToDashboardModal({
           <Card withBorder padding="sm">
             <Stack gap="xs">
               <Text size="sm" fw={500}>
-                Chart Preview
+                <Trans>Chart Preview</Trans>
               </Text>
               <Group gap="xs">
                 <Text size="sm" c="dimmed">
-                  Name:
+                  <Trans>Name:</Trans>
                 </Text>
                 <Text size="sm">{chartConfig.name || 'Untitled Chart'}</Text>
               </Group>
               {chartConfig.displayType && (
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">
-                    Type:
+                    <Trans>Type:</Trans>
                   </Text>
                   <Text size="sm">{chartConfig.displayType}</Text>
                 </Group>
@@ -235,7 +236,7 @@ export default function SaveToDashboardModal({
           {/* Dashboard Selection */}
           <Box>
             <Text size="xs" mb="xs">
-              Dashboard *
+              <Trans>Dashboard *</Trans>
             </Text>
             <Controller
               name="dashboardId"
@@ -258,7 +259,7 @@ export default function SaveToDashboardModal({
           {isCreatingNew && (
             <Box>
               <Text size="xs" mb="xs">
-                Dashboard Name *
+                <Trans>Dashboard Name *</Trans>
               </Text>
               <Controller
                 name="newDashboardName"
@@ -278,10 +279,10 @@ export default function SaveToDashboardModal({
           {/* Actions */}
           <Group justify="flex-end" mt="md">
             <Button variant="subtle" onClick={onClose} disabled={isLoading}>
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
             <Button type="submit" loading={isLoading}>
-              Save to Dashboard
+              <Trans>Save to Dashboard</Trans>
             </Button>
           </Group>
         </Stack>

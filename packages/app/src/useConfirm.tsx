@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
 type ConfirmOptions = {
@@ -82,7 +83,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             variant="secondary"
             onClick={state?.onClose}
           >
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           <Button
             data-testid="confirm-confirm-button"

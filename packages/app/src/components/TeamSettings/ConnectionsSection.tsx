@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Box, Button, Card, Divider, Flex, Stack, Text } from '@mantine/core';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
@@ -15,7 +16,9 @@ export default function ConnectionsSection() {
 
   return (
     <Box id="connections" data-testid="connections-section">
-      <Text size="md">Connections</Text>
+      <Text size="md">
+        <Trans>Connections</Trans>
+      </Text>
       <Divider my="md" />
       <Card>
         <Stack mb="md">
@@ -27,13 +30,22 @@ export default function ConnectionsSection() {
                     {connection.name}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Host:</b> {connection.host}
+                    <b>
+                      <Trans>Host:</Trans>
+                    </b>{' '}
+                    {connection.host}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Username:</b> {connection.username}
+                    <b>
+                      <Trans>Username:</Trans>
+                    </b>{' '}
+                    {connection.username}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Password:</b> [Configured]
+                    <b>
+                      <Trans>Password:</Trans>
+                    </b>{' '}
+                    <Trans>[Configured]</Trans>
                   </Text>
                 </Stack>
                 {editedConnectionId !== connection.id ? (
@@ -42,7 +54,8 @@ export default function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(connection.id)}
                     size="sm"
                   >
-                    <IconPencil size={14} className="me-2" /> Edit
+                    <IconPencil size={14} className="me-2" />{' '}
+                    <Trans>Edit</Trans>
                   </Button>
                 ) : (
                   <Button
@@ -50,7 +63,7 @@ export default function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(null)}
                     size="sm"
                   >
-                    <IconX size={14} className="me-2" /> Cancel
+                    <IconX size={14} className="me-2" /> <Trans>Cancel</Trans>
                   </Button>
                 )}
               </Flex>
@@ -76,7 +89,7 @@ export default function ConnectionsSection() {
               variant="primary"
               onClick={() => setIsCreatingConnection(true)}
             >
-              Add Connection
+              <Trans>Add Connection</Trans>
             </Button>
           )}
         {isCreatingConnection && (

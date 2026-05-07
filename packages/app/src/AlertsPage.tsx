@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import {
   AlertSource,
   AlertState,
@@ -84,12 +85,13 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       alert.thresholdType;
     return (
       <>
-        If value {thresholdLabel}{' '}
+        <Trans>If value</Trans> {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
         {isRangeThresholdType(alert.thresholdType) && (
           <>
             {' '}
-            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
+            <Trans>and</Trans>{' '}
+            <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
           </>
         )}
         <span>&middot;</span>
@@ -100,7 +102,8 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   const notificationMethod = React.useMemo(() => {
     return (
       <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
+        <Trans>Notify via</Trans> {getWebhookChannelIcon(alert.channel.type)}{' '}
+        <Trans>Webhook</Trans>
       </Group>
     );
   }, [alert]);
@@ -121,13 +124,17 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       <Group>
         {alert.state === AlertState.ALERT && (
           <Badge variant="light" color="red">
-            Alert
+            <Trans>Alert</Trans>
           </Badge>
         )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
+        {alert.state === AlertState.OK && (
+          <Badge variant="light">
+            <Trans>Ok</Trans>
+          </Badge>
+        )}
         {alert.state === AlertState.DISABLED && (
           <Badge variant="light" color="gray">
-            Disabled
+            <Trans>Disabled</Trans>
           </Badge>
         )}
 
@@ -152,7 +159,8 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               <>
                 <span>&middot;</span>
                 <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
+                  <Trans>Created by</Trans>{' '}
+                  {alert.createdBy.name || alert.createdBy.email}
                 </span>
               </>
             )}
@@ -177,7 +185,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       {alarmAlerts.length > 0 && (
         <div>
           <Group className={styles.sectionHeader}>
-            <IconAlertTriangle size={14} /> Triggered
+            <IconAlertTriangle size={14} /> <Trans>Triggered</Trans>
           </Group>
           {alarmAlerts.map((alert, index) => (
             <AlertDetails key={index} alert={alert} />
@@ -186,7 +194,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       )}
       <div>
         <Group className={styles.sectionHeader}>
-          <IconCheck size={14} /> OK
+          <IconCheck size={14} /> <Trans>OK</Trans>
         </Group>
         {okData.length === 0 && (
           <EmptyState
@@ -217,14 +225,22 @@ export default function AlertsPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>Alerts - {brandName}</title>
+        <title>
+          <Trans>Alerts -</Trans> {brandName}
+        </title>
       </Head>
-      <PageHeader>Alerts</PageHeader>
+      <PageHeader>
+        <Trans>Alerts</Trans>
+      </PageHeader>
       <div className="my-4" style={{ flex: 1 }}>
         {isLoading ? (
-          <div className="text-center my-4 fs-8">Loading...</div>
+          <div className="text-center my-4 fs-8">
+            <Trans>Loading...</Trans>
+          </div>
         ) : isError ? (
-          <div className="text-center my-4 fs-8">Error</div>
+          <div className="text-center my-4 fs-8">
+            <Trans>Error</Trans>
+          </div>
         ) : alerts?.length ? (
           <Container maw={1500}>
             <Alert
@@ -233,15 +249,15 @@ export default function AlertsPage() {
               py="xs"
               mt="md"
             >
-              Alerts can be{' '}
+              <Trans>Alerts can be</Trans>{' '}
               <a
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                created
+                <Trans>created</Trans>
               </a>{' '}
-              from dashboard charts and saved searches.
+              <Trans>from dashboard charts and saved searches.</Trans>
             </Alert>
             <AlertCardList alerts={alerts} />
           </Container>
@@ -252,13 +268,13 @@ export default function AlertsPage() {
             title="No alerts created yet"
             description={
               <>
-                Alerts can be created from{' '}
+                <Trans>Alerts can be created from</Trans>{' '}
                 <Anchor component={Link} href="/dashboards">
-                  dashboard charts
+                  <Trans>dashboard charts</Trans>
                 </Anchor>{' '}
-                and{' '}
+                <Trans>and</Trans>{' '}
                 <Anchor component={Link} href="/search">
-                  saved searches
+                  <Trans>saved searches</Trans>
                 </Anchor>
                 .
               </>

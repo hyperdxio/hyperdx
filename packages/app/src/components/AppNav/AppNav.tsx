@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
@@ -352,7 +353,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       fw="normal"
                       title="Showing time in UTC"
                     >
-                      UTC
+                      <Trans>UTC</Trans>
                     </Badge>
                   )}
                 </Group>
@@ -404,9 +405,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     favoritedSavedSearches.map(renderSavedSearchLink)
                   ) : favorites != null && savedSearches != null ? (
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
-                      No favorites. Star on{' '}
+                      <Trans>No favorites. Star on</Trans>{' '}
                       <Anchor component={Link} href="/search/list" size="xs">
-                        Saved Searches
+                        <Trans>Saved Searches</Trans>
                       </Anchor>
                       .
                     </Text>
@@ -444,13 +445,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     favoritedDashboards.map(renderDashboardLink)
                   ) : favorites != null && dashboards != null ? (
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
-                      No favorites. Star on{' '}
+                      <Trans>No favorites. Star on</Trans>{' '}
                       <Anchor
                         component={Link}
                         href="/dashboards/list"
                         size="xs"
                       >
-                        Dashboards
+                        <Trans>Dashboards</Trans>
                       </Anchor>
                       .
                     </Text>
@@ -461,15 +462,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
             {!isCollapsed && (
               <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
-                Saved searches and dashboards have moved! Try the{' '}
+                <Trans>Saved searches and dashboards have moved! Try the</Trans>{' '}
                 <Anchor component={Link} href="/search/list">
-                  Saved Searches
+                  <Trans>Saved Searches</Trans>
                 </Anchor>{' '}
-                or{' '}
+                <Trans>or</Trans>{' '}
                 <Anchor component={Link} href="/dashboards/list">
-                  Dashboards
+                  <Trans>Dashboards</Trans>
                 </Anchor>{' '}
-                page.
+                <Trans>page.</Trans>
               </Text>
             )}
 
@@ -509,7 +510,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               }}
             >
               <Text size="xs" c="dimmed">
-                Join us & build the future of high scale observability &rarr;
+                <Trans>
+                  Join us & build the future of high scale observability →
+                </Trans>
               </Text>
             </Link>
           )}

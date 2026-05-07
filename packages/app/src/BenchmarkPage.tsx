@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Trans } from 'next-i18next/pages';
 import { parseAsInteger, parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
@@ -217,14 +218,16 @@ function BenchmarkPage() {
   return (
     <div className="p-4">
       <Title order={1} fw={400} mb="md">
-        Clickhouse Query Benchmark
+        <Trans>Clickhouse Query Benchmark</Trans>
       </Title>
       <form onSubmit={handleSubmit(onSubmit)}>
         <Stack gap="md">
           <Grid>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg">Query 1</Text>
+                <Text size="lg">
+                  <Trans>Query 1</Trans>
+                </Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.0"
@@ -234,7 +237,9 @@ function BenchmarkPage() {
             </Grid.Col>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg">Query 2</Text>
+                <Text size="lg">
+                  <Trans>Query 2</Trans>
+                </Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.1"
@@ -244,19 +249,23 @@ function BenchmarkPage() {
             </Grid.Col>
           </Grid>
           <Button variant="primary" type="submit" loading={isQueryIdsLoading}>
-            Run Benchmark
+            <Trans>Run Benchmark</Trans>
           </Button>
           {isQueryIdsLoading && (
             <Text ta="center" c="green" size="xl">
-              Running Benchmark...
+              <Trans>Running Benchmark...</Trans>
             </Text>
           )}
         </Stack>
         <Grid mt="md">
           <Grid.Col span={12}>
             <Stack>
-              <Text size="lg">Query Estimate & Indexes</Text>
-              <Text size="sm">Index utilization of your query</Text>
+              <Text size="lg">
+                <Trans>Query Estimate & Indexes</Trans>
+              </Text>
+              <Text size="sm">
+                <Trans>Index utilization of your query</Trans>
+              </Text>
             </Stack>
           </Grid.Col>
           <Grid.Col span={6}>

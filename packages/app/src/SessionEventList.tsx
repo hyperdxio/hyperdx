@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
@@ -78,7 +79,12 @@ const EventRow = React.forwardRef(
         <div className={styles.eventRowContent} onClick={onClick}>
           <div className={styles.eventRowTitle}>
             {event.title}{' '}
-            {event.duration > 0 && <span>{event.duration}ms</span>}
+            {event.duration > 0 && (
+              <span>
+                {event.duration}
+                <Trans>ms</Trans>
+              </span>
+            )}
           </div>
           <div className={styles.eventRowDescription} title={event.description}>
             {event.description}

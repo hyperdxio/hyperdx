@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { HTTPError } from 'ky';
 import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { ZodIssue } from 'zod';
@@ -334,7 +335,7 @@ export function WebhookForm({
         />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
-            Webhook Headers (optional)
+            <Trans>Webhook Headers (optional)</Trans>
           </label>,
           <div className="mb-2" key="2">
             <Controller
@@ -358,7 +359,7 @@ export function WebhookForm({
             />
           </div>,
           <label className=".mantine-TextInput-label" key="3">
-            Webhook Body (optional)
+            <Trans>Webhook Body (optional)</Trans>
           </label>,
           <div className="mb-2" key="4">
             <Controller
@@ -388,8 +389,10 @@ export function WebhookForm({
             color="gray"
           >
             <span>
-              Currently the body supports the following message template
-              variables:
+              <Trans>
+                Currently the body supports the following message template
+                variables:
+              </Trans>
             </span>
             <br />
             <span>
@@ -418,11 +421,11 @@ export function WebhookForm({
               loading={testWebhook.isPending}
               type="button"
             >
-              Test Webhook
+              <Trans>Test Webhook</Trans>
             </Button>
           </Group>
           <Button variant="secondary" onClick={onClose} type="reset">
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
         </Group>
       </Stack>

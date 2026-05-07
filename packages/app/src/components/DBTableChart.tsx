@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -250,16 +251,18 @@ export default function DBTableChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError && error ? (
         <div className="h-100 w-100 align-items-center justify-content-center text-muted overflow-scroll">
           <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
+            <Trans>
+              Error loading chart, please check your query or try again later.
+            </Trans>
           </Text>
           <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Error Message:
+              <Trans>Error Message:</Trans>
             </Text>
             <Code
               block
@@ -272,7 +275,7 @@ export default function DBTableChart({
             {error instanceof ClickHouseQueryError && (
               <>
                 <Text my="sm" size="sm" ta="center">
-                  Sent Query:
+                  <Trans>Sent Query:</Trans>
                 </Text>
                 <SQLPreview data={error?.query} />
               </>
@@ -281,7 +284,7 @@ export default function DBTableChart({
         </div>
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         <Table
@@ -295,7 +298,7 @@ export default function DBTableChart({
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">
-                Loading...
+                <Trans>Loading...</Trans>
               </Text>
             )
           }

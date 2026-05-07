@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
+import { Trans } from 'next-i18next/pages';
 import { sub } from 'date-fns';
 import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
@@ -80,16 +81,24 @@ function SessionCard({
         {email || `Anonymous Session ${sessionId}`}
       </div>
       <div>
-        <div className="text-muted fs-8">{numEvents} Events</div>
+        <div className="text-muted fs-8">
+          {numEvents} <Trans>Events</Trans>
+        </div>
         {numErrors > 0 && (
-          <div className="text-danger fs-8">{numErrors} Errors</div>
+          <div className="text-danger fs-8">
+            {numErrors} <Trans>Errors</Trans>
+          </div>
         )}
-        <div className="text-muted fs-8">Duration {durationStr}</div>
+        <div className="text-muted fs-8">
+          <Trans>Duration</Trans> {durationStr}
+        </div>
       </div>
       <div className="text-end">
-        <div>Last active {timeAgo} ago</div>
+        <div>
+          <Trans>Last active</Trans> {timeAgo} <Trans>ago</Trans>
+        </div>
         <div className="text-muted fs-8 mt-1">
-          Started on <FormatTime value={minTime} />
+          <Trans>Started on</Trans> <FormatTime value={minTime} />
         </div>
       </div>
     </div>
@@ -121,18 +130,21 @@ function SessionCardList({
       {isSessionLoading === true && (
         <Group mt="md" align="center" justify="center" gap="xs">
           <IconRefresh className="spin-animate" size={14} />
-          Searching sessions...
+          <Trans>Searching sessions...</Trans>
         </Group>
       )}
       {!isSessionLoading && sessions.length === 0 && (
         <div className="text-center align-items-center justify-content-center my-3">
-          No results found.
+          <Trans>No results found.</Trans>
           <div className="text-muted mt-3">
-            Try checking the query explainer in the search bar if there are any
-            search syntax issues.
+            <Trans>
+              Try checking the query explainer in the search bar if there are
+              any search syntax issues.
+            </Trans>
           </div>
           <div className="text-muted mt-3">
-            Add new data sources by setting up a {brandName} integration.
+            <Trans>Add new data sources by setting up a</Trans> {brandName}{' '}
+            <Trans>integration.</Trans>
           </div>
           <Button
             component="a"
@@ -141,7 +153,8 @@ function SessionCardList({
             target="_blank"
             href="/docs/install/browser"
           >
-            Install {brandName} Browser Integration
+            <Trans>Install</Trans> {brandName}{' '}
+            <Trans>Browser Integration</Trans>
           </Button>
         </div>
       )}
@@ -351,7 +364,9 @@ export default function SessionsPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>Client Sessions - {brandName}</title>
+        <title>
+          <Trans>Client Sessions -</Trans> {brandName}
+        </title>
       </Head>
       <OnboardingModal />
       {selectedSession != null &&
@@ -413,7 +428,7 @@ export default function SessionsPage() {
                 leftSection={<IconPlayerPlay size={16} />}
                 style={{ flexShrink: 0 }}
               >
-                Run
+                <Trans>Run</Trans>
               </Button>
             </Group>
           </Flex>
@@ -462,8 +477,11 @@ function SessionSetupInstructions() {
       title="Set up session replays"
       description={
         <>
-          Follow these steps to start recording and viewing session replays with
-          the {brandName} Otel Collector.
+          <Trans>
+            Follow these steps to start recording and viewing session replays
+            with the
+          </Trans>{' '}
+          {brandName} <Trans>Otel Collector.</Trans>
         </>
       }
       maw={600}
@@ -473,26 +491,47 @@ function SessionSetupInstructions() {
           <Stepper.Step
             label={
               <>
-                Create a new source with <Code>Session</Code> type
+                <Trans>Create a new source with</Trans>{' '}
+                <Code>
+                  <Trans>Session</Trans>
+                </Code>{' '}
+                <Trans>type</Trans>
               </>
             }
             description={
               <>
-                Go to Team Settings, click <Code>Add Source</Code> under Sources
-                section, and select <Code>Session</Code> as the source type.
+                <Trans>Go to Team Settings, click</Trans>{' '}
+                <Code>
+                  <Trans>Add Source</Trans>
+                </Code>{' '}
+                <Trans>under Sources section, and select</Trans>{' '}
+                <Code>
+                  <Trans>Session</Trans>
+                </Code>{' '}
+                <Trans>as the source type.</Trans>
               </>
             }
           />
           <Stepper.Step
             label={
               <>
-                Choose the <Code>hyperdx_sessions</Code> table
+                <Trans>Choose the</Trans>{' '}
+                <Code>
+                  <Trans>hyperdx_sessions</Trans>
+                </Code>{' '}
+                <Trans>table</Trans>
               </>
             }
             description={
               <>
-                Select the <Code>hyperdx_sessions</Code> table from the
-                dropdown, and select the corresponding trace source.
+                <Trans>Select the</Trans>{' '}
+                <Code>
+                  <Trans>hyperdx_sessions</Trans>
+                </Code>{' '}
+                <Trans>
+                  table from the dropdown, and select the corresponding trace
+                  source.
+                </Trans>
               </>
             }
           />
@@ -500,16 +539,16 @@ function SessionSetupInstructions() {
             label="Start recording sessions"
             description={
               <>
-                Install the{' '}
+                <Trans>Install the</Trans>{' '}
                 <Anchor
                   href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
                   target="_blank"
                   rel="noopener noreferrer"
                   size="xs"
                 >
-                  {brandName} Browser Integration
+                  {brandName} <Trans>Browser Integration</Trans>
                 </Anchor>{' '}
-                to start recording sessions.
+                <Trans>to start recording sessions.</Trans>
               </>
             }
           />

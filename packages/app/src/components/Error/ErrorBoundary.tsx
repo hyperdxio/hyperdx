@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary';
 import { Alert, Button, Stack, Text } from '@mantine/core';
 import { IconExclamationCircle } from '@tabler/icons-react';
@@ -44,7 +45,7 @@ export const ErrorBoundary = ({
                   size="compact-xs"
                   variant="danger"
                 >
-                  Retry
+                  <Trans>Retry</Trans>
                 </Button>
               )}
             </Stack>

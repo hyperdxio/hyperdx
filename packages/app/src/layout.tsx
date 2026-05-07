@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { Button, Center, Group, Text } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 
@@ -34,16 +35,18 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
         <Group bg="var(--color-text-primary)">
           <Center style={{ flexGrow: 1 }}>
             <Text py="xs" size="sm" c="var(--color-text-inverted)">
-              This is not recommended for production use and is lacking core
-              ClickStack features such as alerts and saved searches. For a
-              proper experience, visit the{' '}
+              <Trans>
+                This is not recommended for production use and is lacking core
+                ClickStack features such as alerts and saved searches. For a
+                proper experience, visit the
+              </Trans>{' '}
               <strong>
                 <Link
                   href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  ClickStack Docs
+                  <Trans>ClickStack Docs</Trans>
                 </Link>
               </strong>
             </Text>

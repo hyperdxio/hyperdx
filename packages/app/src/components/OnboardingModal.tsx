@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,
@@ -764,7 +765,7 @@ function OnboardingModalComponent({
       {step === 'connection' && connections != null && (
         <>
           <Text size="sm" mb="md">
-            Lets set up your connection to ClickHouse
+            <Trans>Lets set up your connection to ClickHouse</Trans>
           </Text>
           {connections.length === 0 ? (
             <ConnectionForm
@@ -804,7 +805,7 @@ function OnboardingModalComponent({
           )}
           {!IS_LOCAL_MODE && (
             <Text size="xs" mt="md">
-              You can always add and edit connections later.
+              <Trans>You can always add and edit connections later.</Trans>
             </Text>
           )}
           {!IS_CLICKHOUSE_BUILD && (
@@ -816,7 +817,7 @@ function OnboardingModalComponent({
                 w="100%"
                 onClick={handleDemoServerClick}
               >
-                Connect to Demo Server
+                <Trans>Connect to Demo Server</Trans>
               </Button>
             </>
           )}
@@ -829,7 +830,7 @@ function OnboardingModalComponent({
               <Flex justify="center" align="center" direction="column" py="xl">
                 <Loader size="md" mb="md" />
                 <Text size="sm" c="dimmed" mb="md">
-                  Detecting available tables...
+                  <Trans>Detecting available tables...</Trans>
                 </Text>
                 <Button
                   variant="subtle"
@@ -839,7 +840,7 @@ function OnboardingModalComponent({
                     setStep('source');
                   }}
                 >
-                  Skip and setup manually
+                  <Trans>Skip and setup manually</Trans>
                 </Button>
               </Flex>
             </>
@@ -851,13 +852,15 @@ function OnboardingModalComponent({
                 p="xs"
                 mb="md"
               >
-                <IconArrowLeft size={14} className="me-2" /> Back
+                <IconArrowLeft size={14} className="me-2" /> <Trans>Back</Trans>
               </Button>
               <Text size="sm" mb="md">
-                We automatically detected and created{' '}
-                {autoDetectedSources.length} source
-                {autoDetectedSources.length > 1 ? 's' : ''} from your
-                connection. You can review, edit, or continue.
+                <Trans>We automatically detected and created</Trans>{' '}
+                {autoDetectedSources.length} <Trans>source</Trans>
+                {autoDetectedSources.length > 1 ? 's' : ''}{' '}
+                <Trans>
+                  from your connection. You can review, edit, or continue.
+                </Trans>
               </Text>
               <SourcesList
                 withCard={false}
@@ -871,7 +874,7 @@ function OnboardingModalComponent({
                     setStep('source');
                   }}
                 >
-                  Add more sources
+                  <Trans>Add more sources</Trans>
                 </Button>
                 <Button
                   variant="primary"
@@ -879,7 +882,7 @@ function OnboardingModalComponent({
                     setStep('closed');
                   }}
                 >
-                  Continue
+                  <Trans>Continue</Trans>
                 </Button>
               </Flex>
             </>
@@ -887,8 +890,10 @@ function OnboardingModalComponent({
             <Flex justify="center" align="center" direction="column" py="xl">
               {/* We don't expect users to hit this - but this allows them to get unstuck if they do */}
               <Text size="sm" c="dimmed" mb="md">
-                No OTel tables detected automatically, please setup sources
-                manually.
+                <Trans>
+                  No OTel tables detected automatically, please setup sources
+                  manually.
+                </Trans>
               </Text>
               <Button
                 variant="primary"
@@ -896,7 +901,7 @@ function OnboardingModalComponent({
                   setStep('source');
                 }}
               >
-                Continue
+                <Trans>Continue</Trans>
               </Button>
             </Flex>
           )}
@@ -910,10 +915,10 @@ function OnboardingModalComponent({
             p="xs"
             mb="md"
           >
-            <IconArrowLeft size={14} className="me-2" /> Back
+            <IconArrowLeft size={14} className="me-2" /> <Trans>Back</Trans>
           </Button>
           <Text size="sm" mb="md">
-            Lets set up a source table to query telemetry from.
+            <Trans>Lets set up a source table to query telemetry from.</Trans>
           </Text>
           <TableSourceForm
             isNew
@@ -923,7 +928,7 @@ function OnboardingModalComponent({
             }}
           />
           <Text size="xs" mt="lg">
-            You can always add and edit sources later.
+            <Trans>You can always add and edit sources later.</Trans>
           </Text>
         </>
       )}

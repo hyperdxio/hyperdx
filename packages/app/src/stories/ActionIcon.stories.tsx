@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { ActionIcon, Group, Stack, Text } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
@@ -53,7 +54,7 @@ export const CustomVariants = () => (
   <Stack gap="xl">
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Primary
+        <Trans>Primary</Trans>
       </Text>
       <Group>
         <ActionIcon variant="primary" size="sm">
@@ -73,7 +74,7 @@ export const CustomVariants = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Secondary
+        <Trans>Secondary</Trans>
       </Text>
       <Group>
         <ActionIcon variant="secondary" size="sm">
@@ -93,7 +94,7 @@ export const CustomVariants = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Danger
+        <Trans>Danger</Trans>
       </Text>
       <Group>
         <ActionIcon variant="danger" size="sm">
@@ -113,7 +114,7 @@ export const CustomVariants = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Link
+        <Trans>Link</Trans>
       </Text>
       <Group>
         <ActionIcon variant="link" size="sm">
@@ -136,7 +137,7 @@ export const CustomVariants = () => (
 export const Sizes = () => (
   <Stack gap="md">
     <Text size="sm" fw={600}>
-      ActionIcon Sizes
+      <Trans>ActionIcon Sizes</Trans>
     </Text>
     <Group align="center">
       <ActionIcon variant="primary" size="xs">
@@ -155,16 +156,18 @@ export const Sizes = () => (
 export const DisabledStates = () => (
   <Stack gap="xl">
     <Text size="lg" fw={700}>
-      Disabled ActionIcon States
+      <Trans>Disabled ActionIcon States</Trans>
     </Text>
     <Text size="sm" c="dimmed">
-      All ActionIcon variants should have a consistent disabled appearance with
-      reduced opacity and a &quot;not-allowed&quot; cursor.
+      <Trans>
+        All ActionIcon variants should have a consistent disabled appearance
+        with reduced opacity and a "not-allowed" cursor.
+      </Trans>
     </Text>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Primary - Normal vs Disabled
+        <Trans>Primary - Normal vs Disabled</Trans>
       </Text>
       <Group>
         <ActionIcon variant="primary" size="md">
@@ -184,7 +187,7 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Secondary - Normal vs Disabled
+        <Trans>Secondary - Normal vs Disabled</Trans>
       </Text>
       <Group>
         <ActionIcon variant="secondary" size="md">
@@ -204,7 +207,7 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Danger - Normal vs Disabled
+        <Trans>Danger - Normal vs Disabled</Trans>
       </Text>
       <Group>
         <ActionIcon variant="danger" size="md">
@@ -224,7 +227,7 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Link - Normal vs Disabled
+        <Trans>Link - Normal vs Disabled</Trans>
       </Text>
       <Group>
         <ActionIcon variant="link" size="md">
@@ -244,7 +247,7 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Subtle - Normal vs Disabled
+        <Trans>Subtle - Normal vs Disabled</Trans>
       </Text>
       <Group>
         <ActionIcon variant="subtle" size="md">
@@ -264,7 +267,7 @@ export const DisabledStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        All Sizes - Disabled
+        <Trans>All Sizes - Disabled</Trans>
       </Text>
       <Group align="center">
         <ActionIcon variant="primary" size="xs" disabled>
@@ -290,15 +293,17 @@ export const DisabledStates = () => (
 export const LoadingStates = () => (
   <Stack gap="xl">
     <Text size="lg" fw={700}>
-      Loading ActionIcon States
+      <Trans>Loading ActionIcon States</Trans>
     </Text>
     <Text size="sm" c="dimmed">
-      ActionIcons can show a loading spinner to indicate async operations.
+      <Trans>
+        ActionIcons can show a loading spinner to indicate async operations.
+      </Trans>
     </Text>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Loading Variants
+        <Trans>Loading Variants</Trans>
       </Text>
       <Group>
         <ActionIcon variant="primary" loading>
@@ -321,7 +326,7 @@ export const LoadingStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Custom Loading Indicator
+        <Trans>Custom Loading Indicator</Trans>
       </Text>
       <Group>
         <ActionIcon variant="primary" loading loaderProps={{ type: 'dots' }}>
@@ -335,7 +340,7 @@ export const LoadingStates = () => (
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Loading with Different Sizes
+        <Trans>Loading with Different Sizes</Trans>
       </Text>
       <Group align="center">
         <ActionIcon variant="primary" size="sm" loading>
@@ -355,7 +360,7 @@ export const LoadingStates = () => (
 export const CommonUseCases = () => (
   <Stack gap="md">
     <Text size="sm" fw={600}>
-      Common Use Cases
+      <Trans>Common Use Cases</Trans>
     </Text>
     <Group>
       <ActionIcon variant="primary" aria-label="Confirm">

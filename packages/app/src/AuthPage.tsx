@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { NextSeo } from 'next-seo';
 import { HTTPError } from 'ky';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -143,11 +144,15 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             <span className="text-brand fw-bold">{brandName}</span>
           </div>
           {action === 'login' && (
-            <div className="text-center mb-2 ">Welcome back!</div>
+            <div className="text-center mb-2 ">
+              <Trans>Welcome back!</Trans>
+            </div>
           )}
           {isRegister && config.IS_OSS === true && (
             <div className="text-center mb-2 text-muted">
-              Let{"'"}s create your user account.
+              <Trans>Let</Trans>
+              {"'"}
+              <Trans>s create your user account.</Trans>
             </div>
           )}
           <form className="text-start mt-4" {...form.controller}>
@@ -183,7 +188,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                             handler={confirmPass}
                             password={currentPassword}
                           >
-                            Confirm Password
+                            <Trans>Confirm Password</Trans>
                           </CheckOrX>
                         }
                         size="md"
@@ -245,20 +250,30 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   color="green"
                   data-test-id="auth-msg"
                 >
-                  Sent verification email! Please check your email inbox
+                  <Trans>
+                    Sent verification email! Please check your email inbox
+                  </Trans>
                 </Notification>
               )}
 
               {isRegister && config.IS_OSS === false && (
                 <div data-test-id="login-link" className="text-center fs-8 ">
-                  Already have an account? <Link href="/login">Log in</Link>{' '}
-                  instead.
+                  <Trans>Already have an account?</Trans>{' '}
+                  <Link href="/login">
+                    <Trans>Log in</Trans>
+                  </Link>{' '}
+                  <Trans>instead.</Trans>
                 </div>
               )}
               {action === 'login' && config.IS_OSS === false && (
                 <div data-test-id="register-link" className="text-center fs-8 ">
-                  Don{"'"}t have an account yet?{' '}
-                  <Link href="/register">Register</Link> instead.
+                  <Trans>Don</Trans>
+                  {"'"}
+                  <Trans>t have an account yet?</Trans>{' '}
+                  <Link href="/register">
+                    <Trans>Register</Trans>
+                  </Link>{' '}
+                  <Trans>instead.</Trans>
                 </div>
               )}
             </Stack>

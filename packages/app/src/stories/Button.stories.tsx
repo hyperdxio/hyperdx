@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { Button, Group, Stack, Text } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
@@ -51,63 +52,71 @@ export const CustomVariants = () => (
   <Stack gap="xl">
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Primary
+        <Trans>Primary</Trans>
       </Text>
       <Group>
-        <Button variant="primary">Primary</Button>
+        <Button variant="primary">
+          <Trans>Primary</Trans>
+        </Button>
         <Button variant="primary" leftSection={<IconCheck size={16} />}>
-          Confirm
+          <Trans>Confirm</Trans>
         </Button>
         <Button variant="primary" rightSection={<IconArrowRight size={16} />}>
-          Continue
+          <Trans>Continue</Trans>
         </Button>
         <Button variant="primary" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Secondary
+        <Trans>Secondary</Trans>
       </Text>
       <Group>
-        <Button variant="secondary">Secondary</Button>
+        <Button variant="secondary">
+          <Trans>Secondary</Trans>
+        </Button>
         <Button variant="secondary" leftSection={<IconPlus size={16} />}>
-          Add Item
+          <Trans>Add Item</Trans>
         </Button>
         <Button variant="secondary" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Danger
+        <Trans>Danger</Trans>
       </Text>
       <Group>
-        <Button variant="danger">Danger</Button>
+        <Button variant="danger">
+          <Trans>Danger</Trans>
+        </Button>
         <Button variant="danger" leftSection={<IconTrash size={16} />}>
-          Delete
+          <Trans>Delete</Trans>
         </Button>
         <Button variant="danger" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Link
+        <Trans>Link</Trans>
       </Text>
       <Group>
-        <Button variant="link">Link</Button>
+        <Button variant="link">
+          <Trans>Link</Trans>
+        </Button>
         <Button variant="link" rightSection={<IconExternalLink size={16} />}>
-          View Details
+          <Trans>View Details</Trans>
         </Button>
         <Button variant="link" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
       </Group>
     </div>
@@ -117,113 +126,123 @@ export const CustomVariants = () => (
 export const DisabledStates = () => (
   <Stack gap="xl">
     <Text size="lg" fw={700}>
-      Disabled Button States
+      <Trans>Disabled Button States</Trans>
     </Text>
     <Text size="sm" c="dimmed">
-      All button variants should have a consistent disabled appearance with
-      reduced opacity and a &quot;not-allowed&quot; cursor.
+      <Trans>
+        All button variants should have a consistent disabled appearance with
+        reduced opacity and a "not-allowed" cursor.
+      </Trans>
     </Text>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Primary - Normal vs Disabled
+        <Trans>Primary - Normal vs Disabled</Trans>
       </Text>
       <Group>
-        <Button variant="primary">Normal</Button>
+        <Button variant="primary">
+          <Trans>Normal</Trans>
+        </Button>
         <Button variant="primary" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
         <Button variant="primary" leftSection={<IconCheck size={16} />}>
-          With Icon
+          <Trans>With Icon</Trans>
         </Button>
         <Button
           variant="primary"
           leftSection={<IconCheck size={16} />}
           disabled
         >
-          Disabled with Icon
+          <Trans>Disabled with Icon</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Secondary - Normal vs Disabled
+        <Trans>Secondary - Normal vs Disabled</Trans>
       </Text>
       <Group>
-        <Button variant="secondary">Normal</Button>
+        <Button variant="secondary">
+          <Trans>Normal</Trans>
+        </Button>
         <Button variant="secondary" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
         <Button variant="secondary" leftSection={<IconPlus size={16} />}>
-          With Icon
+          <Trans>With Icon</Trans>
         </Button>
         <Button
           variant="secondary"
           leftSection={<IconPlus size={16} />}
           disabled
         >
-          Disabled with Icon
+          <Trans>Disabled with Icon</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Danger - Normal vs Disabled
+        <Trans>Danger - Normal vs Disabled</Trans>
       </Text>
       <Group>
-        <Button variant="danger">Normal</Button>
+        <Button variant="danger">
+          <Trans>Normal</Trans>
+        </Button>
         <Button variant="danger" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
         <Button variant="danger" leftSection={<IconTrash size={16} />}>
-          With Icon
+          <Trans>With Icon</Trans>
         </Button>
         <Button variant="danger" leftSection={<IconTrash size={16} />} disabled>
-          Disabled with Icon
+          <Trans>Disabled with Icon</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Link - Normal vs Disabled
+        <Trans>Link - Normal vs Disabled</Trans>
       </Text>
       <Group>
-        <Button variant="link">Normal</Button>
+        <Button variant="link">
+          <Trans>Normal</Trans>
+        </Button>
         <Button variant="link" disabled>
-          Disabled
+          <Trans>Disabled</Trans>
         </Button>
         <Button variant="link" rightSection={<IconExternalLink size={16} />}>
-          With Icon
+          <Trans>With Icon</Trans>
         </Button>
         <Button
           variant="link"
           rightSection={<IconExternalLink size={16} />}
           disabled
         >
-          Disabled with Icon
+          <Trans>Disabled with Icon</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        All Sizes - Disabled
+        <Trans>All Sizes - Disabled</Trans>
       </Text>
       <Group align="center">
         <Button variant="primary" size="xxs" disabled>
-          XXS
+          <Trans>XXS</Trans>
         </Button>
         <Button variant="primary" size="xs" disabled>
-          XS
+          <Trans>XS</Trans>
         </Button>
         <Button variant="primary" size="sm" disabled>
-          SM
+          <Trans>SM</Trans>
         </Button>
         <Button variant="primary" size="md" disabled>
-          MD
+          <Trans>MD</Trans>
         </Button>
       </Group>
     </div>
@@ -233,45 +252,47 @@ export const DisabledStates = () => (
 export const LoadingStates = () => (
   <Stack gap="xl">
     <Text size="lg" fw={700}>
-      Loading Button States
+      <Trans>Loading Button States</Trans>
     </Text>
     <Text size="sm" c="dimmed">
-      Buttons can show a loading spinner to indicate async operations.
+      <Trans>
+        Buttons can show a loading spinner to indicate async operations.
+      </Trans>
     </Text>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Loading Variants
+        <Trans>Loading Variants</Trans>
       </Text>
       <Group>
         <Button variant="primary" loading>
-          Primary Loading
+          <Trans>Primary Loading</Trans>
         </Button>
         <Button variant="secondary" loading>
-          Secondary Loading
+          <Trans>Secondary Loading</Trans>
         </Button>
         <Button variant="danger" loading>
-          Danger Loading
+          <Trans>Danger Loading</Trans>
         </Button>
         <Button variant="link" loading>
-          Link Loading
+          <Trans>Link Loading</Trans>
         </Button>
       </Group>
     </div>
 
     <div>
       <Text size="sm" fw={600} mb="xs">
-        Custom Loading Indicator
+        <Trans>Custom Loading Indicator</Trans>
       </Text>
       <Group>
         <Button variant="primary" loading loaderProps={{ type: 'dots' }}>
-          Dots Loader
+          <Trans>Dots Loader</Trans>
         </Button>
         <Button
           variant="primary"
           leftSection={<IconLoader2 size={16} className="animate-spin" />}
         >
-          Custom Spinner
+          <Trans>Custom Spinner</Trans>
         </Button>
       </Group>
     </div>
@@ -281,20 +302,20 @@ export const LoadingStates = () => (
 export const Sizes = () => (
   <Stack gap="md">
     <Text size="sm" fw={600}>
-      Button Sizes
+      <Trans>Button Sizes</Trans>
     </Text>
     <Group align="center">
       <Button variant="primary" size="xxs">
-        XXS
+        <Trans>XXS</Trans>
       </Button>
       <Button variant="primary" size="xs">
-        XS
+        <Trans>XS</Trans>
       </Button>
       <Button variant="primary" size="sm">
-        SM
+        <Trans>SM</Trans>
       </Button>
       <Button variant="primary" size="md">
-        MD
+        <Trans>MD</Trans>
       </Button>
     </Group>
   </Stack>

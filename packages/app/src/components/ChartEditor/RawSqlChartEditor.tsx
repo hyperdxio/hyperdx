@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import {
   TableConnection,
@@ -179,7 +180,7 @@ export default function RawSqlChartEditor({
       <Group align="center" gap={0} justify="space-between">
         <Group align="center" gap={0}>
           <Text pe="md" size="sm">
-            Connection
+            <Trans>Connection</Trans>
           </Text>
           <ConnectionSelectControlled
             control={control}
@@ -188,7 +189,7 @@ export default function RawSqlChartEditor({
           />
           <Group align="center" gap={8} mx="md">
             <Text size="sm" ps="md">
-              Source
+              <Trans>Source</Trans>
             </Text>
             {isDashboardForm && (
               <Tooltip
@@ -222,7 +223,7 @@ export default function RawSqlChartEditor({
                 onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
               >
                 <IconBell size={14} className="me-2" />
-                Add Alert
+                <Trans>Add Alert</Trans>
               </Button>
             )}
 
@@ -239,7 +240,7 @@ export default function RawSqlChartEditor({
               size="compact-sm"
               variant="secondary"
             >
-              Display Settings
+              <Trans>Display Settings</Trans>
             </Button>
           </Group>
         </Group>

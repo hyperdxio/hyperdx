@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { useQueryState } from 'nuqs';
 import {
   ActionIcon,
@@ -182,9 +183,13 @@ export default function DashboardsListPage() {
       style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
-        <title>Dashboards - {brandName}</title>
+        <title>
+          <Trans>Dashboards -</Trans> {brandName}
+        </title>
       </Head>
-      <PageHeader>Dashboards</PageHeader>
+      <PageHeader>
+        <Trans>Dashboards</Trans>
+      </PageHeader>
       <Container
         maw={1200}
         py="lg"
@@ -193,7 +198,7 @@ export default function DashboardsListPage() {
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
       >
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          Preset Dashboards
+          <Trans>Preset Dashboards</Trans>
         </Text>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="sm">
           {PRESET_DASHBOARDS.map(p => (
@@ -202,14 +207,14 @@ export default function DashboardsListPage() {
         </SimpleGrid>
         <Text ta="right" mb="sm">
           <Anchor component={Link} href="/dashboards/templates" fz="sm">
-            Browse dashboard templates &rarr;
+            <Trans>Browse dashboard templates →</Trans>
           </Anchor>
         </Text>
 
         {favoritedDashboards.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
-              Favorites
+              <Trans>Favorites</Trans>
             </Text>
             <SimpleGrid
               cols={{ base: 1, sm: 2, md: 3 }}
@@ -238,7 +243,7 @@ export default function DashboardsListPage() {
         )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          Team Dashboards
+          <Trans>Team Dashboards</Trans>
         </Text>
 
         <Flex justify="space-between" align="center" mb="lg" gap="sm">
@@ -289,7 +294,7 @@ export default function DashboardsListPage() {
               leftSection={<IconUpload size={16} />}
               data-testid="import-dashboard-button"
             >
-              Import
+              <Trans>Import</Trans>
             </Button>
             <Menu position="bottom-end" withinPortal>
               <Menu.Target>
@@ -300,7 +305,7 @@ export default function DashboardsListPage() {
                   loading={createDashboard.isPending}
                   data-testid="new-dashboard-button"
                 >
-                  New Dashboard
+                  <Trans>New Dashboard</Trans>
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
@@ -309,9 +314,9 @@ export default function DashboardsListPage() {
                   onClick={handleCreate}
                   data-testid="create-dashboard-button"
                 >
-                  Saved Dashboard
+                  <Trans>Saved Dashboard</Trans>
                   <Text size="xs" c="dimmed">
-                    Persisted for your team
+                    <Trans>Persisted for your team</Trans>
                   </Text>
                 </Menu.Item>
                 <Menu.Item
@@ -320,9 +325,9 @@ export default function DashboardsListPage() {
                   leftSection={<IconPlus size={14} />}
                   data-testid="temp-dashboard-button"
                 >
-                  Temporary Dashboard
+                  <Trans>Temporary Dashboard</Trans>
                   <Text size="xs" c="dimmed">
-                    Lives in your browser only
+                    <Trans>Lives in your browser only</Trans>
                   </Text>
                 </Menu.Item>
               </Menu.Dropdown>
@@ -332,11 +337,13 @@ export default function DashboardsListPage() {
 
         {isLoading ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
-            Loading dashboards...
+            <Trans>Loading dashboards...</Trans>
           </Text>
         ) : isError ? (
           <Text size="sm" c="red" ta="center" py="xl">
-            Failed to load dashboards. Please try refreshing the page.
+            <Trans>
+              Failed to load dashboards. Please try refreshing the page.
+            </Trans>
           </Text>
         ) : filteredDashboards.length === 0 ? (
           <Flex
@@ -360,7 +367,7 @@ export default function DashboardsListPage() {
                   leftSection={<IconUpload size={16} />}
                   data-testid="empty-import-dashboard-button"
                 >
-                  Import
+                  <Trans>Import</Trans>
                 </Button>
                 <Button
                   variant="primary"
@@ -369,7 +376,7 @@ export default function DashboardsListPage() {
                   loading={createDashboard.isPending}
                   data-testid="empty-create-dashboard-button"
                 >
-                  New Dashboard
+                  <Trans>New Dashboard</Trans>
                 </Button>
               </Group>
             </EmptyState>
@@ -379,10 +386,18 @@ export default function DashboardsListPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={40} />
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th>Created By</Table.Th>
-                <Table.Th>Last Updated</Table.Th>
+                <Table.Th>
+                  <Trans>Name</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Tags</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Created By</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Last Updated</Trans>
+                </Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import type { Duration } from 'date-fns';
 import { add } from 'date-fns';
 import { Button, Menu } from '@mantine/core';
@@ -83,18 +84,18 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
               }
               leftSection={<IconBell size={16} />}
             >
-              Ack&apos;d
+              <Trans>Ack'd</Trans>
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label py={6}>
-              Acknowledged{' '}
+              <Trans>Acknowledged</Trans>{' '}
               {alert.silenced?.by ? (
                 <>
-                  by <strong>{alert.silenced?.by}</strong>
+                  <Trans>by</Trans> <strong>{alert.silenced?.by}</strong>
                 </>
               ) : null}{' '}
-              on <br />
+              <Trans>on</Trans> <br />
               <FormatTime value={alert.silenced?.at} />
               .<br />
             </Menu.Label>
@@ -104,7 +105,8 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 'Alert resumed.'
               ) : (
                 <>
-                  Resumes <FormatTime value={alert.silenced.until} />.
+                  <Trans>Resumes</Trans>{' '}
+                  <FormatTime value={alert.silenced.until} />.
                 </>
               )}
             </Menu.Label>
@@ -129,12 +131,12 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
         <Menu disabled={silenceAlert.isPending}>
           <Menu.Target>
             <Button size="compact-sm" variant="secondary">
-              Ack
+              <Trans>Ack</Trans>
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label lh="1" py={6}>
-              Acknowledge and silence for
+              <Trans>Acknowledge and silence for</Trans>
             </Menu.Label>
             <Menu.Item
               lh="1"
@@ -145,7 +147,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              30 minutes
+              <Trans>30 minutes</Trans>
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -156,7 +158,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              1 hour
+              <Trans>1 hour</Trans>
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -167,7 +169,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              6 hours
+              <Trans>6 hours</Trans>
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -178,7 +180,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              24 hours
+              <Trans>24 hours</Trans>
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

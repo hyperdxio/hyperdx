@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
@@ -17,12 +18,18 @@ jest.mock('@/source', () => ({
 jest.mock('@/components/DBTracePanel', () => ({
   __esModule: true,
   default: ({ traceId }: { traceId: string }) => (
-    <div>trace panel {traceId}</div>
+    <div>
+      <Trans>trace panel</Trans> {traceId}
+    </div>
   ),
 }));
 
 jest.mock('@/components/SourceSelect', () => ({
-  SourceSelectControlled: () => <div>source select</div>,
+  SourceSelectControlled: () => (
+    <div>
+      <Trans>source select</Trans>
+    </div>
+  ),
 }));
 
 describe('DirectTraceSidePanel', () => {

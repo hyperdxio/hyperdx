@@ -38,6 +38,7 @@ function pickSourceConfigFields(source: TSource) {
     ...pickSampleWeightExpressionProps(source),
   };
 }
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Anchor,
@@ -754,7 +755,7 @@ function HttpTab({
             <DBTableChart
               title={
                 <Text size="sm">
-                  Top 20{' '}
+                  <Trans>Top 20</Trans>{' '}
                   {topEndpointsChartType === 'time'
                     ? 'Most Time Consuming'
                     : 'Highest Error Rate'}
@@ -1561,10 +1562,10 @@ function ServicesDashboardPage() {
     <Box p="sm" data-testid="services-dashboard-page">
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          <Trans>Dashboards</Trans>
         </Anchor>
         <Text fz="sm" c="dimmed">
-          Services
+          <Trans>Services</Trans>
         </Text>
       </Breadcrumbs>
       <OnboardingModal requireSource={false} />
@@ -1643,7 +1644,7 @@ function ServicesDashboardPage() {
               leftSection={<IconPlayerPlay size={16} />}
               style={{ flexShrink: 0 }}
             >
-              Run
+              <Trans>Run</Trans>
             </Button>
           </Group>
         </Group>
@@ -1656,7 +1657,9 @@ function ServicesDashboardPage() {
       />
       {source?.kind !== 'trace' ? (
         <Group align="center" justify="center" h="300px">
-          <Text c="gray">Please select a trace source</Text>
+          <Text c="gray">
+            <Trans>Please select a trace source</Trans>
+          </Text>
         </Group>
       ) : (
         <Tabs
@@ -1667,9 +1670,15 @@ function ServicesDashboardPage() {
           value={tab}
         >
           <Tabs.List>
-            <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
-            <Tabs.Tab value="database">Database</Tabs.Tab>
-            <Tabs.Tab value="errors">Errors</Tabs.Tab>
+            <Tabs.Tab value="http">
+              <Trans>HTTP Service</Trans>
+            </Tabs.Tab>
+            <Tabs.Tab value="database">
+              <Trans>Database</Trans>
+            </Tabs.Tab>
+            <Tabs.Tab value="errors">
+              <Trans>Errors</Trans>
+            </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="http">
             <HttpTab

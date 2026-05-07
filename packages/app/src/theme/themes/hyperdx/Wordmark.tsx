@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 
 import Logomark from './Logomark';
 
@@ -21,7 +22,7 @@ export default function Wordmark() {
           fontSize: 15,
         }}
       >
-        HyperDX
+        <Trans>HyperDX</Trans>
       </span>
     </div>
   );

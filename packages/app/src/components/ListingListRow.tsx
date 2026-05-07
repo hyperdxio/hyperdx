@@ -1,4 +1,5 @@
 import Router from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { formatDistanceToNow } from 'date-fns';
 import {
   ActionIcon,
@@ -111,7 +112,7 @@ export function ListingRow({
                   onDelete(id);
                 }}
               >
-                Delete
+                <Trans>Delete</Trans>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>

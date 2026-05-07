@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Box, Button } from '@mantine/core';
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
@@ -54,7 +55,11 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
           </Box>
         );
       }
-      return <span className="text-muted">Empty</span>;
+      return (
+        <span className="text-muted">
+          <Trans>Empty</Trans>
+        </span>
+      );
     },
   },
 ];
@@ -95,7 +100,7 @@ export const SpanEventsSubpanel = ({
   if (!sortedEvents || sortedEvents.length === 0) {
     return (
       <div className="p-3 text-muted fs-7">
-        No span events available for this trace
+        <Trans>No span events available for this trace</Trans>
       </div>
     );
   }
@@ -109,7 +114,7 @@ export const SpanEventsSubpanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering span events
+              <Trans>An error occurred while rendering span events</Trans>
             </div>
           )}
         >
@@ -129,12 +134,13 @@ export const SpanEventsSubpanel = ({
           >
             {isExpanded ? (
               <>
-                <IconChevronUp size={14} className="me-2" /> Hide events
+                <IconChevronUp size={14} className="me-2" />{' '}
+                <Trans>Hide events</Trans>
               </>
             ) : (
               <>
                 <IconChevronDown size={14} className="me-2" />
-                Show {hiddenRowsCount} more events
+                <Trans>Show</Trans> {hiddenRowsCount} <Trans>more events</Trans>
               </>
             )}
           </Button>

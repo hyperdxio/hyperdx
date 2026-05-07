@@ -13,6 +13,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import router from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { formatDistanceToNow } from 'date-fns';
 import {
   parseAsBoolean,
@@ -250,7 +251,7 @@ function ResumeLiveTailButton({
       onClick={handleResumeLiveTail}
       leftSection={<IconBolt size={14} />}
     >
-      Resume Live Tail
+      <Trans>Resume Live Tail</Trans>
     </Button>
   );
 }
@@ -268,7 +269,7 @@ function SearchSubmitButton({
       leftSection={<IconPlayerPlay size={16} />}
       style={{ flexShrink: 0 }}
     >
-      Run
+      <Trans>Run</Trans>
     </Button>
   );
 }
@@ -488,33 +489,33 @@ function SaveSearchModalComponent({
           {chartConfig != null ? (
             <Card withBorder>
               <Text size="xs" mb="xs">
-                SELECT
+                <Trans>SELECT</Trans>
               </Text>
               <Text mb="sm" size="xs">{`${chartConfig.select}`}</Text>
               <Text size="xs" mb="xs">
-                FROM
+                <Trans>FROM</Trans>
               </Text>
               <Text mb="sm" size="xs">
                 {chartConfig?.from.databaseName}.{chartConfig?.from.tableName}
               </Text>
               <Text size="xs" mb="xs">
-                WHERE
+                <Trans>WHERE</Trans>
               </Text>
               {chartConfig.where ? (
                 <Text size="xs">{chartConfig.where}</Text>
               ) : (
                 <Text size="xxs" fs="italic">
-                  None
+                  <Trans>None</Trans>
                 </Text>
               )}
               <Text size="xs" mb="xs" mt="sm">
-                ORDER BY
+                <Trans>ORDER BY</Trans>
               </Text>
               <Text size="xs">{`${chartConfig.orderBy ?? ''}`}</Text>
               {searchedConfig.filters && searchedConfig.filters.length > 0 && (
                 <>
                   <Text size="xs" mb="xs" mt="sm">
-                    FILTERS
+                    <Trans>FILTERS</Trans>
                   </Text>
                   <Stack gap="xs">
                     {searchedConfig.filters.map((filter, idx) => (
@@ -529,11 +530,13 @@ function SaveSearchModalComponent({
               )}
             </Card>
           ) : (
-            <Text>Loading Chart Config...</Text>
+            <Text>
+              <Trans>Loading Chart Config...</Trans>
+            </Text>
           )}
           <Box>
             <Text size="xs" mb="xs">
-              Name
+              <Trans>Name</Trans>
             </Text>
             <InputControlled
               data-testid="save-search-name-input"
@@ -544,7 +547,7 @@ function SaveSearchModalComponent({
           </Box>
           <Box mb="sm">
             <Text size="xs" mb="xs">
-              Tags
+              <Trans>Tags</Trans>
             </Text>
             <Group gap="xs" align="center" mb="xs">
               {tags.map(tag => (
@@ -576,7 +579,7 @@ function SaveSearchModalComponent({
                   size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
-                  Add Tag
+                  <Trans>Add Tag</Trans>
                 </Button>
               </Tags>
             </Group>
@@ -1214,7 +1217,7 @@ export function DBSearchPage() {
                 color: 'red',
                 message: (
                   <>
-                    An error occurred. <ContactSupportText />
+                    <Trans>An error occurred.</Trans> <ContactSupportText />
                   </>
                 ),
               });
@@ -1712,7 +1715,7 @@ export function DBSearchPage() {
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
-                Saved Searches
+                <Trans>Saved Searches</Trans>
               </Anchor>
               <Text fz="sm" c="dimmed" maw={400} truncate="end">
                 {savedSearch.name}
@@ -1721,7 +1724,7 @@ export function DBSearchPage() {
             <Text size="xs" c="dimmed" lh={1}>
               {savedSearch.createdBy && (
                 <span>
-                  Created by{' '}
+                  <Trans>Created by</Trans>{' '}
                   {savedSearch.createdBy.name || savedSearch.createdBy.email}.{' '}
                 </span>
               )}
@@ -1847,7 +1850,7 @@ export function DBSearchPage() {
                 onClick={onSaveSearch}
                 style={{ flexShrink: 0 }}
               >
-                Save
+                <Trans>Save</Trans>
               </Button>
             ) : (
               <Button
@@ -1859,7 +1862,7 @@ export function DBSearchPage() {
                 }}
                 style={{ flexShrink: 0 }}
               >
-                Update
+                <Trans>Update</Trans>
               </Button>
             )}
             {!IS_LOCAL_MODE && (
@@ -1870,7 +1873,7 @@ export function DBSearchPage() {
                 onClick={openAlertModal}
                 style={{ flexShrink: 0 }}
               >
-                Alerts
+                <Trans>Alerts</Trans>
               </Button>
             )}
           </>
@@ -2139,7 +2142,9 @@ export function DBSearchPage() {
                         {whereSuggestions && whereSuggestions.length > 0 && (
                           <Box mb="xl">
                             <Text size="lg">
-                              <b>Query Helper</b>
+                              <b>
+                                <Trans>Query Helper</Trans>
+                              </b>
                             </Text>
                             <Grid>
                               {whereSuggestions!.map(s => (
@@ -2153,7 +2158,7 @@ export function DBSearchPage() {
                                         setValue('where', s.corrected())
                                       }
                                     >
-                                      Accept
+                                      <Trans>Accept</Trans>
                                     </Button>
                                   </Grid.Col>
                                 </Fragment>
@@ -2163,7 +2168,9 @@ export function DBSearchPage() {
                         )}
                         <Box mt="sm">
                           <Text my="sm" size="sm">
-                            Error encountered for query with inputs:
+                            <Trans>
+                              Error encountered for query with inputs:
+                            </Trans>
                           </Text>
                           <Paper
                             flex="auto"
@@ -2174,7 +2181,9 @@ export function DBSearchPage() {
                           >
                             <Grid>
                               <Grid.Col span={2}>
-                                <Text>SELECT</Text>
+                                <Text>
+                                  <Trans>SELECT</Trans>
+                                </Text>
                               </Grid.Col>
                               <Grid.Col span={10}>
                                 <SQLPreview
@@ -2183,7 +2192,9 @@ export function DBSearchPage() {
                                 />
                               </Grid.Col>
                               <Grid.Col span={2}>
-                                <Text>ORDER BY</Text>
+                                <Text>
+                                  <Trans>ORDER BY</Trans>
+                                </Text>
                               </Grid.Col>
                               <Grid.Col span={10}>
                                 <SQLPreview
@@ -2221,7 +2232,7 @@ export function DBSearchPage() {
                         </Box>
                         <Box mt="lg">
                           <Text my="sm" size="sm">
-                            Error Message:
+                            <Trans>Error Message:</Trans>
                           </Text>
                           <Code
                             block
@@ -2235,7 +2246,7 @@ export function DBSearchPage() {
                         {queryError instanceof ClickHouseQueryError && (
                           <Box mt="lg">
                             <Text my="sm" size="sm">
-                              Original Query:
+                              <Trans>Original Query:</Trans>
                             </Text>
                             <Code
                               block

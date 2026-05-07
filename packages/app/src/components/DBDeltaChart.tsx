@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -402,7 +403,7 @@ export default function DBDeltaChart({
       <Container style={{ overflow: 'auto' }}>
         <Box mt="lg">
           <Text my="sm" size="sm">
-            Error Message:
+            <Trans>Error Message:</Trans>
           </Text>
           <Code
             block
@@ -416,7 +417,7 @@ export default function DBDeltaChart({
         {error instanceof ClickHouseQueryError && (
           <Box mt="lg">
             <Text my="sm" size="sm">
-              Original Query:
+              <Trans>Original Query:</Trans>
             </Text>
             <Code
               block
@@ -499,7 +500,7 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                Selection
+                <Trans>Selection</Trans>
               </Text>
             </Flex>
             <Flex align="center" gap={4}>
@@ -513,7 +514,7 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                Background
+                <Trans>Background</Trans>
               </Text>
             </Flex>
           </>
@@ -530,7 +531,7 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                All spans
+                <Trans>All spans</Trans>
               </Text>
             </Flex>
             <Text size="xs" c="dimmed" fs="italic">
@@ -545,7 +546,7 @@ export default function DBDeltaChart({
       {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
         <Flex align="center" justify="center" style={{ flex: 1 }}>
           <Text size="sm" c="dimmed">
-            Loading attribute distributions\u2026
+            <Trans>Loading attribute distributions\u2026</Trans>
           </Text>
         </Flex>
       )}
@@ -581,7 +582,8 @@ export default function DBDeltaChart({
           mb="xs"
           label={
             <Text size="xs" c="dimmed">
-              Lower-priority fields ({hiddenProperties.length})
+              <Trans>Lower-priority fields (</Trans>
+              {hiddenProperties.length})
             </Text>
           }
           labelPosition="left"

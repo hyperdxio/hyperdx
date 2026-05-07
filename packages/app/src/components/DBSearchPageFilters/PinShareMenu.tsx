@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { ActionIcon, Center, Menu } from '@mantine/core';
 import { IconPin, IconPinFilled, IconUsers } from '@tabler/icons-react';
 
@@ -67,7 +68,7 @@ export function PinShareMenu({
             onClick={onToggleSharedPin}
             fz="xs"
           >
-            Remove from Shared
+            <Trans>Remove from Shared</Trans>
           </Menu.Item>
         )}
         <Menu.Item
@@ -85,7 +86,7 @@ export function PinShareMenu({
             onClick={onToggleSharedPin}
             fz="xs"
           >
-            Share with team
+            <Trans>Share with team</Trans>
           </Menu.Item>
         )}
       </Menu.Dropdown>

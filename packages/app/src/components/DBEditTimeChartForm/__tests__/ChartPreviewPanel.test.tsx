@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
@@ -6,35 +7,63 @@ import { ChartPreviewPanel } from '../ChartPreviewPanel';
 
 jest.mock('@/components/ChartSQLPreview', () => ({
   __esModule: true,
-  default: () => <div data-testid="chart-sql-preview">Chart SQL Preview</div>,
+  default: () => (
+    <div data-testid="chart-sql-preview">
+      <Trans>Chart SQL Preview</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBTimeChart', () => ({
-  DBTimeChart: () => <div data-testid="db-time-chart">Time Chart</div>,
+  DBTimeChart: () => (
+    <div data-testid="db-time-chart">
+      <Trans>Time Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBTableChart', () => ({
   __esModule: true,
-  default: () => <div data-testid="db-table-chart">Table Chart</div>,
+  default: () => (
+    <div data-testid="db-table-chart">
+      <Trans>Table Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBNumberChart', () => ({
   __esModule: true,
-  default: () => <div data-testid="db-number-chart">Number Chart</div>,
+  default: () => (
+    <div data-testid="db-number-chart">
+      <Trans>Number Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBPieChart', () => ({
-  DBPieChart: () => <div data-testid="db-pie-chart">Pie Chart</div>,
+  DBPieChart: () => (
+    <div data-testid="db-pie-chart">
+      <Trans>Pie Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
   __esModule: true,
-  default: () => <div data-testid="db-sql-row-table">SQL Row Table</div>,
+  default: () => (
+    <div data-testid="db-sql-row-table">
+      <Trans>SQL Row Table</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/DBHeatmapChart', () => ({
   __esModule: true,
-  default: () => <div data-testid="db-heatmap-chart">Heatmap Chart</div>,
+  default: () => (
+    <div data-testid="db-heatmap-chart">
+      <Trans>Heatmap Chart</Trans>
+    </div>
+  ),
   toHeatmapChartConfig: (config: unknown) => ({
     heatmapConfig: config,
     scaleType: 'log' as const,

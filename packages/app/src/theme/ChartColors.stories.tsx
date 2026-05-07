@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 
 import {
   COLORS,
@@ -84,7 +85,8 @@ const ColorSwatch = ({
           •
         </span>
         <code style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-          var(--{name})
+          <Trans>var(--</Trans>
+          {name})
         </code>
       </div>
     </div>
@@ -93,10 +95,14 @@ const ColorSwatch = ({
 
 export const AllChartColors = () => (
   <div style={{ padding: 24 }}>
-    <h2 style={{ marginBottom: 24 }}>Chart Color Palette</h2>
+    <h2 style={{ marginBottom: 24 }}>
+      <Trans>Chart Color Palette</Trans>
+    </h2>
     <p style={{ marginBottom: 24, color: 'var(--color-text-muted)' }}>
-      Observable categorical color palette - designed to work well on both light
-      and dark backgrounds with good contrast and accessibility.
+      <Trans>
+        Observable categorical color palette - designed to work well on both
+        light and dark backgrounds with good contrast and accessibility.
+      </Trans>
     </p>
     <p
       style={{
@@ -105,25 +111,29 @@ export const AllChartColors = () => (
         color: 'var(--color-text-muted)',
       }}
     >
-      Source:{' '}
+      <Trans>Source:</Trans>{' '}
       <a
         href="https://observablehq.com/@d3/color-schemes"
         target="_blank"
         rel="noopener noreferrer"
         style={{ color: 'var(--color-text-primary)' }}
       >
-        Observable D3 Color Schemes
+        <Trans>Observable D3 Color Schemes</Trans>
       </a>
     </p>
 
-    <h3 style={{ fontSize: 16, marginBottom: 16 }}>Data Series Colors</h3>
+    <h3 style={{ fontSize: 16, marginBottom: 16 }}>
+      <Trans>Data Series Colors</Trans>
+    </h3>
     <div style={{ marginBottom: 32 }}>
       {CHART_COLORS.map(({ name, hex, label }) => (
         <ColorSwatch key={name} name={name} hex={hex} label={label} />
       ))}
     </div>
 
-    <h3 style={{ fontSize: 16, marginBottom: 16 }}>Semantic Chart Colors</h3>
+    <h3 style={{ fontSize: 16, marginBottom: 16 }}>
+      <Trans>Semantic Chart Colors</Trans>
+    </h3>
     <div style={{ marginBottom: 32 }}>
       {SEMANTIC_CHART_COLORS.map(({ name, hex, label }) => (
         <ColorSwatch key={name} name={name} hex={hex} label={label} />
@@ -143,7 +153,9 @@ export const BarChartPreview = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 24 }}>Bar Chart Preview</h2>
+      <h2 style={{ marginBottom: 24 }}>
+        <Trans>Bar Chart Preview</Trans>
+      </h2>
       <div
         style={{
           display: 'flex',
@@ -210,7 +222,9 @@ export const BarChartPreview = () => {
 export const LineChartPreview = () => {
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 24 }}>Line Chart Preview</h2>
+      <h2 style={{ marginBottom: 24 }}>
+        <Trans>Line Chart Preview</Trans>
+      </h2>
       <div
         style={{
           position: 'relative',
@@ -290,10 +304,14 @@ export const LineChartPreview = () => {
 
 export const SemanticColorsPreview = () => (
   <div style={{ padding: 24 }}>
-    <h2 style={{ marginBottom: 24 }}>Semantic Chart Colors</h2>
+    <h2 style={{ marginBottom: 24 }}>
+      <Trans>Semantic Chart Colors</Trans>
+    </h2>
     <p style={{ marginBottom: 24, color: 'var(--color-text-muted)' }}>
-      Use these colors to indicate status in charts (e.g., success rate, error
-      count).
+      <Trans>
+        Use these colors to indicate status in charts (e.g., success rate, error
+        count).
+      </Trans>
     </p>
     <div
       style={{
@@ -335,11 +353,15 @@ export const SemanticColorsPreview = () => (
 
 export const AccessibilityCheck = () => (
   <div style={{ padding: 24 }}>
-    <h2 style={{ marginBottom: 24 }}>Color Accessibility</h2>
+    <h2 style={{ marginBottom: 24 }}>
+      <Trans>Color Accessibility</Trans>
+    </h2>
     <p style={{ marginBottom: 24, color: 'var(--color-text-muted)' }}>
-      The Observable palette is designed to be distinguishable for users with
-      color vision deficiencies. Toggle between dark and light mode to verify
-      contrast.
+      <Trans>
+        The Observable palette is designed to be distinguishable for users with
+        color vision deficiencies. Toggle between dark and light mode to verify
+        contrast.
+      </Trans>
     </p>
     <div
       style={{

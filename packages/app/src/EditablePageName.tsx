@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Box, Button, Input, Title } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { IconPencil } from '@tabler/icons-react';
@@ -58,7 +59,7 @@ export function EditablePageName({
             autoFocus
           />
           <Button ms="sm" variant="primary" type="submit">
-            Save Name
+            <Trans>Save Name</Trans>
           </Button>
         </form>
       ) : (

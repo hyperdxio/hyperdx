@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Collapse,
@@ -58,7 +59,7 @@ function SharedFiltersSectionComponent({
               style={{ color: 'var(--mantine-color-gray-6)' }}
             />
             <Text size="xxs" c="dimmed" fw="bold">
-              Shared Filters
+              <Trans>Shared Filters</Trans>
             </Text>
           </Group>
         </UnstyledButton>

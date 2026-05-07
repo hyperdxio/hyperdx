@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useForm } from 'react-hook-form';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
@@ -15,12 +16,18 @@ jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
 }));
 
 jest.mock('@/components/TimePicker', () => ({
-  TimePicker: () => <div data-testid="time-picker">TimePicker</div>,
+  TimePicker: () => (
+    <div data-testid="time-picker">
+      <Trans>TimePicker</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/GranularityPicker', () => ({
   GranularityPickerControlled: () => (
-    <div data-testid="granularity-picker">Granularity</div>
+    <div data-testid="granularity-picker">
+      <Trans>Granularity</Trans>
+    </div>
   ),
 }));
 

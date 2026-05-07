@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -257,7 +258,11 @@ const FilterCheckbox = ({
               flex={1}
               title={label}
             >
-              {label || <span className="fst-italic">(empty)</span>}
+              {label || (
+                <span className="fst-italic">
+                  <Trans>(empty)</Trans>
+                </span>
+              )}
             </Text>
             {percentage != null && (
               <FilterPercentage
@@ -355,7 +360,7 @@ const FilterRangeDisplay = ({
           hideControls
         />
         <Text size="xs" c="dimmed">
-          to
+          <Trans>to</Trans>
         </Text>
         <NumberInput
           size="xs"
@@ -687,26 +692,26 @@ const FilterGroupBody = ({
         <Group m={6} gap="xs">
           <Loader size={12} color="gray" />
           <Text c="dimmed" size="xs">
-            Loading...
+            <Trans>Loading...</Trans>
           </Text>
         </Group>
       ) : displayedOptions.length === 0 ? (
         <Group m={6} gap="xs">
           <Text c="dimmed" size="xs">
-            No options found
+            <Trans>No options found</Trans>
           </Text>
         </Group>
       ) : null}
       {isLimitingDisplayedItems && (shouldShowMore || search) && (
         <Text size="xxs" ms={28} fs="italic">
-          Search to see more
+          <Trans>Search to see more</Trans>
         </Text>
       )}
       {loadMoreLoading && (
         <Group m={6} gap="xs">
           <Loader size={12} color="gray" />
           <Text c="dimmed" size="xs">
-            Loading more...
+            <Trans>Loading more...</Trans>
           </Text>
         </Group>
       )}
@@ -717,11 +722,11 @@ const FilterGroupBody = ({
             label={
               shouldShowMore ? (
                 <>
-                  <IconChevronUp size={12} /> Less
+                  <IconChevronUp size={12} /> <Trans>Less</Trans>
                 </>
               ) : (
                 <>
-                  <IconChevronRight size={12} /> Show more
+                  <IconChevronRight size={12} /> <Trans>Show more</Trans>
                 </>
               )
             }
@@ -746,7 +751,7 @@ const FilterGroupBody = ({
               display={hasLoadedMore ? 'none' : undefined}
               label={
                 <>
-                  <IconChevronRight size={12} /> Load more
+                  <IconChevronRight size={12} /> <Trans>Load more</Trans>
                 </>
               }
               onClick={() => onLoadMore(name)}
@@ -1698,7 +1703,7 @@ const DBSearchPageFiltersComponent = ({
         <Stack gap="sm" p="xs">
           <Flex align="center" justify="space-between">
             <Text size="xxs" c="dimmed" fw="bold">
-              Analysis Mode
+              <Trans>Analysis Mode</Trans>
             </Text>
             <Group gap={0}>
               {showRefreshButton && (
@@ -1746,16 +1751,22 @@ const DBSearchPageFiltersComponent = ({
           >
             <Tabs.List w="100%">
               <Tabs.Tab value="results" size="xs" h="24px">
-                <Text size="xs">Results Table</Text>
+                <Text size="xs">
+                  <Trans>Results Table</Trans>
+                </Text>
               </Tabs.Tab>
               {showDelta && (
                 <Tabs.Tab value="delta" size="xs" h="24px">
-                  <Text size="xs">Event Deltas</Text>
+                  <Text size="xs">
+                    <Trans>Event Deltas</Trans>
+                  </Text>
                 </Tabs.Tab>
               )}
               {!IS_CLICKHOUSE_BUILD && (
                 <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
+                  <Text size="xs">
+                    <Trans>Event Patterns</Trans>
+                  </Text>
                 </Tabs.Tab>
               )}
             </Tabs.List>
@@ -1796,7 +1807,7 @@ const DBSearchPageFiltersComponent = ({
                   fw="bold"
                   className={isFacetsFetching ? 'effect-pulse' : ''}
                 >
-                  Filters {isFacetsFetching && '···'}
+                  <Trans>Filters</Trans> {isFacetsFetching && '···'}
                 </Text>
               </UnstyledButton>
               <Group gap={0} wrap="nowrap">
@@ -1859,7 +1870,7 @@ const DBSearchPageFiltersComponent = ({
                                 verticalAlign: 'middle',
                               }}
                             />
-                            Denoise Results
+                            <Trans>Denoise Results</Trans>
                           </Group>
                         </Text>
                       </Tooltip>
@@ -1891,7 +1902,7 @@ const DBSearchPageFiltersComponent = ({
                                   verticalAlign: 'middle',
                                 }}
                               />
-                              Root Spans Only
+                              <Trans>Root Spans Only</Trans>
                             </Group>
                           </Text>
                         </Tooltip>
@@ -1906,7 +1917,9 @@ const DBSearchPageFiltersComponent = ({
                   </Flex>
                 ) : (
                   shownFacets.length === 0 && (
-                    <Text size="xxs">No filters available</Text>
+                    <Text size="xxs">
+                      <Trans>No filters available</Trans>
+                    </Text>
                   )
                 )}
                 {/* Show facets even when loading to ensure pinned filters are visible while loading */}
@@ -1931,7 +1944,7 @@ const DBSearchPageFiltersComponent = ({
                 {showMoreFields && (
                   <div>
                     <Text size="xs" fw="bold">
-                      Not seeing a filter?
+                      <Trans>Not seeing a filter?</Trans>
                     </Text>
                     <Text size="xxs">
                       {`Try searching instead (e.g. column:foo)`}

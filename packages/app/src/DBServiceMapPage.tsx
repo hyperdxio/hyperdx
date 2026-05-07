@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import { Trans } from 'next-i18next/pages';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
@@ -106,7 +107,9 @@ function DBServiceMapPage() {
     () => (
       <>
         <Head>
-          <title>Service Map - {brandName}</title>
+          <title>
+            <Trans>Service Map -</Trans> {brandName}
+          </title>
         </Head>
         <OnboardingModal />
       </>
@@ -123,7 +126,7 @@ function DBServiceMapPage() {
       >
         {head}
         <Text size="xl" mb="md">
-          Service Map
+          <Trans>Service Map</Trans>
         </Text>
         {IS_LOCAL_MODE && (
           <Modal
@@ -153,7 +156,7 @@ function DBServiceMapPage() {
               mt="sm"
               onClick={() => setIsCreateSourceModalOpen(true)}
             >
-              Create Trace Source
+              <Trans>Create Trace Source</Trans>
             </Button>
           ) : (
             <Button
@@ -163,7 +166,7 @@ function DBServiceMapPage() {
               size="sm"
               mt="sm"
             >
-              Go to Team Settings
+              <Trans>Go to Team Settings</Trans>
             </Button>
           )}
         </EmptyState>
@@ -181,7 +184,9 @@ function DBServiceMapPage() {
       {head}
       <Group mb="md" justify="space-between">
         <Group>
-          <Text size="xl">Service Map</Text>
+          <Text size="xl">
+            <Trans>Service Map</Trans>
+          </Text>
           <SourceSelectControlled
             control={control}
             name="source"
@@ -194,7 +199,7 @@ function DBServiceMapPage() {
         </Group>
         <Group justify="flex-end">
           <Text bg="inherit" size="sm">
-            Sampling {samplingLabel}
+            <Trans>Sampling</Trans> {samplingLabel}
           </Text>
           <div style={{ minWidth: '200px' }}>
             <Slider

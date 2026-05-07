@@ -1,4 +1,5 @@
 import { CSSProperties, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -163,7 +164,7 @@ export default function DashboardContainer({
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Item leftSection={<IconPlus size={14} />} onClick={onAddTab}>
-          Add Tab
+          <Trans>Add Tab</Trans>
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
@@ -193,7 +194,7 @@ export default function DashboardContainer({
           onClick={openDeleteModal}
           data-testid={`group-delete-${container.id}`}
         >
-          Delete Group
+          <Trans>Delete Group</Trans>
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>
@@ -368,7 +369,7 @@ export default function DashboardContainer({
         withCloseButton={false}
       >
         <Text size="sm" opacity={0.7}>
-          Delete{' '}
+          <Trans>Delete</Trans>{' '}
           <Text component="span" fw={700}>
             {headerTitle}
           </Text>
@@ -384,7 +385,7 @@ export default function DashboardContainer({
             variant="secondary"
             onClick={closeDeleteModal}
           >
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           {tileCount > 0 && (
             <Button
@@ -396,7 +397,7 @@ export default function DashboardContainer({
                 closeDeleteModal();
               }}
             >
-              Ungroup Tiles
+              <Trans>Ungroup Tiles</Trans>
             </Button>
           )}
           <Button

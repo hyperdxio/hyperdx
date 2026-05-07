@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -155,7 +156,7 @@ export const NestedFilterGroup = ({
                 {childFilters.length === 0 ? (
                   <Group m={6} gap="xs">
                     <Text c="dimmed" size="xs">
-                      No properties found
+                      <Trans>No properties found</Trans>
                     </Text>
                   </Group>
                 ) : (

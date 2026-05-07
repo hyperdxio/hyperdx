@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { pick } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -70,20 +71,25 @@ export default function SlowestEventsTile({
     <ChartBox style={{ height }}>
       <Group justify="space-between" align="center" mb="sm">
         <Text size="sm">{title}</Text>
-        <Text size="xs">(Slower than {roundedP95}ms)</Text>
+        <Text size="xs">
+          <Trans>(Slower than</Trans> {roundedP95}
+          <Trans>ms)</Trans>
+        </Text>
       </Group>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError ? (
         <div className="h-100 w-100 align-items-center justify-content-center text-muted">
           <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
+            <Trans>
+              Error loading chart, please check your query or try again later.
+            </Trans>
           </Text>
           <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Error Message:
+              <Trans>Error Message:</Trans>
             </Text>
             <Code
               block
@@ -96,7 +102,7 @@ export default function SlowestEventsTile({
             {error instanceof ClickHouseQueryError && (
               <>
                 <Text my="sm" size="sm" ta="center">
-                  Sent Query:
+                  <Trans>Sent Query:</Trans>
                 </Text>
                 <SQLPreview data={error?.query} />
               </>
@@ -105,7 +111,7 @@ export default function SlowestEventsTile({
         </div>
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         source &&

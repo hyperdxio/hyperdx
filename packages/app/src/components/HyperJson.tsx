@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { atom, Provider, useAtomValue, useSetAtom } from 'jotai';
 import { useHydrateAtoms } from 'jotai/utils';
@@ -49,7 +50,7 @@ const ValueRenderer = React.memo(
     if (isNull(value)) {
       return (
         <span ref={ref} className={styles.null}>
-          null
+          <Trans>null</Trans>
         </span>
       );
     }
@@ -77,14 +78,14 @@ const ValueRenderer = React.memo(
     if (isPlainObject(value)) {
       return (
         <span ref={ref} className={styles.object}>
-          {'{}'} {Object.keys(value).length} keys
+          {'{}'} {Object.keys(value).length} <Trans>keys</Trans>
         </span>
       );
     }
     if (isArray(value)) {
       return (
         <span ref={ref} className={styles.array}>
-          {'[]'} {value.length} items
+          {'[]'} {value.length} <Trans>items</Trans>
         </span>
       );
     }
@@ -282,11 +283,15 @@ const Line = React.memo(
           <div className={styles.valueContainer}>
             {isStringValueValidJson ? (
               isExpanded ? (
-                <div className={styles.object}>{'{}'} Parsed JSON</div>
+                <div className={styles.object}>
+                  {'{}'} <Trans>Parsed JSON</Trans>
+                </div>
               ) : (
                 <>
                   <ValueRenderer value={value} ref={valueRef} />
-                  <div className={styles.jsonBtn}>Expand JSON</div>
+                  <div className={styles.jsonBtn}>
+                    <Trans>Expand JSON</Trans>
+                  </div>
                 </>
               )
             ) : (
@@ -364,7 +369,8 @@ function TreeNode({
         >
           <div className={styles.keyContainer}>
             <div className={styles.jsonBtn}>
-              Expand {originalLength - MAX_TREE_NODE_ITEMS} more properties
+              <Trans>Expand</Trans> {originalLength - MAX_TREE_NODE_ITEMS}{' '}
+              <Trans>more properties</Trans>
             </div>
           </div>
         </div>
@@ -415,7 +421,13 @@ const HyperJson = ({
             [styles.withPreWrap]: whiteSpace === 'pre-wrap',
           })}
         >
-          {isEmpty ? <div>Empty</div> : <TreeNode data={data} />}
+          {isEmpty ? (
+            <div>
+              <Trans>Empty</Trans>
+            </div>
+          ) : (
+            <TreeNode data={data} />
+          )}
         </div>
       </HydrateAtoms>
     </Provider>

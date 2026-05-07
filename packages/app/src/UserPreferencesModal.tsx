@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Autocomplete,
   Badge,
@@ -68,9 +69,11 @@ export const UserPreferencesModal = ({
     <Modal
       title={
         <>
-          <span>Preferences</span>
+          <span>
+            <Trans>Preferences</Trans>
+          </span>
           <Text size="xs" mt={6}>
-            Customize your experience
+            <Trans>Customize your experience</Trans>
           </Text>
         </>
       }
@@ -111,9 +114,9 @@ export const UserPreferencesModal = ({
         <Divider
           label={
             <Group align="center" gap="xs">
-              Appearance
+              <Trans>Appearance</Trans>
               <Badge variant="light" fw="normal" size="xs">
-                Experimental
+                <Trans>Experimental</Trans>
               </Badge>
             </Group>
           }
@@ -150,7 +153,7 @@ export const UserPreferencesModal = ({
           <SettingContainer
             label={
               <Group gap="xs">
-                Brand Theme
+                <Trans>Brand Theme</Trans>
                 <Tooltip
                   label="Only available in local/dev mode. Changes logo, colors, and branding."
                   multiline
@@ -163,7 +166,7 @@ export const UserPreferencesModal = ({
                     size="xs"
                     leftSection={<IconFlask size={10} />}
                   >
-                    Dev Only
+                    <Trans>Dev Only</Trans>
                   </Badge>
                 </Tooltip>
               </Group>

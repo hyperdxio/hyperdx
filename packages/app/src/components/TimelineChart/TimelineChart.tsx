@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -200,7 +201,14 @@ export const TimelineChart = memo(function ({
     >
       <Flex justify="end" mb="sm">
         <Text>
-          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
+          <Kbd>
+            <Trans>⌘/Ctrl</Trans>
+          </Kbd>{' '}
+          +{' '}
+          <Kbd>
+            <Trans>scroll</Trans>
+          </Kbd>{' '}
+          <Trans>to zoom</Trans>
         </Text>
       </Flex>
       <div

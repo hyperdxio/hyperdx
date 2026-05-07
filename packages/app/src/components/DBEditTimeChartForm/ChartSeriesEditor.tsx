@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   FieldErrors,
@@ -177,7 +178,9 @@ export function ChartSeriesEditor({
       <Divider
         label={
           <Group gap="xs">
-            <Text size="xxs">Alias</Text>
+            <Text size="xxs">
+              <Trans>Alias</Trans>
+            </Text>
 
             <div style={{ width: 150 }}>
               <TextInputControlled
@@ -219,7 +222,7 @@ export function ChartSeriesEditor({
                 onClick={() => onRemoveSeries(index)}
               >
                 <IconTrash size={14} className="me-2" />
-                Remove Series
+                <Trans>Remove Series</Trans>
               </Button>
             )}
           </Group>
@@ -298,7 +301,9 @@ export function ChartSeriesEditor({
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Text size="sm">
+                  <Trans>Where</Trans>
+                </Text>
                 <div
                   style={{
                     gridColumn:
@@ -319,7 +324,7 @@ export function ChartSeriesEditor({
             {showGroupBy && (
               <>
                 <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
+                  <Trans>Group By</Trans>
                 </Text>
                 <div
                   style={{
@@ -342,7 +347,7 @@ export function ChartSeriesEditor({
                 {showHaving && (
                   <>
                     <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
+                      <Trans>Having</Trans>
                     </Text>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled

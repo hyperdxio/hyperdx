@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import {
   Box,
@@ -215,7 +216,9 @@ export default function TeamPage() {
   return (
     <div className="TeamPage" data-testid="team-page">
       <Head>
-        <title>My Team - {brandName}</title>
+        <title>
+          <Trans>My Team -</Trans> {brandName}
+        </title>
       </Head>
       <PageHeader>
         <div data-testid="team-name-section">
@@ -245,7 +248,7 @@ export default function TeamPage() {
                   variant="primary"
                   loading={setTeamName.isPending}
                 >
-                  Save
+                  <Trans>Save</Trans>
                 </Button>
                 <Button
                   data-testid="team-name-cancel-button"
@@ -255,7 +258,7 @@ export default function TeamPage() {
                   disabled={setTeamName.isPending}
                   onClick={() => setIsEditingTeamName(false)}
                 >
-                  Cancel
+                  <Trans>Cancel</Trans>
                 </Button>
               </Group>
             </form>

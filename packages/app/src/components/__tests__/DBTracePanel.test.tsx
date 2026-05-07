@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
@@ -33,7 +34,11 @@ jest.mock('@/components/DBTraceWaterfallChart', () => ({
 }));
 
 jest.mock('../SourceSelect', () => ({
-  SourceSelectControlled: () => <div>source select</div>,
+  SourceSelectControlled: () => (
+    <div>
+      <Trans>source select</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../SourceSchemaPreview', () => ({
@@ -66,7 +71,11 @@ describe('DBTracePanel', () => {
         childSourceId="log-source"
         dateRange={[new Date(0), new Date(1000)]}
         focusDate={new Date(500)}
-        emptyState={<div>Trace not found</div>}
+        emptyState={
+          <div>
+            <Trans>Trace not found</Trans>
+          </div>
+        }
       />,
     );
 

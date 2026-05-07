@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -89,17 +90,21 @@ export default function SessionSidePanel({
               <div style={{ width: '50%', maxWidth: 500 }}>
                 {session?.userEmail || `Anonymous Session ${sessionId}`}
                 <div className="text-muted fs-8 mt-1">
-                  <span>Last active {timeAgo} ago</span>
+                  <span>
+                    <Trans>Last active</Trans> {timeAgo} <Trans>ago</Trans>
+                  </span>
                   <span className="mx-2">·</span>
                   {Number.parseInt(session?.errorCount ?? '0') > 0 ? (
                     <>
                       <span className="text-danger fs-8">
-                        {session?.errorCount} Errors
+                        {session?.errorCount} <Trans>Errors</Trans>
                       </span>
                       <span className="mx-2">·</span>
                     </>
                   ) : null}
-                  <span>{session?.sessionCount} Events</span>
+                  <span>
+                    {session?.sessionCount} <Trans>Events</Trans>
+                  </span>
                 </div>
               </div>
               <div className="d-flex gap-2">
@@ -118,7 +123,7 @@ export default function SessionSidePanel({
                     leftSection={<IconLink size={14} />}
                     style={{ fontSize: '12px' }}
                   >
-                    Share Session
+                    <Trans>Share Session</Trans>
                   </Button>
                 </CopyToClipboard>
                 <ActionIcon variant="secondary" size="md" onClick={onClose}>

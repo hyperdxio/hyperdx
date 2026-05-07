@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Head from 'next/head';
+import { Trans } from 'next-i18next/pages';
 import {
   Anchor,
   Avatar,
@@ -91,32 +92,38 @@ export default function CareersPage() {
   return (
     <Container size="md" py="xl">
       <Head>
-        <title>Careers | HyperDX</title>
+        <title>
+          <Trans>Careers | HyperDX</Trans>
+        </title>
       </Head>
       <Stack gap="lg">
         <Title order={1}>
-          ClickHouse Careers: Help Build the Future of Observability
+          <Trans>
+            ClickHouse Careers: Help Build the Future of Observability
+          </Trans>
         </Title>
         <Text c="dimmed">
-          Join us to build ClickStack at ClickHouse, scaling a high performance
-          observability platform that ingests and queries petabytes of telemetry
-          across metrics, logs, and traces.
+          <Trans>
+            Join us to build ClickStack at ClickHouse, scaling a high
+            performance observability platform that ingests and queries
+            petabytes of telemetry across metrics, logs, and traces.
+          </Trans>
           <br />
           <br />
-          Open positions are listed below.
+          <Trans>Open positions are listed below.</Trans>
         </Text>
 
         {isLoading && <Loader />}
 
         {isError && (
           <Text c="red">
-            Unable to load job listings. Please try again later.
+            <Trans>Unable to load job listings. Please try again later.</Trans>
           </Text>
         )}
 
         {!isLoading && !isError && filteredJobs.length === 0 && (
           <Text c="dimmed">
-            No open positions at the moment. Check back soon!
+            <Trans>No open positions at the moment. Check back soon!</Trans>
           </Text>
         )}
 
@@ -146,11 +153,13 @@ export default function CareersPage() {
         ))}
 
         <Title order={3} mt="xl">
-          Recent Activity
+          <Trans>Recent Activity</Trans>
         </Title>
         <Text c="dimmed" size="sm">
-          See what types of problems our team (and community) have been working
-          on lately.
+          <Trans>
+            See what types of problems our team (and community) have been
+            working on lately.
+          </Trans>
         </Text>
 
         {commitsLoading && <Loader size="sm" />}

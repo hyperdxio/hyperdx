@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Trans } from 'next-i18next/pages';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
@@ -505,7 +506,7 @@ export function ColorLegend({ colors }: { colors: string[] }) {
       aria-label="Color scale: low to high count"
     >
       <Text size="10px" c="dimmed">
-        Low
+        <Trans>Low</Trans>
       </Text>
       <div
         style={{
@@ -521,7 +522,7 @@ export function ColorLegend({ colors }: { colors: string[] }) {
         ))}
       </div>
       <Text size="10px" c="dimmed">
-        High
+        <Trans>High</Trans>
       </Text>
     </Flex>
   );
@@ -689,12 +690,14 @@ function HeatmapContainer({
     >
       {isLoading || isMinMaxLoading ? (
         <Text size="sm" ta="center" p="xl">
-          Loading...
+          <Trans>Loading...</Trans>
         </Text>
       ) : _error ? (
         <Box p="xl" ta="center" h="100%">
           <Text size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
+            <Trans>
+              Error loading chart, please check your query or try again later.
+            </Trans>
           </Text>
           <Button
             className="mx-auto"
@@ -704,7 +707,7 @@ function HeatmapContainer({
           >
             <Group gap="xxs">
               <IconArrowsDiagonal size={16} />
-              See Error Details
+              <Trans>See Error Details</Trans>
             </Group>
           </Button>
           <Modal
@@ -714,7 +717,7 @@ function HeatmapContainer({
           >
             <Group align="start">
               <Text size="sm" ta="center">
-                Error Message:
+                <Trans>Error Message:</Trans>
               </Text>
               <Code
                 block
@@ -727,7 +730,7 @@ function HeatmapContainer({
               {_error instanceof ClickHouseQueryError && (
                 <>
                   <Text my="sm" size="sm" ta="center">
-                    Sent Query:
+                    <Trans>Sent Query:</Trans>
                   </Text>
                   <SQLPreview data={_error?.query} enableCopy />
                 </>
@@ -737,8 +740,10 @@ function HeatmapContainer({
         </Box>
       ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
         <Text size="sm" ta="center" p="xl">
-          Not enough data points to render heatmap. Try expanding your search
-          criteria.
+          <Trans>
+            Not enough data points to render heatmap. Try expanding your search
+            criteria.
+          </Trans>
         </Text>
       ) : (
         <Heatmap
@@ -1189,7 +1194,7 @@ function Heatmap({
             {onFilter && (
               <>
                 <Text size="10px" pt="4px">
-                  Drag to Compare · Click to Clear
+                  <Trans>Drag to Compare · Click to Clear</Trans>
                 </Text>
                 <Divider my="xs" />
               </>
@@ -1198,10 +1203,15 @@ function Heatmap({
               <FormatTime value={highlightedPoint.xVal} />
             </div>
             <div>
-              <b>Y Value:</b> {tickFormatter(highlightedPoint.yVal)}
+              <b>
+                <Trans>Y Value:</Trans>
+              </b>{' '}
+              {tickFormatter(highlightedPoint.yVal)}
             </div>
             <div>
-              <b>Count Value:</b>{' '}
+              <b>
+                <Trans>Count Value:</Trans>
+              </b>{' '}
               {new Intl.NumberFormat('en-US', {
                 notation: 'standard',
                 compactDisplay: 'short',

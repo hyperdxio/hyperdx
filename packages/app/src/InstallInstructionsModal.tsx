@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { Button, Group, Modal } from '@mantine/core';
 import { IconClipboard, IconClipboardCheck } from '@tabler/icons-react';
@@ -68,7 +69,7 @@ export default function InstallInstructionModal({
             <CopyableValue
               label={
                 <span className="text-muted me-2">
-                  Your Ingestion API Key:{' '}
+                  <Trans>Your Ingestion API Key:</Trans>{' '}
                 </span>
               }
               value={team.apiKey}
@@ -76,10 +77,14 @@ export default function InstallInstructionModal({
           </div>
         )}
         <div className="fs-7 mb-4">
-          Click on a link below to view installation instructions for your
-          application.
+          <Trans>
+            Click on a link below to view installation instructions for your
+            application.
+          </Trans>
         </div>
-        <div className="fs-6 mb-2">Backend</div>
+        <div className="fs-6 mb-2">
+          <Trans>Backend</Trans>
+        </div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nodejs"
@@ -87,9 +92,11 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Node.js
+            <Trans>Node.js</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
         <div className="mb-2">
           <a
@@ -98,9 +105,11 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Go
+            <Trans>Go</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
         <div className="mb-2">
           <a
@@ -109,9 +118,11 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Python
+            <Trans>Python</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
         <div className="mb-2">
           <a
@@ -120,9 +131,11 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Java
+            <Trans>Java</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
         <div className="mb-2">
           <a
@@ -131,9 +144,11 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Elixir
+            <Trans>Elixir</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs)</Trans>
+          </span>
         </div>
         <div className="mb-2">
           <a
@@ -142,11 +157,15 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Ruby on Rails
+            <Trans>Ruby on Rails</Trans>
           </a>
-          <span className="ms-2 text-muted">(Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Traces)</Trans>
+          </span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Platform</div>
+        <div className="fs-6 mb-2 mt-4">
+          <Trans>Platform</Trans>
+        </div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/kubernetes"
@@ -154,11 +173,15 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            Kubernetes
+            <Trans>Kubernetes</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Metrics)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Metrics)</Trans>
+          </span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Browser</div>
+        <div className="fs-6 mb-2 mt-4">
+          <Trans>Browser</Trans>
+        </div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
@@ -166,11 +189,15 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            JavaScript/TypeScript
+            <Trans>JavaScript/TypeScript</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Data Collector</div>
+        <div className="fs-6 mb-2 mt-4">
+          <Trans>Data Collector</Trans>
+        </div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/opentelemetry#sending-otel-data"
@@ -178,13 +205,15 @@ export default function InstallInstructionModal({
             rel="noreferrer"
             className="text-link"
           >
-            OpenTelemetry
+            <Trans>OpenTelemetry</Trans>
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">
+            <Trans>(Logs + Traces)</Trans>
+          </span>
         </div>
         <div className="mt-4">
           <Button variant="secondary" onClick={() => onHide()}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Controller,
   useFieldArray,
@@ -601,43 +602,43 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  <Trans>Line/Bar</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
                   leftSection={<IconTable size={16} />}
                 >
-                  Table
+                  <Trans>Table</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Number}
                   leftSection={<IconNumbers size={16} />}
                 >
-                  Number
+                  <Trans>Number</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
                   leftSection={<IconChartPie size={16} />}
                 >
-                  Pie
+                  <Trans>Pie</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
                   leftSection={<IconList size={16} />}
                 >
-                  Search
+                  <Trans>Search</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Heatmap}
                   leftSection={<IconGrid3x3 size={16} />}
                 >
-                  Heatmap
+                  <Trans>Heatmap</Trans>
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}
                 >
-                  Markdown
+                  <Trans>Markdown</Trans>
                 </Tabs.Tab>
               </Tabs.List>
             </Tabs>
@@ -645,7 +646,7 @@ export default function EditTimeChartForm({
         />
         <Flex align="center" gap="sm" mb="sm">
           <Text size="sm" className="text-nowrap">
-            Chart Name
+            <Trans>Chart Name</Trans>
           </Text>
           <InputControlled
             name="name"

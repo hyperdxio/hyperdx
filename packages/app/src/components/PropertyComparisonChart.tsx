@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { withErrorBoundary } from 'react-error-boundary';
 import type { TooltipProps } from 'recharts';
 import {
@@ -68,7 +69,13 @@ const HDXBarChartTooltip = withErrorBoundary(
               </Text>
             )}
             <Text size="xs" mb="xs">
-              {String(label).length === 0 ? <i>Empty String</i> : String(label)}
+              {String(label).length === 0 ? (
+                <i>
+                  <Trans>Empty String</Trans>
+                </i>
+              ) : (
+                String(label)
+              )}
             </Text>
             {(payload as TooltipPayloadItem[])
               .sort((a, b) => b.value - a.value)
@@ -87,7 +94,7 @@ const HDXBarChartTooltip = withErrorBoundary(
     onError: console.error,
     fallback: (
       <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
+        <Trans>An error occurred while rendering the tooltip.</Trans>
       </div>
     ),
   },
@@ -268,7 +275,13 @@ export function PropertyComparisonChart({
               {truncateMiddle(name, 40)}
             </Text>
             <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
-              {clickedValue.length === 0 ? <i>Empty String</i> : clickedValue}
+              {clickedValue.length === 0 ? (
+                <i>
+                  <Trans>Empty String</Trans>
+                </i>
+              ) : (
+                clickedValue
+              )}
             </Text>
             <Flex gap={12} mb={8}>
               <Text
@@ -280,7 +293,7 @@ export function PropertyComparisonChart({
               </Text>
               {hasSelection && (
                 <Text size="xs" c={getChartColorSuccess()}>
-                  Background:{' '}
+                  <Trans>Background:</Trans>{' '}
                   {(inlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
                 </Text>
               )}

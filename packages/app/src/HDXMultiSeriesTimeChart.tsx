@@ -1,4 +1,5 @@
 import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { add, isSameSecond, sub } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
@@ -140,7 +141,7 @@ const HDXLineChartTooltip = withErrorBoundary(
     onError: console.error,
     fallback: (
       <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
+        <Trans>An error occurred while rendering the tooltip.</Trans>
       </div>
     ),
   },
@@ -279,7 +280,7 @@ const LegendRenderer = memo<{
         <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
           <Popover.Target>
             <div className={cx(styles.legendItem, styles.legendMoreLink)}>
-              +{restItems.length} more
+              +{restItems.length} <Trans>more</Trans>
             </div>
           </Popover.Target>
           <Popover.Dropdown p="xs">

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Badge,
@@ -154,7 +155,7 @@ const OnboardingChecklist = ({
       <Group justify="space-between" align="center" mb={isCollapsed ? 0 : 'xs'}>
         <Group gap="xs" align="center">
           <Text size="sm" fw="bold">
-            Get Started
+            <Trans>Get Started</Trans>
           </Text>
           <Badge
             size="xs"
@@ -301,7 +302,7 @@ const OnboardingChecklist = ({
           {isAllComplete && (
             <Group justify="center" mt="xs" p="xs">
               <Text size="sm" c="green" fw="bold">
-                🎉 Great job! You&apos;re all set up.
+                <Trans>🎉 Great job! You're all set up.</Trans>
               </Text>
             </Group>
           )}

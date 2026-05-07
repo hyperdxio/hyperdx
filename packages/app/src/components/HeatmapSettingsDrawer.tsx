@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -70,7 +71,7 @@ export default function HeatmapSettingsDrawer({
         <Stack gap="md">
           <Box>
             <Text size="sm" fw={500} mb={4}>
-              Scale
+              <Trans>Scale</Trans>
             </Text>
             <SegmentedControl
               size="xs"
@@ -121,14 +122,14 @@ export default function HeatmapSettingsDrawer({
           <Divider />
           <Group gap="xs" justify="flex-end">
             <Button variant="secondary" onClick={handleClose}>
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
             <Button
               variant="primary"
               type="submit"
               leftSection={<IconPlayerPlay size={16} />}
             >
-              Apply
+              <Trans>Apply</Trans>
             </Button>
           </Group>
         </Stack>

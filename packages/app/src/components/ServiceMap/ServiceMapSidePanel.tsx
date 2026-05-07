@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
@@ -22,10 +23,10 @@ export default function ServiceMapSidePanel({
     <Stack w="100%">
       <Group gap={0}>
         <Text size="sm" ps="sm">
-          Service Map
+          <Trans>Service Map</Trans>
         </Text>
         <Badge size="xs" ms="xs" color="gray" autoContrast radius="sm">
-          Beta
+          <Trans>Beta</Trans>
         </Badge>
       </Group>
       {traceTableSource && traceTableSource.kind === SourceKind.Trace ? (

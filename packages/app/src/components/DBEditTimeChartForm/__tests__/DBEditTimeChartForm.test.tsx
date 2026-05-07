@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   DisplayType,
   MetricsDataType,
@@ -84,9 +85,15 @@ jest.mock('../../MetricNameSelect', () => ({
           onFocus={onFocus}
           aria-invalid={!!error}
         >
-          <option value="">Select a metric...</option>
-          <option value="test.metric.gauge">test.metric.gauge</option>
-          <option value="test.metric.sum">test.metric.sum</option>
+          <option value="">
+            <Trans>Select a metric...</Trans>
+          </option>
+          <option value="test.metric.gauge">
+            <Trans>test.metric.gauge</Trans>
+          </option>
+          <option value="test.metric.sum">
+            <Trans>test.metric.sum</Trans>
+          </option>
         </select>
         {error && <div data-testid="metric-name-error">{error}</div>}
       </div>
@@ -97,47 +104,81 @@ jest.mock('../../MetricNameSelect', () => ({
 jest.mock('../../SourceSelect', () => ({
   SourceSelectControlled: () => (
     <select data-testid="source-selector" defaultValue="metric-source">
-      <option value="metric-source">Metric Source</option>
+      <option value="metric-source">
+        <Trans>Metric Source</Trans>
+      </option>
     </select>
   ),
 }));
 
 jest.mock('../../ChartSQLPreview', () => ({
   __esModule: true,
-  default: () => <div>Chart SQL Preview</div>,
+  default: () => (
+    <div>
+      <Trans>Chart SQL Preview</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../../DBTimeChart', () => ({
-  DBTimeChart: () => <div>Time Chart</div>,
+  DBTimeChart: () => (
+    <div>
+      <Trans>Time Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../../DBTableChart', () => ({
   __esModule: true,
-  default: () => <div>Table Chart</div>,
+  default: () => (
+    <div>
+      <Trans>Table Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../../DBNumberChart', () => ({
   __esModule: true,
-  default: () => <div>Number Chart</div>,
+  default: () => (
+    <div>
+      <Trans>Number Chart</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   __esModule: true,
-  default: () => <div>Search Input</div>,
+  default: () => (
+    <div>
+      <Trans>Search Input</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
   __esModule: true,
-  default: () => <div>MV Indicator</div>,
+  default: () => (
+    <div>
+      <Trans>MV Indicator</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('../../SQLEditor/SQLInlineEditor', () => ({
-  SQLInlineEditorControlled: () => <div>SQL Editor</div>,
+  SQLInlineEditorControlled: () => (
+    <div>
+      <Trans>SQL Editor</Trans>
+    </div>
+  ),
 }));
 
 jest.mock('@/HDXMarkdownChart', () => ({
   __esModule: true,
-  default: () => <div>Markdown Chart</div>,
+  default: () => (
+    <div>
+      <Trans>Markdown Chart</Trans>
+    </div>
+  ),
 }));
 
 const queryClient = new QueryClient({

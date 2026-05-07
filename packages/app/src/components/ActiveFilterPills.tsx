@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ActionIcon, Flex, FlexProps, Text, Tooltip } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 
@@ -176,7 +177,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           td="underline"
           onClick={() => setExpanded(true)}
         >
-          +{hiddenCount} more
+          +{hiddenCount} <Trans>more</Trans>
         </Text>
       )}
       {expanded && hiddenCount > 0 && (
@@ -187,7 +188,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           td="underline"
           onClick={() => setExpanded(false)}
         >
-          Show less
+          <Trans>Show less</Trans>
         </Text>
       )}
       {pills.length >= 2 && (

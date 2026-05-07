@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
@@ -118,7 +119,7 @@ const NodeDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Ready
+                  <Trans>Ready</Trans>
                 </Badge>
               ) : (
                 <Badge
@@ -128,7 +129,7 @@ const NodeDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Not Ready
+                  <Trans>Not Ready</Trans>
                 </Badge>
               )
             }
@@ -162,7 +163,7 @@ function NodeLogs({
     <Card p="md">
       <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
-          Latest Node Logs & Spans
+          <Trans>Latest Node Logs & Spans</Trans>
           <Flex gap="xs" align="center">
             <SegmentedControl
               size="xs"

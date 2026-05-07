@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -102,7 +103,7 @@ export function SourcesList({
         <Flex justify="center" align="center" py="xl">
           <Loader size="sm" />
           <Text size="sm" c="dimmed" ml="sm">
-            Loading sources...
+            <Trans>Loading sources...</Trans>
           </Text>
         </Flex>
       </Wrapper>
@@ -129,7 +130,7 @@ export function SourcesList({
             leftSection={<IconRefresh size={14} />}
             onClick={handleRetry}
           >
-            Retry
+            <Trans>Retry</Trans>
           </Button>
         </Alert>
       </Wrapper>
@@ -145,10 +146,10 @@ export function SourcesList({
           <Flex direction="column" align="center" py="xl" gap="sm">
             <IconStack size={32} color="var(--color-text-muted)" />
             <Title size="sm" ta="center" c="var(--color-text-muted)">
-              No data sources configured yet.
+              <Trans>No data sources configured yet.</Trans>
             </Title>
             <Text size="xs" ta="center" c="var(--color-text-muted)">
-              Add a source to start querying your data.
+              <Trans>Add a source to start querying your data.</Trans>
             </Text>
           </Flex>
         )}
@@ -231,7 +232,7 @@ export function SourcesList({
                 onAddSource?.();
               }}
             >
-              Add source
+              <Trans>Add source</Trans>
             </Button>
           </Flex>
         )}

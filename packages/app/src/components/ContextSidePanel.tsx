@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import ms from 'ms';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
@@ -300,7 +301,8 @@ export default function ContextSubpanel({
                 </Badge>
               )}
               <Badge size="md" variant="default">
-                Time range: ±{ms(range / 2)}
+                <Trans>Time range: ±</Trans>
+                {ms(range / 2)}
               </Badge>
             </div>
           </Group>

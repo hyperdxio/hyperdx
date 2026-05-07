@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
 import {
@@ -48,9 +49,9 @@ export default function MVOptimizationModal({
       size="lg"
     >
       <Text size="sm" mb="sm">
-        This source is configured with{' '}
-        {hasMultipleMVs ? 'materialized views' : 'a materialized view'} for
-        accelerating some aggregations.
+        <Trans>This source is configured with</Trans>{' '}
+        {hasMultipleMVs ? 'materialized views' : 'a materialized view'}{' '}
+        <Trans>for accelerating some aggregations.</Trans>
       </Text>
 
       <Accordion defaultValue={firstUsedMv && mvConfigToKey(firstUsedMv)}>
@@ -70,19 +71,19 @@ export default function MVOptimizationModal({
                   {isBeingUsedByOptimizedConfig ? (
                     <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
                       <Badge me="md" color={SUCCESS_COLOR}>
-                        Active
+                        <Trans>Active</Trans>
                       </Badge>
                     </Tooltip>
                   ) : hasErrors ? (
                     <Tooltip label="This materialized view is not compatible with the selected query.">
                       <Badge me="md" color={WARNING_COLOR}>
-                        Incompatible
+                        <Trans>Incompatible</Trans>
                       </Badge>
                     </Tooltip>
                   ) : explanation ? (
                     <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
                       <Badge me="md" color="gray">
-                        Skipped
+                        <Trans>Skipped</Trans>
                       </Badge>
                     </Tooltip>
                   ) : null}
@@ -94,8 +95,10 @@ export default function MVOptimizationModal({
                   {hasErrors && (
                     <Alert color="red" mt="xs">
                       <Text size="sm" fw={500} mb="xs">
-                        The query cannot be accelerated using this materialized
-                        view for the following reason(s):
+                        <Trans>
+                          The query cannot be accelerated using this
+                          materialized view for the following reason(s):
+                        </Trans>
                       </Text>
                       {explanation.errors.map((error, idx) => (
                         <Text size="sm" key={idx} mt="xs">

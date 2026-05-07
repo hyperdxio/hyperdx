@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Box,
   Breadcrumbs,
@@ -107,7 +108,7 @@ function BreadcrumbNavigation({
     // Add current level
     items.push(
       <Text key="current" size="sm">
-        Selected Event
+        <Trans>Selected Event</Trans>
       </Text>,
     );
 
@@ -222,7 +223,7 @@ export default function DBRowSidePanelHeader({
         {isValidDate(date) && (
           <Text size="xs">
             <FormatTime value={date} /> &middot;{' '}
-            {formatDistanceToNowStrictShort(date)} ago
+            {formatDistanceToNowStrictShort(date)} <Trans>ago</Trans>
           </Text>
         )}
       </Flex>
@@ -277,7 +278,7 @@ export default function DBRowSidePanelHeader({
       ) : (
         <Paper p="xs" mt="sm">
           <Text size="xs" mb="xs">
-            [Empty]
+            <Trans>[Empty]</Trans>
           </Text>
         </Paper>
       )}

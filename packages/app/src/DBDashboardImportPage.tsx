@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
@@ -154,11 +155,13 @@ function FileSelection({
 
                 <div>
                   <Text size="xl" inline>
-                    Import Dashboard
+                    <Trans>Import Dashboard</Trans>
                   </Text>
                   <Text size="sm" c="dimmed" inline mt={7}>
-                    Drag and drop a JSON file here, or click to select from your
-                    computer.
+                    <Trans>
+                      Drag and drop a JSON file here, or click to select from
+                      your computer.
+                    </Trans>
                   </Text>
                 </div>
               </Group>
@@ -427,7 +430,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     <form onSubmit={handleSubmit(onSubmit)}>
       <Stack gap="sm">
         <Text fw={500} size="sm">
-          Step 2: Map Data
+          <Trans>Step 2: Map Data</Trans>
         </Text>
         <Controller
           name="dashboardName"
@@ -455,11 +458,21 @@ function Mapping({ input }: { input: DashboardTemplate }) {
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Input Source</Table.Th>
-              <Table.Th>Mapped Source</Table.Th>
-              <Table.Th>Input Connection</Table.Th>
-              <Table.Th>Mapped Connection</Table.Th>
+              <Table.Th>
+                <Trans>Name</Trans>
+              </Table.Th>
+              <Table.Th>
+                <Trans>Input Source</Trans>
+              </Table.Th>
+              <Table.Th>
+                <Trans>Mapped Source</Trans>
+              </Table.Th>
+              <Table.Th>
+                <Trans>Input Connection</Trans>
+              </Table.Th>
+              <Table.Th>
+                <Trans>Mapped Connection</Trans>
+              </Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -503,7 +516,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
             })}
             {input.filters?.map((filter, i) => (
               <Table.Tr key={filter.id}>
-                <Table.Td>{filter.name} (filter)</Table.Td>
+                <Table.Td>
+                  {filter.name} <Trans>(filter)</Trans>
+                </Table.Td>
                 <Table.Td>{filter.source}</Table.Td>
                 <Table.Td>
                   <SelectControlled
@@ -526,7 +541,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
           <Text c="red">{createDashboard.error.toString()}</Text>
         )}
         <Button type="submit" loading={createDashboard.isPending} mb="md">
-          Finish Import
+          <Trans>Finish Import</Trans>
         </Button>
       </Stack>
     </form>
@@ -554,11 +569,13 @@ function DBDashboardImportPage() {
   return (
     <div>
       <Head>
-        <title>Import Dashboard - {brandName}</title>
+        <title>
+          <Trans>Import Dashboard -</Trans> {brandName}
+        </title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          <Trans>Dashboards</Trans>
         </Anchor>
         {isTemplate && (
           <Anchor
@@ -567,11 +584,11 @@ function DBDashboardImportPage() {
             fz="sm"
             c="dimmed"
           >
-            Templates
+            <Trans>Templates</Trans>
           </Anchor>
         )}
         <Text fz="sm" c="dimmed">
-          Import
+          <Trans>Import</Trans>
         </Text>
       </Breadcrumbs>
       <div>
@@ -581,11 +598,13 @@ function DBDashboardImportPage() {
               <Loader mx="auto" />
             ) : isTemplateNotFound ? (
               <Stack align="center" gap="sm" py="xl">
-                <Text ta="center">Oops! We couldn't find that template.</Text>
                 <Text ta="center">
-                  Try{' '}
+                  <Trans>Oops! We couldn't find that template.</Trans>
+                </Text>
+                <Text ta="center">
+                  <Trans>Try</Trans>{' '}
                   <Anchor component={Link} href="/dashboards/templates">
-                    browsing available templates
+                    <Trans>browsing available templates</Trans>
                   </Anchor>
                   .
                 </Text>

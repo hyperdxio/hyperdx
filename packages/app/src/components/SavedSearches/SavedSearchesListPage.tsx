@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { useQueryState } from 'nuqs';
 import {
   ActionIcon,
@@ -127,9 +128,13 @@ export default function SavedSearchesListPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>Saved Searches - {brandName}</title>
+        <title>
+          <Trans>Saved Searches -</Trans> {brandName}
+        </title>
       </Head>
-      <PageHeader>Saved Searches</PageHeader>
+      <PageHeader>
+        <Trans>Saved Searches</Trans>
+      </PageHeader>
       <Container
         maw={1200}
         py="lg"
@@ -140,7 +145,7 @@ export default function SavedSearchesListPage() {
         {favoritedSavedSearches.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
-              Favorites
+              <Trans>Favorites</Trans>
             </Text>
             <SimpleGrid
               cols={{ base: 1, sm: 2, md: 3 }}
@@ -166,7 +171,7 @@ export default function SavedSearchesListPage() {
         )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          All Saved Searches
+          <Trans>All Saved Searches</Trans>
         </Text>
 
         <Flex justify="space-between" align="center" mb="lg" gap="sm">
@@ -216,18 +221,20 @@ export default function SavedSearchesListPage() {
               onClick={() => Router.push('/search')}
               data-testid="new-search-button"
             >
-              New Search
+              <Trans>New Search</Trans>
             </Button>
           </Group>
         </Flex>
 
         {isLoading ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
-            Loading saved searches...
+            <Trans>Loading saved searches...</Trans>
           </Text>
         ) : isError ? (
           <Text size="sm" c="red" ta="center" py="xl">
-            Failed to load saved searches. Please try refreshing the page.
+            <Trans>
+              Failed to load saved searches. Please try refreshing the page.
+            </Trans>
           </Text>
         ) : filteredSavedSearches.length === 0 ? (
           <Flex
@@ -249,7 +256,7 @@ export default function SavedSearchesListPage() {
                 onClick={() => Router.push('/search')}
                 data-testid="empty-new-search-button"
               >
-                New Search
+                <Trans>New Search</Trans>
               </Button>
             </EmptyState>
           </Flex>
@@ -258,10 +265,18 @@ export default function SavedSearchesListPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={40} />
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th>Created By</Table.Th>
-                <Table.Th>Last Updated</Table.Th>
+                <Table.Th>
+                  <Trans>Name</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Tags</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Created By</Trans>
+                </Table.Th>
+                <Table.Th>
+                  <Trans>Last Updated</Trans>
+                </Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>

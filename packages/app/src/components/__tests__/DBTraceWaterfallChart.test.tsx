@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   SourceKind,
   TLogSource,
@@ -45,7 +46,7 @@ jest.mock('@/components/TimelineChart', () => {
     mockComponent.latestProps = props;
     return (
       <div data-testid="timeline-chart">
-        TimelineChart
+        <Trans>TimelineChart</Trans>
         {props.rows?.map((row: any) => (
           <div key={row.id}>
             {row.events?.map((event: any) => flattenText(event.body))}

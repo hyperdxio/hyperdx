@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -152,7 +153,7 @@ export const DBPieChart = ({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError && error ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -160,7 +161,7 @@ export const DBPieChart = ({
         <ChartErrorState error={responseFormatError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         <Flex

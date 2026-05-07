@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
 import { Grid, Group, Pill, Stack, Table, Text, Tooltip } from '@mantine/core';
@@ -36,7 +37,7 @@ export default function MVConfigSummary({
         <Grid.Col span={1}>
           <Group align="center" mb="xs" gap="xs">
             <Text size="sm" fw={500}>
-              Granularity
+              <Trans>Granularity</Trans>
             </Text>
             <Tooltip
               multiline
@@ -56,7 +57,7 @@ export default function MVConfigSummary({
         {config.minDate && (
           <Grid.Col span={1}>
             <Text size="sm" fw={500} mb="xs">
-              Minimum Date
+              <Trans>Minimum Date</Trans>
             </Text>
             <Pill>
               <FormatTime value={config.minDate} format="withYear" />
@@ -67,7 +68,7 @@ export default function MVConfigSummary({
 
       <div>
         <Text size="sm" fw={500} mb="xs">
-          Available Group and Filter Columns
+          <Trans>Available Group and Filter Columns</Trans>
         </Text>
         <Group gap="xs">
           {dimensionColumnsSplit.map(col => (
@@ -78,13 +79,17 @@ export default function MVConfigSummary({
 
       <div>
         <Text size="sm" fw={500} mb="sm">
-          Available Aggregated Columns
+          <Trans>Available Aggregated Columns</Trans>
         </Text>
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Column</Table.Th>
-              <Table.Th>Aggregation</Table.Th>
+              <Table.Th>
+                <Trans>Column</Trans>
+              </Table.Th>
+              <Table.Th>
+                <Trans>Aggregation</Trans>
+              </Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>

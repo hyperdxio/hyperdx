@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -44,7 +45,7 @@ export function OnClickFormButton({
         variant="secondary"
         data-testid="onclick-drawer-trigger"
       >
-        Row Click Action: {onClickTypeLabel}
+        <Trans>Row Click Action:</Trans> {onClickTypeLabel}
       </Button>
       <OnClickDrawer
         opened={onClickDrawerOpened}

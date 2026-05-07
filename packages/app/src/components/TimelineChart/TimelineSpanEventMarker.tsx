@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Text, Tooltip } from '@mantine/core';
 
 import { useFormatTime } from '@/useFormatTime';
@@ -47,7 +48,8 @@ export const TimelineSpanEventMarker = memo(function ({
           ))}
           {attributeEntries.length > 5 && (
             <div style={{ fontStyle: 'italic' }}>
-              ...and {attributeEntries.length - 5} more
+              <Trans>...and</Trans> {attributeEntries.length - 5}{' '}
+              <Trans>more</Trans>
             </div>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -162,11 +163,11 @@ const HDXHistogramChartTooltip = (props: any) => {
         style={{ pointerEvents: 'auto' }}
       >
         <div className="mb-2">
-          Bucket: {lower} - {upper}
+          <Trans>Bucket:</Trans> {lower} - {upper}
         </div>
         {payload.map((p: any) => (
           <div key={p.name} style={{ color: p.color }}>
-            Number of Events: {p.value}
+            <Trans>Number of Events:</Trans> {p.value}
           </div>
         ))}
         <div className="mt-2">
@@ -176,12 +177,12 @@ const HDXHistogramChartTooltip = (props: any) => {
               className="text-muted-hover cursor-pointer"
               onClick={e => e.stopPropagation()}
             >
-              View Events
+              <Trans>View Events</Trans>
             </Link>
           )}
         </div>
         <div className="text-muted fs-9 mt-2">
-          Click to Pin Tooltip • Approx value via SPDT algorithm
+          <Trans>Click to Pin Tooltip • Approx value via SPDT algorithm</Trans>
         </div>
       </div>
     );
@@ -269,16 +270,18 @@ export default function DBHistogramChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError ? (
         <div className="h-100 w-100 align-items-center justify-content-center text-muted">
           <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
+            <Trans>
+              Error loading chart, please check your query or try again later.
+            </Trans>
           </Text>
           <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Error Message:
+              <Trans>Error Message:</Trans>
             </Text>
             <Code
               block
@@ -291,7 +294,7 @@ export default function DBHistogramChart({
             {error instanceof ClickHouseQueryError && (
               <>
                 <Text my="sm" size="sm" ta="center">
-                  Sent Query:
+                  <Trans>Sent Query:</Trans>
                 </Text>
                 <SQLPreview data={error?.query} />
               </>
@@ -300,7 +303,7 @@ export default function DBHistogramChart({
         </div>
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         <HistogramChart graphResults={buckets} />

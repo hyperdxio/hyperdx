@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
@@ -180,7 +181,7 @@ function PodLogs({
     <Card p="md">
       <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
-          Latest Pod Logs & Spans
+          <Trans>Latest Pod Logs & Spans</Trans>
           <Flex gap="xs" align="center">
             <SegmentedControl
               size="xs"
@@ -427,7 +428,7 @@ export default function PodDetailsSidePanel({
               <Grid.Col span={12}>
                 <Card p="md">
                   <Card.Section p="md" py="xs">
-                    Latest Pod Events
+                    <Trans>Latest Pod Events</Trans>
                   </Card.Section>
                   <Card.Section>
                     <ScrollArea

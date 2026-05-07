@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Button,
@@ -132,7 +133,11 @@ export const Tags = React.memo(
               <div className="pt-3 px-4 fs-8 text-center">
                 {allowCreate ? (
                   <>
-                    Type and press <span>Enter</span> to create new tag
+                    <Trans>Type and press</Trans>{' '}
+                    <span>
+                      <Trans>Enter</Trans>
+                    </span>{' '}
+                    <Trans>to create new tag</Trans>
                   </>
                 ) : (
                   'No tags found'
@@ -162,7 +167,7 @@ export const Tags = React.memo(
                           onChange([tag]);
                         }}
                       >
-                        Only
+                        <Trans>Only</Trans>
                       </Button>
                     )}
                   </Group>
@@ -171,7 +176,9 @@ export const Tags = React.memo(
             </Checkbox.Group>
           </ScrollArea>
           <div className="p-2 border-top border-dark d-flex justify-content-between align-items-center">
-            <div className="ms-2 fs-8 ">{values.length || 'None'} selected</div>
+            <div className="ms-2 fs-8 ">
+              {values.length || 'None'} <Trans>selected</Trans>
+            </div>
             {values.length >= 1 && (
               <Button
                 variant="secondary"
@@ -179,7 +186,7 @@ export const Tags = React.memo(
                 fw="normal"
                 onClick={handleClearAll}
               >
-                Clear all
+                <Trans>Clear all</Trans>
               </Button>
             )}
           </div>

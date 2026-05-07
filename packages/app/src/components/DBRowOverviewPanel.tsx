@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -216,7 +217,7 @@ export function RowOverviewPanel({
           <Accordion.Item value="network">
             <Accordion.Control>
               <Text size="sm" ps="md">
-                HTTP Request
+                <Trans>HTTP Request</Trans>
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
@@ -233,7 +234,7 @@ export function RowOverviewPanel({
           <Accordion.Item value="exception">
             <Accordion.Control>
               <Text size="sm" ps="md">
-                Exception
+                <Trans>Exception</Trans>
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
@@ -254,7 +255,7 @@ export function RowOverviewPanel({
           <Accordion.Item value="spanEvents">
             <Accordion.Control>
               <Text size="sm" ps="md">
-                Span Events
+                <Trans>Span Events</Trans>
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
@@ -269,7 +270,7 @@ export function RowOverviewPanel({
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>
               <Text size="sm" ps="md">
-                Top Level Attributes
+                <Trans>Top Level Attributes</Trans>
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
@@ -286,7 +287,7 @@ export function RowOverviewPanel({
         <Accordion.Item value="eventAttributes">
           <Accordion.Control>
             <Text size="sm" ps="md">
-              {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+              {source.kind === 'log' ? 'Log' : 'Span'} <Trans>Attributes</Trans>
             </Text>
           </Accordion.Control>
           <Accordion.Panel>
@@ -302,7 +303,7 @@ export function RowOverviewPanel({
         <Accordion.Item value="resourceAttributes">
           <Accordion.Control>
             <Text size="sm" ps="md">
-              Resource Attributes
+              <Trans>Resource Attributes</Trans>
             </Text>
           </Accordion.Control>
           <Accordion.Panel>

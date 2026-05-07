@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
@@ -122,11 +123,14 @@ export const DBSessionPanel = ({
     <>
       {!sessionSource ? (
         <div className="m-2 fs-8 p-4">
-          No correlated session source found.
+          <Trans>No correlated session source found.</Trans>
           <br />
-          Go to <Link href="/team#sources">Team Settings</Link> and update the{' '}
-          <strong>{traceSource?.name}</strong> source to include the correlated
-          session source.
+          <Trans>Go to</Trans>{' '}
+          <Link href="/team#sources">
+            <Trans>Team Settings</Trans>
+          </Link>{' '}
+          <Trans>and update the</Trans> <strong>{traceSource?.name}</strong>{' '}
+          <Trans>source to include the correlated session source.</Trans>
         </div>
       ) : rumSessionId && traceSource ? (
         <SessionSubpanel
@@ -140,7 +144,9 @@ export const DBSessionPanel = ({
           initialTs={focusDate.getTime()}
         />
       ) : (
-        <span className="p-3 text-muted">Session ID not found.</span>
+        <span className="p-3 text-muted">
+          <Trans>Session ID not found.</Trans>
+        </span>
       )}
     </>
   );

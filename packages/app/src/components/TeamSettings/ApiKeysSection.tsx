@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { Box, Button, Card, Divider, Group, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -72,10 +73,14 @@ export default function ApiKeysSection() {
 
   return (
     <Box id="api_keys" data-testid="api-keys-section">
-      <Text size="md">API Keys</Text>
+      <Text size="md">
+        <Trans>API Keys</Trans>
+      </Text>
       <Divider my="md" />
       <Card mb="md">
-        <Text mb="md">Ingestion API Key</Text>
+        <Text mb="md">
+          <Trans>Ingestion API Key</Trans>
+        </Text>
         <Group gap="xs">
           {team?.apiKey && (
             <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
@@ -86,7 +91,7 @@ export default function ApiKeysSection() {
               variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
-              Rotate API Key
+              <Trans>Rotate API Key</Trans>
             </Button>
           )}
         </Group>
@@ -98,14 +103,22 @@ export default function ApiKeysSection() {
           size="lg"
           title={
             <Text size="xl">
-              <b>Rotate API Key</b>
+              <b>
+                <Trans>Rotate API Key</Trans>
+              </b>
             </Text>
           }
         >
           <Modal.Body>
             <Text size="md">
-              Rotating the API key will invalidate your existing API key and
-              generate a new one for you. This action is <b>not reversible</b>.
+              <Trans>
+                Rotating the API key will invalidate your existing API key and
+                generate a new one for you. This action is
+              </Trans>{' '}
+              <b>
+                <Trans>not reversible</Trans>
+              </b>
+              .
             </Text>
             <Group justify="end">
               <Button
@@ -115,7 +128,7 @@ export default function ApiKeysSection() {
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}
               >
-                Cancel
+                <Trans>Cancel</Trans>
               </Button>
               <Button
                 data-testid="rotate-api-key-confirm"
@@ -124,7 +137,7 @@ export default function ApiKeysSection() {
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}
               >
-                Confirm
+                <Trans>Confirm</Trans>
               </Button>
             </Group>
           </Modal.Body>
@@ -133,7 +146,9 @@ export default function ApiKeysSection() {
       {!isLoadingMe && me != null && (
         <Card>
           <Card.Section p="md">
-            <Text mb="md">Personal API Access Key</Text>
+            <Text mb="md">
+              <Trans>Personal API Access Key</Trans>
+            </Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
           </Card.Section>
         </Card>

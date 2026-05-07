@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Button,
@@ -55,11 +56,15 @@ export const ColorSwatchInput = ({
         >
           {value ? (
             <Group gap="xs">
-              <Text size="xs">Color</Text>
+              <Text size="xs">
+                <Trans>Color</Trans>
+              </Text>
               <ColorSwatch color={value} size={14} />
             </Group>
           ) : (
-            <Text size="xs">Choose color</Text>
+            <Text size="xs">
+              <Trans>Choose color</Trans>
+            </Text>
           )}
         </Button>
       </Popover.Target>
@@ -93,7 +98,7 @@ export const ColorSwatchInput = ({
         </SimpleGrid>
         {value && (
           <Button size="compact-xs" color="gray" onClick={() => handleChange()}>
-            Clear
+            <Trans>Clear</Trans>
           </Button>
         )}
       </Popover.Dropdown>

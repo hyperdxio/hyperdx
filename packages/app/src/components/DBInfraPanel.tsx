@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { add, min, sub } from 'date-fns';
 import {
   convertDateRangeToGranularityString,
@@ -243,15 +244,17 @@ export default ({
               {metricSourceId
                 ? `The correlated metric source for "${source.name}" could not be found.`
                 : `Source "${source.name}" does not have a correlated metric source.`}{' '}
-              Infrastructure metrics can be displayed when a metric source is
-              configured in{' '}
+              <Trans>
+                Infrastructure metrics can be displayed when a metric source is
+                configured in
+              </Trans>{' '}
               {IS_LOCAL_MODE ? (
                 <Anchor component="button" onClick={openEditModal}>
-                  Source Settings
+                  <Trans>Source Settings</Trans>
                 </Anchor>
               ) : (
                 <Anchor component={Link} href="/team">
-                  Team Settings
+                  <Trans>Team Settings</Trans>
                 </Anchor>
               )}
               .
@@ -283,7 +286,7 @@ export default ({
           {source && source.kind === SourceKind.Log && (
             <Card p="md" mt="xl">
               <Card.Section p="md" py="xs">
-                Pod Timeline
+                <Trans>Pod Timeline</Trans>
               </Card.Section>
               <Card.Section>
                 <ScrollArea
@@ -300,7 +303,11 @@ export default ({
                         add(new Date(timestamp), { days: 1 }),
                       ]}
                       anchorEvent={{
-                        label: <div className="text-brand">This Event</div>,
+                        label: (
+                          <div className="text-brand">
+                            <Trans>This Event</Trans>
+                          </div>
+                        ),
                         timestamp: new Date(timestamp).toISOString(),
                       }}
                     />

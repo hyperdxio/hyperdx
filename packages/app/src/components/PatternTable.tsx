@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -71,7 +72,7 @@ export default function PatternTable({
     <Container style={{ overflow: 'auto' }}>
       <Box mt="lg">
         <Text my="sm" size="sm">
-          Error Message:
+          <Trans>Error Message:</Trans>
         </Text>
         <Code
           block
@@ -85,7 +86,7 @@ export default function PatternTable({
       {error instanceof ClickHouseQueryError && (
         <Box mt="lg">
           <Text my="sm" size="sm">
-            Original Query:
+            <Trans>Original Query:</Trans>
           </Text>
           <Code
             block

@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -99,7 +100,11 @@ export default function DBSqlRowTableWithSideBar({
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
-        return <div className="p-3 text-muted">Loading...</div>;
+        return (
+          <div className="p-3 text-muted">
+            <Trans>Loading...</Trans>
+          </div>
+        );
       }
       return (
         <RowOverviewPanelWrapper

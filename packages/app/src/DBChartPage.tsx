@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import { Trans } from 'next-i18next/pages';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -134,9 +135,14 @@ function AIAssistant({
           p="xxs"
         >
           <Text size="xs" pt="2px">
-            New AI Assistant available, enable with configuring the{' '}
-            <code>ANTHROPIC_API_KEY</code> environment variable on the{' '}
-            {brandName} server.
+            <Trans>
+              New AI Assistant available, enable with configuring the
+            </Trans>{' '}
+            <code>
+              <Trans>ANTHROPIC_API_KEY</Trans>
+            </code>{' '}
+            <Trans>environment variable on the</Trans> {brandName}{' '}
+            <Trans>server.</Trans>
           </Text>
         </Alert>
         <Divider mt="sm" />
@@ -161,10 +167,14 @@ function AIAssistant({
             ) : (
               <IconChevronDown size={14} />
             )}
-            <Text size="xxs">AI Assistant [A]</Text>
+            <Text size="xxs">
+              <Trans>AI Assistant [A]</Trans>
+            </Text>
           </Group>
         </Button>
-        <Pill size="xs">Experimental</Pill>
+        <Pill size="xs">
+          <Trans>Experimental</Trans>
+        </Pill>
       </Group>
       <Collapse expanded={opened}>
         {opened && (
@@ -193,7 +203,7 @@ function AIAssistant({
                 <Loader size="xs" type="dots" />
               ) : (
                 <Button type="submit" size="xs" variant="primary">
-                  Generate
+                  <Trans>Generate</Trans>
                 </Button>
               )}
             </Group>
@@ -235,7 +245,9 @@ function DBChartExplorerPage() {
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>Chart Explorer - {brandName}</title>
+        <title>
+          <Trans>Chart Explorer -</Trans> {brandName}
+        </title>
       </Head>
       <OnboardingModal />
       <AIAssistant

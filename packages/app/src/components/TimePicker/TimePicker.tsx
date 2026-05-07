@@ -1,4 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -270,7 +271,7 @@ const TimePickerComponent = ({
           rightSection={
             opened && (
               <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
-                d
+                <Trans>d</Trans>
               </Text>
             )
           }
@@ -328,7 +329,7 @@ const TimePickerComponent = ({
               onClick={handleMove.bind(null, { hours: -1 })}
               disabled={isLiveMode || isRelative}
             >
-              1h back
+              <Trans>1h back</Trans>
             </Button>
             <Button
               data-testid="time-picker-1h-forward"
@@ -337,7 +338,7 @@ const TimePickerComponent = ({
               onClick={handleMove.bind(null, { hours: 1 })}
               disabled={isLiveMode || isRelative}
             >
-              1h forward
+              <Trans>1h forward</Trans>
             </Button>
             <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
@@ -427,7 +428,9 @@ const TimePickerComponent = ({
               />
               {mode === TimePickerMode.Range ? (
                 <>
-                  <H>Start time</H>
+                  <H>
+                    <Trans>Start time</Trans>
+                  </H>
                   <DateInputCmp
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
@@ -435,7 +438,9 @@ const TimePickerComponent = ({
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
-                  <H>End time</H>
+                  <H>
+                    <Trans>End time</Trans>
+                  </H>
                   <DateInputCmp
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
@@ -446,7 +451,9 @@ const TimePickerComponent = ({
                 </>
               ) : (
                 <>
-                  <H>Time</H>
+                  <H>
+                    <Trans>Time</Trans>
+                  </H>
                   <DateInputCmp
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
@@ -454,7 +461,9 @@ const TimePickerComponent = ({
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
-                  <H>Duration ±</H>
+                  <H>
+                    <Trans>Duration ±</Trans>
+                  </H>
                   <Select
                     placeholder="Pick value"
                     data={DURATION_OPTIONS}
@@ -469,8 +478,10 @@ const TimePickerComponent = ({
               )}
             </Stack>
             <Text size="xxs" lh={1.2}>
-              You can use natural language to select dates (e.g. yesterday, last
-              monday at 5pm)
+              <Trans>
+                You can use natural language to select dates (e.g. yesterday,
+                last monday at 5pm)
+              </Trans>
             </Text>
             <Space flex={1} />
             <Group
@@ -486,7 +497,7 @@ const TimePickerComponent = ({
                 disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >
-                Apply
+                <Trans>Apply</Trans>
               </Button>
             </Group>
           </Card>

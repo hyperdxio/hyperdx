@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
@@ -639,7 +640,7 @@ export default function SessionSubpanel({
               }
               onClick={() => setSkipInactive(!skipInactive)}
             >
-              Skip Idle
+              <Trans>Skip Idle</Trans>
               <Divider orientation="vertical" ml="sm" />
             </Button>
             <Button
@@ -647,11 +648,14 @@ export default function SessionSubpanel({
               variant="secondary"
               fw="normal"
               rightSection={
-                <span className="fw-bold pe-1">{playerSpeed}x</span>
+                <span className="fw-bold pe-1">
+                  {playerSpeed}
+                  <Trans>x</Trans>
+                </span>
               }
               onClick={handleSetPlayerSpeed}
             >
-              Speed
+              <Trans>Speed</Trans>
               <Divider orientation="vertical" ml="sm" />
             </Button>
           </Group>

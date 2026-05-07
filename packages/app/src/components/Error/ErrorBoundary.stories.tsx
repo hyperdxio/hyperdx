@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { Box, Text } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
@@ -10,7 +11,9 @@ const BuggyComponent = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
   }
   return (
     <Box p="md">
-      <Text>This component rendered successfully!</Text>
+      <Text>
+        <Trans>This component rendered successfully!</Trans>
+      </Text>
     </Box>
   );
 };

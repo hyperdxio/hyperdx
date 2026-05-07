@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { ActionIcon, Menu } from '@mantine/core';
 import { IconCopy, IconDotsVertical, IconTrash } from '@tabler/icons-react';
 
@@ -26,14 +27,14 @@ export default function SearchPageActionBar({
           leftSection={<IconCopy size={16} />}
           onClick={onClickSaveAsNew}
         >
-          Save as New Search
+          <Trans>Save as New Search</Trans>
         </Menu.Item>
         <Menu.Item
           leftSection={<IconTrash size={16} />}
           color="red"
           onClick={onClickDeleteSavedSearch}
         >
-          Delete Saved Search
+          <Trans>Delete Saved Search</Trans>
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>

@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { NextSeo } from 'next-seo';
 import { Button, Paper, Text, TextInput } from '@mantine/core';
 
@@ -15,7 +16,9 @@ export default function JoinTeam() {
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
         <div>
           <div className="text-center mb-4">
-            <h2 className="me-2 text-center">Join Team</h2>
+            <h2 className="me-2 text-center">
+              <Trans>Join Team</Trans>
+            </h2>
           </div>
           <Paper p="xl" withBorder>
             <div className="text-center">
@@ -51,7 +54,7 @@ export default function JoinTeam() {
                     type="submit"
                     data-test-id="submit"
                   >
-                    Setup a password
+                    <Trans>Setup a password</Trans>
                   </Button>
                 </div>
               </form>

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { pickBy } from 'lodash';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { JSONTree } from 'react-json-tree';
@@ -198,7 +199,7 @@ export function NetworkPropertySubpanel({
         >
           <Button size="xs" variant="primary">
             <IconTerminal size={14} className="me-2" />
-            Copy Request as Curl
+            <Trans>Copy Request as Curl</Trans>
           </Button>
         </CopyToClipboard>
         {/* <Link href={trendsDashboardUrl} passHref legacyBehavior>

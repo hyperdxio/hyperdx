@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
@@ -173,10 +174,10 @@ export default function ChartDisplaySettingsDrawer({
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>
-            Reset to Defaults
+            <Trans>Reset to Defaults</Trans>
           </Button>
           <Button type="submit" variant="primary" onClick={applyChanges}>
-            Apply
+            <Trans>Apply</Trans>
           </Button>
         </Group>
       </Stack>

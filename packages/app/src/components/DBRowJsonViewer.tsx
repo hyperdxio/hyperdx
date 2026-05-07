@@ -51,6 +51,8 @@ export function buildJSONExtractQuery(
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
 
+import { Trans } from 'next-i18next/pages';
+
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 function filterObjectRecursively(obj: any, filter: string): any {
@@ -259,7 +261,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label lh={1} py={6}>
-            Properties view options
+            <Trans>Properties view options</Trans>
           </Menu.Label>
           <Menu.Item
             onClick={() =>
@@ -276,7 +278,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               ) : null
             }
           >
-            Expand all properties
+            <Trans>Expand all properties</Trans>
           </Menu.Item>
           <Menu.Item
             lh="1"
@@ -293,7 +295,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               })
             }
           >
-            Tabulate
+            <Trans>Tabulate</Trans>
           </Menu.Item>
           <Menu.Item
             lh="1"
@@ -310,7 +312,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               })
             }
           >
-            Hide blank values
+            <Trans>Hide blank values</Trans>
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
@@ -376,7 +378,7 @@ export function DBRowJsonViewer({
           label: (
             <Group gap={2}>
               <IconFilter size={14} />
-              Add to Filters
+              <Trans>Add to Filters</Trans>
             </Group>
           ),
           title: 'Add to Filters',
@@ -420,7 +422,7 @@ export function DBRowJsonViewer({
           label: (
             <Group gap={2}>
               <IconSearch size={14} />
-              Search
+              <Trans>Search</Trans>
             </Group>
           ),
           title: 'Search for this value only',
@@ -524,12 +526,12 @@ export function DBRowJsonViewer({
           label: isIncluded ? (
             <Group gap={2}>
               <IconMinus size={14} />
-              Column
+              <Trans>Column</Trans>
             </Group>
           ) : (
             <Group gap={2}>
               <IconPlus size={14} />
-              Column
+              <Trans>Column</Trans>
             </Group>
           ),
           title: isIncluded
@@ -580,7 +582,7 @@ export function DBRowJsonViewer({
           label: (
             <Group gap={2}>
               <IconCopy size={14} />
-              Copy Value
+              <Trans>Copy Value</Trans>
             </Group>
           ),
           onClick: () => {
@@ -627,7 +629,7 @@ export function DBRowJsonViewer({
           />
           {filter && (
             <Button variant="secondary" size="xs" onClick={() => setFilter('')}>
-              Clear
+              <Trans>Clear</Trans>
             </Button>
           )}
           <div className="flex-grow-1" />
@@ -642,7 +644,9 @@ export function DBRowJsonViewer({
             {...jsonOptions}
           />
         ) : (
-          <Text>No data</Text>
+          <Text>
+            <Trans>No data</Trans>
+          </Text>
         )}
       </Paper>
     </div>

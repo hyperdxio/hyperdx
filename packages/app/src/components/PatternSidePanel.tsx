@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
@@ -143,7 +144,8 @@ export default function PatternSidePanel({
               </Card>
               <Card p="md">
                 <Card.Section p="md" py="xs">
-                  ~{pattern.count?.toLocaleString()} Sample Events
+                  ~{pattern.count?.toLocaleString()}{' '}
+                  <Trans>Sample Events</Trans>
                 </Card.Section>
                 <RawLogTable
                   rows={displayedSamples}
@@ -164,7 +166,9 @@ export default function PatternSidePanel({
                     mt="xs"
                     onClick={() => setShowAll(true)}
                   >
-                    Show all {pattern.samples.length.toLocaleString()} samples
+                    <Trans>Show all</Trans>{' '}
+                    {pattern.samples.length.toLocaleString()}{' '}
+                    <Trans>samples</Trans>
                   </Button>
                 )}
               </Card>

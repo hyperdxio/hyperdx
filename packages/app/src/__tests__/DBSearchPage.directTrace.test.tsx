@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 
@@ -144,9 +145,11 @@ jest.mock('../components/Search/DirectTraceSidePanel', () => ({
     latestDirectTracePanelProps = props;
     return (
       <div data-testid="direct-trace-panel">
-        <button onClick={() => props.onClose()}>close-trace</button>
+        <button onClick={() => props.onClose()}>
+          <Trans>close-trace</Trans>
+        </button>
         <button onClick={() => props.onSourceChange('trace-source')}>
-          select-trace-source
+          <Trans>select-trace-source</Trans>
         </button>
       </div>
     );

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
@@ -22,7 +23,7 @@ export default function ChartErrorState({
     return (
       <Stack align="start">
         <Text size="sm" mt={10}>
-          Error Message:
+          <Trans>Error Message:</Trans>
         </Text>
         <Code
           flex={1}
@@ -36,7 +37,7 @@ export default function ChartErrorState({
         {error instanceof ClickHouseQueryError && (
           <>
             <Text size="sm" ta="center">
-              Sent Query:
+              <Trans>Sent Query:</Trans>
             </Text>
             <SQLPreview data={error?.query} enableLineWrapping />
           </>
@@ -55,7 +56,9 @@ export default function ChartErrorState({
       )}
     >
       <Text ta="center" size="sm" my="sm">
-        Error loading chart, please check your query or try again later.
+        <Trans>
+          Error loading chart, please check your query or try again later.
+        </Trans>
       </Text>
 
       {variant === 'collapsible' ? (
@@ -67,7 +70,7 @@ export default function ChartErrorState({
           >
             <Group gap="xxs">
               <IconArrowsDiagonal size={16} />
-              See Error Details
+              <Trans>See Error Details</Trans>
             </Group>
           </Button>
           <Modal

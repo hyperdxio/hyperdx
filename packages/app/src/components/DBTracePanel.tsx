@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -183,7 +184,9 @@ export default function DBTracePanel({
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
-          <Text size="xs">Trace ID Expression</Text>
+          <Text size="xs">
+            <Trans>Trace ID Expression</Trans>
+          </Text>
           <Flex align="center">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
@@ -212,7 +215,7 @@ export default function DBTracePanel({
               })}
               size="xs"
             >
-              Save
+              <Trans>Save</Trans>
             </Button>
             <Button
               ms="sm"
@@ -220,7 +223,7 @@ export default function DBTracePanel({
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
           </Flex>
         </Stack>
@@ -242,7 +245,7 @@ export default function DBTracePanel({
       {traceSourceData != null && eventRowWhere != null && (
         <>
           <Text size="sm" my="sm">
-            Event Details
+            <Trans>Event Details</Trans>
           </Text>
           <TabBar
             className="fs-8 mt-2"
@@ -286,7 +289,9 @@ export default function DBTracePanel({
       {traceSourceData != null && !eventRowWhere && traceId && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
-            <Text size="sm">Please select a span above to view details.</Text>
+            <Text size="sm">
+              <Trans>Please select a span above to view details.</Trans>
+            </Text>
           </Center>
         </Paper>
       )}

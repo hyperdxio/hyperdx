@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -138,7 +139,7 @@ export default function DBNumberChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          <Trans>Loading Chart Data...</Trans>
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -146,7 +147,7 @@ export default function DBNumberChart({
         <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          <Trans>No data found within time range.</Trans>
         </div>
       ) : (
         <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>

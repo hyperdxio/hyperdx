@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -119,7 +120,9 @@ export default function SearchInputV2({
       data-testid={dataTestId}
       aboveSuggestions={
         <>
-          <div className={styles.searchingHeader}>Searching for:</div>
+          <div className={styles.searchingHeader}>
+            <Trans>Searching for:</Trans>
+          </div>
           <div className={styles.searchingDescription}>
             {parsedEnglishQuery === ''
               ? 'Matching all events, enter a query to search.'
@@ -129,9 +132,13 @@ export default function SearchInputV2({
       }
       belowSuggestions={
         <>
-          <div className={styles.examplesLabel}>Examples:</div>
+          <div className={styles.examplesLabel}>
+            <Trans>Examples:</Trans>
+          </div>
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Full Text:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Full Text:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -141,12 +148,14 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              my log
+              <Trans>my log</Trans>
             </code>
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Substring:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Substring:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -156,12 +165,14 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              *err*
+              <Trans>*err*</Trans>
             </code>
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Exact:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Exact:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -171,12 +182,17 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              level:{'"'}info{'"'}
+              <Trans>level:</Trans>
+              {'"'}
+              <Trans>info</Trans>
+              {'"'}
             </code>
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Not:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Not:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -186,12 +202,14 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              -level:info
+              <Trans>-level:info</Trans>
             </code>
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Existence:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Existence:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -201,12 +219,14 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              service:*
+              <Trans>service:*</Trans>
             </code>
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Boolean:</span>
+            <span className={styles.exampleLabel}>
+              <Trans>Boolean:</Trans>
+            </span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -216,7 +236,7 @@ export default function SearchInputV2({
                 onChange(newValue);
               }}
             >
-              (foo OR bar)
+              <Trans>(foo OR bar)</Trans>
             </code>
           </div>
 
@@ -228,7 +248,9 @@ export default function SearchInputV2({
           >
             <Group gap={5}>
               <IconBook size={14} />
-              <span>Docs</span>
+              <span>
+                <Trans>Docs</Trans>
+              </span>
             </Group>
           </a>
         </>

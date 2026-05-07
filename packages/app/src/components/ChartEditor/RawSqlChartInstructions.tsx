@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import { atom, useAtom } from 'jotai';
 import {
   QUERY_PARAM_EXAMPLES,
@@ -88,7 +89,7 @@ export function RawSqlChartInstructions({
             <IconChevronRight size={12} />
           )}
           <Text size="xs" mt={1}>
-            SQL Chart Instructions
+            <Trans>SQL Chart Instructions</Trans>
           </Text>
         </Group>
         <Collapse expanded={helpOpened}>
@@ -96,7 +97,9 @@ export function RawSqlChartInstructions({
             {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
             <Text size="xs" fw="bold">
-              The following parameters and macros can be used in this chart:
+              <Trans>
+                The following parameters and macros can be used in this chart:
+              </Trans>
             </Text>
             <List size="xs" withPadding spacing={3}>
               {availableParams.map(({ name, type, description }) => (
@@ -121,19 +124,19 @@ export function RawSqlChartInstructions({
               </List.Item>
               <List.Item>
                 <Text size="xs">
-                  Other available macros are described in the{' '}
+                  <Trans>Other available macros are described in the</Trans>{' '}
                   <Anchor
                     href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
                     target="_blank"
                   >
-                    ClickStack documentation.
+                    <Trans>ClickStack documentation.</Trans>
                   </Anchor>
                 </Text>
               </List.Item>
             </List>
 
             <Text size="xs" fw="bold">
-              Example:
+              <Trans>Example:</Trans>
             </Text>
             <div style={{ position: 'relative' }}>
               <Tooltip

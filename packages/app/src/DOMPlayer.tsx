@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -513,8 +514,10 @@ export default function DOMPlayer({
           </Group>
         ) : isReplayFullyLoaded && replayer.current == null ? (
           <div className="text-center">
-            No replay available for this session, most likely due to this
-            session starting and ending in a background tab.
+            <Trans>
+              No replay available for this session, most likely due to this
+              session starting and ending in a background tab.
+            </Trans>
           </div>
         ) : null}
         <div

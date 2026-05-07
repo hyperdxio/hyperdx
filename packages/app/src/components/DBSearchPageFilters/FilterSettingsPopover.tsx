@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   ActionIcon,
   Checkbox,
@@ -74,7 +75,7 @@ export function FilterSettingsPanel({
     >
       <Flex direction="column" gap="xs">
         <Text size="sm" fw={500}>
-          Filter Settings
+          <Trans>Filter Settings</Trans>
         </Text>
         <Divider />
         <Checkbox
@@ -144,12 +145,12 @@ function ResetAction({
             }}
           >
             <Text size="xs" c="red" fw={500}>
-              Confirm
+              <Trans>Confirm</Trans>
             </Text>
           </UnstyledButton>
           <UnstyledButton onClick={() => setConfirming(false)}>
             <Text size="xs" c="dimmed">
-              Cancel
+              <Trans>Cancel</Trans>
             </Text>
           </UnstyledButton>
         </Flex>

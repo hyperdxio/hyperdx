@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { HTTPError } from 'ky';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import {
@@ -205,19 +206,23 @@ export default function TeamMembersSection() {
 
   return (
     <Box id="team_members" data-testid="team-members-section">
-      <Text size="md">Team Members</Text>
+      <Text size="md">
+        <Trans>Team Members</Trans>
+      </Text>
       <Divider my="md" />
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">
-            <div className="fs-7">Team Members</div>
+            <div className="fs-7">
+              <Trans>Team Members</Trans>
+            </div>
             <Button
               data-testid="invite-member-button"
               variant="primary"
               leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
             >
-              Invite Team Member
+              <Trans>Invite Team Member</Trans>
             </Button>
           </Group>
         </Card.Section>
@@ -232,7 +237,7 @@ export default function TeamMembersSection() {
                       <div>
                         {member.isCurrentUser && (
                           <Badge variant="light" mr="xs" tt="none">
-                            You
+                            <Trans>You</Trans>
                           </Badge>
                         )}
                         <span className="text-white fw-bold fs-7">
@@ -243,7 +248,7 @@ export default function TeamMembersSection() {
                         <div>{member.email}</div>
                         {member.hasPasswordAuth && (
                           <div>
-                            <IconLock size={14} /> Password Auth
+                            <IconLock size={14} /> <Trans>Password Auth</Trans>
                           </div>
                         )}
                       </Group>
@@ -274,7 +279,7 @@ export default function TeamMembersSection() {
                               })
                             }
                           >
-                            Remove
+                            <Trans>Remove</Trans>
                           </Button>
                         </Group>
                       )}
@@ -292,11 +297,11 @@ export default function TeamMembersSection() {
                     </Table.Td>
                     <Table.Td>
                       <Badge variant="dot" color="gray" fw="normal" tt="none">
-                        Pending Invite
+                        <Trans>Pending Invite</Trans>
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
                         <Button size="compact-xs" variant="secondary" ml="xs">
-                          📋 Copy URL
+                          <Trans>📋 Copy URL</Trans>
                         </Button>
                       </CopyToClipboard>
                     </Table.Td>
@@ -314,7 +319,7 @@ export default function TeamMembersSection() {
                               })
                             }
                           >
-                            Delete
+                            <Trans>Delete</Trans>
                           </Button>
                         </Group>
                       )}
@@ -353,10 +358,12 @@ export default function TeamMembersSection() {
       >
         <Stack>
           <Text>
-            Deleting this team member (
-            {deleteTeamMemberConfirmationModalData.email}) will revoke their
-            access to the team&apos;s resources and services. This action is not
-            reversible.
+            <Trans>Deleting this team member (</Trans>
+            {deleteTeamMemberConfirmationModalData.email}
+            <Trans>
+              ) will revoke their access to the team's resources and services.
+              This action is not reversible.
+            </Trans>
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
@@ -370,7 +377,7 @@ export default function TeamMembersSection() {
                 })
               }
             >
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
             <Button
               data-testid="confirm-delete-member"
@@ -382,7 +389,7 @@ export default function TeamMembersSection() {
                 )
               }
             >
-              Confirm
+              <Trans>Confirm</Trans>
             </Button>
           </Group>
         </Stack>
@@ -420,7 +427,9 @@ function InviteTeamMemberForm({
           withAsterisk={false}
         />
         <div className="fs-8">
-          The invite link will automatically expire after 30 days.
+          <Trans>
+            The invite link will automatically expire after 30 days.
+          </Trans>
         </div>
         <Button
           data-testid="send-invite-button"
@@ -428,7 +437,7 @@ function InviteTeamMemberForm({
           type="submit"
           disabled={!email || isSubmitting}
         >
-          Send Invite
+          <Trans>Send Invite</Trans>
         </Button>
       </Stack>
     </form>

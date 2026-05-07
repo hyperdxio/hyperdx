@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
@@ -415,7 +416,14 @@ function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
 
   return (
     <>
-      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
+      <Kbd>
+        <Trans>⌥/Alt</Trans>
+      </Kbd>{' '}
+      +{' '}
+      <Kbd>
+        <Trans>click</Trans>
+      </Kbd>{' '}
+      <Trans>to collapse children</Trans>
     </>
   );
 }
@@ -971,7 +979,9 @@ export function DBTraceWaterfallChartContainer({
               gap: '12px',
             }}
           >
-            <Text size="xs">Spans filter</Text>
+            <Text size="xs">
+              <Trans>Spans filter</Trans>
+            </Text>
             <SearchInputV2
               tableConnection={tcFromSource(traceTableSource)}
               placeholder={
@@ -987,7 +997,9 @@ export function DBTraceWaterfallChartContainer({
 
             {logTableSource && (
               <>
-                <Text size="xs">Logs filter</Text>
+                <Text size="xs">
+                  <Trans>Logs filter</Trans>
+                </Text>
                 <SearchInputV2
                   tableConnection={tcFromSource(logTableSource)}
                   placeholder={
@@ -1036,7 +1048,7 @@ export function DBTraceWaterfallChartContainer({
               size="xs"
               ms="xs"
             >
-              Clear Filters
+              <Trans>Clear Filters</Trans>
             </Anchor>
           )}
         </span>
@@ -1052,11 +1064,13 @@ export function DBTraceWaterfallChartContainer({
         }}
       >
         {isFetching ? (
-          <div className="my-3">Loading Traces...</div>
+          <div className="my-3">
+            <Trans>Loading Traces...</Trans>
+          </div>
         ) : error ? (
           <Box mt="lg">
             <Text my="sm" size="sm">
-              An error occurred while fetching trace data:
+              <Trans>An error occurred while fetching trace data:</Trans>
             </Text>
             <Code
               block
@@ -1069,11 +1083,13 @@ export function DBTraceWaterfallChartContainer({
           </Box>
         ) : rows == null ? (
           <div>
-            An unknown error occurred. <ContactSupportText />
+            <Trans>An unknown error occurred.</Trans> <ContactSupportText />
           </div>
         ) : flattenedNodes.length === 0 ? (
           (emptyState ?? (
-            <div className="my-3">No matching spans or logs found</div>
+            <div className="my-3">
+              <Trans>No matching spans or logs found</Trans>
+            </div>
           ))
         ) : (
           <TimelineChart

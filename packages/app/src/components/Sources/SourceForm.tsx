@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   Controller,
@@ -362,7 +363,9 @@ function HighlightedAttributeRow({
       </Grid.Col>
       <Grid.Col span={2} ps="xs">
         <Flex align="center" gap="sm">
-          <Text c="gray">AS</Text>
+          <Text c="gray">
+            <Trans>AS</Trans>
+          </Text>
           <SQLInlineEditorControlled
             control={control}
             name={`${name}.${index}.alias`}
@@ -396,7 +399,7 @@ function HighlightedAttributeRow({
         <Grid.Col span={5} pe={0} pt={0}>
           {isExpressionValid && (
             <Text c="green" size="xs">
-              Expression is valid.
+              <Trans>Expression is valid.</Trans>
             </Text>
           )}
           {isExpressionInvalid && (
@@ -499,7 +502,7 @@ function HighlightedAttributeExpressionsFormRow({
         }}
       >
         <IconCirclePlus size={14} className="me-2" />
-        Add expression
+        <Trans>Add expression</Trans>
       </Button>
     </FormRow>
   );
@@ -554,7 +557,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           >
             <Group>
               <IconCirclePlus size={16} />
-              Add Materialized View
+              <Trans>Add Materialized View</Trans>
             </Group>
           </Button>
         </Stack>
@@ -616,7 +619,7 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={2}>
           <Text size="xs" fw={500} mb={4}>
-            Timestamp Column
+            <Trans>Timestamp Column</Trans>
           </Text>
           <SQLInlineEditorControlled
             tableConnection={{
@@ -633,7 +636,7 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={1}>
           <Text size="xs" fw={500} mb={4}>
-            Granularity
+            <Trans>Granularity</Trans>
             <Tooltip
               label={'The granularity of the timestamp column'}
               color="dark"
@@ -660,7 +663,7 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={1}>
           <Text size="xs" fw={500} mb={4}>
-            Minimum Date
+            <Trans>Minimum Date</Trans>
             <Tooltip
               label={`(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then ${brandName} will assume that the materialized view contains data for all dates for which the source table contains data.`}
               color="dark"
@@ -695,7 +698,7 @@ function MaterializedViewFormSection({
 
       <Box>
         <Text size="xs" fw={500} mb={4}>
-          Dimension Columns (comma-separated)
+          <Trans>Dimension Columns (comma-separated)</Trans>
           <Tooltip
             label={
               'Columns which are not pre-aggregated in the materialized view and can be used for filtering and grouping.'
@@ -833,7 +836,7 @@ function AggregatedColumnsFormSection({
   return (
     <Box>
       <Text size="xs" mb={4}>
-        Pre-aggregated Columns
+        <Trans>Pre-aggregated Columns</Trans>
         <Tooltip
           label={'Columns which are pre-aggregated by the materialized view'}
           color="dark"
@@ -859,7 +862,7 @@ function AggregatedColumnsFormSection({
       <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
-          Add Column
+          <Trans>Add Column</Trans>
         </Group>
       </Button>
     </Box>
@@ -1048,7 +1051,7 @@ function OrderByFormRow({
           <Box>
             {isExpressionValid && (
               <Text c="green" size="xs">
-                Expression is valid.
+                <Trans>Expression is valid.</Trans>
               </Text>
             )}
             {isExpressionInvalid && (
@@ -1119,7 +1122,7 @@ function LogTableModelForm(props: TableModelProps) {
             >
               <Group gap="xs">
                 <IconSettings size={14} />
-                Configure Optional Fields
+                <Trans>Configure Optional Fields</Trans>
               </Group>
             </Anchor>
           )}
@@ -1129,7 +1132,7 @@ function LogTableModelForm(props: TableModelProps) {
               size="xs"
               variant="subtle"
             >
-              Hide Optional Fields
+              <Trans>Hide Optional Fields</Trans>
             </Button>
           )}
         </Box>
@@ -2076,7 +2079,9 @@ export function TableSourceForm({
         message: (
           <Stack>
             <Text size="sm">
-              <b>Failed to create source</b>
+              <b>
+                <Trans>Failed to create source</Trans>
+              </b>
             </Text>
             {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
@@ -2217,7 +2222,9 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Text mb="lg">Source Settings</Text>
+        <Text mb="lg">
+          <Trans>Source Settings</Trans>
+        </Text>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}
@@ -2277,7 +2284,7 @@ export function TableSourceForm({
               size="sm"
               target="_blank"
             >
-              Query Settings
+              <Trans>Query Settings</Trans>
             </Anchor>
           }
           helpText="Query-level Session Settings that will be added to each query for this source."
@@ -2327,7 +2334,7 @@ export function TableSourceForm({
             }}
           >
             <IconCirclePlus size={14} className="me-2" />
-            Add Setting
+            <Trans>Add Setting</Trans>
           </Button>
         </FormRow>
       </Stack>
@@ -2335,7 +2342,7 @@ export function TableSourceForm({
       <Group justify="flex-end" mt="lg">
         {onCancel && (
           <Button variant="secondary" onClick={onCancel} size="xs">
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
         )}
         {isNew ? (
@@ -2345,7 +2352,7 @@ export function TableSourceForm({
             size="xs"
             loading={createSource.isPending}
           >
-            Save New Source
+            <Trans>Save New Source</Trans>
           </Button>
         ) : (
           <>
@@ -2358,7 +2365,7 @@ export function TableSourceForm({
               size="xs"
               loading={createSource.isPending}
             >
-              Save Source
+              <Trans>Save Source</Trans>
             </Button>
           </>
         )}

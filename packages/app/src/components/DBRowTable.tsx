@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
@@ -314,10 +315,12 @@ const SqlModal = ({
           <div className="d-inline-block me-2">
             <IconRefresh size={14} className="spin-animate" />
           </div>
-          Loading SQL...
+          <Trans>Loading SQL...</Trans>
         </div>
       ) : (
-        <div className="text-center my-2">No SQL available</div>
+        <div className="text-center my-2">
+          <Trans>No SQL available</Trans>
+        </div>
       )}
     </Modal>
   );
@@ -1234,24 +1237,22 @@ export const RawLogTable = memo(
                           </div>{' '}
                           {loadingDate != null && (
                             <>
-                              Searched <FormatTime value={loadingDate} />.{' '}
+                              <Trans>Searched</Trans>{' '}
+                              <FormatTime value={loadingDate} />.{' '}
                             </>
                           )}
-                          Loading results
+                          <Trans>Loading results</Trans>
                           {dateRange?.[0] != null && dateRange?.[1] != null ? (
                             <>
                               {' '}
-                              across{' '}
-                              {formatDistance(
-                                dateRange?.[1],
-                                dateRange?.[0],
-                              )}{' '}
+                              <Trans>across</Trans>{' '}
+                              {formatDistance(dateRange?.[1], dateRange?.[0])}{' '}
                               {'('}
                               <FormatTime
                                 value={dateRange?.[0]}
                                 format="withYear"
                               />{' '}
-                              to{' '}
+                              <Trans>to</Trans>{' '}
                               <FormatTime
                                 value={dateRange?.[1]}
                                 format="withYear"
@@ -1264,12 +1265,16 @@ export const RawLogTable = memo(
                       ) : hasNextPage == false &&
                         isLoading == false &&
                         dedupedRows.length > 0 ? (
-                        <div className="my-3">End of Results</div>
+                        <div className="my-3">
+                          <Trans>End of Results</Trans>
+                        </div>
                       ) : isError ? (
                         <div className="my-3">
                           <Text ta="center" size="sm">
-                            Error loading results, please check your query or
-                            try again.
+                            <Trans>
+                              Error loading results, please check your query or
+                              try again.
+                            </Trans>
                           </Text>
                           <Box p="sm">
                             <Box mt="sm">
@@ -1285,7 +1290,7 @@ export const RawLogTable = memo(
                             {error instanceof ClickHouseQueryError && (
                               <>
                                 <Text my="sm" size="sm" ta="center">
-                                  Sent Query:
+                                  <Trans>Sent Query:</Trans>
                                 </Text>
                                 <Flex
                                   w="100%"
@@ -1306,21 +1311,23 @@ export const RawLogTable = memo(
                           className="my-3"
                           data-testid="db-row-table-no-results"
                         >
-                          No results found.
+                          <Trans>No results found.</Trans>
                           <Text mt="sm">
-                            Try checking the query explainer in the search bar
-                            if there are any search syntax issues.
+                            <Trans>
+                              Try checking the query explainer in the search bar
+                              if there are any search syntax issues.
+                            </Trans>
                           </Text>
                           {dateRange?.[0] != null && dateRange?.[1] != null ? (
                             <Text mt="sm">
-                              Searched Time Range:{' '}
+                              <Trans>Searched Time Range:</Trans>{' '}
                               {formatDistance(dateRange?.[1], dateRange?.[0])}{' '}
                               {'('}
                               <FormatTime
                                 value={dateRange?.[0]}
                                 format="withYear"
                               />{' '}
-                              to{' '}
+                              <Trans>to</Trans>{' '}
                               <FormatTime
                                 value={dateRange?.[1]}
                                 format="withYear"
@@ -1755,7 +1762,7 @@ function DBSqlRowTableComponent({
       {denoiseResults && (
         <Box mb="xxs" px="sm">
           <Text fw="bold" fz="xs" mb="xxs">
-            Removed Noisy Event Patterns
+            <Trans>Removed Noisy Event Patterns</Trans>
           </Text>
           <Box mah={100} style={{ overflow: 'auto' }}>
             {noisyPatterns.data?.map(p => (
@@ -1764,7 +1771,9 @@ function DBSqlRowTableComponent({
               </Text>
             ))}
             {noisyPatternIds.length === 0 && (
-              <Text fz="xs">No noisy patterns found</Text>
+              <Text fz="xs">
+                <Trans>No noisy patterns found</Trans>
+              </Text>
             )}
           </Box>
         </Box>

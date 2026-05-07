@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
+import { appWithTranslation } from 'next-i18next/pages';
 import { NextAdapter } from 'next-query-params';
 import { env } from 'next-runtime-env';
 import randomUUID from 'crypto-randomuuid';
@@ -35,6 +36,10 @@ import {
   useUserPreferences,
 } from '@/useUserPreferences';
 
+import nextI18NextConfig from '../next-i18next.config.mjs';
+import enCommon from '../public/locales/en/common.json';
+import jaCommon from '../public/locales/ja/common.json';
+
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/dropzone/styles.css';
@@ -60,6 +65,18 @@ const queryClient = new QueryClient({
     onError: console.error,
   }),
 });
+
+const i18nConfig = {
+  ...nextI18NextConfig,
+  resources: {
+    en: {
+      common: enCommon,
+    },
+    ja: {
+      common: jaCommon,
+    },
+  },
+};
 
 export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {
   getLayout?: (page: React.ReactElement) => React.ReactNode;
@@ -127,7 +144,7 @@ function AppContent({
   );
 }
 
-export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     if (IS_LOCAL_MODE) {
@@ -200,3 +217,5 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     </React.Fragment>
   );
 }
+
+export default appWithTranslation(MyApp, i18nConfig);

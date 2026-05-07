@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -89,14 +90,17 @@ function HeatmapSQLPreview({
     <Stack gap="md">
       <div>
         <Text size="xs" c="dimmed" mb={4}>
-          1. Bounds query — resolves min/max for bucket boundaries
+          <Trans>
+            1. Bounds query — resolves min/max for bucket boundaries
+          </Trans>
         </Text>
         <ChartSQLPreview config={boundsConfig} enableCopy />
       </div>
       <div>
         <Text size="xs" c="dimmed" mb={4}>
-          2. Heatmap query — runs after bounds resolve; <code>{'{min}'}</code>/
-          <code>{'{max}'}</code> are filled in at runtime
+          <Trans>2. Heatmap query — runs after bounds resolve;</Trans>{' '}
+          <code>{'{min}'}</code>/<code>{'{max}'}</code>{' '}
+          <Trans>are filled in at runtime</Trans>
         </Text>
         <ChartSQLPreview config={bucketConfig} enableCopy />
       </div>
@@ -296,7 +300,7 @@ export function ChartPreviewPanel({
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
-                    Sample Matched Events
+                    <Trans>Sample Matched Events</Trans>
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>
@@ -322,7 +326,7 @@ export function ChartPreviewPanel({
             <Accordion.Item value={'SQL'}>
               <Accordion.Control icon={<IconCode size={16} />}>
                 <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Generated SQL
+                  <Trans>Generated SQL</Trans>
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>

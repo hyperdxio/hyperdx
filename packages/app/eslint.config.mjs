@@ -81,6 +81,133 @@ const DATE_SYNTAX_RESTRICTIONS = [
   },
 ];
 
+const LOCAL_I18N_PLUGIN = {
+  rules: {
+    'no-jsx-text-outside-trans': {
+      meta: {
+        type: 'problem',
+        fixable: 'code',
+        docs: {
+          description:
+            'Disallow user-facing JSX text outside of Trans components in migrated files.',
+        },
+        schema: [
+          {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+          },
+        ],
+        messages: {
+          wrapInTrans:
+            'Wrap user-facing JSX text in <Trans> so it can be translated.',
+        },
+      },
+      create(context) {
+        const sourceCode = context.sourceCode;
+        let hasTransImport = false;
+        let hasUntranslatedText = false;
+
+        const hasWords = value => /[\p{L}\p{N}]/u.test(value);
+
+        const isInsideTrans = node => {
+          let current = node.parent;
+
+          while (current) {
+            if (
+              current.type === 'JSXElement' &&
+              current.openingElement.name.type === 'JSXIdentifier' &&
+              current.openingElement.name.name === 'Trans'
+            ) {
+              return true;
+            }
+
+            current = current.parent;
+          }
+
+          return false;
+        };
+
+        const getTransImportFix = fixer => {
+          if (hasTransImport) {
+            return null;
+          }
+
+          const body = sourceCode.ast.body;
+          const lastImport = body.findLast(
+            node => node.type === 'ImportDeclaration',
+          );
+
+          if (lastImport) {
+            return fixer.insertTextAfter(
+              lastImport,
+              "\nimport { Trans } from 'next-i18next/pages';",
+            );
+          }
+
+          return fixer.insertTextBefore(
+            body[0] ?? sourceCode.ast,
+            "import { Trans } from 'next-i18next/pages';\n\n",
+          );
+        };
+
+        return {
+          ImportDeclaration(node) {
+            if (
+              node.source.value === 'next-i18next/pages' ||
+              node.source.value === 'react-i18next'
+            ) {
+              hasTransImport ||= node.specifiers.some(
+                specifier =>
+                  specifier.type === 'ImportSpecifier' &&
+                  specifier.imported.type === 'Identifier' &&
+                  specifier.imported.name === 'Trans',
+              );
+            }
+          },
+          'Program:exit'(node) {
+            if (!hasUntranslatedText || hasTransImport) {
+              return;
+            }
+
+            context.report({
+              node,
+              message:
+                'Import Trans so JSX text can be wrapped for translation.',
+              fix: getTransImportFix,
+            });
+          },
+          JSXText(node) {
+            if (!hasWords(node.value) || isInsideTrans(node)) {
+              return;
+            }
+
+            hasUntranslatedText = true;
+
+            context.report({
+              node,
+              loc: sourceCode.getLocFromIndex(
+                node.range[0] + node.value.search(/[\p{L}\p{N}]/u),
+              ),
+              messageId: 'wrapInTrans',
+              fix(fixer) {
+                const leadingWhitespace = node.value.match(/^\s*/u)?.[0] ?? '';
+                const trailingWhitespace = node.value.match(/\s*$/u)?.[0] ?? '';
+                const text = node.value.trim();
+
+                return fixer.replaceText(
+                  node,
+                  `${leadingWhitespace}<Trans>${text}</Trans>${trailingWhitespace}`,
+                );
+              },
+            });
+          },
+        };
+      },
+    },
+  },
+};
+
 export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -113,6 +240,7 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@next/next': nextPlugin,
+      'local-i18n': LOCAL_I18N_PLUGIN,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
       'react-hook-form': fixupPluginRules(reactHookFormPlugin), // not compatible with eslint 9 yet
@@ -123,12 +251,12 @@ export default [
       ...nextPlugin.configs['core-web-vitals'].rules,
       ...reactHooksPlugin.configs.recommended.rules,
       ...eslintReactPlugin.configs['recommended-type-checked'].rules,
-      
+
       // Non-default react-hooks rules
       'react-hooks/set-state-in-render': 'error',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'error',
-      
+
       // Disable rules from @eslint-react that have equivalent rules enabled in eslint-plugin-react-hooks
       '@eslint-react/rules-of-hooks': 'off',
       '@eslint-react/component-hook-factories': 'off',
@@ -143,8 +271,9 @@ export default [
       '@eslint-react/no-nested-lazy-component-declarations': 'off',
       '@eslint-react/unsupported-syntax': 'off',
       '@eslint-react/use-memo': 'off',
-      
+
       'react-hook-form/no-use-watch': 'error',
+      'local-i18n/no-jsx-text-outside-trans': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-empty-function': 'warn',

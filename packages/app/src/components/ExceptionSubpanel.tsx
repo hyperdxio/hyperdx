@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Button, Text, Tooltip } from '@mantine/core';
@@ -412,7 +413,11 @@ const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return <div className="text-truncate">{row.original.message}</div>;
       }
 
-      return <span className="text-muted">Empty</span>;
+      return (
+        <span className="text-muted">
+          <Trans>Empty</Trans>
+        </span>
+      );
     },
   },
   {
@@ -557,9 +562,13 @@ export const ExceptionSubpanel = ({
                     label="handled"
                     value={
                       firstException.mechanism?.handled ? (
-                        <span className="text-success">true</span>
+                        <span className="text-success">
+                          <Trans>true</Trans>
+                        </span>
                       ) : (
-                        <span className="text-danger">false</span>
+                        <span className="text-danger">
+                          <Trans>false</Trans>
+                        </span>
                       )
                     }
                   />
@@ -595,7 +604,7 @@ export const ExceptionSubpanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering stacktrace
+              <Trans>An error occurred while rendering stacktrace</Trans>
             </div>
           )}
         >
@@ -629,12 +638,14 @@ export const ExceptionSubpanel = ({
           >
             {stacktraceExpanded ? (
               <>
-                <IconChevronUp size={14} className="me-2" /> Hide stack trace
+                <IconChevronUp size={14} className="me-2" />{' '}
+                <Trans>Hide stack trace</Trans>
               </>
             ) : (
               <>
                 <IconChevronDown size={14} className="me-2" />
-                Show {stacktraceHiddenRowsCount} more frames
+                <Trans>Show</Trans> {stacktraceHiddenRowsCount}{' '}
+                <Trans>more frames</Trans>
               </>
             )}
           </Button>
@@ -658,13 +669,14 @@ export const ExceptionSubpanel = ({
               >
                 {breadcrumbExpanded ? (
                   <>
-                    <IconChevronUp size={14} className="me-2" /> Hide
-                    breadcrumbs
+                    <IconChevronUp size={14} className="me-2" />{' '}
+                    <Trans>Hide breadcrumbs</Trans>
                   </>
                 ) : (
                   <>
                     <IconChevronDown size={14} className="me-2" />
-                    Show {breadcrumbHiddenRowsCount} more breadcrumbs
+                    <Trans>Show</Trans> {breadcrumbHiddenRowsCount}{' '}
+                    <Trans>more breadcrumbs</Trans>
                   </>
                 )}
               </Button>

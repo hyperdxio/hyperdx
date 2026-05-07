@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { Trans } from 'next-i18next/pages';
 import { Center, Text } from '@mantine/core';
 
 import { withAppNav } from '@/layout';
@@ -30,7 +31,7 @@ export function TraceRedirectPage() {
   return (
     <Center h="100vh">
       <Text size="sm" c="dimmed">
-        Redirecting to search...
+        <Trans>Redirecting to search...</Trans>
       </Text>
     </Center>
   );

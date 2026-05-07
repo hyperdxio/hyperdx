@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { formatRelative } from 'date-fns';
 import {
@@ -150,7 +151,7 @@ function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
           {uniqueErrors.map((error, idx) => (
             <Stack key={idx} gap={4}>
               <Text size="sm">
-                {ALERT_ERROR_TYPE_LABELS[error.type]} at{' '}
+                {ALERT_ERROR_TYPE_LABELS[error.type]} <Trans>at</Trans>{' '}
                 <FormatTime value={error.timestamp} />
               </Text>
               <Code

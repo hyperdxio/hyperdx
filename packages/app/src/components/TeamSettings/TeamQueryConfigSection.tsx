@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
 import { type TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
@@ -181,7 +182,7 @@ function ClickhouseSettingForm({
               variant="primary"
               loading={updateClickhouseSettings.isPending}
             >
-              Save
+              <Trans>Save</Trans>
             </Button>
             <Button
               type="button"
@@ -192,7 +193,7 @@ function ClickhouseSettingForm({
                 setIsEditing(false);
               }}
             >
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
           </Group>
         </form>
@@ -210,7 +211,7 @@ function ClickhouseSettingForm({
               leftSection={<IconPencil size={16} />}
               onClick={() => setIsEditing(true)}
             >
-              Change
+              <Trans>Change</Trans>
             </Button>
           )}
         </Group>
@@ -231,7 +232,9 @@ export default function TeamQueryConfigSection() {
 
   return (
     <Box id="team_query_config">
-      <Text size="md">ClickHouse Client Settings</Text>
+      <Text size="md">
+        <Trans>ClickHouse Client Settings</Trans>
+      </Text>
       <Divider my="md" />
       <Card>
         <Stack>

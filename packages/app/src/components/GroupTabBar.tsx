@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -192,7 +193,7 @@ export default function GroupTabBar({
         withCloseButton={false}
       >
         <Text size="sm" opacity={0.7}>
-          Delete tab{' '}
+          <Trans>Delete tab</Trans>{' '}
           <Text component="span" fw={700}>
             {deletingTab?.title ?? 'this tab'}
           </Text>
@@ -205,7 +206,7 @@ export default function GroupTabBar({
             variant="secondary"
             onClick={() => setDeletingTabId(null)}
           >
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           {firstRemainingTab && (
             <Button
@@ -219,7 +220,7 @@ export default function GroupTabBar({
                 setDeletingTabId(null);
               }}
             >
-              Move Tiles to {firstRemainingTab.title}
+              <Trans>Move Tiles to</Trans> {firstRemainingTab.title}
             </Button>
           )}
           <Button
@@ -233,7 +234,7 @@ export default function GroupTabBar({
               setDeletingTabId(null);
             }}
           >
-            Delete Tab & Tiles
+            <Trans>Delete Tab & Tiles</Trans>
           </Button>
         </Group>
       </Modal>

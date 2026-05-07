@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Group, Text } from '@mantine/core';
@@ -97,7 +98,9 @@ export default function DirectTraceSidePanel({
       title={
         <Group gap="xs">
           <IconConnection size={16} />
-          <Text fw={600}>Trace</Text>
+          <Text fw={600}>
+            <Trans>Trace</Trans>
+          </Text>
         </Group>
       }
       styles={{
@@ -109,7 +112,9 @@ export default function DirectTraceSidePanel({
     >
       <Flex justify="flex-end" mb="sm">
         <Group gap="sm" align="center">
-          <Text size="sm">Trace Source</Text>
+          <Text size="sm">
+            <Trans>Trace Source</Trans>
+          </Text>
           <SourceSelectControlled
             control={control}
             name="source"

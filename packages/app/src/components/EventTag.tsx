@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import SqlString from 'sqlstring';
 import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
 import { Button, Group, Popover, Stack, Text, Tooltip } from '@mantine/core';
@@ -109,7 +110,7 @@ export default function EventTag({
                 setOpened(false);
               }}
             >
-              Add to Search
+              <Trans>Add to Search</Trans>
             </Button>
           )}
           {generateSearchUrl && (
@@ -121,7 +122,7 @@ export default function EventTag({
                 size="xs"
                 rightSection={<IconSearch size={14} />}
               >
-                Search This Value
+                <Trans>Search This Value</Trans>
               </Button>
             </Link>
           )}

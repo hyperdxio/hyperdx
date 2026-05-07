@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { IconCheck, IconX } from '@tabler/icons-react';
 
 const checkLength = (password: string) => password.length >= 12;
@@ -13,27 +14,27 @@ export const PasswordCheck = (opts: { password: string }) => {
     <div>
       <div>
         <CheckOrX handler={checkLength} password={password}>
-          minimum 12 characters
+          <Trans>minimum 12 characters</Trans>
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneUpper} password={password}>
-          at least 1 uppercase
+          <Trans>at least 1 uppercase</Trans>
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneLower} password={password}>
-          at least 1 lowercase
+          <Trans>at least 1 lowercase</Trans>
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneNumber} password={password}>
-          at least 1 number
+          <Trans>at least 1 number</Trans>
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneSpecial} password={password}>
-          at least 1 special character
+          <Trans>at least 1 special character</Trans>
         </CheckOrX>
       </div>
     </div>

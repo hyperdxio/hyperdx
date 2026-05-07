@@ -1,5 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { sub } from 'date-fns';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -278,7 +279,7 @@ export const KubeTimeline = ({
   if (isLoading) {
     return (
       <Text c="muted" ta="center">
-        Loading...
+        <Trans>Loading...</Trans>
       </Text>
     );
   }
@@ -286,7 +287,7 @@ export const KubeTimeline = ({
   if (allPodEvents.length === 0) {
     return (
       <Text c="muted" ta="center">
-        No events
+        <Trans>No events</Trans>
       </Text>
     );
   }
@@ -322,37 +323,37 @@ export const FormatPodStatus = ({ status }: { status?: number }) => {
     case KubePhase.Pending:
       return (
         <Badge variant="light" color="yellow" fw="normal" tt="none" size="md">
-          Pending
+          <Trans>Pending</Trans>
         </Badge>
       );
     case KubePhase.Running:
       return (
         <Badge variant="light" color="green" fw="normal" tt="none" size="md">
-          Running
+          <Trans>Running</Trans>
         </Badge>
       );
     case KubePhase.Succeeded:
       return (
         <Badge variant="light" color="indigo" fw="normal" tt="none" size="md">
-          Succeeded
+          <Trans>Succeeded</Trans>
         </Badge>
       );
     case KubePhase.Failed:
       return (
         <Badge variant="light" color="red" fw="normal" tt="none" size="md">
-          Failed
+          <Trans>Failed</Trans>
         </Badge>
       );
     case KubePhase.Unknown:
       return (
         <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
+          <Trans>Unknown</Trans>
         </Badge>
       );
     default:
       return (
         <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
+          <Trans>Unknown</Trans>
         </Badge>
       );
   }

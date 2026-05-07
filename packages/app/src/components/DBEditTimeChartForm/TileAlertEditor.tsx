@@ -1,3 +1,4 @@
+import { Trans } from 'next-i18next/pages';
 import {
   Control,
   Controller,
@@ -95,7 +96,7 @@ export function TileAlertEditor({
             />
             <Group gap={4} align="center">
               <Text size="sm" fw={500} mt={2}>
-                Alert
+                <Trans>Alert</Trans>
               </Text>
               {tooltip && (
                 <Tooltip label={tooltip} withArrow>
@@ -110,14 +111,14 @@ export function TileAlertEditor({
                     variant="light"
                     ml="xs"
                   >
-                    Invalid Query
+                    <Trans>Invalid Query</Trans>
                   </Badge>
                 </Tooltip>
               )}
               {warning && (
                 <Tooltip label={warning} withArrow>
                   <Badge color="yellow" size="xs" variant="light" ml="xs">
-                    Warning
+                    <Trans>Warning</Trans>
                   </Badge>
                 </Tooltip>
               )}
@@ -144,7 +145,7 @@ export function TileAlertEditor({
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
-              Trigger when the value
+              <Trans>Trigger when the value</Trans>
             </Text>
             <Controller
               control={control}
@@ -176,7 +177,7 @@ export function TileAlertEditor({
             {isRangeThresholdType(alertThresholdType as AlertThresholdType) && (
               <>
                 <Text size="sm" opacity={0.7}>
-                  and
+                  <Trans>and</Trans>
                 </Text>
                 <Controller
                   control={control}
@@ -192,7 +193,7 @@ export function TileAlertEditor({
                 />
               </>
             )}
-            over
+            <Trans>over</Trans>
             <Controller
               control={control}
               name="alert.interval"
@@ -205,7 +206,7 @@ export function TileAlertEditor({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              window via
+              <Trans>window via</Trans>
             </Text>
             <Controller
               control={control}
@@ -221,7 +222,8 @@ export function TileAlertEditor({
           </Group>
           {alert?.createdBy && (
             <Text size="xs" opacity={0.6} mt="xs">
-              Created by {alert.createdBy.name || alert.createdBy.email}
+              <Trans>Created by</Trans>{' '}
+              {alert.createdBy.name || alert.createdBy.email}
             </Text>
           )}
           <AlertScheduleFields
@@ -238,7 +240,7 @@ export function TileAlertEditor({
             }
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
-            Send to
+            <Trans>Send to</Trans>
           </Text>
           <AlertChannelForm
             control={control}
@@ -253,8 +255,10 @@ export function TileAlertEditor({
               py="xs"
               mt="md"
             >
-              Note: Floating-point query results are not rounded during equality
-              comparison.
+              <Trans>
+                Note: Floating-point query results are not rounded during
+                equality comparison.
+              </Trans>
             </Alert>
           )}
         </Box>

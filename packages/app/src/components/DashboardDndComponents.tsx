@@ -1,4 +1,5 @@
 import React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Box, Button, Center } from '@mantine/core';
@@ -32,7 +33,7 @@ export function EmptyContainerPlaceholder({
             leftSection={<IconPlus size={16} />}
             onClick={onAddTile}
           >
-            Add
+            <Trans>Add</Trans>
           </Button>
         </Center>
       )}

@@ -3,6 +3,8 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+import nextI18NextConfig from './next-i18next.config.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -25,6 +27,9 @@ const nextConfig = {
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   reactCompiler: true,
   basePath: basePath,
+  ...(process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD
+    ? {}
+    : { i18n: nextI18NextConfig.i18n }),
   env: {
     // Ensures bundler-time replacements for client/server code that references this env var
     NEXT_PUBLIC_APP_VERSION: version,

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans } from 'next-i18next/pages';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
@@ -111,7 +112,7 @@ const NamespaceDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Ready
+                  <Trans>Ready</Trans>
                 </Badge>
               ) : (
                 <Badge
@@ -121,7 +122,7 @@ const NamespaceDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Not Ready
+                  <Trans>Not Ready</Trans>
                 </Badge>
               )
             }
@@ -149,7 +150,7 @@ function NamespaceLogs({
     <Card p="md">
       <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
-          Latest Namespace Logs & Spans
+          <Trans>Latest Namespace Logs & Spans</Trans>
           <Flex gap="xs" align="center">
             <SegmentedControl
               size="xs"

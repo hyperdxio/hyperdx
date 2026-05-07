@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import cx from 'classnames';
 import { UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
@@ -356,7 +357,7 @@ export const Table = ({
       </table>
       {isTruncated && (
         <div className="p-2 text-center">
-          Showing the first {MAX_TABLE_ROWS} rows.
+          <Trans>Showing the first</Trans> {MAX_TABLE_ROWS} <Trans>rows.</Trans>
         </div>
       )}
       {tableBottom}

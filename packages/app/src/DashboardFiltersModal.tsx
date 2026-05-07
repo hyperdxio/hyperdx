@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Trans } from 'next-i18next/pages';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -244,14 +245,14 @@ const DashboardFilterEditForm = ({
 
             <Group justify="space-between" my="xs">
               <Button variant="secondary" onClick={onCancel}>
-                Cancel
+                <Trans>Cancel</Trans>
               </Button>
               <Button
                 type="submit"
                 variant="primary"
                 data-testid="save-filter-button"
               >
-                Save filter
+                <Trans>Save filter</Trans>
               </Button>
             </Group>
           </Stack>
@@ -277,17 +278,21 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
         data-testid="dashboard-filters-empty-state"
       >
         <IconFilter />
-        <Title order={4}>No filters yet.</Title>
+        <Title order={4}>
+          <Trans>No filters yet.</Trans>
+        </Title>
         <Text size="sm" ta="center" px="xl">
-          Add filters to let users quickly narrow data on key columns. Saved
-          filters will stay with this dashboard.
+          <Trans>
+            Add filters to let users quickly narrow data on key columns. Saved
+            filters will stay with this dashboard.
+          </Trans>
         </Text>
         <Button
           variant="primary"
           onClick={onCreateFilter}
           data-testid="add-filter-button"
         >
-          Add new filter
+          <Trans>Add new filter</Trans>
         </Button>
       </Stack>
     </Modal>
@@ -375,14 +380,14 @@ const DashboardFiltersList = ({
           onClick={onClose}
           data-testid="close-filters-button"
         >
-          Close
+          <Trans>Close</Trans>
         </Button>
         <Button
           variant="primary"
           onClick={onAddNew}
           data-testid="add-filter-button"
         >
-          Add new filter
+          <Trans>Add new filter</Trans>
         </Button>
       </Group>
     </Modal>

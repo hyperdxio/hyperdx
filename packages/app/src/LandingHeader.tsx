@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -55,7 +56,7 @@ export default function LandingHeader({
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
                 size="sm"
               >
-                {brandName} Cloud
+                {brandName} <Trans>Cloud</Trans>
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
@@ -64,7 +65,7 @@ export default function LandingHeader({
                 style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
                 size="sm"
               >
-                Docs
+                <Trans>Docs</Trans>
               </Anchor>
               {!isLoggedIn && installation?.isTeamExisting === true && (
                 <Anchor
@@ -78,7 +79,7 @@ export default function LandingHeader({
                   style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
                   size="sm"
                 >
-                  Login
+                  <Trans>Login</Trans>
                 </Anchor>
               )}
               {!isLoggedIn &&
@@ -86,14 +87,14 @@ export default function LandingHeader({
                 installation?.isTeamExisting === false && (
                   <Link href="/register">
                     <Button variant="primary" size="sm">
-                      Setup Account
+                      <Trans>Setup Account</Trans>
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
                 <Link href="/search">
                   <Button variant="primary" size="sm">
-                    Go to Search
+                    <Trans>Go to Search</Trans>
                   </Button>
                 </Link>
               )}
@@ -108,14 +109,14 @@ export default function LandingHeader({
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
               >
-                {brandName} Cloud
+                {brandName} <Trans>Cloud</Trans>
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
                 underline="never"
                 style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
               >
-                Docs
+                <Trans>Docs</Trans>
               </Anchor>
               {!isLoggedIn && installation?.isTeamExisting === true && (
                 <Anchor
@@ -123,7 +124,7 @@ export default function LandingHeader({
                   underline="never"
                   style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
                 >
-                  Login
+                  <Trans>Login</Trans>
                 </Anchor>
               )}
               {!isLoggedIn &&
@@ -131,14 +132,14 @@ export default function LandingHeader({
                 installation?.isTeamExisting === false && (
                   <Link href="/register">
                     <Button variant="primary" size="sm" fullWidth>
-                      Setup Account
+                      <Trans>Setup Account</Trans>
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
                 <Link href="/search">
                   <Button variant="primary" size="sm" fullWidth>
-                    Go to Search
+                    <Trans>Go to Search</Trans>
                   </Button>
                 </Link>
               )}

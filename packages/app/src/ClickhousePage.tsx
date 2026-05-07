@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { Trans } from 'next-i18next/pages';
 import {
   parseAsFloat,
   parseAsStringEnum,
@@ -216,10 +217,13 @@ function InfrastructureTab({
             title={
               <Stack gap={0}>
                 <Text size="sm" mb="xs">
-                  Network
+                  <Trans>Network</Trans>
                 </Text>
                 <Text size="xs" mb="sm">
-                  Network activity for the entire machine, not only Clickhouse.
+                  <Trans>
+                    Network activity for the entire machine, not only
+                    Clickhouse.
+                  </Trans>
                 </Text>
               </Stack>
             }
@@ -357,13 +361,13 @@ function InsertsTab({
           <DBTimeChart
             title={
               <Text size="sm">
-                Insert{' '}
+                <Trans>Insert</Trans>{' '}
                 {insertsBy === 'queries'
                   ? 'Queries'
                   : insertsBy === 'rows'
                     ? 'Rows'
                     : 'Bytes'}{' '}
-                Per Table
+                <Trans>Per Table</Trans>
               </Text>
             }
             toolbarPrefix={[
@@ -422,12 +426,14 @@ function InsertsTab({
             title={
               <Stack gap={0}>
                 <Text size="sm" mb="sm">
-                  Active Parts Per Partition
+                  <Trans>Active Parts Per Partition</Trans>
                 </Text>
                 <Text size="xs" mb="md">
-                  Recommended to stay under 300, ClickHouse will automatically
-                  throttle inserts after 1,000 parts per partition and stop
-                  inserts at 3,000 parts per partition.
+                  <Trans>
+                    Recommended to stay under 300, ClickHouse will automatically
+                    throttle inserts after 1,000 parts per partition and stop
+                    inserts at 3,000 parts per partition.
+                  </Trans>
                 </Text>
               </Stack>
             }
@@ -578,7 +584,7 @@ function ClickhousePage() {
             onSearch(DEFAULT_INTERVAL);
           }}
         >
-          Reset
+          <Trans>Reset</Trans>
         </Button>,
       ];
     }
@@ -588,16 +594,18 @@ function ClickhousePage() {
     <Box p="sm" data-testid="clickhouse-dashboard-page">
       <Breadcrumbs mb="xs" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          <Trans>Dashboards</Trans>
         </Anchor>
         <Text fz="sm" c="dimmed">
-          ClickHouse
+          <Trans>ClickHouse</Trans>
         </Text>
       </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>
-          <Text size="xl">Clickhouse Dashboard</Text>
+          <Text size="xl">
+            <Trans>Clickhouse Dashboard</Trans>
+          </Text>
           <ConnectionSelectControlled
             control={control}
             name="connection"
@@ -642,10 +650,16 @@ function ClickhousePage() {
         value={tab}
       >
         <Tabs.List>
-          <Tabs.Tab value="selects">Select</Tabs.Tab>
-          <Tabs.Tab value="inserts">Inserts</Tabs.Tab>
+          <Tabs.Tab value="selects">
+            <Trans>Select</Trans>
+          </Tabs.Tab>
+          <Tabs.Tab value="inserts">
+            <Trans>Inserts</Trans>
+          </Tabs.Tab>
           {/* <Tabs.Tab value="merges">Merges / Mutations</Tabs.Tab> */}
-          <Tabs.Tab value="infrastructure">Infrastructure</Tabs.Tab>
+          <Tabs.Tab value="infrastructure">
+            <Trans>Infrastructure</Trans>
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="selects">
           <Grid mt="md">
@@ -788,7 +802,7 @@ function ClickhousePage() {
                 }}
               >
                 <Text size="sm" mb="md">
-                  Slowest Queries
+                  <Trans>Slowest Queries</Trans>
                 </Text>
                 <DBSqlRowTable
                   renderRowDetails={row => {
