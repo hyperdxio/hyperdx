@@ -1,6 +1,7 @@
 // seed: packages/app/tests/e2e/features/dashboard.spec.ts
 
 import { TeamPage } from '../page-objects/TeamPage';
+import { getApiUrl } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
@@ -196,7 +197,12 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
         teamPage.page.getByText('Webhook created successfully'),
       ).toBeVisible();
       await expect(teamPage.integrations.getByText(webhookName)).toBeVisible();
-      await expect(teamPage.integrations.getByText(webhookUrl)).toBeVisible();
+
+      // URL should be masked (not showing the original)
+      await expect(teamPage.integrations.getByText(webhookUrl)).toBeHidden();
+      await expect(
+        teamPage.integrations.getByText(/example\.com\/\*{4}/),
+      ).toBeVisible();
     });
 
     await test.step('Delete the webhook', async () => {
@@ -209,6 +215,102 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
         teamPage.page.getByText('Webhook deleted successfully'),
       ).toBeVisible();
       await expect(teamPage.integrations.getByText(webhookName)).toBeHidden();
+    });
+  });
+
+  test('should redact webhook secrets and preserve on edit', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const ts = Date.now();
+    const webhookName = `E2E Secret Webhook ${ts}`;
+    const webhookUrl = `https://example.com/e2e-secret-${ts}`;
+    const updatedName = `E2E Secret Renamed ${ts}`;
+    const apiUrl = getApiUrl();
+
+    await test.step('Create a Generic webhook with headers via API', async () => {
+      const response = await page.request.post(`${apiUrl}/webhooks`, {
+        data: {
+          name: webhookName,
+          service: 'generic',
+          url: webhookUrl,
+          description: 'E2E test webhook with secrets',
+          headers: {
+            Authorization: 'Bearer e2e-secret-token',
+            'X-Api-Key': 'e2e-api-key-value',
+          },
+          body: '{"text": "test"}',
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+    });
+
+    await test.step('Navigate to integrations tab and verify masked URL', async () => {
+      await teamPage.openIntegrationsTab();
+      await teamPage.integrations.scrollIntoViewIfNeeded();
+
+      // Webhook name should be visible
+      await expect(teamPage.integrations.getByText(webhookName)).toBeVisible();
+
+      // URL should be masked — original URL must NOT appear
+      await expect(teamPage.integrations.getByText(webhookUrl)).toBeHidden();
+
+      // Masked URL should be visible
+      const maskedUrlLocator = teamPage.getWebhookUrlText(webhookName);
+      await expect(maskedUrlLocator).toBeVisible();
+    });
+
+    await test.step('Edit webhook — verify masked URL in form', async () => {
+      await teamPage.editWebhookByName(webhookName);
+      await expect(teamPage.webhookUrlInput).toBeVisible();
+
+      // URL input should contain the masked URL, not the original
+      await expect(teamPage.webhookUrlInput).toHaveValue(/\*{4}/);
+      await expect(teamPage.webhookUrlInput).not.toHaveValue(webhookUrl);
+    });
+
+    await test.step('Update only the name and save', async () => {
+      await teamPage.webhookNameInput.clear();
+      await teamPage.webhookNameInput.fill(updatedName);
+      await teamPage.submitWebhookForm();
+    });
+
+    await test.step('Verify update succeeded', async () => {
+      await expect(
+        teamPage.page.getByText('Webhook updated successfully'),
+      ).toBeVisible();
+      await expect(teamPage.integrations.getByText(updatedName)).toBeVisible();
+    });
+
+    await test.step('Verify stored URL was preserved via API', async () => {
+      const response = await page.request.get(
+        `${apiUrl}/webhooks?service=generic`,
+      );
+      expect(response.ok()).toBeTruthy();
+      const body = await response.json();
+      const webhook = body.data.find(
+        (w: { name: string }) => w.name === updatedName,
+      );
+      expect(webhook).toBeDefined();
+
+      // API response should have masked URL
+      expect(webhook.url).toContain('****');
+      expect(webhook.url).not.toBe(webhookUrl);
+
+      // API response should have redacted header values but preserved keys
+      expect(webhook.headers).toBeDefined();
+      expect(Object.keys(webhook.headers)).toContain('Authorization');
+      expect(Object.keys(webhook.headers)).toContain('X-Api-Key');
+      expect(webhook.headers.Authorization).toBe('****');
+      expect(webhook.headers['X-Api-Key']).toBe('****');
+    });
+
+    await test.step('Clean up — delete webhook', async () => {
+      await teamPage.deleteWebhookByName(updatedName);
+      await teamPage.confirmDialog();
+      await expect(
+        teamPage.page.getByText('Webhook deleted successfully'),
+      ).toBeVisible();
     });
   });
 

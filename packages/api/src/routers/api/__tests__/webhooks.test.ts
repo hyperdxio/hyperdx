@@ -55,7 +55,20 @@ describe('webhooks router', () => {
     expect(response.body.data[0]).toMatchObject({
       name: MOCK_WEBHOOK.name,
       service: MOCK_WEBHOOK.service,
-      url: MOCK_WEBHOOK.url,
+    });
+
+    // URL should be masked (origin + /****)
+    expect(response.body.data[0].url).toBe('https://hooks.slack.com/****');
+    expect(response.body.data[0].url).not.toBe(MOCK_WEBHOOK.url);
+
+    // Header keys preserved, values redacted
+    expect(response.body.data[0].headers).toEqual({
+      'X-Custom-Header': '****',
+    });
+
+    // QueryParam keys preserved, values redacted
+    expect(response.body.data[0].queryParams).toEqual({
+      param1: '****',
     });
 
     // Get webhooks for multiple services
@@ -89,13 +102,19 @@ describe('webhooks router', () => {
     expect(response.body.data).toMatchObject({
       name: MOCK_WEBHOOK.name,
       service: MOCK_WEBHOOK.service,
-      url: MOCK_WEBHOOK.url,
       description: MOCK_WEBHOOK.description,
     });
 
-    // Verify webhook was created in database
+    // Response should have masked URL and redacted headers
+    expect(response.body.data.url).toBe('https://hooks.slack.com/****');
+    expect(response.body.data.headers).toEqual({
+      'X-Custom-Header': '****',
+    });
+
+    // Verify webhook was created in database with original values
     const webhooks = await Webhook.find({});
     expect(webhooks).toHaveLength(1);
+    expect(webhooks[0].url).toBe(MOCK_WEBHOOK.url);
   });
 
   it('POST / - returns 400 when webhook with same URL already exists', async () => {
@@ -203,7 +222,16 @@ describe('webhooks router', () => {
         })
         .expect(200);
 
-      expect(response.body.data.headers).toMatchObject(validHeaders);
+      // Response should have all header keys but redacted values
+      const expectedRedacted = Object.fromEntries(
+        Object.keys(validHeaders).map(k => [k, '****']),
+      );
+      expect(response.body.data.headers).toEqual(expectedRedacted);
+
+      // Database should have real values
+      const webhook = await Webhook.findById(response.body.data._id);
+      const stored = webhook!.toJSON({ flattenMaps: true });
+      expect(stored.headers).toMatchObject(validHeaders);
     });
 
     it('POST / - rejects header names starting with numbers', async () => {
@@ -292,7 +320,16 @@ describe('webhooks router', () => {
         })
         .expect(200);
 
-      expect(response.body.data.headers).toMatchObject(validHeaders);
+      // Response should have redacted values
+      const expectedRedacted = Object.fromEntries(
+        Object.keys(validHeaders).map(k => [k, '****']),
+      );
+      expect(response.body.data.headers).toEqual(expectedRedacted);
+
+      // Database should have real values
+      const webhook = await Webhook.findById(response.body.data._id);
+      const stored = webhook!.toJSON({ flattenMaps: true });
+      expect(stored.headers).toMatchObject(validHeaders);
     });
 
     it('POST / - rejects header values with CRLF injection', async () => {
@@ -431,11 +468,16 @@ describe('webhooks router', () => {
       expect(response.body.data).toMatchObject({
         name: updatedData.name,
         service: updatedData.service,
-        url: updatedData.url,
         description: updatedData.description,
       });
 
-      // Verify webhook was updated in database
+      // Response should have masked URL and redacted headers
+      expect(response.body.data.url).toBe('https://hooks.slack.com/****');
+      expect(response.body.data.headers).toEqual({
+        'X-Updated-Header': '****',
+      });
+
+      // Verify webhook was updated in database with real values
       const updatedWebhook = await Webhook.findById(webhook._id);
       expect(updatedWebhook).toMatchObject({
         name: updatedData.name,
@@ -515,7 +557,16 @@ describe('webhooks router', () => {
         })
         .expect(200);
 
-      expect(response.body.data.headers).toMatchObject(updatedHeaders);
+      // Response should have redacted values
+      const expectedRedacted = Object.fromEntries(
+        Object.keys(updatedHeaders).map(k => [k, '****']),
+      );
+      expect(response.body.data.headers).toEqual(expectedRedacted);
+
+      // Database should have real values
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toMatchObject(updatedHeaders);
     });
 
     it('rejects update with invalid headers', async () => {
@@ -539,6 +590,269 @@ describe('webhooks router', () => {
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body[0].type).toBe('Body');
       expect(response.body[0].errors).toBeDefined();
+    });
+  });
+
+  describe('Secret redaction and merge', () => {
+    it('GET / - masks URL to origin/****', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .get('/webhooks')
+        .query({ service: WebhookService.Slack })
+        .expect(200);
+
+      expect(response.body.data[0].url).toBe('https://hooks.slack.com/****');
+
+      // Verify original URL is NOT exposed
+      expect(response.body.data[0].url).not.toContain('services');
+    });
+
+    it('GET / - returns empty headers/queryParams unchanged', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await Webhook.create({
+        name: 'No secrets',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/services/T00/B00/XXX',
+        team: team._id,
+      });
+
+      const response = await agent
+        .get('/webhooks')
+        .query({ service: WebhookService.Slack })
+        .expect(200);
+
+      // Empty maps stay empty (no phantom redacted keys)
+      expect(response.body.data[0].headers).toBeUndefined();
+      expect(response.body.data[0].queryParams).toBeUndefined();
+    });
+
+    it('PUT - masked URL preserves existing stored URL', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      // Send the masked URL (as the frontend would after receiving a GET)
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://hooks.slack.com/****',
+          name: 'Renamed Only',
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe(MOCK_WEBHOOK.url);
+      expect(stored!.name).toBe('Renamed Only');
+    });
+
+    it('PUT - new URL replaces existing URL', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const newUrl = 'https://example.com/webhook/new-endpoint';
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: newUrl,
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe(newUrl);
+    });
+
+    it('PUT - redacted header values preserve existing stored values', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const originalHeaders = {
+        Authorization: 'Bearer secret-token-123',
+        'X-Api-Key': 'my-api-key',
+      };
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: originalHeaders,
+        team: team._id,
+      });
+
+      // Send back redacted values (as frontend would)
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          headers: {
+            Authorization: '****',
+            'X-Api-Key': '****',
+          },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toEqual(originalHeaders);
+    });
+
+    it('PUT - new header value updates, redacted value preserves', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const originalHeaders = {
+        Authorization: 'Bearer old-token',
+        'X-Api-Key': 'old-key',
+      };
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: originalHeaders,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          headers: {
+            Authorization: '****', // preserve
+            'X-Api-Key': 'brand-new-key', // update
+          },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toEqual({
+        Authorization: 'Bearer old-token',
+        'X-Api-Key': 'brand-new-key',
+      });
+    });
+
+    it('PUT - removing a header key deletes it from storage', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const originalHeaders = {
+        Authorization: 'Bearer token',
+        'X-Api-Key': 'key-to-keep',
+        'X-Remove-Me': 'will-be-removed',
+      };
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: originalHeaders,
+        team: team._id,
+      });
+
+      // Send only two keys back, omitting X-Remove-Me
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          headers: {
+            Authorization: '****',
+            'X-Api-Key': '****',
+          },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toEqual({
+        Authorization: 'Bearer token',
+        'X-Api-Key': 'key-to-keep',
+      });
+      expect(plain.headers).not.toHaveProperty('X-Remove-Me');
+    });
+
+    it('PUT - empty headers object clears all stored headers', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: { Authorization: 'Bearer token' },
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          headers: {},
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toBeUndefined();
+    });
+
+    it('PUT - redacted queryParam values preserve existing stored values', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const originalParams = { apiKey: 'secret-key-123' };
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        queryParams: originalParams,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          queryParams: { apiKey: '****' },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.queryParams).toEqual(originalParams);
+    });
+
+    it('PUT - duplicate check uses resolved URL, not masked URL', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      // Create two webhooks
+      await Webhook.create({
+        ...MOCK_WEBHOOK,
+        name: 'First',
+        team: team._id,
+      });
+
+      const second = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        name: 'Second',
+        url: 'https://hooks.slack.com/services/T11/B11/YYY',
+        team: team._id,
+      });
+
+      // Update second webhook with masked URL should NOT trigger duplicate
+      // because the resolved URL is the second webhook's own URL
+      const response = await agent
+        .put(`/webhooks/${second._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          name: 'Renamed Second',
+          url: 'https://hooks.slack.com/****',
+        })
+        .expect(200);
+
+      expect(response.body.data.name).toBe('Renamed Second');
     });
   });
 

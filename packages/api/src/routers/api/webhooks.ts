@@ -19,6 +19,65 @@ import {
 
 const router = express.Router();
 
+const REDACTED_VALUE = '****';
+
+const maskUrl = (url?: string): string | undefined => {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/${REDACTED_VALUE}`;
+  } catch {
+    return REDACTED_VALUE;
+  }
+};
+
+const redactMapValues = (
+  map?: Record<string, string>,
+): Record<string, string> | undefined => {
+  if (!map || Object.keys(map).length === 0) return map;
+  return Object.fromEntries(Object.keys(map).map(key => [key, REDACTED_VALUE]));
+};
+
+const sanitizeWebhook = <T extends Record<string, unknown>>(webhook: T): T =>
+  ({
+    ...webhook,
+    url: maskUrl(webhook.url as string | undefined),
+    headers: redactMapValues(
+      webhook.headers as Record<string, string> | undefined,
+    ),
+    queryParams: redactMapValues(
+      webhook.queryParams as Record<string, string> | undefined,
+    ),
+  }) as T;
+
+const isMaskedUrl = (url: string): boolean => {
+  try {
+    return new URL(url).pathname === `/${REDACTED_VALUE}`;
+  } catch {
+    return false;
+  }
+};
+
+const mergeRedactedMap = (
+  existing: Record<string, string> | undefined,
+  incoming: Record<string, string> | undefined,
+): Record<string, string> | undefined => {
+  if (incoming === undefined || incoming === null) return existing;
+  if (Object.keys(incoming).length === 0) return undefined;
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === REDACTED_VALUE) {
+      if (existing?.[key]) {
+        result[key] = existing[key];
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
 router.get(
   '/',
   validateRequest({
@@ -41,7 +100,9 @@ router.get(
         { __v: 0, team: 0 },
       );
       res.json({
-        data: webhooks.map(w => w.toJSON({ flattenMaps: true })),
+        data: webhooks.map(w =>
+          sanitizeWebhook(w.toJSON({ flattenMaps: true })),
+        ),
       });
     } catch (err) {
       next(err);
@@ -110,7 +171,7 @@ router.post(
       });
       await webhook.save();
       res.json({
-        data: webhook.toJSON({ flattenMaps: true }),
+        data: sanitizeWebhook(webhook.toJSON({ flattenMaps: true })),
       });
     } catch (err) {
       next(err);
@@ -163,11 +224,27 @@ router.put(
         });
       }
 
+      const existingPlain = existingWebhook.toJSON({
+        flattenMaps: true,
+      }) as {
+        url?: string;
+        headers?: Record<string, string>;
+        queryParams?: Record<string, string>;
+      };
+
+      // Resolve masked/redacted fields against stored values
+      const resolvedUrl = isMaskedUrl(url) ? existingPlain.url : url;
+      const resolvedHeaders = mergeRedactedMap(existingPlain.headers, headers);
+      const resolvedQueryParams = mergeRedactedMap(
+        existingPlain.queryParams,
+        queryParams,
+      );
+
       // Check if another webhook with same service and url already exists (excluding current webhook)
       const duplicateWebhook = await Webhook.findOne({
         team: teamId,
         service,
-        url,
+        url: resolvedUrl,
         _id: { $ne: id },
       });
       if (duplicateWebhook) {
@@ -182,10 +259,10 @@ router.put(
         {
           name,
           service,
-          url,
+          url: resolvedUrl,
           description,
-          queryParams,
-          headers,
+          queryParams: resolvedQueryParams,
+          headers: resolvedHeaders,
           body,
         },
         { new: true, select: { __v: 0, team: 0 } },
@@ -198,7 +275,7 @@ router.put(
       }
 
       res.json({
-        data: updatedWebhook.toJSON({ flattenMaps: true }),
+        data: sanitizeWebhook(updatedWebhook.toJSON({ flattenMaps: true })),
       });
     } catch (err) {
       next(err);
