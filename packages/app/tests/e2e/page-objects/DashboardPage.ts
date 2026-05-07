@@ -64,7 +64,7 @@ export class DashboardPage {
   private readonly createDashboardButton: Locator;
   private readonly addDropdownButton: Locator;
   private readonly addTileMenuItem: Locator;
-  private readonly addSectionMenuItem: Locator;
+  private readonly addGroupMenuItem: Locator;
   private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
@@ -101,9 +101,7 @@ export class DashboardPage {
     this.addTileMenuItem = page.locator(
       '[data-testid="add-new-tile-menu-item"]',
     );
-    this.addSectionMenuItem = page.locator(
-      '[data-testid="add-new-section-menu-item"]',
-    );
+    this.addGroupMenuItem = page.getByTestId('add-new-group-menu-item');
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchSubmitButton = page.locator(
       '[data-testid="search-submit-button"]',
@@ -219,11 +217,254 @@ export class DashboardPage {
   }
 
   /**
-   * Add a new section to the dashboard
+   * Add a new group (container) to the dashboard via the "+ Add" dropdown.
    */
-  async addSection() {
+  async addGroup() {
     await this.addDropdownButton.click();
-    await this.addSectionMenuItem.click();
+    await this.addGroupMenuItem.click();
+  }
+
+  /**
+   * Get the group container element by its container id.
+   */
+  getGroup(containerId: string): Locator {
+    return this.page.getByTestId(`group-container-${containerId}`);
+  }
+
+  /**
+   * Get all rendered group containers in DOM order.
+   */
+  getGroups(): Locator {
+    return this.page.locator('[data-testid^="group-container-"]');
+  }
+
+  /**
+   * Read the container ids of all groups in DOM order. Each id is parsed
+   * out of the `group-container-${id}` testid. Drops empty entries to
+   * surface DOM regressions (a group rendered without the testid prefix
+   * would otherwise show as `""` and silently pass equality checks).
+   */
+  async getGroupOrder(): Promise<string[]> {
+    const groups = this.getGroups();
+    const ids = await groups.evaluateAll(elements =>
+      elements.map(el => {
+        const testId = el.getAttribute('data-testid') ?? '';
+        return testId.replace(/^group-container-/, '');
+      }),
+    );
+    return ids.filter(id => id.length > 0);
+  }
+
+  /**
+   * Wait for the dashboard page shell to be visible. Used after reload /
+   * cross-page navigation to a single point of synchronisation.
+   */
+  async waitForLoaded() {
+    await expect(this.page.getByTestId('dashboard-page')).toBeVisible();
+  }
+
+  /** Locator for a group's collapse/expand chevron. */
+  getGroupChevron(containerId: string): Locator {
+    return this.page.getByTestId(`group-chevron-${containerId}`);
+  }
+
+  /** Locator for the bordered toggle menu item inside a group's overflow menu. */
+  getGroupBorderedToggle(containerId: string): Locator {
+    return this.page.getByTestId(`group-toggle-bordered-${containerId}`);
+  }
+
+  /** Locator for the visible tabs inside a group's tab bar. */
+  getGroupTabs(containerId: string): Locator {
+    return this.getGroup(containerId).getByRole('tab');
+  }
+
+  /**
+   * Read the inline border state of a group via the `data-bordered`
+   * attribute. Reading the attribute (rather than inspecting inline
+   * `style.border`) keeps the spec decoupled from how borders happen to
+   * be applied.
+   */
+  getGroupBorderedAttr(containerId: string): Promise<string | null> {
+    return this.getGroup(containerId).getAttribute('data-bordered');
+  }
+
+  /**
+   * Wait for a backend dashboard PATCH (the fire-and-forget mutation that
+   * `setDashboard` issues) to land before navigating away. Required between
+   * any state mutation that the round-trip test relies on and the next
+   * `goto`/reload, because `setDashboard` is fire-and-forget and a fast
+   * navigation drops the in-flight request.
+   */
+  async waitForDashboardPatch() {
+    await this.page.waitForResponse(
+      r =>
+        r.url().includes('/api/dashboards/') &&
+        r.request().method() === 'PATCH' &&
+        r.ok(),
+      { timeout: 15000 },
+    );
+  }
+
+  /**
+   * Hover the group then open its overflow ("...") menu so subsequent
+   * menu-item helpers can click into it.
+   *
+   * The menu trigger lives behind `pointer-events: none` until the React
+   * `hovered` state commits (DashboardContainer.tsx:106-109,
+   * `hoverControlStyle`). Playwright's auto-wait checks visibility but
+   * not `pointer-events`, so the click can land on a hidden-from-input
+   * element. Wait for `pointer-events` to clear before clicking.
+   */
+  async openGroupMenu(containerId: string) {
+    const group = this.getGroup(containerId);
+    await group.hover();
+    const trigger = this.page.getByTestId(`group-menu-${containerId}`);
+    await expect(trigger).not.toHaveCSS('pointer-events', 'none');
+    await trigger.click();
+  }
+
+  /**
+   * Toggle the bordered visual style via the overflow menu.
+   */
+  async toggleGroupBordered(containerId: string) {
+    await this.openGroupMenu(containerId);
+    await this.page.getByTestId(`group-toggle-bordered-${containerId}`).click();
+  }
+
+  /**
+   * Add a new tab to the group via the overflow menu.
+   */
+  async addTabToGroup(containerId: string) {
+    await this.openGroupMenu(containerId);
+    await this.page.getByTestId(`group-add-tab-${containerId}`).click();
+  }
+
+  /**
+   * Read the `?activeTabs` query param as a `{ containerId: tabId }` map.
+   * Returns an empty object when the param is missing or malformed.
+   *
+   * The serializer is `parseAsJsonEncoded` (see
+   * `packages/app/src/utils/queryParsers.ts`), which double-encodes its
+   * value to survive the Microsoft-Teams `+` -> `%2B` re-encoding. nuqs
+   * writes `encodeURIComponent(JSON.stringify(value))` AND then nuqs's
+   * URL machinery encodes the resulting `%XX` sequences a second time.
+   * `searchParams.get(...)` decodes one level, so we have to decode the
+   * second level ourselves before `JSON.parse` to recover the object.
+   * The fallback to plain `JSON.parse` keeps us compatible with the
+   * old single-encoded format, mirroring the parser.
+   */
+  getActiveTabsParam(): Record<string, string> {
+    const url = new URL(this.page.url());
+    const raw = url.searchParams.get('activeTabs');
+    if (!raw) return {};
+    const tryParse = (value: string): unknown => {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    };
+    let parsed: unknown;
+    try {
+      parsed = tryParse(decodeURIComponent(raw));
+    } catch {
+      parsed = undefined;
+    }
+    if (parsed === undefined) parsed = tryParse(raw);
+    // `JSON.parse` returns `any`. Anything other than a non-array object
+    // (e.g. `"123"`, `null`, `[…]`) would lie to callers and silently
+    // fail downstream `expect.poll(() => …[id])` checks.
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return {};
+    }
+    // Build the result explicitly so the `string` value type is enforced
+    // at runtime (and we don't trust JSON.parse's `any` return).
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string') result[key] = value;
+    }
+    return result;
+  }
+
+  /**
+   * Read the `?collapsed` query param as an array of container ids. nuqs
+   * serializes arrays as comma-separated values (`?collapsed=id1,id2`).
+   * Returns an empty array when the param is missing.
+   */
+  getCollapsedParam(): string[] {
+    const raw = new URL(this.page.url()).searchParams.get('collapsed');
+    return raw ? raw.split(',') : [];
+  }
+
+  /**
+   * Read the `?expanded` query param as an array of container ids. Mirrors
+   * `getCollapsedParam` semantics.
+   */
+  getExpandedParam(): string[] {
+    const raw = new URL(this.page.url()).searchParams.get('expanded');
+    return raw ? raw.split(',') : [];
+  }
+
+  /**
+   * Drag a group's drag handle onto another group, reordering them.
+   *
+   * @dnd-kit's MouseSensor uses `activationConstraint: { distance: 8 }`
+   * (see DashboardDndContext.tsx). The handle has to traverse 8+ pixels
+   * before the drag activates, so a single-shot drop never registers.
+   * The multi-step `mouse.move` mirrors the existing histogram-brush
+   * pattern in SearchPage.ts.
+   *
+   * Stability notes:
+   *  - Pointerdown is preceded by a `mouse.move(startX, startY)` so the
+   *    pointerdown coalesces deterministically.
+   *  - The activation nudge is 10px (just past the 8px threshold) and
+   *    stays inside the drag handle's bounds so we never leave the hit
+   *    area before activation registers.
+   *  - The target's `boundingBox()` is recomputed immediately before the
+   *    final move, because @dnd-kit applies a 250ms sortable-item
+   *    transform that shifts neighbouring containers while the drag is
+   *    in flight.
+   */
+  async dragGroupTo(fromContainerId: string, toContainerId: string) {
+    const handle = this.page.getByTestId(
+      `group-drag-handle-${fromContainerId}`,
+    );
+    const target = this.getGroup(toContainerId);
+    await handle.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+
+    const handleBox = await handle.boundingBox();
+    if (!handleBox) {
+      throw new Error('Drag source not visible');
+    }
+
+    const startX = handleBox.x + handleBox.width / 2;
+    const startY = handleBox.y + handleBox.height / 2;
+
+    await this.page.mouse.move(startX, startY);
+    await this.page.mouse.move(startX, startY); // stabilise pointerdown coalescing
+    await this.page.mouse.down();
+    // Nudge to cross the 8px activation threshold while staying inside
+    // the handle's hit area.
+    await this.page.mouse.move(startX + 10, startY, { steps: 5 });
+
+    // Recompute the target box after activation; @dnd-kit shifts
+    // sibling containers during the drag and a stale box can land the
+    // pointer on the wrong neighbour.
+    const targetBox = await target.boundingBox();
+    if (!targetBox) {
+      await this.page.mouse.up();
+      throw new Error('Drag target not visible after activation');
+    }
+    const endX = targetBox.x + targetBox.width / 2;
+    const endY = targetBox.y + targetBox.height / 2;
+
+    await this.page.mouse.move(endX, endY, { steps: 15 });
+    await this.page.mouse.up();
   }
 
   /**
@@ -628,7 +869,7 @@ export class DashboardPage {
 
   /**
    * Get the `title` attribute of a cell (by column index) in the first row of
-   * a table tile. The <td> title mirrors the cell's stringified value — useful
+   * a table tile. The <td> title mirrors the cell's stringified value, useful
    * for extracting column values (e.g. a ServiceName) for later assertions.
    */
   async getFirstTableRowValue(tileIndex = 0, columnIndex = 0): Promise<string> {
@@ -642,7 +883,7 @@ export class DashboardPage {
 
   /**
    * Click the first row's first cell of a table tile. Each cell contains a
-   * div[role="link"] that owns the onRowClick handler — click that directly
+   * div[role="link"] that owns the onRowClick handler. Click that directly
    * to trigger the configured action.
    */
   async clickFirstTableRow(tileIndex = 0) {
