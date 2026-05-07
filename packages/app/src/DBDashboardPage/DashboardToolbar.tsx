@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction } from 'react';
+import { Control, UseFormSetValue } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { SQLInterval } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Button, Flex, Tooltip } from '@mantine/core';
@@ -7,7 +8,6 @@ import {
   IconPlayerPlay,
   IconRefresh,
 } from '@tabler/icons-react';
-import { Control, UseFormSetValue } from 'react-hook-form';
 
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { TimePicker } from '@/components/TimePicker';

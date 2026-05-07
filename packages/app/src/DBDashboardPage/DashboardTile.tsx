@@ -61,10 +61,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import { type Tile } from '@/dashboard';
-import {
-  getFirstTimestampValueExpression,
-  useSource,
-} from '@/source';
+import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { getMetricTableName } from '@/utils';
 
 import { HeatmapTile } from './HeatmapTile';

@@ -16,37 +16,37 @@ import {
 import { Box, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import OnboardingModal from '@/components/OnboardingModal';
+import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
+import { useConnections } from '@/connection';
 import {
   Dashboard,
   type Tile,
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
-import useDashboardContainers from '@/hooks/useDashboardContainers';
-import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
-
-import OnboardingModal from '@/components/OnboardingModal';
-import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
-import useDashboardFilters from '@/hooks/useDashboardFilters';
-import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
-import useTileSelection from '@/hooks/useTileSelection';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
-import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
-import { useConnections } from '@/connection';
 import { useDashboard } from '@/dashboard';
 import DashboardFilters from '@/DashboardFilters';
 import DashboardFiltersModal from '@/DashboardFiltersModal';
+import useDashboardContainers from '@/hooks/useDashboardContainers';
+import useDashboardFilters from '@/hooks/useDashboardFilters';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
+import useTileSelection from '@/hooks/useTileSelection';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useConfirm } from '@/useConfirm';
+import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
+import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardHeader } from './DashboardHeader';
-import { DashboardToolbar } from './DashboardToolbar';
 import { DashboardTile } from './DashboardTile';
+import { DashboardToolbar } from './DashboardToolbar';
+import { EditTileModal } from './EditTileModal';
 import { DashboardQueryFormValues, type MoveTarget } from './types';
 import {
   buildMoveTargets,
@@ -59,7 +59,6 @@ import {
   tileToLayoutItem,
   updateLayout,
 } from './utils';
-import { EditTileModal } from './EditTileModal';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';

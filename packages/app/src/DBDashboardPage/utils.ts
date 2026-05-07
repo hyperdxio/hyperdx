@@ -161,8 +161,7 @@ export function getUngroupedTiles({
 }): Tile[] {
   return hasContainers
     ? allTiles.filter(
-        tile =>
-          !tile.containerId || !tilesByContainerId.has(tile.containerId),
+        tile => !tile.containerId || !tilesByContainerId.has(tile.containerId),
       )
     : allTiles;
 }

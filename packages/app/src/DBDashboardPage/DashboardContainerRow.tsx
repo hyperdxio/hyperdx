@@ -3,9 +3,7 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 
 import DashboardContainer from '@/components/DashboardContainer';
-import {
-  EmptyContainerPlaceholder,
-} from '@/components/DashboardDndComponents';
+import { EmptyContainerPlaceholder } from '@/components/DashboardDndComponents';
 import { type DragHandleProps } from '@/components/DashboardDndContext';
 import { type Tile } from '@/dashboard';
 import { type TabDeleteAction } from '@/hooks/useDashboardContainers';

@@ -23,9 +23,9 @@ import {
 } from '@tabler/icons-react';
 
 import { FavoriteButton } from '@/components/FavoriteButton';
+import { Tags } from '@/components/Tags';
 import { Dashboard } from '@/dashboard';
 import { EditablePageName } from '@/EditablePageName';
-import { Tags } from '@/components/Tags';
 import { FormatTime } from '@/useFormatTime';
 
 type DashboardHeaderProps = {

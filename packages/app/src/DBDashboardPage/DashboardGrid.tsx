@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction } from 'react';
-import RGL, { WidthProvider } from 'react-grid-layout';
 import { ErrorBoundary } from 'react-error-boundary';
+import RGL, { WidthProvider } from 'react-grid-layout';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Menu, Paper, Text } from '@mantine/core';
 import {
