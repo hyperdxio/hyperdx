@@ -449,6 +449,149 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   );
 });
 
+test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
+  let searchPage: SearchPage;
+  let dashboardPage: DashboardPage;
+  let alertsPage: AlertsPage;
+
+  test.beforeEach(async ({ page }) => {
+    searchPage = new SearchPage(page);
+    dashboardPage = new DashboardPage(page);
+    alertsPage = new AlertsPage(page);
+  });
+
+  test(
+    'should create an alert with a note from a saved search and display it on the alerts page',
+    { tag: '@full-stack' },
+    async () => {
+      const ts = Date.now();
+      const savedSearchName = `E2E Note Alert Search ${ts}`;
+      const webhookName = `E2E Webhook Note SS ${ts}`;
+      const webhookUrl = `https://example.com/note-ss-${ts}`;
+      const noteText =
+        'Threshold set to **1** on initial setup. See [runbook](https://example.com).';
+
+      await test.step('Create a saved search', async () => {
+        await searchPage.goto();
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          savedSearchName,
+        );
+      });
+
+      await test.step('Open the alerts modal and create a webhook', async () => {
+        await searchPage.openAlertsModal();
+        await searchPage.alertModal.addWebhookAndWait(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+      });
+
+      await test.step('Fill in the note field', async () => {
+        await searchPage.alertModal.setNote(noteText);
+      });
+
+      await test.step('Create the alert', async () => {
+        await searchPage.alertModal.createAlert();
+      });
+
+      await test.step('Verify the note is displayed on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        const alertCard = alertsPage.getAlertCardByName(savedSearchName);
+        await expect(alertCard).toBeVisible({ timeout: 10000 });
+
+        // Note section should be present but content hidden by default
+        const noteToggle = alertsPage.getNoteToggleForAlertCard(alertCard);
+        await expect(noteToggle).toBeVisible();
+        const noteContent = alertsPage.getNoteContentForAlertCard(alertCard);
+        await expect(noteContent).toBeHidden();
+
+        // Expand the note and verify rendered markdown content
+        await alertsPage.expandNoteForAlertCard(alertCard);
+        await expect(noteContent).toBeVisible();
+        await expect(noteContent).toContainText('Threshold set to');
+        // Verify markdown bold renders as <strong>
+        await expect(noteContent.locator('strong')).toContainText('1');
+        // Verify markdown link renders as <a> with security attributes
+        const link = noteContent.locator('a');
+        await expect(link).toContainText('runbook');
+        await expect(link).toHaveAttribute('href', 'https://example.com');
+        await expect(link).toHaveAttribute('target', '_blank');
+        await expect(link).toHaveAttribute(
+          'rel',
+          /noopener.*noreferrer.*nofollow/,
+        );
+      });
+    },
+  );
+
+  test(
+    'should create an alert with a note from a dashboard tile and display it on the alerts page',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const tileName = `E2E Note Alert Tile ${ts}`;
+      const webhookName = `E2E Webhook Note Tile ${ts}`;
+      const webhookUrl = `https://example.com/note-tile-${ts}`;
+      const noteText = 'Alert added for **CPU spike** monitoring.';
+
+      await test.step('Create a new dashboard', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a tile to the dashboard', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.runQuery();
+      });
+
+      await test.step('Enable and configure an alert with a note', async () => {
+        await dashboardPage.chartEditor.clickAddAlert();
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+        await dashboardPage.chartEditor.setTileAlertNote(noteText);
+      });
+
+      await test.step('Save the tile with the alert configured', async () => {
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Verify the note is displayed on the alerts page', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        const alertCard = alertsPage.getAlertCardByName(tileName);
+        await expect(alertCard).toBeVisible({ timeout: 10000 });
+
+        // Note section should be present but content hidden by default
+        const noteToggle = alertsPage.getNoteToggleForAlertCard(alertCard);
+        await expect(noteToggle).toBeVisible();
+        const noteContent = alertsPage.getNoteContentForAlertCard(alertCard);
+        await expect(noteContent).toBeHidden();
+
+        // Expand the note and verify rendered markdown content
+        await alertsPage.expandNoteForAlertCard(alertCard);
+        await expect(noteContent).toBeVisible();
+        await expect(noteContent).toContainText('CPU spike');
+        await expect(noteContent.locator('strong')).toContainText('CPU spike');
+      });
+    },
+  );
+});
+
 test.describe(
   'Alert Execution Errors',
   { tag: ['@alerts', '@full-stack'] },

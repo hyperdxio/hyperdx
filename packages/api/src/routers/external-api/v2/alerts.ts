@@ -179,6 +179,13 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           description: Alert message template.
  *           nullable: true
  *           example: "Test Alert Message"
+ *         note:
+ *           type: string
+ *           description: Freeform note for the alert. Supports markdown formatting.
+ *           nullable: true
+ *           minLength: 1
+ *           maxLength: 4096
+ *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
  *
  *     AlertResponse:
  *       allOf:

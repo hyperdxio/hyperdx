@@ -2,6 +2,7 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
+import ReactMarkdown from 'react-markdown';
 import {
   AlertSource,
   AlertState,
@@ -11,21 +12,26 @@ import {
   Alert,
   Anchor,
   Badge,
+  Collapse,
   Container,
   Flex,
   Group,
   Select,
   Stack,
   TextInput,
+  UnstyledButton,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconAlertTriangle,
   IconBell,
   IconChartLine,
   IconCheck,
+  IconChevronDown,
   IconChevronRight,
   IconHelpCircle,
   IconInfoCircleFilled,
+  IconNote,
   IconSearch,
   IconTableRow,
 } from '@tabler/icons-react';
@@ -63,6 +69,56 @@ function getAlertTags(alert: AlertsPageItem): string[] {
 function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
   if (!alert.createdBy) return undefined;
   return alert.createdBy.name || alert.createdBy.email;
+}
+
+function AlertNote({ note }: { note: string }) {
+  const [opened, { toggle }] = useDisclosure(false);
+
+  return (
+    <div>
+      <UnstyledButton data-testid="alert-note-section" onClick={toggle} mt={4}>
+        <Group gap={4}>
+          <IconChevronDown
+            size={12}
+            style={{
+              transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform 200ms',
+            }}
+          />
+          <IconNote size={14} opacity={0.5} />
+          <span className="fs-8" style={{ opacity: 0.6 }}>
+            Note
+          </span>
+        </Group>
+      </UnstyledButton>
+      <Collapse expanded={opened}>
+        <div
+          className="hdx-markdown fs-8 mt-1"
+          style={{ opacity: 0.8, paddingLeft: 20 }}
+          data-testid="alert-note-content"
+        >
+          {opened && (
+            <ReactMarkdown
+              components={{
+                a: props => (
+                  <a
+                    {...props}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                  />
+                ),
+                img: props => (
+                  <img {...props} referrerPolicy="no-referrer" loading="lazy" />
+                ),
+              }}
+            >
+              {note}
+            </ReactMarkdown>
+          )}
+        </div>
+      </Collapse>
+    </div>
+  );
 }
 
 function AlertDetails({ alert }: { alert: AlertsPageItem }) {
@@ -199,6 +255,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               ))}
             </Group>
           )}
+          {alert.note && <AlertNote note={alert.note} />}
         </Stack>
       </Group>
 
@@ -221,8 +278,8 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <Group className={styles.sectionHeader}>
             <IconAlertTriangle size={14} /> Triggered
           </Group>
-          {alarmAlerts.map((alert, index) => (
-            <AlertDetails key={index} alert={alert} />
+          {alarmAlerts.map(alert => (
+            <AlertDetails key={alert._id} alert={alert} />
           ))}
         </div>
       )}
@@ -238,8 +295,8 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
             description="All alerts in OK state will appear here."
           />
         )}
-        {okData.map((alert, index) => (
-          <AlertDetails key={index} alert={alert} />
+        {okData.map(alert => (
+          <AlertDetails key={alert._id} alert={alert} />
         ))}
       </div>
     </div>

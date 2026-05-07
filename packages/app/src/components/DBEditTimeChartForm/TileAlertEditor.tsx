@@ -31,6 +31,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
@@ -244,6 +245,11 @@ export function TileAlertEditor({
             control={control}
             type={alertChannelType}
             namePrefix="alert."
+          />
+          <AlertNoteField
+            control={control}
+            name="alert.note"
+            labelMarginTop="sm"
           />
           {(alertThresholdType === AlertThresholdType.EQUAL ||
             alertThresholdType === AlertThresholdType.NOT_EQUAL) && (

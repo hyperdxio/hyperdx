@@ -165,6 +165,30 @@ export class AlertsPage {
     await this.creatorFilter.locator('..').locator('button').click();
   }
 
+  // --- Note interactions ---
+
+  /**
+   * Get the note section toggle for a given alert card.
+   */
+  getNoteToggleForAlertCard(alertCard: Locator) {
+    return alertCard.getByTestId('alert-note-section');
+  }
+
+  /**
+   * Get the note content container (rendered markdown) for a given alert card.
+   */
+  getNoteContentForAlertCard(alertCard: Locator) {
+    return alertCard.getByTestId('alert-note-content');
+  }
+
+  /**
+   * Expand the note section for a given alert card and wait for the content to appear.
+   */
+  async expandNoteForAlertCard(alertCard: Locator) {
+    const toggle = this.getNoteToggleForAlertCard(alertCard);
+    await toggle.click();
+  }
+
   // --- Getters for assertions ---
 
   get pageContainer() {

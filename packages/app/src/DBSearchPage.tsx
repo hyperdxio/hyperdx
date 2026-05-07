@@ -80,6 +80,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -1875,7 +1876,10 @@ export function DBSearchPage() {
                 onClick={openAlertModal}
                 style={{ flexShrink: 0 }}
               >
-                Alerts
+                <Group gap={4}>
+                  Alerts
+                  <AlertStatusIcon alerts={savedSearch?.alerts} />
+                </Group>
               </Button>
             )}
           </>

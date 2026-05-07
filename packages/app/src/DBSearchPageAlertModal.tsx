@@ -55,11 +55,13 @@ import {
   normalizeNoOpAlertScheduleFields,
 } from '@/utils/alerts';
 
+import { AlertNoteField } from './components/AlertNoteField';
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { AckAlert } from './components/alerts/AckAlert';
 import { AlertHistoryCardList } from './components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
+import { AlertStatusIcon } from './components/AlertStatusIcon';
 import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
@@ -132,6 +134,7 @@ const AlertForm = ({
             type: 'webhook',
             webhookId: '',
           },
+          note: null,
         },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
@@ -277,6 +280,7 @@ const AlertForm = ({
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
+          <AlertNoteField control={control} name="note" />
           {groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||
               thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||
@@ -561,7 +565,9 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
+                  {getWebhookChannelIcon(alert.channel.type)}
+                  Alert {index + 1}
+                  <AlertStatusIcon alerts={[alert]} />
                 </Group>
               </Tabs.Tab>
             ))}
