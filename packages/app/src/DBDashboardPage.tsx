@@ -112,6 +112,7 @@ import {
   Dashboard,
   type Tile,
   useCreateDashboard,
+  useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
 import useDashboardContainers, {
@@ -1193,6 +1194,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
+  const { data: allDashboards } = useDashboards();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
   const tableConnections = useMemo(() => {
@@ -2143,9 +2145,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       downloadObjectAsJson(
                         convertToDashboardTemplate(
                           dashboard,
-                          // TODO: fix this type issue
                           sources,
                           connections,
+                          allDashboards ?? [],
                         ),
                         dashboard?.name,
                       );

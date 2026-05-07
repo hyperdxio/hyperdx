@@ -698,6 +698,36 @@ export const OnClickSchema = z.discriminatedUnion('type', [
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
+export type OnClickSearchById = OnClickSearch & {
+  target: Extract<OnClickTarget, { mode: 'id' }>;
+};
+
+export type OnClickDashboardById = OnClickDashboard & {
+  target: Extract<OnClickTarget, { mode: 'id' }>;
+};
+
+/** True when the onClick links by concrete ID to a search source. */
+export function isOnClickSearchById(
+  onClick: OnClick | undefined,
+): onClick is OnClickSearchById {
+  return (
+    onClick !== undefined &&
+    onClick.type === 'search' &&
+    onClick.target.mode === 'id'
+  );
+}
+
+/** True when the onClick links by concrete ID to a dashboard. */
+export function isOnClickDashboardById(
+  onClick: OnClick | undefined,
+): onClick is OnClickDashboardById {
+  return (
+    onClick !== undefined &&
+    onClick.type === 'dashboard' &&
+    onClick.target.mode === 'id'
+  );
+}
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 /**
