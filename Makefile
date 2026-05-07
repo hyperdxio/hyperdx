@@ -141,22 +141,11 @@ dev-int-build:
 
 .PHONY: dev-int
 dev-int:
-	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
+	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	bash -c 'set -o pipefail; npx nx run @berg/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
-	$(call archive-int-logs); \
-	exit $$ret
-
-.PHONY: dev-int-common-utils
-dev-int-common-utils:
-	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT))"
-	@mkdir -p $(HDX_CI_LOGS_DIR)
-	@bash scripts/ensure-dev-portal.sh
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
-	bash -c 'set -o pipefail; npx nx run @berg/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
 	$(call archive-int-logs); \
 	exit $$ret

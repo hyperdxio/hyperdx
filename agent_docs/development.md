@@ -112,9 +112,6 @@ make dev-int-build
 
 # Run API integration tests (spins up Docker services, runs tests, tears down)
 make dev-int FILE=<TEST_FILE_NAME>
-
-# Run common-utils integration tests
-make dev-int-common-utils FILE=<TEST_FILE_NAME>
 ```
 
 **Multi-agent / worktree support:**

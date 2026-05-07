@@ -48,8 +48,6 @@
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "jest --runInBand --ci --coverage",
-    "dev:unit": "jest --watchAll --runInBand",
-    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage",
-    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand"
+    "dev:unit": "jest --watchAll --runInBand"
   }
 }

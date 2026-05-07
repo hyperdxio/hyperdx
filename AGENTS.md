@@ -109,14 +109,12 @@ make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
                                     # Ctrl-C to stop and wait for all services to tear down.
 ```
 
-**packages/common-utils** (both unit and integration tests):
+**packages/common-utils** (unit tests only):
 
 ```bash
 cd packages/common-utils
 yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
-yarn ci:int            # Run integration tests
-yarn dev:int           # Watch mode for integration tests
 ```
 
 To run a specific test file or pattern:

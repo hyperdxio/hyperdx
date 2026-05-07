@@ -74,9 +74,13 @@ silently-wrong queries. Each was a bug we hit and paid for.
 
 ```bash
 yarn ci:unit                 # unit
-yarn ci:int                  # integration (hits a live Trino)
 yarn ci:unit __tests__/renderChartConfig.test.ts
 ```
+
+(There are no integration tests in this package today — the CH-era
+`*.int.test.ts` files were removed during the Trino port.  When new
+ones land they should mock Athena via `aws-sdk-client-mock`, not hit a
+live cluster.)
 
 Snapshots in `__tests__/__snapshots__/renderChartConfig.test.ts.snap`
 are the canonical record of emitted SQL — read them when in doubt
