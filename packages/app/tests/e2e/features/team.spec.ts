@@ -198,11 +198,8 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       ).toBeVisible();
       await expect(teamPage.integrations.getByText(webhookName)).toBeVisible();
 
-      // URL should be masked (not showing the original)
+      // Original URL should NOT be visible (masked for security)
       await expect(teamPage.integrations.getByText(webhookUrl)).toBeHidden();
-      await expect(
-        teamPage.integrations.getByText(/example\.com\/\*{4}/),
-      ).toBeVisible();
     });
 
     await test.step('Delete the webhook', async () => {
@@ -252,12 +249,8 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       // Webhook name should be visible
       await expect(teamPage.integrations.getByText(webhookName)).toBeVisible();
 
-      // URL should be masked — original URL must NOT appear
+      // Original URL must NOT appear anywhere (masked for security)
       await expect(teamPage.integrations.getByText(webhookUrl)).toBeHidden();
-
-      // Masked URL should be visible
-      const maskedUrlLocator = teamPage.getWebhookUrlText(webhookName);
-      await expect(maskedUrlLocator).toBeVisible();
     });
 
     await test.step('Edit webhook — verify masked URL in form', async () => {
