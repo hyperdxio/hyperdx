@@ -4,7 +4,6 @@ import cx from 'classnames';
 import {
   Avatar,
   Badge,
-  Button,
   Group,
   Menu,
   Paper,
@@ -40,26 +39,6 @@ export const AppNavContext = React.createContext<{
   isCollapsed: false,
   pathname: '/',
 });
-
-export const AppNavCloudBanner = () => {
-  return (
-    <div className="my-3 bg-muted rounded p-2 text-center">
-      <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
-      <div className="mt-2 mb-2">
-        <Button
-          variant="primary"
-          size="xs"
-          component="a"
-          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Get Started for Free
-        </Button>
-      </div>
-    </div>
-  );
-};
 
 type AppNavUserMenuProps = {
   userName?: string;

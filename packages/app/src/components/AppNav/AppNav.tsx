@@ -39,7 +39,6 @@ import { useWindowSize } from '@/utils';
 import packageJson from '../../../package.json';
 
 import {
-  AppNavCloudBanner,
   AppNavContext,
   AppNavHelpMenu,
   AppNavLink,
@@ -473,14 +472,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             )}
           </div>
 
-          {!isCollapsed && (
-            <div
-              style={{ width: navWidth }}
-              className={styles.onboardingSection}
-            >
-              <AppNavCloudBanner />
-            </div>
-          )}
         </ScrollArea>
 
         <div className={styles.footer} style={{ width: navWidth }}>
