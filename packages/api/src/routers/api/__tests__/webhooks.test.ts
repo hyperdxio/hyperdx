@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Webhook, { WebhookService } from '@/models/webhook';
+import * as template from '@/tasks/checkAlerts/template';
 
 const MOCK_WEBHOOK = {
   name: 'Test Webhook',
@@ -878,36 +879,201 @@ describe('webhooks router', () => {
 
       expect(response.body.data.name).toBe('Renamed Second');
     });
+
+    it('PUT - rejects masked headers when URL is changing (exfiltration guard)', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: { Authorization: 'Bearer real-secret' },
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://attacker.example.com/capture',
+          headers: { Authorization: '****' },
+        })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/Cannot preserve masked secrets/);
+
+      // Stored URL must be unchanged
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe(MOCK_WEBHOOK.url);
+    });
+
+    it('PUT - rejects masked queryParams when URL is changing', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        queryParams: { apiKey: 'secret-key' },
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://attacker.example.com/capture',
+          queryParams: { apiKey: '****' },
+        })
+        .expect(400);
+    });
+
+    it('PUT - allows new URL with non-masked headers', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: { Authorization: 'Bearer old-secret' },
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://new-host.example.com/webhook',
+          headers: { Authorization: 'Bearer brand-new-token' },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe('https://new-host.example.com/webhook');
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toEqual({
+        Authorization: 'Bearer brand-new-token',
+      });
+    });
+
+    it('PUT - clears headers while preserving queryParams', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: { Authorization: 'Bearer token' },
+        queryParams: { apiKey: 'secret-key' },
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          headers: {},
+          queryParams: { apiKey: '****' },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.headers).toBeUndefined();
+      expect(plain.queryParams).toEqual({ apiKey: 'secret-key' });
+    });
   });
 
   describe('POST /test - test webhook', () => {
+    let genericSpy: jest.SpyInstance;
+    let slackSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      genericSpy = jest
+        .spyOn(template, 'handleSendGenericWebhook')
+        .mockResolvedValue(undefined);
+      slackSpy = jest
+        .spyOn(template, 'handleSendSlackWebhook')
+        .mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      genericSpy.mockRestore();
+      slackSpy.mockRestore();
+    });
+
     it('resolves masked URL and headers when webhookId is provided', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const realUrl = 'https://example.com/real-webhook-endpoint';
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        service: WebhookService.Generic,
+        url: realUrl,
+        headers: { Authorization: 'Bearer real-secret' },
+        team: team._id,
+      });
+
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/****',
+          headers: { Authorization: '****' },
+          body: '{"text": "test"}',
+          webhookId: webhook._id.toString(),
+        })
+        .expect(200);
+
+      // The outbound call should receive the real URL and headers
+      expect(genericSpy).toHaveBeenCalledTimes(1);
+      const sentWebhook = genericSpy.mock.calls[0][0];
+      expect(sentWebhook.url).toBe(realUrl);
+      expect(sentWebhook.headers.toJSON()).toEqual({
+        Authorization: 'Bearer real-secret',
+      });
+    });
+
+    it('does NOT resolve stored secrets when URL differs from stored (exfiltration guard)', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
       const webhook = await Webhook.create({
         ...MOCK_WEBHOOK,
         service: WebhookService.Generic,
-        url: 'https://example.com/real-webhook-endpoint',
+        url: 'https://example.com/real-endpoint',
         headers: { Authorization: 'Bearer real-secret' },
         team: team._id,
       });
 
-      // Send masked values with the webhookId — server should resolve them
-      const response = await agent.post('/webhooks/test').send({
-        service: WebhookService.Generic,
-        url: 'https://example.com/****',
-        headers: { Authorization: '****' },
-        body: '{"text": "test"}',
-        webhookId: webhook._id.toString(),
-      });
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://attacker.example.com/capture',
+          headers: { Authorization: '****' },
+          body: '{"text": "test"}',
+          webhookId: webhook._id.toString(),
+        })
+        .expect(200);
 
-      // The request should reach the handler (200 or 500 from network).
-      // A 400 would mean validation rejected the masked values.
-      expect([200, 500]).toContain(response.status);
+      // The outbound call should receive the attacker URL and literal ****
+      // (NOT the stored real secret)
+      const sentWebhook = genericSpy.mock.calls[0][0];
+      expect(sentWebhook.url).toBe('https://attacker.example.com/capture');
+      expect(sentWebhook.headers.toJSON()).toEqual({
+        Authorization: '****',
+      });
     });
 
-    it('ignores webhookId that belongs to a different team', async () => {
-      const { agent: agent1, team: team1 } = await getLoggedInAgent(server);
+    it('returns 404 when webhookId does not exist', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/****',
+          webhookId: new Types.ObjectId().toString(),
+        })
+        .expect(404);
+
+      expect(response.body.message).toBe('Webhook not found');
+    });
+
+    it('returns 404 for cross-team webhookId', async () => {
+      const { agent: agent1 } = await getLoggedInAgent(server);
       const { team: team2 } = await getLoggedInAgent(server);
 
       const webhook = await Webhook.create({
@@ -917,52 +1083,63 @@ describe('webhooks router', () => {
         team: team2._id,
       });
 
-      // agent1 tries to use team2's webhook id — server should ignore it
-      const response = await agent1.post('/webhooks/test').send({
-        service: WebhookService.Generic,
-        url: 'https://example.com/****',
-        headers: {},
-        webhookId: webhook._id.toString(),
-      });
-
-      // Should still accept the request (masked URL is valid syntactically)
-      // but will NOT resolve to team2's real URL
-      expect([200, 500]).toContain(response.status);
+      await agent1
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/****',
+          webhookId: webhook._id.toString(),
+        })
+        .expect(404);
     });
 
-    it('successfully sends a test message to a Slack webhook', async () => {
+    it('returns 400 for malformed webhookId', async () => {
       const { agent } = await getLoggedInAgent(server);
 
-      // Note: This will actually attempt to send to the URL in a real test
-      // In a production test suite, you'd want to mock the fetch/slack client
-      const response = await agent.post('/webhooks/test').send({
-        service: WebhookService.Slack,
-        url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX',
-        body: '{"text": "Test message"}',
-      });
-
-      // The test will likely fail due to invalid URL, but we're testing the endpoint structure
-      // In a real implementation, you'd mock the slack client
-      expect([200, 500]).toContain(response.status);
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          webhookId: 'not-an-object-id',
+        })
+        .expect(400);
     });
 
-    it('successfully sends a test message to a generic webhook', async () => {
+    it('sends a test message to a Slack webhook', async () => {
       const { agent } = await getLoggedInAgent(server);
 
-      // Note: This will actually attempt to send to the URL
-      // In a production test suite, you'd want to mock the fetch call
-      const response = await agent.post('/webhooks/test').send({
-        service: WebhookService.Generic,
-        url: 'https://example.com/webhook',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Custom-Header': 'test-value',
-        },
-        body: '{"message": "{{body}}"}',
-      });
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Slack,
+          url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX',
+          body: '{"text": "Test message"}',
+        })
+        .expect(200);
 
-      // The test will likely fail due to network/URL, but we're testing the endpoint structure
-      expect([200, 500]).toContain(response.status);
+      expect(slackSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a test message to a generic webhook', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Custom-Header': 'test-value',
+          },
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(200);
+
+      expect(genericSpy).toHaveBeenCalledTimes(1);
+      const sentWebhook = genericSpy.mock.calls[0][0];
+      expect(sentWebhook.url).toBe('https://example.com/webhook');
     });
 
     it('returns 400 when service is missing', async () => {
@@ -1014,17 +1191,19 @@ describe('webhooks router', () => {
     it('accepts optional headers and body', async () => {
       const { agent } = await getLoggedInAgent(server);
 
-      const response = await agent.post('/webhooks/test').send({
-        service: WebhookService.Generic,
-        url: 'https://example.com/webhook',
-        headers: {
-          Authorization: 'Bearer test-token',
-        },
-        body: '{"custom": "body"}',
-      });
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          headers: {
+            Authorization: 'Bearer test-token',
+          },
+          body: '{"custom": "body"}',
+        })
+        .expect(200);
 
-      // Network call will likely fail, but endpoint should accept the request
-      expect([200, 500]).toContain(response.status);
+      expect(genericSpy).toHaveBeenCalledTimes(1);
     });
 
     it('rejects invalid headers in test request', async () => {
