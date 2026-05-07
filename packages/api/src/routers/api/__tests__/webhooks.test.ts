@@ -1073,17 +1073,18 @@ describe('webhooks router', () => {
     });
 
     it('returns 404 for cross-team webhookId', async () => {
-      const { agent: agent1 } = await getLoggedInAgent(server);
-      const { team: team2 } = await getLoggedInAgent(server);
+      const { agent } = await getLoggedInAgent(server);
 
+      // Create a webhook belonging to a different team
+      const otherTeamId = new Types.ObjectId();
       const webhook = await Webhook.create({
         ...MOCK_WEBHOOK,
         service: WebhookService.Generic,
         url: 'https://example.com/secret-endpoint',
-        team: team2._id,
+        team: otherTeamId,
       });
 
-      await agent1
+      await agent
         .post('/webhooks/test')
         .send({
           service: WebhookService.Generic,
