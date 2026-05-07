@@ -40,7 +40,7 @@ jobs:
       # workflow_dispatch runs can checkout forked branches correctly.
       - name: Resolve PR metadata
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -62,7 +62,7 @@ jobs:
       # Checkout the fork's branch so Claude can read the actual PR code.
       # Using the PR head repo/ref works for both fork and non-fork PRs.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
@@ -102,7 +102,11 @@ jobs:
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
             CRITICAL OUTPUT REQUIREMENTS:
-            1. Return a JSON object with a single "review" field containing your full markdown review.
+            1. Return a JSON object with a single "review" field whose VALUE
+               is a plain markdown STRING. Do NOT put another JSON object
+               inside the "review" string -- doing so posts raw JSON in the
+               comment instead of rendered markdown. The `review` value must
+               be markdown text only, not a stringified JSON envelope.
             2. The review markdown must start with EXACTLY these two lines:
                <!-- claude-code-review -->
                ## PR Review
@@ -125,12 +129,37 @@ jobs:
           body-includes: '<!-- claude-code-review -->'
           direction: last
 
+      # fromJSON() in a `with:` expression has been observed to leave the
+      # structured_output JSON string unparsed, posting the raw envelope as
+      # the comment body. Extract via jq.
+      #
+      # Defensive double-unwrap: the model has been observed to return
+      # `{"review": "{\"review\": \"<markdown>\"}"}` -- wrapping its own JSON
+      # output a second time so the comment body posts as raw JSON. Detect
+      # that case (the inner string parses as an object with a `review` key)
+      # and unwrap once more so we post markdown, not JSON. Mirrors the same
+      # fix applied to deep-review.yml.
+      - name: Extract review from structured output
+        id: extract-review
+        env:
+          STRUCTURED_OUTPUT:
+            ${{ steps.claude-review.outputs.structured_output }}
+        run: |
+          REVIEW="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review')"
+          if printf '%s' "$REVIEW" | jq -e 'type == "object" and has("review")' >/dev/null 2>&1; then
+            REVIEW="$(printf '%s' "$REVIEW" | jq -r '.review')"
+          fi
+          {
+            echo 'review<<CLAUDE_REVIEW_EOF'
+            printf '%s' "$REVIEW"
+            echo
+            echo 'CLAUDE_REVIEW_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Post or update Claude review
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-claude-comment.outputs.comment-id }}
           issue-number: ${{ steps.pr.outputs.number }}
-          body:
-            ${{ fromJSON(steps.claude-review.outputs.structured_output).review
-            }}
+          body: ${{ steps.extract-review.outputs.review }}
           edit-mode: replace

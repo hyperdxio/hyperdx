@@ -1,1 +1,1 @@
-SELECT SeverityText, SeverityNumber, Body FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'severity-inference' AND ResourceAttributes['test-id'] = 'infer-error' ORDER BY TimestampTime FORMAT CSV
+SELECT SeverityText, SeverityNumber, Body FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'severity-inference' AND ResourceAttributes['test-id'] = 'infer-error' ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp) FORMAT CSV
