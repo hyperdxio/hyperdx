@@ -289,6 +289,24 @@ export class TeamPage {
       .click();
   }
 
+  async editWebhookByName(webhookName: string) {
+    const webhookItem = this.integrationsSection
+      .locator('div')
+      .filter({ hasText: webhookName })
+      .filter({ has: this.page.getByRole('button', { name: 'Edit' }) })
+      .last();
+    await webhookItem.getByRole('button', { name: 'Edit' }).click();
+  }
+
+  getWebhookUrlText(webhookName: string): Locator {
+    const webhookItem = this.integrationsSection
+      .locator('div')
+      .filter({ hasText: webhookName })
+      .filter({ has: this.page.getByRole('button', { name: 'Delete' }) })
+      .last();
+    return webhookItem.locator('span').filter({ hasText: /\*{4}/ }).first();
+  }
+
   async deleteWebhookByName(webhookName: string) {
     const webhookItem = this.integrationsSection
       .locator('div')
