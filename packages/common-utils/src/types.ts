@@ -896,9 +896,11 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
-  containerId: z.string().optional(),
+  // `min(1)` matches the external API; an empty string isn't a valid
+  // id and would silently pass `tile.containerId !== undefined` checks.
+  containerId: z.string().min(1).optional(),
   // For tiles inside a tab container: which tab this tile belongs to
-  tabId: z.string().optional(),
+  tabId: z.string().min(1).optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -910,14 +912,33 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+// Reasonable bounds on identifiers and titles. The UI never asks the
+// user to type either an id or a title longer than ~64 chars; capping
+// at 256 leaves room for slugified or composed ids without inviting
+// Mongo-doc bloat. Exported so the external-API tile schema can apply
+// the same cap to tile.containerId / tile.tabId.
+export const DASHBOARD_CONTAINER_ID_MAX = 256;
+const DASHBOARD_CONTAINER_TITLE_MAX = 256;
+// Caps the per-container tab fan-out. The tab bar visually breaks
+// past ~10 tabs and the editor offers no bulk-add affordance. Used
+// only by this schema; not exported.
+const DASHBOARD_CONTAINER_MAX_TABS = 20;
+// Caps the per-dashboard container fan-out.
+export const DASHBOARD_MAX_CONTAINERS = 50;
+// Caps the per-dashboard tile fan-out. The dashboard editor's add-tile
+// affordance is one-at-a-time, but external-API callers can POST a list
+// in one request; without a cap a payload could push tens of MB into
+// Mongo and run out of memory rendering it.
+export const DASHBOARD_MAX_TILES = 500;
+
 export const DashboardContainerTabSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
 });
 
 export const DashboardContainerSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
   collapsed: z.boolean(),
   // Whether the group can be collapsed (default true)
   collapsible: z.boolean().optional(),
@@ -925,7 +946,10 @@ export const DashboardContainerSchema = z.object({
   bordered: z.boolean().optional(),
   // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
   // Tiles reference a specific tab via tabId.
-  tabs: z.array(DashboardContainerTabSchema).optional(),
+  tabs: z
+    .array(DashboardContainerTabSchema)
+    .max(DASHBOARD_CONTAINER_MAX_TABS)
+    .optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -976,6 +1000,135 @@ export function addDuplicateTileIdIssues(
   }
 }
 
+// Inputs shared by the internal `DashboardSchema` refinement and the
+// external API body schema: the validation only depends on the
+// containerId/tabId reference shape, not on Builder-vs-RawSql config.
+type ContainerForValidation = z.infer<typeof DashboardContainerSchema>;
+type TileForValidation = { containerId?: string; tabId?: string };
+
+/**
+ * Single-pass cross-validation of dashboard containers + tile container/tab
+ * references. Used by both `buildDashboardBodySchema.superRefine` (external
+ * API request body) and the canonical `DashboardSchema` refinement so a
+ * Dashboard document can never carry orphan tile references regardless of
+ * which path produced it.
+ *
+ * Issues raised:
+ * - Duplicate container ids (path `<containersPath>[i].id`).
+ * - Duplicate tab ids within a container (path
+ *   `<containersPath>[i].tabs[j].id`).
+ * - A tile's `containerId` references an unknown container (path
+ *   `<tilesPath>[k].containerId`).
+ * - A tile's `tabId` is set without `containerId` (path
+ *   `<tilesPath>[k].tabId`).
+ * - A tile's `tabId` references an unknown tab (path
+ *   `<tilesPath>[k].tabId`).
+ *
+ * If duplicate container ids exist, tile-level resolution is skipped to
+ * avoid stacking confusing "unknown containerId" errors on top of the
+ * duplicate-id error: fix the container layer first.
+ */
+export function validateDashboardContainersConsistency<
+  T extends TileForValidation,
+>(
+  containers: ContainerForValidation[],
+  tiles: T[],
+  ctx: z.RefinementCtx,
+  paths?: {
+    containersPath?: (string | number)[];
+    tilesPath?: (string | number)[];
+  },
+): void {
+  const containersPath = paths?.containersPath ?? ['containers'];
+  const tilesPath = paths?.tilesPath ?? ['tiles'];
+
+  // Single pass over containers: container-id uniqueness and per-container
+  // tab-id uniqueness. The container-by-id map is built INSIDE this pass
+  // and is only used for the tile-resolution loop below; building a Map
+  // up-front would last-write-win on duplicate ids, masking the duplicate
+  // before this loop reports it.
+  const containerById = new Map<string, ContainerForValidation>();
+  const seenContainerIds = new Set<string>();
+  let hasDuplicateContainerId = false;
+  containers.forEach((container, containerIdx) => {
+    if (seenContainerIds.has(container.id)) {
+      hasDuplicateContainerId = true;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Container IDs must be unique: "${container.id}"`,
+        path: [...containersPath, containerIdx, 'id'],
+      });
+    } else {
+      seenContainerIds.add(container.id);
+      containerById.set(container.id, container);
+    }
+
+    if (container.tabs) {
+      const seenTabIds = new Set<string>();
+      container.tabs.forEach((tab, tabIdx) => {
+        if (seenTabIds.has(tab.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate tab id "${tab.id}" in container "${container.id}"`,
+            path: [...containersPath, containerIdx, 'tabs', tabIdx, 'id'],
+          });
+        }
+        seenTabIds.add(tab.id);
+      });
+    }
+  });
+
+  // If container ids weren't unique, tile-level resolution would
+  // produce confusing errors on top of the duplicate-id ones; skip
+  // the tile pass and let the user fix the container layer first.
+  if (hasDuplicateContainerId) return;
+
+  // Each tile's containerId resolves to a real container,
+  // and each tile's tabId resolves to a tab in that container.
+  tiles.forEach((tile, tileIdx) => {
+    if (tile.containerId !== undefined) {
+      const container = containerById.get(tile.containerId);
+      if (!container) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Tile references unknown containerId "${tile.containerId}"`,
+          path: [...tilesPath, tileIdx, 'containerId'],
+        });
+      }
+    }
+
+    if (tile.tabId !== undefined) {
+      if (tile.containerId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'tabId requires containerId to be set',
+          path: [...tilesPath, tileIdx, 'tabId'],
+        });
+        return;
+      }
+      const container = containerById.get(tile.containerId);
+      if (!container) return;
+      const tab = container.tabs?.find(t => t.id === tile.tabId);
+      if (!tab) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Tile references unknown tabId "${tile.tabId}" in container "${tile.containerId}"`,
+          path: [...tilesPath, tileIdx, 'tabId'],
+        });
+      }
+    }
+  });
+}
+
+// `DashboardSchema` is intentionally left as a `ZodObject` (no parent-level
+// `.superRefine`) so existing call sites that chain `.omit()`, `.partial()`,
+// or `.extend()` keep working (see `routers/api/dashboards.ts` PATCH body
+// and `DashboardWithoutIdSchema` / `DashboardTemplateSchema` below).
+// Cross-tile container/tab reference validation is shared via the
+// `validateDashboardContainersConsistency` helper and applied at the
+// external-API request body schema (`buildDashboardBodySchema` in
+// `v2/utils/dashboards.ts`), which is the only public surface that
+// accepts arbitrary tile + container payloads in one call.
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -987,13 +1140,20 @@ export const DashboardSchema = z.object({
   savedFilterValues: z.array(FilterSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
-    .refine(
-      containers => {
-        const ids = containers.map(c => c.id);
-        return new Set(ids).size === ids.length;
-      },
-      { message: 'Container IDs must be unique' },
-    )
+    .max(DASHBOARD_MAX_CONTAINERS)
+    .superRefine((containers, ctx) => {
+      const seen = new Set<string>();
+      containers.forEach((c, i) => {
+        if (seen.has(c.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Container IDs must be unique: "${c.id}"`,
+            path: [i, 'id'],
+          });
+        }
+        seen.add(c.id);
+      });
+    })
     .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
