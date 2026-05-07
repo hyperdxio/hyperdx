@@ -1,7 +1,6 @@
 /**
  * AlertsPage - Page object for the /alerts page
  * Encapsulates all interactions with the alerts interface
- * Currently not used until Alerts tests are implemented
  */
 import { Locator, Page } from '@playwright/test';
 
@@ -10,12 +9,20 @@ export class AlertsPage {
   private readonly alertsPageContainer: Locator;
   private readonly alertsButton: Locator;
   private readonly alertsModal: Locator;
+  private readonly searchInput: Locator;
+  private readonly tagFilter: Locator;
+  private readonly creatorFilter: Locator;
+  private readonly filtersContainer: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.alertsPageContainer = page.locator('[data-testid="alerts-page"]');
     this.alertsButton = page.locator('[data-testid="alerts-button"]');
     this.alertsModal = page.locator('[data-testid="alerts-modal"]');
+    this.searchInput = page.locator('[data-testid="alerts-search-input"]');
+    this.tagFilter = page.locator('[data-testid="alerts-tag-filter"]');
+    this.creatorFilter = page.locator('[data-testid="alerts-creator-filter"]');
+    this.filtersContainer = page.locator('[data-testid="alerts-filters"]');
   }
 
   /**
@@ -108,7 +115,57 @@ export class AlertsPage {
     await icon.click();
   }
 
-  // Getters for assertions
+  // --- Filter interactions ---
+
+  get filters() {
+    return this.filtersContainer;
+  }
+
+  get searchField() {
+    return this.searchInput;
+  }
+
+  get tagFilterDropdown() {
+    return this.tagFilter;
+  }
+
+  get creatorFilterDropdown() {
+    return this.creatorFilter;
+  }
+
+  async searchByName(text: string) {
+    await this.searchInput.fill(text);
+  }
+
+  async clearSearch() {
+    await this.searchInput.fill('');
+  }
+
+  async selectTag(tag: string) {
+    // In Mantine v9, data-testid on Select is applied to the <input> element
+    // directly (via ...others spread). Fill opens the dropdown and filters options.
+    await this.tagFilter.fill(tag);
+    await this.page.getByRole('option', { name: tag, exact: true }).click();
+  }
+
+  async clearTagFilter() {
+    // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
+    // won't find it. Use a CSS selector to target the button directly.
+    await this.tagFilter.locator('..').locator('button').click();
+  }
+
+  async selectCreator(creator: string) {
+    await this.creatorFilter.fill(creator);
+    await this.page.getByRole('option', { name: creator, exact: true }).click();
+  }
+
+  async clearCreatorFilter() {
+    // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
+    // won't find it. Use a CSS selector to target the button directly.
+    await this.creatorFilter.locator('..').locator('button').click();
+  }
+
+  // --- Getters for assertions ---
 
   get pageContainer() {
     return this.alertsPageContainer;

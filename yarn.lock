@@ -4376,11 +4376,11 @@ __metadata:
     http-proxy-middleware: "npm:^3.0.5"
     jest: "npm:^30.2.0"
     jsonwebtoken: "npm:^9.0.0"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     migrate-mongo: "npm:^11.0.0"
     minimist: "npm:^1.2.7"
     mongodb: "npm:^6.15.0"
-    mongoose: "npm:^6.13.8"
+    mongoose: "npm:^6.13.9"
     ms: "npm:^2.1.3"
     nodemon: "npm:^2.0.20"
     on-headers: "npm:^1.1.0"
@@ -4490,7 +4490,7 @@ __metadata:
     knip: "npm:^5.33.2"
     ky: "npm:^0.30.0"
     ky-universal: "npm:^0.10.1"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     ms: "npm:^2.1.3"
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
@@ -4593,7 +4593,7 @@ __metadata:
     dotenv: "npm:^17.2.3"
     handlebars: "npm:^4.7.9"
     jest: "npm:^30.2.0"
-    lodash: "npm:^4.17.23"
+    lodash: "npm:^4.18.1"
     node-sql-parser: "npm:^5.3.5"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
@@ -17342,9 +17342,9 @@ __metadata:
   linkType: hard
 
 "hono@npm:^4.11.4":
-  version: 4.12.12
-  resolution: "hono@npm:4.12.12"
-  checksum: 10c0/7e514cac7f0fde53a93b5344605a11bc944c55c7b68e586ab722269a60c2d78e81b91c298e934b232d44aa8fcbfd2584b7cd7e01fb3f0edaaba0597a584b2ead
+  version: 4.12.15
+  resolution: "hono@npm:4.12.15"
+  checksum: 10c0/83f5778525bd4b706ddf1877c5f3cec0c8a3a0edf0944f8dfb041179c23a854166b8566f6e9be95894199a22e3b3aba139582d4ba24776e707c453d293bda24d
   languageName: node
   linkType: hard
 
@@ -19880,9 +19880,9 @@ __metadata:
   linkType: hard
 
 "lodash-es@npm:^4.17.21":
-  version: 4.17.23
-  resolution: "lodash-es@npm:4.17.23"
-  checksum: 10c0/3150fb6660c14c7a6b5f23bd11597d884b140c0e862a17fdb415aaa5ef7741523182904a6b7929f04e5f60a11edb5a79499eb448734381c99ffb3c4734beeddd
+  version: 4.18.1
+  resolution: "lodash-es@npm:4.18.1"
+  checksum: 10c0/35d4dcf87ef07f8d090f409447575800108057e360b445f590d0d25d09e3d1e33a163d2fc100d4d072b0f901d5e2fc533cd7c4bfd8eeb38a06abec693823c8b8
   languageName: node
   linkType: hard
 
@@ -19995,6 +19995,13 @@ __metadata:
   version: 4.17.23
   resolution: "lodash@npm:4.17.23"
   checksum: 10c0/1264a90469f5bb95d4739c43eb6277d15b6d9e186df4ac68c3620443160fc669e2f14c11e7d8b2ccf078b81d06147c01a8ccced9aab9f9f63d50dcf8cace6bf6
+  languageName: node
+  linkType: hard
+
+"lodash@npm:^4.18.1":
+  version: 4.18.1
+  resolution: "lodash@npm:4.18.1"
+  checksum: 10c0/757228fc68805c59789e82185135cf85f05d0b2d3d54631d680ca79ec21944ec8314d4533639a14b8bcfbd97a517e78960933041a5af17ecb693ec6eecb99a27
   languageName: node
   linkType: hard
 
@@ -21118,9 +21125,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mongoose@npm:^6.13.8":
-  version: 6.13.8
-  resolution: "mongoose@npm:6.13.8"
+"mongoose@npm:^6.13.9":
+  version: 6.13.9
+  resolution: "mongoose@npm:6.13.9"
   dependencies:
     bson: "npm:^4.7.2"
     kareem: "npm:2.5.1"
@@ -21129,7 +21136,7 @@ __metadata:
     mquery: "npm:4.0.3"
     ms: "npm:2.1.3"
     sift: "npm:16.0.1"
-  checksum: 10c0/37c21ca020991952e189cbdf18fa232531f650ed5a709aa45afc75d4c066be0c3c4158a51f20d903b020aa4146a61fec8a0da3de99bce1f92381b32d0357aebf
+  checksum: 10c0/87ece3129ecebbd5ebbf92eee4834e787eb29399600c20479a0f7d35f737437d1bf56c4a232a1e4fab7288c9b0209d1b350362517dcaf0bbbd0ed9462c871759
   languageName: node
   linkType: hard
 

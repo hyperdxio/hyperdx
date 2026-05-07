@@ -53,6 +53,7 @@ import {
   getChartColorSuccessHighlight,
   getChartColorWarning,
   getChartColorWarningHighlight,
+  parseTimestampToMs,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
@@ -753,7 +754,7 @@ export function DBTraceWaterfallChartContainer({
   // All units in ms!
   const foundMinOffset =
     rows?.reduce((acc, result) => {
-      return Math.min(acc, new Date(result.Timestamp).getTime());
+      return Math.min(acc, parseTimestampToMs(result.Timestamp));
     }, Number.MAX_SAFE_INTEGER) ?? 0;
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
@@ -765,7 +766,7 @@ export function DBTraceWaterfallChartContainer({
     () =>
       flattenedNodes.map((result, i) => {
         const tookMs = (result.Duration || 0) * 1000;
-        const startOffset = new Date(result.Timestamp).getTime();
+        const startOffset = parseTimestampToMs(result.Timestamp);
         const start = startOffset - minOffset;
         const end = start + tookMs;
 
@@ -799,7 +800,7 @@ export function DBTraceWaterfallChartContainer({
         const markers =
           showSpanEvents && result.SpanEvents
             ? result.SpanEvents.map(spanEvent => ({
-                timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
+                timestamp: parseTimestampToMs(spanEvent.Timestamp) - minOffset,
                 name: spanEvent.Name,
                 attributes: spanEvent.Attributes || {},
               }))
