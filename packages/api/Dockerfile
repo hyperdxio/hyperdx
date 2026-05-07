@@ -53,10 +53,9 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
 
 FROM node:22.16.0-alpine AS prod
 
-LABEL org.opencontainers.image.vendor="HyperDX" \
-      org.opencontainers.image.title="HyperDX API" \
-      org.opencontainers.image.description="HyperDX API service for observability platform" \
-      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
+LABEL org.opencontainers.image.vendor="Berg" \
+      org.opencontainers.image.title="Berg API" \
+      org.opencontainers.image.description="Berg API service — Kibana-style UI for AWS S3 Tables via Athena" \
       org.opencontainers.image.licenses="MIT"
 
 ARG CODE_VERSION

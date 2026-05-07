@@ -121,3 +121,6 @@ docker-compose.prod.yml
 # allow design specs (overrides the broader specs/ rule above)
 !docs/superpowers/specs/
 !docs/superpowers/specs/**
+
+# superpowers plans are agent scratch — not tracked
+docs/superpowers/plans/

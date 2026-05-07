@@ -1,0 +1,50 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Editors / OS
+.idea
+.vscode
+.DS_Store
+
+# Local-only artefacts
+node_modules
+**/node_modules
+.yarn/cache
+.yarn/install-state.gz
+.yarn/build-state.yml
+**/.next
+**/dist
+**/build
+**/coverage
+**/.cache
+**/tsconfig.tsbuildinfo
+**/tsconfig.build.tsbuildinfo
+
+# Live env files (gitignored, but defence in depth — never bake secrets in)
+**/.env
+**/.env.development
+**/.env.test
+**/.env.e2e
+
+# Tests / dev infra not needed in image
+**/__tests__
+**/__mocks__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.stories.tsx
+docker-compose*.yml
+Dockerfile*
+docs
+agent_docs
+docs/superpowers
+.claude
+
+# Logs / scratch
+**/*.log
+.superpowers
+
+# CI configuration
+.github
