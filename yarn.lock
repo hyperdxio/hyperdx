@@ -3267,7 +3267,7 @@ __metadata:
     "@ai-sdk/openai": "npm:^3.0.47"
     "@aws-sdk/client-athena": "npm:^3.696.0"
     "@aws-sdk/client-glue": "npm:^3.696.0"
-    "@berg/common-utils": "npm:^0.18.1"
+    "@berg/common-utils": "npm:^0.1.0"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -3342,7 +3342,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@berg/app@workspace:packages/app"
   dependencies:
-    "@berg/common-utils": "npm:^0.18.1"
+    "@berg/common-utils": "npm:^0.1.0"
     "@chromatic-com/storybook": "npm:^4.1.3"
     "@codemirror/autocomplete": "npm:^6.0.0"
     "@codemirror/lang-json": "npm:^6.0.1"
@@ -3469,7 +3469,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@berg/common-utils@npm:^0.18.1, @berg/common-utils@workspace:packages/common-utils":
+"@berg/common-utils@npm:^0.1.0, @berg/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@berg/common-utils@workspace:packages/common-utils"
   dependencies:
