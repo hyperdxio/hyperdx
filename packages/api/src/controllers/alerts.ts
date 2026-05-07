@@ -143,12 +143,11 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     ...(userId && { createdBy: userId }),
 
     // Message template
-    // If they're undefined/null, set it to null so we clear out the field
-    // due to mongoose behavior:
+    // Coerce undefined to null so Mongoose clears the field on update.
     // https://mongoosejs.com/docs/migrating_to_6.html#removed-omitundefined
-    name: alert.name == null ? null : alert.name,
-    message: alert.message == null ? null : alert.message,
-    note: alert.note == null ? null : alert.note,
+    name: alert.name ?? null,
+    message: alert.message ?? null,
+    note: alert.note ?? null,
 
     // Log alerts
     savedSearch: alert.savedSearchId as unknown as ObjectId,

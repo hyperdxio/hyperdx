@@ -514,8 +514,15 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
         await expect(noteContent).toContainText('Threshold set to');
         // Verify markdown bold renders as <strong>
         await expect(noteContent.locator('strong')).toContainText('1');
-        // Verify markdown link renders as <a>
-        await expect(noteContent.locator('a')).toContainText('runbook');
+        // Verify markdown link renders as <a> with security attributes
+        const link = noteContent.locator('a');
+        await expect(link).toContainText('runbook');
+        await expect(link).toHaveAttribute('href', 'https://example.com');
+        await expect(link).toHaveAttribute('target', '_blank');
+        await expect(link).toHaveAttribute(
+          'rel',
+          /noopener.*noreferrer.*nofollow/,
+        );
       });
     },
   );
@@ -569,11 +576,14 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
         const alertCard = alertsPage.getAlertCardByName(tileName);
         await expect(alertCard).toBeVisible({ timeout: 10000 });
 
-        // Expand the note and verify rendered markdown content
+        // Note section should be present but content hidden by default
         const noteToggle = alertsPage.getNoteToggleForAlertCard(alertCard);
         await expect(noteToggle).toBeVisible();
-        await alertsPage.expandNoteForAlertCard(alertCard);
         const noteContent = alertsPage.getNoteContentForAlertCard(alertCard);
+        await expect(noteContent).toBeHidden();
+
+        // Expand the note and verify rendered markdown content
+        await alertsPage.expandNoteForAlertCard(alertCard);
         await expect(noteContent).toBeVisible();
         await expect(noteContent).toContainText('CPU spike');
         await expect(noteContent.locator('strong')).toContainText('CPU spike');

@@ -97,19 +97,24 @@ function AlertNote({ note }: { note: string }) {
           style={{ opacity: 0.8, paddingLeft: 20 }}
           data-testid="alert-note-content"
         >
-          <ReactMarkdown
-            components={{
-              a: props => (
-                <a
-                  {...props}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                />
-              ),
-            }}
-          >
-            {note}
-          </ReactMarkdown>
+          {opened && (
+            <ReactMarkdown
+              components={{
+                a: props => (
+                  <a
+                    {...props}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                  />
+                ),
+                img: props => (
+                  <img {...props} referrerPolicy="no-referrer" loading="lazy" />
+                ),
+              }}
+            >
+              {note}
+            </ReactMarkdown>
+          )}
         </div>
       </Collapse>
     </div>
@@ -273,8 +278,8 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <Group className={styles.sectionHeader}>
             <IconAlertTriangle size={14} /> Triggered
           </Group>
-          {alarmAlerts.map((alert, index) => (
-            <AlertDetails key={index} alert={alert} />
+          {alarmAlerts.map(alert => (
+            <AlertDetails key={alert._id} alert={alert} />
           ))}
         </div>
       )}
@@ -290,8 +295,8 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
             description="All alerts in OK state will appear here."
           />
         )}
-        {okData.map((alert, index) => (
-          <AlertDetails key={index} alert={alert} />
+        {okData.map(alert => (
+          <AlertDetails key={alert._id} alert={alert} />
         ))}
       </div>
     </div>

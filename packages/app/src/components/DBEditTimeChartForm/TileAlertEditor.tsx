@@ -19,7 +19,6 @@ import {
   NumberInput,
   Paper,
   Text,
-  Textarea,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
@@ -32,6 +31,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
@@ -246,24 +246,10 @@ export function TileAlertEditor({
             type={alertChannelType}
             namePrefix="alert."
           />
-          <Text size="xxs" opacity={0.5} mb={4} mt="sm">
-            Note
-          </Text>
-          <Controller
+          <AlertNoteField
             control={control}
             name="alert.note"
-            render={({ field }) => (
-              <Textarea
-                data-testid="alert-note-input"
-                size="xs"
-                minRows={2}
-                maxRows={6}
-                autosize
-                placeholder="Why does this alert exist? Threshold history, links to runbooks, etc. Supports markdown."
-                {...field}
-                value={field.value ?? ''}
-              />
-            )}
+            labelMarginTop="sm"
           />
           {(alertThresholdType === AlertThresholdType.EQUAL ||
             alertThresholdType === AlertThresholdType.NOT_EQUAL) && (

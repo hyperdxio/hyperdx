@@ -45,4 +45,30 @@ describe('utils/externalApi', () => {
       expect(translated.scheduleStartAt).toBeUndefined();
     });
   });
+
+  describe('note handling', () => {
+    it('omits note when the value is null', () => {
+      const alert = createAlertDocument({ note: null });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated).not.toHaveProperty('note');
+    });
+
+    it('omits note when the value is undefined', () => {
+      const alert = createAlertDocument({ note: undefined });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated).not.toHaveProperty('note');
+    });
+
+    it('includes note when the value is a non-empty string', () => {
+      const alert = createAlertDocument({ note: 'threshold raised to 100' });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.note).toBe('threshold raised to 100');
+    });
+  });
 });

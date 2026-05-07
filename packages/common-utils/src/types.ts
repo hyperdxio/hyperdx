@@ -1423,7 +1423,7 @@ export const AlertsPageItemSchema = z.object({
   tileId: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
-  note: z.string().nullish(),
+  note: z.string().max(4096).nullish(),
   createdAt: z.string(),
   updatedAt: z.string(),
   history: z.array(AlertHistorySchema),
