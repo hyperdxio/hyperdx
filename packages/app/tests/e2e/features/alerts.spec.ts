@@ -1,9 +1,11 @@
+import path from 'path';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { SEEDED_ERROR_ALERT } from '../global-setup-fullstack';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SearchPage } from '../page-objects/SearchPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
@@ -486,3 +488,203 @@ test.describe(
     });
   },
 );
+
+test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
+  // Run serially so beforeAll seeding runs exactly once (not once per worker).
+  test.describe.configure({ mode: 'serial' });
+
+  let alertsPage: AlertsPage;
+  const ts = Date.now();
+
+  const searchAlpha = {
+    name: `E2E FilterAlpha ${ts}`,
+    tags: [`team-alpha-${ts}`, `production-${ts}`],
+  };
+  const searchBeta = {
+    name: `E2E FilterBeta ${ts}`,
+    tags: [`team-beta-${ts}`, `staging-${ts}`],
+  };
+  const searchShared = {
+    name: `E2E FilterShared ${ts}`,
+    tags: [`team-alpha-${ts}`, `staging-${ts}`],
+  };
+  const webhookUrl = `https://example.com/filter-${ts}`;
+
+  async function seedFilterTestData(page: import('@playwright/test').Page) {
+    const apiUrl = getApiUrl();
+    const sources = await getSources(page, 'log');
+    const logSourceId = sources[0]._id;
+
+    const uniqueUrl = `${webhookUrl}-${Date.now()}`;
+    const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
+      data: {
+        name: `E2E Filter Webhook ${ts}`,
+        service: 'generic',
+        url: uniqueUrl,
+      },
+    });
+    const webhook = (await webhookRes.json()).data;
+    const channel = {
+      type: 'webhook',
+      webhookId: webhook._id ?? webhook.id,
+    };
+
+    for (const ss of [searchAlpha, searchBeta, searchShared]) {
+      const ssRes = await page.request.post(`${apiUrl}/saved-search`, {
+        data: {
+          name: ss.name,
+          select: '',
+          where: '',
+          whereLanguage: 'lucene',
+          source: logSourceId,
+          tags: ss.tags,
+        },
+      });
+      const saved = await ssRes.json();
+
+      await page.request.post(`${apiUrl}/alerts`, {
+        data: {
+          source: 'saved_search',
+          savedSearchId: saved._id ?? saved.id,
+          channel,
+          interval: '5m',
+          threshold: 10,
+          thresholdType: 'above',
+        },
+      });
+    }
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    const authFile = path.join(__dirname, '../.auth/user.json');
+    const context = await browser.newContext({
+      storageState: authFile,
+    });
+    const page = await context.newPage();
+    await seedFilterTestData(page);
+    await context.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    alertsPage = new AlertsPage(page);
+    await alertsPage.goto();
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should show search and filter controls', async () => {
+    await expect(alertsPage.searchField).toBeVisible();
+    await expect(alertsPage.tagFilterDropdown).toBeVisible();
+    await expect(alertsPage.creatorFilterDropdown).toBeVisible();
+  });
+
+  test('should filter alerts by name search', async () => {
+    await test.step('All three seeded alerts are visible', async () => {
+      await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible(
+        { timeout: 10000 },
+      );
+      await expect(
+        alertsPage.getAlertCardByName(searchBeta.name),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(searchShared.name),
+      ).toBeVisible();
+    });
+
+    await test.step('Searching filters to matching alerts', async () => {
+      await alertsPage.searchByName('FilterAlpha');
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+      await expect(alertsPage.getAlertCardByName(searchBeta.name)).toBeHidden();
+      await expect(
+        alertsPage.getAlertCardByName(searchShared.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Search is persisted in the URL', async () => {
+      await expect(alertsPage.page).toHaveURL(/search=/);
+    });
+
+    await test.step('Clearing search restores all alerts', async () => {
+      await alertsPage.clearSearch();
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(searchBeta.name),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(searchShared.name),
+      ).toBeVisible();
+    });
+  });
+
+  test('should filter alerts by tag', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await test.step('Selecting a tag filters to matching alerts', async () => {
+      await alertsPage.selectTag(`team-beta-${ts}`);
+      await expect(
+        alertsPage.getAlertCardByName(searchBeta.name),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeHidden();
+      await expect(
+        alertsPage.getAlertCardByName(searchShared.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Tag filter is persisted in the URL', async () => {
+      await expect(alertsPage.page).toHaveURL(/tag=/);
+    });
+
+    await test.step('Clearing tag filter restores all alerts', async () => {
+      await alertsPage.clearTagFilter();
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+      await expect(
+        alertsPage.getAlertCardByName(searchBeta.name),
+      ).toBeVisible();
+    });
+  });
+
+  test('should filter alerts by tag shared across sources', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await alertsPage.selectTag(`staging-${ts}`);
+    await expect(alertsPage.getAlertCardByName(searchBeta.name)).toBeVisible();
+    await expect(
+      alertsPage.getAlertCardByName(searchShared.name),
+    ).toBeVisible();
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeHidden();
+  });
+
+  test('should show empty state when no alerts match filters', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await alertsPage.searchByName(`nonexistent-${ts}`);
+    await expect(
+      alertsPage.pageContainer.getByText('No matching alerts'),
+    ).toBeVisible();
+  });
+
+  test('should load filtered view from URL params', async ({ page }) => {
+    await page.goto(`/alerts?tag=team-beta-${ts}`);
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+
+    await expect(alertsPage.getAlertCardByName(searchBeta.name)).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeHidden();
+  });
+});
