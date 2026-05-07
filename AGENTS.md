@@ -26,6 +26,15 @@ MongoDB (configuration/metadata)
 
 ```bash
 yarn setup          # Install dependencies
+
+# Copy the per-package env templates on first clone — the live names
+# are gitignored to prevent accidentally committing real credentials.
+cp packages/api/.env.development.example packages/api/.env.development
+cp packages/app/.env.development.example packages/app/.env.development
+cp packages/api/.env.test.example        packages/api/.env.test
+cp packages/api/.env.e2e.example         packages/api/.env.e2e
+cp packages/common-utils/.env.test.example packages/common-utils/.env.test
+
 yarn dev            # Start full stack with worktree-isolated ports
 ```
 
@@ -49,6 +58,19 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+
+**When working inside a package, also read its `AGENTS.md`:**
+
+- `packages/api/AGENTS.md` - Backend invariants (team-scoping,
+  Athena/Trino client, Mongo conventions)
+- `packages/app/AGENTS.md` - Frontend conventions (Mantine, state
+  boundaries, row-WHERE / aliasMap pattern)
+- `packages/common-utils/AGENTS.md` - Trino dialect rules and SQL
+  emission invariants
+
+These nested guides capture per-scope gotchas (e.g. Trino's
+WITH-CTE-only rule, Athena's `_col*` synthetic names, the JSON cast
+trap) that don't belong at the root.
 
 **After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
 and lint issues across all packages. Pre-commit hooks handle this when

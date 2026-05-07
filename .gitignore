@@ -32,12 +32,30 @@ specs/
 !.yarn/versions
 
 # dotenv environment variable files
+#
+# Live `.env.*` files at the package level (e.g. packages/api/.env.development)
+# are gitignored to prevent accidentally committing real credentials. Each
+# tracked `.env.*.example` ships sanitised placeholders — copy it to the
+# matching live name on first clone:
+#
+#   cp packages/api/.env.development.example packages/api/.env.development
+#   cp packages/app/.env.development.example packages/app/.env.development
+#   cp packages/api/.env.test.example        packages/api/.env.test
+#   cp packages/api/.env.e2e.example         packages/api/.env.e2e
+#   cp packages/common-utils/.env.test.example packages/common-utils/.env.test
+**/.env
+**/.env.development
+**/.env.test
+**/.env.e2e
 **/.env.development.local
 **/.env.test.local
 **/.env.production.local
 **/.env.local
 **/.dockerhub.env
 **/.ghcr.env
+# Allow the sanitised templates back through.
+!**/.env.example
+!**/.env.*.example
 
 # Next.js build output
 packages/app/.next
@@ -61,6 +79,7 @@ package-lock.json
 **/dist
 **/build
 **/tsconfig.tsbuildinfo
+**/tsconfig.build.tsbuildinfo
 
 # jest coverage report
 **/coverage

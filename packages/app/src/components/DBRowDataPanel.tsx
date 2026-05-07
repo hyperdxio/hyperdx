@@ -1,18 +1,9 @@
 import { useMemo } from 'react';
-import { flatten } from 'flat';
-import type { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
-import {
-  isLogSource,
-  isTraceSource,
-  SourceKind,
-  TSource,
-} from '@berg/common-utils/dist/types';
+import { TSource } from '@berg/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
-import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
-import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 
@@ -38,115 +29,28 @@ export function useRowData({
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
 }) {
-  const eventBodyExpr = getEventBody(source);
-
-  const searchedTraceIdExpr =
-    isLogSource(source) || isTraceSource(source)
-      ? source.traceIdExpression
-      : undefined;
-  const searchedSpanIdExpr =
-    isLogSource(source) || isTraceSource(source)
-      ? source.spanIdExpression
-      : undefined;
-
-  const severityTextExpr = isLogSource(source)
-    ? source.severityTextExpression
-    : isTraceSource(source)
-      ? source.statusCodeExpression
-      : undefined;
-
-  const selectHighlightedRowAttributes =
-    source.kind === SourceKind.Trace || source.kind === SourceKind.Log
-      ? getSelectExpressionsForHighlightedAttributes(
-          source.highlightedRowAttributeExpressions,
-        )
-      : [];
-
   const queryResult = useQueriedChartConfig(
     {
-      connection: source.connection,
+      // Berg routes catalog/QueryExecutionContext resolution through
+      // `chartConfig.connection` (= source id). An empty string here
+      // makes the API fall back to `cfg.GLUE_CATALOG_ID`, which on
+      // multi-catalog deployments points at the wrong catalog and the
+      // row-detail SELECT silently returns no rows. Stamp the source id
+      // so the bridge resolves the right catalog/database.
+      connection: source.id,
       select: [
-        {
-          valueExpression: '*',
-        },
-        {
-          valueExpression: getDisplayedTimestampValueExpression(source),
-          alias: ROW_DATA_ALIASES.TIMESTAMP,
-        },
-        ...(eventBodyExpr
+        { valueExpression: '*' },
+        ...(source.timestampColumn
           ? [
               {
-                valueExpression: eventBodyExpr,
-                alias: ROW_DATA_ALIASES.BODY,
+                valueExpression: source.timestampColumn,
+                alias: ROW_DATA_ALIASES.TIMESTAMP,
               },
             ]
           : []),
-        ...(searchedTraceIdExpr
-          ? [
-              {
-                valueExpression: searchedTraceIdExpr,
-                alias: ROW_DATA_ALIASES.TRACE_ID,
-              },
-            ]
-          : []),
-        ...(searchedSpanIdExpr
-          ? [
-              {
-                valueExpression: searchedSpanIdExpr,
-                alias: ROW_DATA_ALIASES.SPAN_ID,
-              },
-            ]
-          : []),
-        ...(severityTextExpr
-          ? [
-              {
-                valueExpression: severityTextExpr,
-                alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.serviceNameExpression
-          ? [
-              {
-                valueExpression: source.serviceNameExpression,
-                alias: ROW_DATA_ALIASES.SERVICE_NAME,
-              },
-            ]
-          : []),
-        ...(source.resourceAttributesExpression
-          ? [
-              {
-                valueExpression: source.resourceAttributesExpression,
-                alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.eventAttributesExpression
-          ? [
-              {
-                valueExpression: source.eventAttributesExpression,
-                alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
-          ? [
-              {
-                valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
-                alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
-              },
-              {
-                valueExpression: source.spanEventsValueExpression,
-                alias: ROW_DATA_ALIASES.SPAN_EVENTS,
-              },
-            ]
-          : []),
-        ...selectHighlightedRowAttributes,
       ],
       where: rowId ?? '0=1',
-      from: source.from,
+      from: { databaseName: source.database, tableName: source.table },
       limit: { limit: 1 },
       ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
     },
@@ -156,44 +60,14 @@ export function useRowData({
     },
   );
 
-  // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
-  const normalizedData = useMemo(() => {
-    if (!queryResult.data?.data?.[0]) {
-      return queryResult.data;
-    }
-
-    const row = queryResult.data.data[0];
-    const normalizedRow = { ...row };
-
-    if (row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES]) {
-      normalizedRow[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] = flatten(
-        row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES],
-      );
-    }
-
-    if (row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES]) {
-      normalizedRow[ROW_DATA_ALIASES.EVENT_ATTRIBUTES] = flatten(
-        row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES],
-      );
-    }
-
-    return {
-      ...queryResult.data,
-      data: [normalizedRow],
-    };
-  }, [queryResult.data]);
-
-  return {
-    ...queryResult,
-    data: normalizedData,
-  };
+  return queryResult;
 }
 
-export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
+export function getJSONColumnNames(
+  meta: { name: string; type: string }[] | undefined,
+) {
   return (
     meta
-      // The type could either be just 'JSON' or it could be 'JSON(<parameters>)'
-      // this is a basic way to match both cases
       ?.filter(m => m.type === 'JSON' || m.type.startsWith('JSON('))
       .map(m => m.name) ?? []
   );

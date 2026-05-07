@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   Control,
   FieldErrors,
@@ -6,12 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import {
-  DateRange,
-  MetricsDataType,
-  SourceKind,
-  TSource,
-} from '@berg/common-utils/dist/types';
+import { DateRange, TSource } from '@berg/common-utils/dist/types';
 import { Button, Divider, Flex, Group, Text } from '@mantine/core';
 import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
 
@@ -21,20 +16,9 @@ import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
-import {
-  CheckBoxControlled,
-  TextInputControlled,
-} from '@/components/InputControlled';
-import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
-import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { TextInputControlled } from '@/components/InputControlled';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
-import {
-  parseAttributeKeysFromSuggestions,
-  useFetchMetricResourceAttrs,
-} from '@/hooks/useFetchMetricResourceAttrs';
-import { getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -70,94 +54,24 @@ export function ChartSeriesEditor({
   onRemoveSeries,
   onSwapSeries,
   onSubmit,
-  setValue,
+  setValue: _setValue,
   showGroupBy,
   showHaving,
   tableName: _tableName,
   parentRef,
   length,
-  tableSource,
-  errors,
-  clearErrors,
+  tableSource: _tableSource,
+  errors: _errors,
+  clearErrors: _clearErrors,
 }: ChartSeriesEditorProps) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
-  const aggConditionLanguage = useWatch({
+  void useWatch({
     control,
     name: `${namePrefix}aggConditionLanguage`,
     defaultValue: 'lucene',
   });
 
-  const metricType = useWatch({ control, name: `${namePrefix}metricType` });
-
-  // Initialize metricType to 'gauge' when switching to a metric source
-  // and reset 'custom' aggFn to 'count' since custom is not supported for metrics
-  useEffect(() => {
-    if (tableSource?.kind === SourceKind.Metric) {
-      if (!metricType) {
-        setValue(`${namePrefix}metricType`, MetricsDataType.Gauge);
-      }
-      if (aggFn === 'none') {
-        setValue(`${namePrefix}aggFn`, 'count');
-      }
-    }
-  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
-
-  const tableName =
-    tableSource?.kind === SourceKind.Metric
-      ? getMetricTableName(tableSource, metricType)
-      : _tableName;
-
-  const metricName = useWatch({ control, name: `${namePrefix}metricName` });
-  const aggCondition = useWatch({
-    control,
-    name: `${namePrefix}aggCondition`,
-  });
-  const groupBy = useWatch({ control, name: 'groupBy' });
-
-  const metricTableSource =
-    tableSource?.kind === SourceKind.Metric ? tableSource : undefined;
-
-  const { data: attributeSuggestions, isLoading: isLoadingAttributes } =
-    useFetchMetricResourceAttrs({
-      databaseName,
-      metricType,
-      metricName,
-      tableSource: metricTableSource,
-      isSql: aggConditionLanguage === 'sql',
-    });
-
-  const attributeKeys = useMemo(
-    () => parseAttributeKeysFromSuggestions(attributeSuggestions ?? []),
-    [attributeSuggestions],
-  );
-
-  const { data: metricMetadata } = useFetchMetricMetadata({
-    databaseName,
-    metricType,
-    metricName,
-    tableSource: metricTableSource,
-  });
-
-  const handleAddToWhere = useCallback(
-    (clause: string) => {
-      const currentValue = aggCondition || '';
-
-      const newValue = currentValue ? `${currentValue} AND ${clause}` : clause;
-      setValue(`${namePrefix}aggCondition`, newValue);
-      onSubmit();
-    },
-    [aggCondition, namePrefix, setValue, onSubmit],
-  );
-
-  const handleAddToGroupBy = useCallback(
-    (clause: string) => {
-      const currentValue = groupBy || '';
-      const newValue = currentValue ? `${currentValue}, ${clause}` : clause;
-      setValue('groupBy', newValue);
-      onSubmit();
-    },
-    [groupBy, setValue, onSubmit],
-  );
+  const tableName = _tableName;
 
   const showWhere = aggFn !== 'none';
 
@@ -166,10 +80,8 @@ export function ChartSeriesEditor({
       databaseName,
       tableName: tableName ?? '',
       connectionId: connectionId ?? '',
-      metricName:
-        tableSource?.kind === SourceKind.Metric ? metricName : undefined,
     }),
-    [databaseName, tableName, connectionId, metricName, tableSource],
+    [databaseName, tableName, connectionId],
   );
 
   return (
@@ -239,40 +151,9 @@ export function ChartSeriesEditor({
             quantileLevelName={`${namePrefix}level`}
             defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
-            hideCustom={tableSource?.kind === SourceKind.Metric}
           />
         </div>
-        {tableSource?.kind === SourceKind.Metric && metricType && (
-          <div style={{ minWidth: 220 }}>
-            <MetricNameSelect
-              metricName={metricName}
-              metricType={metricType}
-              setMetricName={value => {
-                setValue(`${namePrefix}metricName`, value);
-                setValue(`${namePrefix}valueExpression`, 'Value');
-              }}
-              setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
-              }
-              metricSource={tableSource}
-              data-testid="metric-name-selector"
-              error={errors?.metricName?.message}
-              onFocus={() => clearErrors(`${namePrefix}metricName`)}
-            />
-            {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
-                />
-              </Flex>
-            )}
-          </div>
-        )}
-        {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
+        {aggFn !== 'count' && (
           <div
             style={{
               minWidth: 220,
@@ -311,7 +192,6 @@ export function ChartSeriesEditor({
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
                     showLabel={false}
-                    additionalSuggestions={attributeSuggestions}
                   />
                 </div>
               </>
@@ -361,20 +241,6 @@ export function ChartSeriesEditor({
           </div>
         )}
       </Flex>
-      {tableSource?.kind === SourceKind.Metric && metricName && metricType && (
-        <MetricAttributeHelperPanel
-          databaseName={databaseName}
-          metricType={metricType}
-          metricName={metricName}
-          tableSource={tableSource}
-          attributeKeys={attributeKeys}
-          isLoading={isLoadingAttributes}
-          language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
-          metricMetadata={metricMetadata}
-          onAddToWhere={handleAddToWhere}
-          onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
-        />
-      )}
     </>
   );
 }

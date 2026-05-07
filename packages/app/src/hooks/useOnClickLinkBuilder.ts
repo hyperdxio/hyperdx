@@ -3,7 +3,7 @@ import {
   renderOnClickDashboard,
   renderOnClickSearch,
 } from '@berg/common-utils/dist/core/linkUrlBuilder';
-import { isSearchableSource, OnClick } from '@berg/common-utils/dist/types';
+import { OnClick } from '@berg/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import { useDashboards } from '@/dashboard';
@@ -28,12 +28,13 @@ export function useOnClickLinkBuilder({
   const [sourceIdsByName, sourceIds] = useMemo(() => {
     const map = new Map<string, string[]>();
     const set = new Set<string>();
-    for (const s of sources?.filter(isSearchableSource) ?? []) {
+    for (const s of sources ?? []) {
       set.add(s.id);
+      const name = s.displayName;
 
-      const existing = map.get(s.name);
+      const existing = map.get(name);
       if (existing) existing.push(s.id);
-      else map.set(s.name, [s.id]);
+      else map.set(name, [s.id]);
     }
     return [map, set];
   }, [sources]);

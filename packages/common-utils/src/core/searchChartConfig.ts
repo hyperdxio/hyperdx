@@ -3,9 +3,6 @@ import {
   DateRange,
   DisplayType,
   Filter,
-  isLogSource,
-  isTraceSource,
-  pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
@@ -83,23 +80,20 @@ export type SearchChartConfigInput = {
 };
 
 /**
- * Resolve the SELECT list, preferring caller-provided `select`, then the
- * source's `defaultTableSelectExpression` (for Log / Trace sources), falling
- * back to an empty string.
+ * Resolve the SELECT list, preferring caller-provided `select`, falling back
+ * to '*'. In Berg, sources are agnostic Athena tables; there is no
+ * source-side default-select expression.
  *
  * Both `string` and `DerivedColumn[]` SELECT shapes have a `.length` property,
  * so a single non-empty check covers "skip empty `''` strings and skip empty
- * `[]` arrays" symmetrically — matching the app's historical behavior.
+ * `[]` arrays" symmetrically.
  */
 function resolveSelect(
-  source: TSource,
+  _source: TSource,
   select: SelectList | null | undefined,
 ): BuilderChartConfig['select'] {
   if (select != null && select.length > 0) return select;
-  if (isLogSource(source) || isTraceSource(source)) {
-    return source.defaultTableSelectExpression ?? '';
-  }
-  return '';
+  return '*';
 }
 
 /**
@@ -121,40 +115,18 @@ export function buildSearchChartConfig(
   source: TSource,
   input: SearchChartConfigInput,
 ): SearchChartConfig {
-  // Prepend the Log source's `tableFilterExpression` as a SQL filter when set,
-  // so the alert query and the app search see the same row set.
-  // Log sources are the only kind that carries `tableFilterExpression` today.
-  //
-  // NOTE: `tableFilterExpression` is deprecated. It's an application-side SQL
-  // predicate (not a ClickHouse row policy), so it can't enforce real tenant
-  // isolation — anyone with direct SELECT access to the table bypasses it.
-  // For hard isolation, configure a ClickHouse ROW POLICY at the DB level
-  // instead. Existing values are still honored here for backward
-  // compatibility; new sources should not set the field.
-  const tableFilter: Filter[] =
-    isLogSource(source) && source.tableFilterExpression != null
-      ? [{ type: 'sql', condition: source.tableFilterExpression }]
-      : [];
   const userFilters: Filter[] = input.filters ?? [];
-  const mergedFilters: Filter[] = [...tableFilter, ...userFilters];
-
-  const implicitColumnExpression =
-    isLogSource(source) || isTraceSource(source)
-      ? source.implicitColumnExpression
-      : undefined;
 
   const config: SearchChartConfig = {
-    connection: input.connection ?? source.connection ?? '',
+    connection: input.connection ?? '',
     displayType: input.displayType ?? DisplayType.Search,
     source: source.id,
-    from: source.from,
+    from: { databaseName: source.database, tableName: source.table },
     select: resolveSelect(source, input.select),
     where: input.where ?? '',
     whereLanguage: input.whereLanguage ?? 'sql',
-    timestampValueExpression: source.timestampValueExpression ?? '',
-    ...(implicitColumnExpression != null ? { implicitColumnExpression } : {}),
-    ...pickSampleWeightExpressionProps(source),
-    ...(mergedFilters.length > 0 ? { filters: mergedFilters } : {}),
+    timestampValueExpression: source.timestampColumn ?? '',
+    ...(userFilters.length > 0 ? { filters: userFilters } : {}),
     ...(input.groupBy != null ? { groupBy: input.groupBy } : {}),
     ...(input.orderBy != null ? { orderBy: input.orderBy } : {}),
     ...(input.dateRange != null ? { dateRange: input.dateRange } : {}),

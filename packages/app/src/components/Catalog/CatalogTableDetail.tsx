@@ -32,15 +32,12 @@ import { CatalogTabDDL } from './CatalogTabDDL';
 import { CatalogTabSample } from './CatalogTabSample';
 import { CatalogTabSchema, pickRecommendedTimestamp } from './CatalogTabSchema';
 import { CatalogTabStats } from './CatalogTabStats';
+import { fullyQualifiedTable } from './sql';
 
 export interface CatalogTableDetailProps {
   catalogId: string;
   database: string;
   table: string;
-}
-
-function q(id: string) {
-  return `"${id.replace(/"/g, '""')}"`;
 }
 
 export function CatalogTableDetail({
@@ -69,7 +66,7 @@ export function CatalogTableDetail({
   };
 
   const handleOpenInSQL = () => {
-    const sql = `SELECT * FROM ${q(catalogId)}.${q(database)}.${q(table)} LIMIT 100`;
+    const sql = `SELECT * FROM ${fullyQualifiedTable(catalogId, database, table)} LIMIT 100`;
     // The dedicated `/sql` editor route lands later — for now we point at
     // the existing `/clickhouse` page which the v1 plan retains as the SQL
     // workspace. The query-string contract is the same.

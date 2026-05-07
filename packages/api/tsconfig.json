@@ -14,5 +14,5 @@
     "target": "ES2022"
   },
   "include": ["src", "migrations", "scripts"],
-  "exclude": ["node_modules", "src/clickhouse/**"]
+  "exclude": ["node_modules"]
 }

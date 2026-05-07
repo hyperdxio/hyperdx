@@ -1,16 +1,18 @@
 import { useMemo } from 'react';
 import { omit } from 'lodash';
 import ms from 'ms';
-import type {
-  ClickHouseSettings,
-  ResponseJSON,
-  Row,
-} from '@berg/common-utils/dist/clickhouse';
+
+import type { ResponseJSON } from '@/clickhouse-types';
 import {
   ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
-} from '@berg/common-utils/dist/clickhouse';
+} from '@/clickhouse-types';
+
+type ClickHouseSettings = Record<string, any>;
+type Row<_TData = unknown[], _TFormat = unknown> = {
+  json: <U>() => U;
+};
 import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
@@ -36,7 +38,6 @@ import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
@@ -462,12 +463,8 @@ export default function useOffsetPaginatedQuery(
     windowDurationsSeconds.unshift(ONE_MIN_WINDOW);
   }
 
-  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
-  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(builderConfig, {
-      enabled: !!enabled && !!builderConfig,
-      placeholderData: undefined,
-    });
+  // Berg has no MV optimisation; the chart uses the raw config.
+  void isBuilderChartConfig;
 
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
@@ -493,8 +490,7 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled:
-      enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
+    enabled: enabled && !isLoadingMe && !isSourceLoading,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
       return getNextPageParam(
@@ -510,7 +506,7 @@ export default function useOffsetPaginatedQuery(
       hasPreviousQueries,
       windowDurationsSeconds,
       metadata,
-      optimizedConfig: mvOptimizationData?.optimizedConfig,
+      optimizedConfig: undefined,
       source,
     } satisfies QueryMeta,
     queryFn,
@@ -528,7 +524,7 @@ export default function useOffsetPaginatedQuery(
     data: flattenedData,
     fetchNextPage,
     hasNextPage,
-    isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
-    isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
+    isFetching: isFetching || isLoadingMe,
+    isLoading: isLoading || isLoadingMe,
   };
 }

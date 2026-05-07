@@ -50,7 +50,6 @@ DOCKER_COMPOSE_FILE="$REPO_ROOT/packages/app/tests/e2e/docker-compose.yml"
 # ---------------------------------------------------------------------------
 export HDX_E2E_SLOT="${HDX_E2E_SLOT:-$(printf '%s' "$(basename "$REPO_ROOT")" | cksum | awk '{print $1 % 100}')}"
 
-export HDX_E2E_OPAMP_PORT="${HDX_E2E_OPAMP_PORT:-$((20320 + HDX_E2E_SLOT))}"
 export HDX_E2E_CH_PORT="${HDX_E2E_CH_PORT:-$((20500 + HDX_E2E_SLOT))}"
 export HDX_E2E_CH_NATIVE_PORT="${HDX_E2E_CH_NATIVE_PORT:-$((20600 + HDX_E2E_SLOT))}"
 export HDX_E2E_API_PORT="${HDX_E2E_API_PORT:-$((21000 + HDX_E2E_SLOT))}"
@@ -70,7 +69,7 @@ exec > >(tee "$HDX_E2E_LOGS_DIR/e2e.log") 2>&1
 # shellcheck source=./ensure-dev-portal.sh
 source "${REPO_ROOT}/scripts/ensure-dev-portal.sh"
 
-echo "Using E2E slot ${HDX_E2E_SLOT} (project=${E2E_PROJECT} ch=${HDX_E2E_CH_PORT} ch-native=${HDX_E2E_CH_NATIVE_PORT} mongo=${HDX_E2E_MONGO_PORT} api=${HDX_E2E_API_PORT} app=${HDX_E2E_APP_PORT} app-local=${HDX_E2E_APP_LOCAL_PORT} opamp=${HDX_E2E_OPAMP_PORT})"
+echo "Using E2E slot ${HDX_E2E_SLOT} (project=${E2E_PROJECT} ch=${HDX_E2E_CH_PORT} ch-native=${HDX_E2E_CH_NATIVE_PORT} mongo=${HDX_E2E_MONGO_PORT} api=${HDX_E2E_API_PORT} app=${HDX_E2E_APP_PORT} app-local=${HDX_E2E_APP_LOCAL_PORT})"
 
 # Configuration constants
 readonly MAX_MONGODB_WAIT_ATTEMPTS=15

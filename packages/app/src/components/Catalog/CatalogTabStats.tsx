@@ -5,12 +5,10 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { useRunQuery } from '@/hooks/useRunQuery';
 
+import { fullyQualifiedTable } from './sql';
+
 interface Props {
   schema: GlueTableSchema;
-}
-
-function q(id: string) {
-  return `"${id.replace(/"/g, '""')}"`;
 }
 
 function formatBytes(bytes: number): string {
@@ -24,7 +22,7 @@ function formatBytes(bytes: number): string {
 export function CatalogTabStats({ schema }: Props) {
   const sql = useMemo(
     () =>
-      `SELECT count(*) AS row_count FROM ${q(schema.catalogId)}.${q(schema.database)}.${q(schema.table)}`,
+      `SELECT count(*) AS row_count FROM ${fullyQualifiedTable(schema.catalogId, schema.database, schema.table)}`,
     [schema.catalogId, schema.database, schema.table],
   );
 

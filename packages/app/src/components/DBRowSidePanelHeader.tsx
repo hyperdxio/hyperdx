@@ -226,6 +226,14 @@ export default function DBRowSidePanelHeader({
           </Text>
         )}
       </Flex>
+      {/*
+        The body / main-content panel and its `[Empty]` fallback existed
+        for HyperDX log sources that always carry an event body. Berg
+        sources have no observability semantics — there's no `__hdx_body`
+        column to surface, and rendering a permanent "[Empty]" tile at
+        the top of every Overview tab is just visual noise. We render
+        the body Paper only when there's actual content.
+      */}
       {mainContent ? (
         <Paper
           p="xs"
@@ -274,13 +282,7 @@ export default function DBRowSidePanelHeader({
             </Button>
           )}
         </Paper>
-      ) : (
-        <Paper p="xs" mt="sm">
-          <Text size="xs" mb="xs">
-            [Empty]
-          </Text>
-        </Paper>
-      )}
+      ) : null}
       <AISummarizeButton rowData={rowData} severityText={severityText} />
       <Box mt="xs">
         <DBHighlightedAttributesList attributes={attributesWithDefault} />

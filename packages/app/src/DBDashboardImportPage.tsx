@@ -238,7 +238,8 @@ function Mapping({ input }: { input: DashboardTemplate }) {
       const config = tile.config as SavedChartConfig;
       if (!config.source) return '';
       const match = sources.find(
-        source => source.name.toLowerCase() === config.source!.toLowerCase(),
+        source =>
+          source.displayName.toLowerCase() === config.source!.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -255,7 +256,8 @@ function Mapping({ input }: { input: DashboardTemplate }) {
 
     const filterSourceMappings = input.filters?.map(filter => {
       const match = sources.find(
-        source => source.name.toLowerCase() === filter.source.toLowerCase(),
+        source =>
+          source.displayName.toLowerCase() === filter.source.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -482,7 +484,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
                         name={`sourceMappings.${i}`}
                         data={sources?.map(source => ({
                           value: source.id,
-                          label: source.name,
+                          label: source.displayName,
                         }))}
                         placeholder="Select a source"
                       />
@@ -515,7 +517,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
                     name={`filterSourceMappings.${i}`}
                     data={sources?.map(source => ({
                       value: source.id,
-                      label: source.name,
+                      label: source.displayName,
                     }))}
                     placeholder="Select a source"
                   />

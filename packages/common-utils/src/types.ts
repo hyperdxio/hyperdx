@@ -1009,26 +1009,12 @@ export type Team = z.infer<typeof TeamSchema>;
 // --------------------------
 // TABLE SOURCES (Berg)
 // --------------------------
-// In Berg, a Source represents a single Athena/Iceberg table. Earlier
-// HyperDX versions used a discriminated union with four telemetry kinds
-// (Log/Trace/Session/Metric) — those have been collapsed to the single
-// `Table` kind below.
-//
-// The legacy kind names (Log/Trace/Session/Metric) are retained as
-// deprecated string constants so the in-tree ClickHouse-backed core/* modules
-// still type-check; they are inert in Berg — no Source will ever carry these
-// kinds again — and will be deleted alongside the legacy code paths in
-// PR2/PR3.
+// In Berg, a Source represents a single Athena/Iceberg table. The legacy
+// HyperDX discriminated union (Log/Trace/Session/Metric) has been collapsed
+// to the single `Table` kind. Downstream consumers should treat every
+// Source as a Berg-native Athena table.
 export const SourceKind = {
   Table: 'Table',
-  /** @deprecated retained for backward compatibility — never produced. */
-  Log: 'log',
-  /** @deprecated retained for backward compatibility — never produced. */
-  Trace: 'trace',
-  /** @deprecated retained for backward compatibility — never produced. */
-  Session: 'session',
-  /** @deprecated retained for backward compatibility — never produced. */
-  Metric: 'metric',
 } as const;
 export type SourceKind = (typeof SourceKind)[keyof typeof SourceKind];
 
@@ -1038,232 +1024,33 @@ const QuerySettingsSchema = z
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
 
-// Base schema with fields shared between all source representations.
-//
-// `from`, `name`, and `timestampValueExpression` are tagged required for now
-// because the in-tree ClickHouse-backed core/* modules still treat them as
-// load-bearing. Task 4 swaps in the Athena query path — at that point they
-// should be removed in favour of the Berg-native catalog/database/table
-// fields and an optional timestampColumn.
-export const BaseSourceSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  from: z.object({
-    databaseName: z.string(),
-    tableName: z.string(),
-  }),
-  querySettings: QuerySettingsSchema.optional(),
-  timestampValueExpression: z.string(),
-});
-
 // Single Table source schema for Berg (Athena/Iceberg).
-//
-// NOTE: A handful of legacy observability-specific fields are tagged optional
-// here purely so the in-tree ClickHouse-backed code paths in `core/` and
-// downstream apps still type-check. Task 4 swaps in the Athena query path,
-// Task 9 generalises the search UI, and these legacy fields will be removed
-// once all consumers stop referencing them.
-//
-// `kind` accepts the legacy strings ('log'/'trace'/'session'/'metric') as a
-// type-only shim; the API model only ever persists 'Table'.
-export const TableSourceSchema = BaseSourceSchema.extend({
-  kind: z.union([
-    z.literal(SourceKind.Table),
-    z.literal(SourceKind.Log),
-    z.literal(SourceKind.Trace),
-    z.literal(SourceKind.Session),
-    z.literal(SourceKind.Metric),
-  ]),
-  // Berg-native fields. Tagged optional at the schema layer so legacy code
-  // paths that build TableSource-shaped objects without them still compile;
-  // the API model in `packages/api/src/models/source.ts` enforces the
-  // required-on-write semantics for the Berg path.
-  catalog: z.string().min(1, 'Catalog is required').optional(),
-  database: z.string().min(1, 'Database is required').optional(),
-  table: z.string().min(1, 'Table is required').optional(),
-  displayName: z.string().min(1, 'Display name is required').optional(),
+export const TableSourceSchema = z.object({
+  id: z.string(),
+  kind: z.literal(SourceKind.Table),
+  catalog: z.string().min(1, 'Catalog is required'),
+  database: z.string().min(1, 'Database is required'),
+  table: z.string().min(1, 'Table is required'),
+  displayName: z.string().min(1, 'Display name is required'),
   timestampColumn: z.string().optional(),
   defaultSort: z.string().optional(),
   defaultColumns: z.array(z.string()).optional(),
   lastQueriedAt: z.coerce.date().optional(),
-  // ---- Legacy fields retained for backward compatibility (deprecated) ----
-  // `connection` is no longer modelled by the API (Connection was deleted in
-  // Task 3). We keep it as an inert empty-string field on the type so legacy
-  // chart-config paths that still read `source.connection` keep working
-  // without runtime errors. Will be dropped once those paths are ported to
-  // the Athena query lifecycle.
-  connection: z.string(),
-  defaultTableSelectExpression: z.string().optional(),
-  implicitColumnExpression: z.string().optional(),
-  tableFilterExpression: z.string().optional(),
-  serviceNameExpression: z.string().optional(),
-  severityTextExpression: z.string().optional(),
-  bodyExpression: z.string().optional(),
-  eventAttributesExpression: z.string().optional(),
-  resourceAttributesExpression: z.string().optional(),
-  displayedTimestampValueExpression: z.string().optional(),
-  metricSourceId: z.string().optional(),
-  traceSourceId: z.string().optional(),
-  logSourceId: z.string().nullish(),
-  sessionSourceId: z.string().optional(),
-  traceIdExpression: z.string().optional(),
-  spanIdExpression: z.string().optional(),
-  parentSpanIdExpression: z.string().optional(),
-  spanNameExpression: z.string().optional(),
-  spanKindExpression: z.string().optional(),
-  durationExpression: z.string().optional(),
-  durationPrecision: z.number().optional(),
-  sampleRateExpression: z.string().optional(),
-  statusCodeExpression: z.string().optional(),
-  statusMessageExpression: z.string().optional(),
-  spanEventsValueExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
-  orderByExpression: z.string().optional(),
-  highlightedTraceAttributeExpressions: z
-    .array(
-      z.object({
-        sqlExpression: z.string(),
-        luceneExpression: z.string().optional(),
-        alias: z.string().optional(),
-      }),
-    )
-    .optional(),
-  highlightedRowAttributeExpressions: z
-    .array(
-      z.object({
-        sqlExpression: z.string(),
-        luceneExpression: z.string().optional(),
-        alias: z.string().optional(),
-      }),
-    )
-    .optional(),
-  metricTables: MetricTableSchema.optional(),
-  // Tagged as `any` to break circular reference with MaterializedViewConfigurationSchema
-
-  materializedViews: z.array(z.any()).optional(),
+  querySettings: QuerySettingsSchema.optional(),
 });
 
 export type TableSource = z.infer<typeof TableSourceSchema>;
 
 // Backwards-compatible re-exports so existing call sites keep compiling.
-// All four old kinds collapse to the single Table kind for now; downstream
-// observability-specific code paths will be removed in subsequent tasks.
 export const SourceSchema = TableSourceSchema;
 export type TSource = TableSource;
 
 export const SourceSchemaNoId = TableSourceSchema.omit({ id: true });
 export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
 
-// Type guards. With a single kind these are trivial but kept exported so
-// downstream consumers can stage their migration off the old Log/Trace
-// branching without an immediate rewrite.
 export function isTableSource(source: TSource): source is TableSource {
   return source.kind === SourceKind.Table;
 }
-
-// --------------------------
-// BACKWARD-COMPAT SHIMS (Berg)
-// --------------------------
-// HyperDX had four discriminated source kinds (Log/Trace/Session/Metric);
-// Berg has one (Table). Downstream consumers that haven't been ported yet
-// see these aliases so they keep type-checking; in the single-kind world
-// the guards trivially return whether `kind` matches the legacy literal —
-// always false at runtime in a freshly-migrated install, but the type
-// narrowing still flows correctly because the structural shape of TLogSource
-// (etc.) matches the legacy fields kept on TableSourceSchema.
-// Both shapes structurally collapse to TableSource in Berg. Defining them as
-// pure aliases (rather than narrowed-kind subtypes) gives TS a single
-// canonical shape that downstream call sites can flow into without per-kind
-// narrowing — the runtime kind value is irrelevant for the legacy code paths
-// that still reference these types, since they no-op against Table sources.
-export type TLogSource = TableSource;
-export type TTraceSource = TableSource;
-export type TSessionSource = TableSource;
-export type TMetricSource = TableSource;
-
-// Plain booleans (not type guards) so the else-branch in legacy
-// `isLogSource(s) || isTraceSource(s)` patterns doesn't narrow `s` to never.
-export function isLogSource(source: TSource): boolean {
-  return source.kind === SourceKind.Log;
-}
-export function isTraceSource(source: TSource): boolean {
-  return source.kind === SourceKind.Trace;
-}
-export function isSessionSource(source: TSource): boolean {
-  return source.kind === SourceKind.Session;
-}
-export function isMetricSource(source: TSource): boolean {
-  return source.kind === SourceKind.Metric;
-}
-export function isSearchableSource(source: TSource): boolean {
-  return isLogSource(source) || isTraceSource(source);
-}
-
-type SourceLikeForSampleWeight = {
-  kind: SourceKind;
-  sampleRateExpression?: string | null;
-};
-
-/** Legacy: trace sample rate expression for chart sampleWeightExpression. */
-export function getSampleWeightExpression(
-  source: SourceLikeForSampleWeight,
-): string | undefined {
-  return source.kind === SourceKind.Trace && source.sampleRateExpression
-    ? source.sampleRateExpression
-    : undefined;
-}
-
-/** Legacy: spread `pickSampleWeightExpressionProps(source)` into a chart config. */
-export function pickSampleWeightExpressionProps(
-  source: SourceLikeForSampleWeight,
-): { sampleWeightExpression: string } | undefined {
-  const w = getSampleWeightExpression(source);
-  return w ? { sampleWeightExpression: w } : undefined;
-}
-
-// Materialized-view config shapes are referenced by app utility files that
-// will be rewritten in PR3/PR4. Restored as deprecated shapes so downstream
-// type-checks keep compiling against the dist artefacts.
-const AggregatedColumnConfigSchema = z
-  .object({
-    sourceColumn: z.string().optional(),
-    aggFn: InternalAggregateFunctionSchema,
-    mvColumn: z.string().min(1, 'Materialized View Column is required'),
-  })
-  .refine(
-    ({ sourceColumn, aggFn }) => aggFn === 'count' || !!sourceColumn?.length,
-    { message: 'Materialized View Source Column is required' },
-  );
-export type AggregatedColumnConfig = z.infer<
-  typeof AggregatedColumnConfigSchema
->;
-
-export const MaterializedViewConfigurationSchema = z.object({
-  databaseName: z.string().min(1, 'Materialized View Database is required'),
-  tableName: z.string().min(1, 'Materialized View Table is required'),
-  dimensionColumns: z.string(),
-  minGranularity: SQLIntervalSchema,
-  minDate: z.string().datetime().nullish(),
-  timestampColumn: z
-    .string()
-    .min(1, 'Materialized View Timestamp column is required'),
-  aggregatedColumns: z
-    .array(AggregatedColumnConfigSchema)
-    .min(1, 'At least one aggregated column is required'),
-});
-export type MaterializedViewConfiguration = z.infer<
-  typeof MaterializedViewConfigurationSchema
->;
-
-// Connection has been deleted from the model layer — the export remains as a
-// nominal type so legacy code paths still compile until they're rewritten.
-export type Connection = {
-  id: string;
-  name?: string;
-  host?: string;
-  username?: string;
-  password?: string;
-};
 
 export const AssistantLineTableConfigSchema = z.object({
   displayType: z.enum([DisplayType.Line, DisplayType.Table]),

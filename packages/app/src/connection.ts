@@ -4,8 +4,17 @@
  * scheduled for removal in Tasks 9/10/11. Until then, these no-op hooks
  * return empty arrays so the rest of the app still compiles.
  */
-import { Connection } from '@berg/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+// Berg has no Connection model. Local nominal type so the legacy callers
+// keep type-checking until they are deleted alongside the SQL editor.
+export type Connection = {
+  id: string;
+  name?: string;
+  host?: string;
+  username?: string;
+  password?: string;
+};
 
 export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 

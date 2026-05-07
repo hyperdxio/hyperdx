@@ -60,13 +60,12 @@ function initialState(props: EditSourceModalProps): FormState {
   const { source, defaults } = props;
   if (source) {
     return {
-      displayName: source.displayName || source.name || '',
+      displayName: source.displayName || '',
       catalog: source.catalog || '',
-      database: source.database || source.from?.databaseName || '',
-      table: source.table || source.from?.tableName || '',
-      timestampColumn:
-        source.timestampColumn || source.timestampValueExpression || '',
-      defaultSort: source.defaultSort || source.orderByExpression || '',
+      database: source.database || '',
+      table: source.table || '',
+      timestampColumn: source.timestampColumn || '',
+      defaultSort: source.defaultSort || '',
       defaultColumns: source.defaultColumns || [],
     };
   }
@@ -173,12 +172,7 @@ export function EditSourceModal(props: EditSourceModalProps) {
         ? undefined
         : form.timestampColumn;
 
-    // Berg-native source payload. The API model only persists the Berg
-    // fields; `name`, `from`, `timestampValueExpression`, and `connection`
-    // remain on the shared TableSource type purely so legacy chart-config
-    // plumbing keeps type-checking — we mirror them from the Berg fields
-    // (or pass an empty-string sentinel) rather than tracking them as
-    // separate state.
+    // Berg-native source payload.
     const payload: TSourceNoId & { id?: string } = {
       kind: SourceKind.Table,
       displayName: form.displayName.trim(),
@@ -190,11 +184,6 @@ export function EditSourceModal(props: EditSourceModalProps) {
       defaultColumns: form.defaultColumns.length
         ? form.defaultColumns
         : undefined,
-      // ---- Legacy mirrored fields (read by chart code, not persisted) ----
-      name: form.displayName.trim(),
-      from: { databaseName: form.database, tableName: form.table },
-      timestampValueExpression: tsCol ?? '',
-      connection: '',
       ...(source?.id ? { id: source.id } : {}),
     };
 

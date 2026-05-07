@@ -148,7 +148,7 @@ describe('DBRowJsonViewer', () => {
         clickLineButton(field, 'Search');
 
         expect(mockGenerateSearchUrl).toHaveBeenCalledWith({
-          where: `${field} = parseDateTime64BestEffort('2024-03-14 12:34:56.789', 9)`,
+          where: `${field} = cast('2024-03-14 12:34:56.789' as timestamp)`,
           whereLanguage: 'sql',
         });
       },

@@ -11,7 +11,6 @@ import {
   Filter,
   SavedChartConfig,
   SelectList,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 
@@ -21,7 +20,6 @@ import {
   convertToTableChartConfig,
   convertToTimeChartConfig,
 } from '@/ChartUtils';
-import { getFirstTimestampValueExpression } from '@/source';
 
 export const isQueryReady = (
   queriedConfig: ChartConfigWithDateRange | undefined,
@@ -34,9 +32,7 @@ export const isQueryReady = (
     ((queriedConfig.select?.length ?? 0) > 0 ||
       typeof queriedConfig.select === 'string') &&
     queriedConfig.from?.databaseName &&
-    // tableName is empty for metric sources
-    (queriedConfig.from?.tableName || queriedConfig.metricTables) &&
-    queriedConfig.timestampValueExpression
+    queriedConfig.from?.tableName
   );
 };
 
@@ -125,21 +121,15 @@ export function buildSampleEventsConfig(
     orderBy: [
       {
         ordering: 'DESC' as const,
-        valueExpression: getFirstTimestampValueExpression(
-          tableSource.timestampValueExpression,
-        ),
+        valueExpression: tableSource.timestampColumn ?? '',
       },
     ],
     dateRange,
-    timestampValueExpression: tableSource.timestampValueExpression,
-    connection: tableSource.connection,
-    from: tableSource.from,
+    timestampValueExpression: tableSource.timestampColumn ?? '',
+    connection: '',
+    from: { databaseName: tableSource.database, tableName: tableSource.table },
     limit: { limit: 200 },
-    select:
-      ((tableSource.kind === SourceKind.Log ||
-        tableSource.kind === SourceKind.Trace) &&
-        tableSource.defaultTableSelectExpression) ||
-      '',
+    select: '*',
     filters: seriesToFilters(queriedConfig.select),
     filtersLogicalOperator: 'OR' as const,
     groupBy: undefined,
@@ -191,9 +181,12 @@ export function buildChartConfigForExplanations({
         ? {
             ...chartConfig,
             dateRange,
-            timestampValueExpression: tableSource.timestampValueExpression,
-            from: tableSource.from,
-            connection: tableSource.connection,
+            timestampValueExpression: tableSource.timestampColumn ?? '',
+            from: {
+              databaseName: tableSource.database,
+              tableName: tableSource.table,
+            },
+            connection: '',
           }
         : undefined;
 

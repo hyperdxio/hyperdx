@@ -4,7 +4,7 @@ import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { SavedChartConfig, SourceKind } from '@berg/common-utils/dist/types';
+import { SavedChartConfig } from '@berg/common-utils/dist/types';
 import {
   Alert,
   Box,
@@ -177,7 +177,6 @@ function AIAssistant({
                 control={control}
                 name="source"
                 data-testid="source-selector"
-                allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
               />
               <Box style={{ flexGrow: 1, minWidth: 100 }}>
                 <InputControlled
@@ -228,7 +227,7 @@ function DBChartExplorerPage() {
     parseAsJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
-      connection: sources?.[0]?.connection,
+      connection: '',
     }),
   );
 

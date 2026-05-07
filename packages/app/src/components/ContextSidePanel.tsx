@@ -5,8 +5,6 @@ import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
-  isLogSource,
-  isTraceSource,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
@@ -226,15 +224,12 @@ export default function ContextSubpanel({
     // missing query info, build config from source with default value
     if (!dbSqlRowTableConfig)
       return {
-        connection: source.connection,
-        from: source.from,
-        timestampValueExpression: source.timestampValueExpression,
-        select:
-          ((isLogSource(source) || isTraceSource(source)) &&
-            source.defaultTableSelectExpression) ||
-          '',
+        connection: '',
+        from: { databaseName: source.database, tableName: source.table },
+        timestampValueExpression: source.timestampColumn ?? '',
+        select: '*',
         limit: { limit: 200 },
-        orderBy: `${source.timestampValueExpression} DESC`,
+        orderBy: source.timestampColumn ? `${source.timestampColumn} DESC` : '',
         where: whereClause,
         whereLanguage: originalLanguage,
         dateRange: newDateRange,

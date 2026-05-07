@@ -64,6 +64,14 @@ router.post(
           return res.status(404).json({ error: err.message, code: err.code });
         case 'throttled':
           return res.status(429).json({ error: err.message, code: err.code });
+        case 'unknown':
+          // `classifyAthenaError` puts everything it can't bucket into
+          // 'unknown' — that includes legitimate user errors like
+          // `FUNCTION_NOT_FOUND` and `INVALID_FUNCTION_ARGUMENT`.
+          // Returning 400 with the original Athena message is far more
+          // useful than the appErrorHandler's generic
+          // "Something went wrong :(".
+          return res.status(400).json({ error: err.message, code: err.code });
         default:
           break;
       }

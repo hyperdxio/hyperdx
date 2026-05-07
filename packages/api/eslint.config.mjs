@@ -17,7 +17,6 @@ export default [
       'dist/**',
       'coverage/**',
       'src/coverage/**',
-      'src/clickhouse/**',
       'migrations/**',
       'migrate-mongo-config.ts',
       '**/*.config.js',

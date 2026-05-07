@@ -458,7 +458,7 @@ export function DBRowJsonViewer({
               searchFieldPath == 'Timestamp' ||
               searchFieldPath == 'TimestampTime'
             ) {
-              defaultWhere = `${searchFieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+              defaultWhere = `${searchFieldPath} = cast('${value}' as timestamp)`;
             }
             router.push(
               generateSearchUrl({

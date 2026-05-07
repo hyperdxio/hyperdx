@@ -13,7 +13,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { formatDistanceToNow } from 'date-fns';
 import produce from 'immer';
-import { pick } from 'lodash';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
@@ -33,12 +32,8 @@ import {
   DashboardFilter,
   DisplayType,
   Filter,
-  getSampleWeightExpression,
-  isLogSource,
-  isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
-  SourceKind,
   SQLInterval,
   TSource,
 } from '@berg/common-utils/dist/types';
@@ -132,7 +127,6 @@ import {
   buildTableRowSearchUrl,
   DEFAULT_CHART_CONFIG,
 } from './ChartUtils';
-import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
@@ -140,15 +134,10 @@ import { EditablePageName } from './EditablePageName';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import {
-  getFirstTimestampValueExpression,
-  useSource,
-  useSources,
-} from './source';
+import { useSource, useSources } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
 import { FormatTime } from './useFormatTime';
-import { getMetricTableName } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -405,13 +394,9 @@ const Tile = forwardRef(
         } else if (source != null) {
           setQueriedConfig({
             ...chart.config,
-            // Populate these columns from the source to support Lucene-based filters and metric table macros
-            ...pick(source, [
-              'implicitColumnExpression',
-              'from',
-              'metricTables',
-            ]),
-            sampleWeightExpression: getSampleWeightExpression(source),
+            // Populate from/timestamp from the Berg-native source so the
+            // chart renderer has the table reference for $__filters macros.
+            from: { databaseName: source.database, tableName: source.table },
             dateRange,
             granularity,
             filters,
@@ -422,35 +407,20 @@ const Tile = forwardRef(
       }
 
       if (source != null && isBuilderSavedChartConfig(chart.config)) {
-        const isMetricSource = source.kind === SourceKind.Metric;
-
-        // TODO: will need to update this when we allow for multiple metrics per chart
-        const firstSelect = chart.config.select[0];
-        const metricType =
-          isMetricSource && typeof firstSelect !== 'string'
-            ? firstSelect?.metricType
-            : undefined;
-        const tableName = getMetricTableName(source, metricType);
-        if (source.connection) {
-          setQueriedConfig({
-            ...chart.config,
-            connection: source.connection,
-            dateRange,
-            granularity,
-            timestampValueExpression: source.timestampValueExpression,
-            from: {
-              databaseName: source.from?.databaseName || 'default',
-              tableName: tableName || '',
-            },
-            implicitColumnExpression:
-              isLogSource(source) || isTraceSource(source)
-                ? source.implicitColumnExpression
-                : undefined,
-            sampleWeightExpression: getSampleWeightExpression(source),
-            filters,
-            metricTables: isMetricSource ? source.metricTables : undefined,
-          });
-        }
+        // Berg-native: use database/table directly. No metric table sub-routing
+        // (Berg sources are observability-agnostic Iceberg tables).
+        setQueriedConfig({
+          ...chart.config,
+          connection: '',
+          dateRange,
+          granularity,
+          timestampValueExpression: source.timestampColumn ?? '',
+          from: {
+            databaseName: source.database || 'default',
+            tableName: source.table || '',
+          },
+          filters,
+        });
       }
     }, [source, chart, dateRange, granularity, filters]);
 
@@ -461,10 +431,6 @@ const Tile = forwardRef(
       const doFiltersExist = !!filters?.filter(
         f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
       )?.length;
-      const doLuceneFiltersExist = !!filters?.filter(
-        f => f.type === 'lucene' && f.condition.trim(),
-      )?.length;
-
       if (
         !doFiltersExist ||
         !queriedConfig ||
@@ -475,28 +441,19 @@ const Tile = forwardRef(
       const isMissingSourceForFiltering = !queriedConfig.source;
       const isMissingFiltersMacro =
         !queriedConfig.sqlTemplate.includes('$__filters');
-      const isMetricsSourceWithLuceneFilter =
-        source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
-      if (
-        !isMissingSourceForFiltering &&
-        !isMissingFiltersMacro &&
-        !isMetricsSourceWithLuceneFilter
-      )
-        return null;
+      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
 
       const message = isMissingFiltersMacro
         ? 'Filters are not applied because the SQL does not include the required $__filters macro'
-        : isMetricsSourceWithLuceneFilter
-          ? 'Lucene filters are not applied because they are not supported for metrics sources.'
-          : 'Filters are not applied because no Source is set for this chart';
+        : 'Filters are not applied because no Source is set for this chart';
 
       return (
         <Tooltip multiline maw={500} label={message} key="filter-warning">
           <IconZoomExclamation size={16} color="var(--color-text-danger)" />
         </Tooltip>
       );
-    }, [filters, queriedConfig, source]);
+    }, [filters, queriedConfig]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -775,19 +732,12 @@ const Tile = forwardRef(
                           orderBy: [
                             {
                               ordering: 'DESC',
-                              valueExpression: getFirstTimestampValueExpression(
+                              valueExpression:
                                 queriedConfig.timestampValueExpression,
-                              ),
                             },
                           ],
                           dateRange,
-                          select:
-                            queriedConfig.select ||
-                            (source?.kind === SourceKind.Log ||
-                            source?.kind === SourceKind.Trace
-                              ? source.defaultTableSelectExpression
-                              : '') ||
-                            '',
+                          select: queriedConfig.select || '*',
                           groupBy: undefined,
                           granularity: undefined,
                         }}
@@ -1127,7 +1077,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   });
 
   const { data: sources } = useSources();
-  const { data: connections } = useConnections();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
   const tableConnections = useMemo(() => {
@@ -1137,17 +1086,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
-      // TODO: will need to update this when we allow for multiple metrics per chart
-      const firstSelect = config.select[0];
-      const metricType =
-        typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
-      const tableName = getMetricTableName(source, metricType);
-      if (!tableName) continue;
+      if (!source || !source.table) continue;
       tc.push({
-        databaseName: source.from.databaseName,
-        tableName: tableName,
-        connectionId: source.connection ?? '',
+        databaseName: source.database,
+        tableName: source.table,
+        connectionId: '',
       });
     }
 
@@ -2069,7 +2012,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           dashboard,
                           // TODO: fix this type issue
                           sources,
-                          connections,
                         ),
                         dashboard?.name,
                       );

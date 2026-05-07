@@ -10,7 +10,6 @@ import cx from 'classnames';
 import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
-import ms from 'ms';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -20,20 +19,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import {
-  chSqlToAliasMap,
-  ClickHouseQueryError,
-  ColumnMetaType,
-  convertCHDataTypeToJSType,
-  extractColumnReferencesFromKey,
-  isJSDataTypeJSONStringifiable,
-  JSDataType,
-} from '@berg/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@berg/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 import {
@@ -69,6 +58,15 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
+import {
+  chSqlToAliasMap,
+  ClickHouseQueryError,
+  ColumnMetaType,
+  convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
+  isJSDataTypeJSONStringifiable,
+  JSDataType,
+} from '@/clickhouse-types';
 import { searchChartConfigDefaults } from '@/defaults';
 import {
   useAliasMapFromChartConfig,
@@ -77,7 +75,6 @@ import {
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import { useGroupedPatterns } from '@/hooks/usePatterns';
 import useRowWhere, {
   INTERNAL_ROW_FIELDS,
   RowWhereResult,
@@ -1408,8 +1405,13 @@ export function useConfigWithPrimaryAndPartitionKey(
   const partitionKey = tableMetadata?.partition_key;
 
   const mergedConfig = useMemo(() => {
+    // Berg has no ClickHouse system-table metadata (no system.tables),
+    // so primaryKey / partitionKey are always null. The
+    // appendSelectWithPrimaryAndPartitionKey path is a CH-specific
+    // sort-stability optimisation that doesn't apply on Athena/Iceberg.
+    // Return the config unchanged so the row-table query actually fires.
     if (primaryKey == null || partitionKey == null) {
-      return undefined;
+      return { ...config, additionalKeysLength: 0 };
     }
 
     const { select, additionalKeysLength } =
@@ -1662,88 +1664,20 @@ function DBSqlRowTableComponent({
   }, [isError, onError, error]);
 
   const { data: source } = useSource({ id: sourceId });
-  const patternColumn = columns[columns.length - 1];
-  const groupedPatterns = useGroupedPatterns({
-    config,
-    samples: 10_000,
-    bodyValueExpression: patternColumn ?? '',
-    severityTextExpression:
-      (source?.kind === SourceKind.Log
-        ? source.severityTextExpression
-        : undefined) ?? '',
-    totalCount: undefined,
-    enabled: denoiseResults,
-  });
-  const noisyPatterns = useQuery({
+  // Berg has no log-pattern denoising; the denoise toggle is a no-op.
+  const noisyPatterns = useQuery<{ id: string; pattern: string }[]>({
     queryKey: ['noisy-patterns', config],
-    queryFn: async () => {
-      return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
-      );
-    },
-    enabled:
-      denoiseResults &&
-      groupedPatterns.data != null &&
-      Object.values(groupedPatterns.data).length > 0 &&
-      groupedPatterns.miner != null,
+    queryFn: async () => [],
+    enabled: false,
   });
-  const noisyPatternIds = useMemo(() => {
-    return noisyPatterns.data?.map(p => p.id) ?? [];
-  }, [noisyPatterns.data]);
-
-  const denoisedRows = useQuery({
-    queryKey: [
-      'denoised-rows',
-      config,
-      denoiseResults,
-      // Only include processed rows if denoising is enabled
-      // This helps prevent the queryKey from getting extremely large
-      // and causing memory issues, when it's not used.
-      ...(denoiseResults ? [processedRows] : []),
-      noisyPatternIds,
-      patternColumn,
-    ],
-    queryFn: async () => {
-      if (!denoiseResults) {
-        return [];
-      }
-      // No noisy patterns, so no need to denoise
-      if (noisyPatternIds.length === 0) {
-        return processedRows;
-      }
-
-      const matchedLogs = await groupedPatterns.miner?.matchLogs(
-        processedRows.map(row => row[patternColumn]),
-      );
-      return processedRows.filter((row, i) => {
-        const match = matchedLogs?.[i];
-        return !noisyPatternIds.includes(`${match}`);
-      });
-    },
-    placeholderData: (previousData, previousQuery) => {
-      // If it's the same search, but new data, return the previous data while we load
-      if (
-        previousQuery?.queryKey?.[0] === 'denoised-rows' &&
-        previousQuery?.queryKey?.[1] === config
-      ) {
-        return previousData;
-      }
-      return undefined;
-    },
-    gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
-    enabled:
-      denoiseResults &&
-      noisyPatterns.isSuccess &&
-      processedRows.length > 0 &&
-      groupedPatterns.miner != null,
+  const noisyPatternIds = useMemo(() => [], []);
+  const denoisedRows = useQuery<typeof processedRows>({
+    queryKey: ['denoised-rows', config],
+    queryFn: async () => processedRows,
+    enabled: false,
   });
 
-  const isLoading = denoiseResults
-    ? isFetching ||
-      denoisedRows.isFetching ||
-      noisyPatterns.isFetching ||
-      groupedPatterns.isLoading
-    : isFetching;
+  const isLoading = isFetching;
 
   const loadingDate =
     data?.window?.direction === 'ASC'

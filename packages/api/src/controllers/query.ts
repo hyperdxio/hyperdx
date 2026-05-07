@@ -41,6 +41,24 @@ export async function startQuery(opts: StartQueryOptions) {
     throw e;
   }
 
+  // Default catalog/database for Athena's QueryExecutionContext: when the
+  // caller passes a sourceId (or explicit catalog/database in the body
+  // post-Phase-1.3) we use the Source's federated catalog so the SQL can
+  // reference tables as `"db"."table"` without three-part qualification.
+  // Falls back to the deployment-wide GLUE_CATALOG_ID when no Source is
+  // attached to the query (e.g. SQL editor).
+  //
+  // Glue catalog IDs may be `<account>:<name>` (e.g.
+  // `<aws-account-id>:s3tablescatalog/<catalog-name>`); Athena's
+  // `QueryExecutionContext.Catalog` wants the name without the account
+  // prefix. Strip when present.
+  const toAthenaCatalogName = (id: string): string => {
+    const idx = id.indexOf(':');
+    return idx > 0 ? id.slice(idx + 1) : id;
+  };
+  let catalog: string | undefined = toAthenaCatalogName(cfg.GLUE_CATALOG_ID);
+  let database: string | undefined;
+
   if (opts.sourceId) {
     const source = await Source.findOne({
       _id: opts.sourceId,
@@ -53,6 +71,8 @@ export async function startQuery(opts: StartQueryOptions) {
       e.code = 'source_not_found';
       throw e;
     }
+    catalog = source.catalog ? toAthenaCatalogName(source.catalog) : catalog;
+    database = source.database || undefined;
     // Update lastQueriedAt; intentionally non-blocking — surfacing a write
     // failure here would mask the actual query result the caller is after.
     Source.updateOne(
@@ -67,6 +87,8 @@ export async function startQuery(opts: StartQueryOptions) {
     region: cfg.ATHENA_REGION,
     syncTimeoutMs: cfg.ATHENA_SYNC_TIMEOUT_MS,
     resultReuseTtlMin: cfg.ATHENA_RESULT_REUSE_TTL_MIN,
+    catalog,
+    database,
   });
 }
 

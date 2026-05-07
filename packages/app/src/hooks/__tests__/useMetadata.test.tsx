@@ -1,7 +1,5 @@
 import React from 'react';
 import * as metadataModule from '@berg/app/src/metadata';
-import { JSDataType } from '@berg/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import {
   Field,
   Metadata,
@@ -12,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import { ClickhouseClient, JSDataType } from '@/clickhouse-types';
 import { useSources } from '@/source';
 
 import {

@@ -182,16 +182,12 @@ describe('EditSourceModal', () => {
           onClose={jest.fn()}
           source={{
             id: 'src-1',
-            name: 'orders',
             displayName: 'Orders',
             kind: SourceKind.Table,
             catalog: 'AwsDataCatalog',
             database: 'sales',
             table: 'orders',
             timestampColumn: 'created_at',
-            connection: '',
-            from: { databaseName: 'sales', tableName: 'orders' },
-            timestampValueExpression: 'created_at',
           }}
         />,
       ),

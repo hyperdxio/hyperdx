@@ -3,16 +3,10 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
-import { TableConnection } from '@berg/common-utils/dist/core/metadata';
-import {
-  NumericUnit,
-  SourceKind,
-  TMetricSource,
-  TSource,
-} from '@berg/common-utils/dist/types';
+import { NumericUnit, TSource } from '@berg/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { MetricsDataType, NumberFormat } from './types';
+import { NumberFormat } from './types';
 
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
@@ -130,7 +124,7 @@ export const QUERY_LOCAL_STORAGE = {
   LIMIT: 10, // cache up to 10
 };
 
-function getLocalStorageValue<T>(key: string): T | null {
+export function getLocalStorageValue<T>(key: string): T | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -996,41 +990,11 @@ export function formatAttributeClause(
  */
 export function getMetricTableName(
   source: TSource,
-  metricType?: string,
+  _metricType?: string,
 ): string | undefined {
-  if (metricType == null) {
-    return source.from.tableName;
-  }
-  if (source.kind === SourceKind.Metric) {
-    return source.metricTables?.[
-      metricType.toLowerCase() as keyof typeof source.metricTables
-    ];
-  }
-  return undefined;
-}
-
-export function getAllMetricTables(source: TSource): TableConnection[] {
-  if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
-  const metricTables = source.metricTables;
-
-  return Object.values(MetricsDataType)
-    .filter(
-      metricType =>
-        !!metricTables[
-          metricType as unknown as keyof TMetricSource['metricTables']
-        ],
-    )
-    .map(
-      metricType =>
-        ({
-          tableName:
-            metricTables[
-              metricType as unknown as keyof TMetricSource['metricTables']
-            ] ?? '',
-          databaseName: source.from.databaseName,
-          connectionId: source.connection ?? '',
-        }) satisfies TableConnection,
-    );
+  // Berg has no metric-specific table sub-routing; the source's table is the
+  // single backing table.
+  return source.table;
 }
 
 /**

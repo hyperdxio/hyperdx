@@ -91,8 +91,13 @@ app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 // Berg query lifecycle + Glue catalog discovery — every route here
 // passes through the team-isolation gate via `isUserAuthenticated` and
 // the controller-level checks (sourceId team ownership, write rejection).
-app.use('/api/v1/query', isUserAuthenticated, routers.queryRouter);
-app.use('/api/v1', isUserAuthenticated, routers.catalogRouter);
+//
+// Mount paths intentionally omit the `/api` prefix: the Next.js proxy
+// at `packages/app/pages/api/[...all].ts` strips `/api` before forwarding
+// to Express (see its pathRewrite). Frontend calls `/api/v1/catalogs`,
+// proxy forwards `/v1/catalogs` here, and Express matches the mount.
+app.use('/v1/query', isUserAuthenticated, routers.queryRouter);
+app.use('/v1', isUserAuthenticated, routers.catalogRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

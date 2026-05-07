@@ -39,7 +39,6 @@ import {
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useResolvedNumberFormat, useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
@@ -48,7 +47,6 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 type ActiveClickPayload = {
   x: number;
@@ -217,7 +215,6 @@ type DBTimeChartComponentProps = {
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
-  showMVOptimizationIndicator?: boolean;
   showDateRangeIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 };
@@ -240,7 +237,6 @@ function DBTimeChartComponent({
   title,
   toolbarPrefix,
   toolbarSuffix,
-  showMVOptimizationIndicator = true,
   showDateRangeIndicator = true,
   errorVariant,
 }: DBTimeChartComponentProps) {
@@ -291,12 +287,11 @@ function DBTimeChartComponent({
     [config],
   );
 
-  // Determine whether the config can be optimized with an MV, to determine whether
-  // to show the MV optimization indicator and date range indicator in the toolbar
+  // Berg has no materialized-view optimization; chart code reads the
+  // queriedConfig directly without rewrites.
   const builderQueriedConfig: BuilderChartConfigWithDateRange | undefined =
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
+  void builderQueriedConfig;
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
@@ -392,9 +387,9 @@ function DBTimeChartComponent({
 
     try {
       const formatResult = formatResponseForTimeChart({
-        currentPeriodResponse: data,
+        currentPeriodResponse: data as any,
         previousPeriodResponse: config.compareToPreviousPeriod
-          ? previousPeriodData
+          ? (previousPeriodData as any)
           : undefined,
         dateRange,
         granularity,
@@ -609,36 +604,16 @@ function DBTimeChartComponent({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-time-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
     const isAlignedToChartGranularity =
       queriedConfig.alignDateRangeToGranularity !== false;
 
-    if (
-      showDateRangeIndicator &&
-      (mvDateRange || isAlignedToChartGranularity)
-    ) {
-      const mvGranularity = isAlignedToChartGranularity
-        ? undefined
-        : mvOptimizationData?.explanations.find(e => e.success)?.mvConfig
-            .minGranularity;
-
+    if (showDateRangeIndicator && isAlignedToChartGranularity) {
       allToolbarItems.push(
         <DateRangeIndicator
           key="db-time-chart-date-range-indicator"
           originalDateRange={config.dateRange}
-          effectiveDateRange={mvDateRange || queriedConfig.dateRange}
-          mvGranularity={mvGranularity}
+          effectiveDateRange={queriedConfig.dateRange}
+          mvGranularity={undefined}
         />,
       );
     }
@@ -674,17 +649,13 @@ function DBTimeChartComponent({
 
     return allToolbarItems;
   }, [
-    builderQueriedConfig,
     config,
     displayType,
     handleSetDisplayType,
     showDisplaySwitcher,
-    source,
     toolbarPrefix,
     toolbarSuffix,
-    showMVOptimizationIndicator,
     showDateRangeIndicator,
-    mvOptimizationData,
     queriedConfig,
   ]);
 

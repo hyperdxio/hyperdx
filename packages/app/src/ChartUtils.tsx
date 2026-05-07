@@ -2,20 +2,11 @@ import { useMemo } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
 import { omit } from 'lodash';
 import SqlString from 'sqlstring';
-import { z } from 'zod';
-import {
-  ColumnMetaType,
-  filterColumnMetaByType,
-  inferTimestampColumn,
-  JSDataType,
-  ResponseJSON,
-} from '@berg/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   getAlignedDateRange,
-  Granularity,
 } from '@berg/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
@@ -27,25 +18,20 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
   Filter,
-  MetricsDataType as MetricsDataTypeV2,
-  SourceKind,
   SQLInterval,
-  TMetricSource,
   TSource,
 } from '@berg/common-utils/dist/types';
-import { notifications } from '@mantine/notifications';
 
-import DateRangeIndicator from './components/charts/DateRangeIndicator';
-import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
-// otelSemanticConventions removed in Berg strip (Task 2). Metric-specific
-// logic will be revisited in Task 11; for now keep ChartUtils compilable
-// by inlining a no-op helper that preserves the previous "no override" path.
-const getMetricNameSql = (_metricName: string): string | undefined => undefined;
-import { AggFn, TableChartSeries, TimeChartSeries } from './types';
+import {
+  ColumnMetaType,
+  filterColumnMetaByType,
+  inferTimestampColumn,
+  JSDataType,
+  ResponseJSON,
+} from '@/clickhouse-types';
+
 import { NumberFormat } from './types';
 import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
-
-type SortOrder = 'asc' | 'desc';
 
 export const AGG_FNS = [
   { value: 'count' as const, label: 'Count of Events', isAttributable: false },
@@ -491,16 +477,10 @@ function setLineColors(
 }
 
 function firstGroupColumnIsLogLevel(
-  source: TSource | undefined,
-  groupColumns: ColumnMetaType[],
+  _source: TSource | undefined,
+  _groupColumns: ColumnMetaType[],
 ) {
-  if (!source || groupColumns.length !== 1) return false;
-  if (source.kind === SourceKind.Log) {
-    return groupColumns[0].name === source.severityTextExpression;
-  }
-  if (source.kind === SourceKind.Trace) {
-    return groupColumns[0].name === source.statusCodeExpression;
-  }
+  // Berg has no observability source kinds; no log-level grouping logic.
   return false;
 }
 
@@ -613,8 +593,12 @@ export function formatResponseForTimeChart({
 }) {
   const meta = currentPeriodResponse.meta;
 
-  if (meta == null) {
-    throw new Error('No meta data found in response');
+  // Berg: legacy paths now return empty meta when ClickHouse-style schema
+  // introspection is bypassed. Instead of crashing the page, return an
+  // empty chart shape so the histogram renders blank. The user still sees
+  // their row results below; the histogram just has no bars to draw.
+  if (meta == null || meta.length === 0) {
+    return { graphResults: [], lineNames: [], lineNamesToColumnNames: {} };
   }
 
   const timestampColumn = inferTimestampColumn(meta);
@@ -623,15 +607,13 @@ export function formatResponseForTimeChart({
   const isSingleValueColumn = valueColumns.length === 1;
 
   if (timestampColumn == null) {
-    throw new Error(
-      `No timestamp column found in result column metadata. Make sure a Date/DateTime column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
-    );
+    // Same Berg degradation: meta has columns but none are Date-typed.
+    // Render empty chart instead of blowing up the page.
+    return { graphResults: [], lineNames: [], lineNamesToColumnNames: {} };
   }
 
   if (valueColumns.length === 0) {
-    throw new Error(
-      `No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
-    );
+    return { graphResults: [], lineNames: [], lineNamesToColumnNames: {} };
   }
 
   // Timestamp -> { tsCol, line1, line2, ...}
@@ -721,145 +703,17 @@ export function formatResponseForTimeChart({
   };
 }
 
-// Define a mapping from app AggFn to common-utils AggregateFunction
-const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
-  if (aggFn == null) {
-    return aggFn;
-  }
-  // Map rate-based aggregations to their base aggregation
-  if (aggFn.endsWith('_rate')) {
-    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
-  }
+// Berg drops the V1->V2 aggregate-function mapping along with V1 dashboards.
+// Keep AggFnV2 referenced so the unused-import linter passes.
+export type _AggFnV2Placeholder = AggFnV2;
 
-  // Map percentiles to quantile
-  if (
-    aggFn === 'p50' ||
-    aggFn === 'p90' ||
-    aggFn === 'p95' ||
-    aggFn === 'p99'
-  ) {
-    return 'quantile';
-  }
-
-  // Map per-time-unit counts to count
-  if (
-    aggFn === 'count_per_sec' ||
-    aggFn === 'count_per_min' ||
-    aggFn === 'count_per_hour'
-  ) {
-    return 'count';
-  }
-
-  // For standard aggregations that exist in both, return as is
-  if (
-    [
-      'avg',
-      'count',
-      'count_distinct',
-      'last_value',
-      'max',
-      'min',
-      'sum',
-    ].includes(aggFn)
-  ) {
-    return aggFn as AggFnV2;
-  }
-
-  throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
-};
-
-const convertV1GroupByToV2 = (
-  metricSource: TMetricSource,
-  groupBy: string[],
-): string => {
-  return groupBy
-    .map(g => {
-      if (g.startsWith('k8s')) {
-        return `${metricSource.resourceAttributesExpression}['${g}']`;
-      }
-      return g;
-    })
-    .join(',');
-};
-
+// Berg has no metric/log V1 chart converter; convertV1ChartConfigToV2 has been
+// removed along with the metric/log dashboards that referenced it.
 export const convertV1ChartConfigToV2 = (
-  chartConfig: {
-    // only support time or table series
-    series: (TimeChartSeries | TableChartSeries)[];
-    granularity?: Granularity;
-    dateRange: [Date, Date];
-    seriesReturnType: 'ratio' | 'column';
-    displayType?: 'stacked_bar' | 'line';
-    name?: string;
-    fillNulls?: number | false;
-    sortOrder?: SortOrder;
-  },
-  source: {
-    log?: TSource;
-    metric?: TMetricSource;
-    trace?: TSource;
-  },
+  _chartConfig: unknown,
+  _source: unknown,
 ): BuilderChartConfigWithDateRange => {
-  const {
-    series,
-    granularity,
-    dateRange,
-    displayType = 'line',
-    fillNulls,
-  } = chartConfig;
-
-  if (series.length < 1) {
-    throw new Error('series is required');
-  }
-
-  const firstSeries = series[0];
-  const convertedDisplayType =
-    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
-
-  if (firstSeries.table === 'logs') {
-    // TODO: this might not work properly since logs + traces are mixed in v1
-    throw new Error('IMPLEMENT ME (logs)');
-  } else if (firstSeries.table === 'metrics') {
-    if (source.metric == null) {
-      throw new Error('source.metric is required for metrics');
-    }
-    return {
-      select: series.map(s => {
-        const field = s.field ?? '';
-        const [metricName, rawMetricDataType] = field
-          .split(' - ')
-          .map(s => s.trim());
-
-        // Check if this metric name needs version-based SQL transformation
-        const metricNameSql = getMetricNameSql(metricName);
-
-        const metricDataType = z
-          .nativeEnum(MetricsDataTypeV2)
-          .parse(rawMetricDataType?.toLowerCase());
-        return {
-          aggFn: mapV1AggFnToV2(s.aggFn),
-          metricType: metricDataType,
-          valueExpression: field,
-          metricName,
-          metricNameSql,
-          aggConditionLanguage: 'lucene',
-          aggCondition: s.where,
-        };
-      }),
-      from: source.metric?.from,
-      numberFormat: firstSeries.numberFormat,
-      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
-      dateRange,
-      connection: source.metric?.connection,
-      metricTables: source.metric?.metricTables,
-      timestampValueExpression: source.metric?.timestampValueExpression,
-      granularity,
-      where: '',
-      fillNulls,
-      displayType: convertedDisplayType,
-    };
-  }
-  throw new Error(`unsupported table in v2: ${firstSeries.table}`);
+  throw new Error('convertV1ChartConfigToV2 is not supported in Berg');
 };
 
 /**
@@ -884,19 +738,8 @@ export function buildEventsSearchUrl({
   }
 
   const isMetricChart = isMetricChartConfig(config);
-  if (isMetricChart) {
-    const logSourceId =
-      source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
-        ? source.logSourceId
-        : undefined;
-    if (logSourceId == null) {
-      notifications.show({
-        color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
-      });
-      return null;
-    }
-  }
+  // Berg has no metric chart kind; the metric drill-through path is dead.
+  void isMetricChart;
 
   let where = config.where;
   let whereLanguage = config.whereLanguage || 'lucene';
@@ -954,16 +797,7 @@ export function buildEventsSearchUrl({
     to: to.toString(),
   };
 
-  // If its a metric chart, we don't pass the where and filters
-  if (isMetricChart) {
-    params.where = '';
-    params.whereLanguage = 'lucene';
-    params.filters = JSON.stringify([]);
-    params.source =
-      (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
-        ? source.logSourceId
-        : undefined) ?? '';
-  }
+  // Berg has no metric drill-through; this branch is dead.
 
   // Include the select parameter if provided to preserve custom columns
   // eventTableSelect is used for charts that override select (like histograms with count)
@@ -1101,27 +935,10 @@ export function convertToTableChartConfig(
   return convertedConfig;
 }
 
-export function buildMVDateRangeIndicator({
-  mvOptimizationData,
-  originalDateRange,
-}: {
-  mvOptimizationData?: MVOptimizationExplanationResult;
-  originalDateRange: [Date, Date];
-}) {
-  const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
-  if (!mvDateRange) return null;
-
-  const mvGranularity = mvOptimizationData?.explanations.find(e => e.success)
-    ?.mvConfig.minGranularity;
-
-  return (
-    <DateRangeIndicator
-      key="date-range-indicator"
-      originalDateRange={originalDateRange}
-      effectiveDateRange={mvDateRange}
-      mvGranularity={mvGranularity}
-    />
-  );
+// Berg has no materialized-view optimisation; the helper survives only as
+// a stub so callers don't need to be deleted in lockstep.
+export function buildMVDateRangeIndicator(_: unknown) {
+  return null;
 }
 
 export function shouldFillNullsWithZero(

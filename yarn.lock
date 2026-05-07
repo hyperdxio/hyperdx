@@ -3265,6 +3265,8 @@ __metadata:
   dependencies:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
+    "@aws-sdk/client-athena": "npm:^3.696.0"
+    "@aws-sdk/client-glue": "npm:^3.696.0"
     "@berg/common-utils": "npm:^0.18.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
@@ -3288,6 +3290,7 @@ __metadata:
     "@types/swagger-jsdoc": "npm:^6"
     "@types/uuid": "npm:^8.3.4"
     ai: "npm:^6.0.116"
+    aws-sdk-client-mock: "npm:^4.1.0"
     aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"

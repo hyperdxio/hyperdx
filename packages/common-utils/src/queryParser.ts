@@ -6,7 +6,7 @@ import {
   convertCHDataTypeToJSType,
   extractInnerCHArrayJSType,
   JSDataType,
-} from '@/clickhouse';
+} from '@/_legacy_chTypes';
 import { Metadata, TableConnection } from '@/core/metadata';
 
 function encodeSpecialTokens(query: string): string {

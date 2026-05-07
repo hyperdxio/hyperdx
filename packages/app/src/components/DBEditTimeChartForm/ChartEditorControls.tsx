@@ -6,11 +6,9 @@ import {
   UseFormSetValue,
 } from 'react-hook-form';
 import { TableConnection } from '@berg/common-utils/dist/core/metadata';
-import { isBuilderChartConfig } from '@berg/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
@@ -20,7 +18,6 @@ import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
-import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -73,7 +70,7 @@ export function ChartEditorControls({
   dateRange,
   select,
   displayType,
-  activeTab,
+  activeTab: _activeTab,
   seriesReturnType,
   isRawSqlInput: _isRawSqlInput,
   dashboardId: _dashboardId,
@@ -95,28 +92,12 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [SourceKind.Trace]
-                : undefined
-            }
             sourceSchemaPreview={
               <SourceSchemaPreview source={tableSource} variant="text" />
             }
           />
         </Group>
-        <Group>
-          {tableSource &&
-            activeTab !== 'search' &&
-            activeTab !== 'heatmap' &&
-            chartConfigForExplanations &&
-            isBuilderChartConfig(chartConfigForExplanations) && (
-              <MVOptimizationIndicator
-                source={tableSource}
-                config={chartConfigForExplanations}
-              />
-            )}
-        </Group>
+        <Group>{void chartConfigForExplanations}</Group>
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
         <HeatmapSeriesEditor
@@ -142,7 +123,7 @@ export function ChartEditorControls({
               onSwapSeries={swapSeries}
               onSubmit={onSubmit}
               setValue={setValue}
-              connectionId={tableSource?.connection}
+              connectionId={undefined}
               showGroupBy={
                 fields.length === 1 && displayType !== DisplayType.Number
               }
@@ -281,18 +262,7 @@ export function ChartEditorControls({
             tableConnection={tableConnection}
             control={control}
             name="select"
-            placeholder={
-              ((tableSource?.kind === SourceKind.Log ||
-                tableSource?.kind === SourceKind.Trace) &&
-                tableSource.defaultTableSelectExpression) ||
-              'SELECT Columns'
-            }
-            defaultValue={
-              tableSource?.kind === SourceKind.Log ||
-              tableSource?.kind === SourceKind.Trace
-                ? tableSource.defaultTableSelectExpression
-                : undefined
-            }
+            placeholder="SELECT Columns"
             onSubmit={onSubmit}
             label="SELECT"
           />

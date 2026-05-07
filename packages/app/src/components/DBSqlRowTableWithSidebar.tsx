@@ -1,16 +1,16 @@
 import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
+import { ClickHouseQueryError } from '@/clickhouse-types';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import TabBar from '@/TabBar';
-import { useLocalStorage } from '@/utils';
+import { getLocalStorageValue } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { useNestedPanelState } from './ContextSidePanel';
@@ -161,11 +161,32 @@ function RowOverviewPanelWrapper({
   rowId: string;
   aliasWith?: WithClause[];
 }) {
-  // Use localStorage to persist the selected tab
-  const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
-    'hdx-expanded-row-default-tab',
-    InlineTab.ColumnValues,
+  // The original implementation kept the active tab in `useLocalStorage`,
+  // which broadcasts to every other instance via `customStorage` events.
+  // That's fine for "remember my preferred default tab next time", but
+  // toxic when the same row table has multiple inline expansions open —
+  // switching the tab in one expansion silently flipped every other
+  // expansion as well.  Use plain per-instance state, seeded once from
+  // the persisted preference, then write the *latest pick* back to
+  // localStorage so a freshly-opened expansion still defaults to the
+  // user's last choice.
+  const [activeTab, setActiveTabLocal] = useState<InlineTab>(
+    () =>
+      getLocalStorageValue<InlineTab>('hdx-expanded-row-default-tab') ??
+      InlineTab.ColumnValues,
   );
+  const setActiveTab = useCallback((next: InlineTab) => {
+    setActiveTabLocal(next);
+    try {
+      window.localStorage.setItem(
+        'hdx-expanded-row-default-tab',
+        JSON.stringify(next),
+      );
+    } catch {
+      // localStorage may be unavailable (e.g. Safari private mode);
+      // the tab still works in-memory for this session.
+    }
+  }, []);
 
   return (
     <div className="position-relative">

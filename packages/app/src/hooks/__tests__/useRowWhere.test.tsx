@@ -1,6 +1,7 @@
 import MD5 from 'crypto-js/md5';
-import { ColumnMetaType, JSDataType } from '@berg/common-utils/dist/clickhouse';
 import { renderHook } from '@testing-library/react';
+
+import { ColumnMetaType, JSDataType } from '@/clickhouse-types';
 
 import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
 
@@ -8,8 +9,8 @@ import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
 jest.mock('crypto-js/md5');
 
 // Mock convertCHDataTypeToJSType
-jest.mock('@berg/common-utils/dist/clickhouse', () => ({
-  ...jest.requireActual('@berg/common-utils/dist/clickhouse'),
+jest.mock('@/clickhouse-types', () => ({
+  ...jest.requireActual('@/clickhouse-types'),
   convertCHDataTypeToJSType: jest.fn((type: string) => {
     const typeMap: Record<string, JSDataType> = {
       String: JSDataType.String,
@@ -68,12 +69,17 @@ describe('processRowToWhereClause', () => {
     const row = { created_at: '2024-01-01T00:00:00Z' };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe(
-      "created_at=parseDateTime64BestEffort('2024-01-01T00:00:00Z', 9)",
-    );
+    expect(result).toBe("created_at=cast('2024-01-01 00:00:00' as timestamp)");
   });
 
-  it('should handle array columns', () => {
+  // Berg: complex column types (array/map/json/tuple/dynamic) are
+  // skipped from the row-WHERE entirely.  The MD5 round-trip we used
+  // for these in the CH days can't be made reliable across Trino's
+  // `json_format` and JavaScript's `JSON.stringify` — different
+  // canonical forms silently mean the server-side hash never matches
+  // the client-side hash.  Scalar columns (timestamp, service, primary
+  // keys) are enough to identify a row in practice.
+  it('skips array columns from row-WHERE', () => {
     const columnMap = new Map([
       [
         'tags',
@@ -86,13 +92,12 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { tags: ['tag1', 'tag2'] };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe("tags=JSONExtract('tag1', 'tag2', 'Array(String)')");
+    expect(processRowToWhereClause({ tags: ['tag1', 'tag2'] }, columnMap)).toBe(
+      '',
+    );
   });
 
-  it('should handle map columns', () => {
+  it('skips map columns from row-WHERE', () => {
     const columnMap = new Map([
       [
         'attributes',
@@ -105,15 +110,12 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { attributes: { key: 'value' } };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      "attributes=JSONExtract(`key` = 'value', 'Map(String, String)')",
-    );
+    expect(
+      processRowToWhereClause({ attributes: { key: 'value' } }, columnMap),
+    ).toBe('');
   });
 
-  it('should handle JSON columns with MD5', () => {
+  it('skips JSON columns from row-WHERE', () => {
     const columnMap = new Map([
       [
         'data',
@@ -126,16 +128,12 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { data: '{"key": "value"}' };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      'lower(hex(MD5(toString(data))))=\'md5_{\\"key\\": \\"value\\"}\'',
-    );
-    expect(MD5).toHaveBeenCalledWith('{"key": "value"}');
+    expect(
+      processRowToWhereClause({ data: '{"key": "value"}' }, columnMap),
+    ).toBe('');
   });
 
-  it('should handle Dynamic columns with null value', () => {
+  it('skips Dynamic columns from row-WHERE', () => {
     const columnMap = new Map([
       [
         'dynamic_field',
@@ -148,91 +146,27 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { dynamic_field: 'null' };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe('isNull(`dynamic_field`)');
-  });
-
-  it('should handle Dynamic columns with quoted string', () => {
-    const columnMap = new Map([
-      [
-        'dynamic_field',
-        {
-          name: 'dynamic_field',
-          type: 'Dynamic',
-          valueExpr: 'dynamic_field',
-          jsType: JSDataType.Dynamic,
-        },
-      ],
-    ]);
-
-    const row = { dynamic_field: '"quoted_value"' };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('\\\"quoted_value\\\"', 'Dynamic')), toJSONString('\\\"quoted_value\\\"'))",
+    expect(processRowToWhereClause({ dynamic_field: 'null' }, columnMap)).toBe(
+      '',
     );
-  });
-
-  it('should handle Dynamic columns with escaped values', () => {
-    const columnMap = new Map([
-      [
-        'dynamic_field',
-        {
-          name: 'dynamic_field',
-          type: 'Dynamic',
-          valueExpr: 'dynamic_field',
-          jsType: JSDataType.Dynamic,
-        },
-      ],
-    ]);
-
-    const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
-    const result = processRowToWhereClause(row, columnMap);
-    expect(result).toBe(
-      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\\\\\\"took\\\\\\\":7, not a valid json', 'Dynamic')), toJSONString('{\\\\\\\"took\\\\\\\":7, not a valid json'))",
-    );
-  });
-
-  it('should handle Dynamic columns with nested values', () => {
-    const columnMap = new Map([
-      [
-        'dynamic_field',
-        {
-          name: 'dynamic_field',
-          type: 'Dynamic',
-          valueExpr: 'dynamic_field',
-          jsType: JSDataType.Dynamic,
-        },
-      ],
-    ]);
-
-    const row = { dynamic_field: "{'foo': {'bar': 'baz'}}" };
-    const result = processRowToWhereClause(row, columnMap);
-    expect(result).toBe(
-      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\'foo\\': {\\'bar\\': \\'baz\\'}}', 'Dynamic')), toJSONString('{\\'foo\\': {\\'bar\\': \\'baz\\'}}'))",
-    );
-  });
-
-  it('should handle Dynamic columns with array values', () => {
-    const columnMap = new Map([
-      [
-        'dynamic_field',
-        {
-          name: 'dynamic_field',
-          type: 'Dynamic',
-          valueExpr: 'dynamic_field',
-          jsType: JSDataType.Dynamic,
-        },
-      ],
-    ]);
-
-    const row = { dynamic_field: "['foo', 'bar']" };
-    const result = processRowToWhereClause(row, columnMap);
-    expect(result).toBe(
-      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('[\\'foo\\', \\'bar\\']', 'Dynamic')), toJSONString('[\\'foo\\', \\'bar\\']'))",
-    );
+    expect(
+      processRowToWhereClause({ dynamic_field: '"quoted_value"' }, columnMap),
+    ).toBe('');
+    expect(
+      processRowToWhereClause(
+        { dynamic_field: '{\\"took\\":7, not a valid json' },
+        columnMap,
+      ),
+    ).toBe('');
+    expect(
+      processRowToWhereClause(
+        { dynamic_field: "{'foo': {'bar': 'baz'}}" },
+        columnMap,
+      ),
+    ).toBe('');
+    expect(
+      processRowToWhereClause({ dynamic_field: "['foo', 'bar']" }, columnMap),
+    ).toBe('');
   });
 
   it('should handle long strings with MD5', () => {
@@ -253,7 +187,7 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      `lower(hex(MD5(leftUTF8(description, 1000))))='md5_${'a'.repeat(600)}'`,
+      `lower(to_hex(md5(cast(substr(description, 1, 1000) as varbinary))))='md5_${'a'.repeat(600)}'`,
     );
     expect(MD5).toHaveBeenCalledWith('a'.repeat(600));
   });
@@ -305,7 +239,7 @@ describe('processRowToWhereClause', () => {
     expect(result).toBe("original_column='test'");
   });
 
-  it('should handle Tuple columns', () => {
+  it('skips Tuple columns from row-WHERE', () => {
     const columnMap = new Map([
       [
         'coordinates',
@@ -318,12 +252,12 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { coordinates: '{"s": "city", "i": 123}' };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      'toJSONString(coordinates)=\'{\\"s\\": \\"city\\", \\"i\\": 123}\'',
-    );
+    expect(
+      processRowToWhereClause(
+        { coordinates: '{"s": "city", "i": 123}' },
+        columnMap,
+      ),
+    ).toBe('');
   });
 
   it('should handle null value on Date column', () => {
@@ -342,7 +276,7 @@ describe('processRowToWhereClause', () => {
     const row = { event_created: null };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe('isNull(event_created)');
+    expect(result).toBe('event_created IS NULL');
   });
 
   it('should handle null value in default block', () => {
@@ -361,7 +295,7 @@ describe('processRowToWhereClause', () => {
     const row = { name: null };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe('isNull(name)');
+    expect(result).toBe('name IS NULL');
   });
 
   it('should handle undefined value in default block', () => {
@@ -380,7 +314,7 @@ describe('processRowToWhereClause', () => {
     const row = { description: undefined };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe('isNull(description)');
+    expect(result).toBe('description IS NULL');
   });
 
   it('should throw error when column type not found', () => {
@@ -467,18 +401,10 @@ describe('useRowWhere', () => {
     expect(rowWhereResult.where).toBe(
       "users.id='123' AND users.status='active'",
     );
-    expect(rowWhereResult.aliasWith).toEqual([
-      {
-        name: 'user_id',
-        sql: { sql: 'users.id', params: {} },
-        isSubquery: false,
-      },
-      {
-        name: 'user_status',
-        sql: { sql: 'users.status', params: {} },
-        isSubquery: false,
-      },
-    ]);
+    // Berg: `aliasWith` is always empty — Trino's WITH is CTE-only,
+    // and the alias's underlying expression is already substituted
+    // directly into `where` via the column map.
+    expect(rowWhereResult.aliasWith).toEqual([]);
   });
 
   it('should use column name when alias not found in aliasMap', () => {
@@ -498,9 +424,7 @@ describe('useRowWhere', () => {
     const rowWhereResult = result.current(row);
 
     expect(rowWhereResult.where).toBe("users.id='123' AND status='active'");
-    expect(rowWhereResult.aliasWith).toEqual([
-      { name: 'id', sql: { sql: 'users.id', params: {} }, isSubquery: false },
-    ]);
+    expect(rowWhereResult.aliasWith).toEqual([]);
   });
 
   it('should handle undefined alias values in aliasMap', () => {
@@ -520,9 +444,7 @@ describe('useRowWhere', () => {
     const rowWhereResult = result.current(row);
 
     expect(rowWhereResult.where).toBe("users.id='123' AND status='active'");
-    expect(rowWhereResult.aliasWith).toEqual([
-      { name: 'id', sql: { sql: 'users.id', params: {} }, isSubquery: false },
-    ]);
+    expect(rowWhereResult.aliasWith).toEqual([]);
   });
 
   it('should memoize the column map', () => {

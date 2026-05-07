@@ -95,7 +95,7 @@ function SourceSelectControlledComponent({
     const sourceItems = (
       data?.map(d => ({
         value: d.id,
-        label: d.name,
+        label: d.displayName,
       })) ?? []
     ).sort((a, b) => a.label.localeCompare(b.label));
 

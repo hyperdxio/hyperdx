@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
-import {
-  MetricsDataType,
-  TLogSource,
-  TMetricSource,
-  TSource,
-} from '@berg/common-utils/dist/types';
-import { Modal, Paper, Stack, Tabs, Text, Tooltip } from '@mantine/core';
+import type { GlueTableSchema } from '@berg/common-utils/dist/glue/types';
+import { TSource } from '@berg/common-utils/dist/types';
+import { Modal, Paper, Tabs, Text, Tooltip } from '@mantine/core';
 import { IconCode, IconRefresh } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 
-import { useTableMetadata } from '@/hooks/useMetadata';
-
-import { SQLPreview } from './ChartSQLPreview';
+import { CatalogTabDDL } from './Catalog/CatalogTabDDL';
 
 interface SourceSchemaInfoIconProps {
   onClick: () => void;
@@ -57,20 +52,40 @@ const SourceSchemaInfoIcon = ({
 };
 
 interface TableSchemaPreviewProps {
+  catalogId: string;
   databaseName: string;
   tableName: string;
-  connectionId: string;
 }
 
+/**
+ * Render a Glue-derived schema view for a Berg source. CH had a
+ * canonical `create_table_query` per row in `system.tables`; on Athena
+ * the equivalent is `SHOW CREATE TABLE`, which requires running a real
+ * query. To keep this surface read-only we synthesize best-effort DDL
+ * from the Glue table metadata — same component the Catalog page uses.
+ */
 const TableSchemaPreview = ({
+  catalogId,
   databaseName,
   tableName,
-  connectionId,
 }: TableSchemaPreviewProps) => {
-  const { data, isLoading } = useTableMetadata({
-    databaseName,
-    tableName,
-    connectionId,
+  const { data, isLoading, error } = useQuery<GlueTableSchema, Error>({
+    queryKey: ['sourceSchemaPreview', { catalogId, databaseName, tableName }],
+    queryFn: async () => {
+      const url = `/api/v1/catalogs/${encodeURIComponent(
+        catalogId,
+      )}/databases/${encodeURIComponent(
+        databaseName,
+      )}/tables/${encodeURIComponent(tableName)}/schema`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Schema fetch failed (${res.status}): ${body}`);
+      }
+      return res.json();
+    },
+    enabled: !!catalogId && !!databaseName && !!tableName,
+    staleTime: 1000 * 60,
   });
 
   return (
@@ -85,58 +100,29 @@ const TableSchemaPreview = ({
         <div className="d-inline-block">
           <IconRefresh className="spin-animate" />
         </div>
+      ) : error ? (
+        <Text size="sm" c="red">
+          {error.message}
+        </Text>
+      ) : data ? (
+        <CatalogTabDDL schema={data} />
       ) : (
-        <Stack gap="sm">
-          {data?.create_local_table_query && (
-            <Text size="xs" fw={600} c="dimmed">
-              Distributed Table
-            </Text>
-          )}
-          <SQLPreview
-            data={data?.create_table_query ?? 'Schema is not available'}
-            enableCopy={!!data?.create_table_query}
-            copyButtonSize="xs"
-          />
-          {data?.create_local_table_query && (
-            <>
-              <Text size="xs" fw={600} c="dimmed">
-                Local Table
-              </Text>
-              <SQLPreview
-                data={data.create_local_table_query}
-                enableCopy
-                copyButtonSize="xs"
-              />
-            </>
-          )}
-        </Stack>
+        <Text size="sm" c="dimmed">
+          Schema is not available
+        </Text>
       )}
     </Paper>
   );
 };
 
-interface SourceSchemaPreviewSource {
-  connection?: TSource['connection'];
-  from: TSource['from'];
-  metricTables?: TMetricSource['metricTables'];
-  kind?: TSource['kind'];
-  name?: TSource['name'];
-  materializedViews?: TLogSource['materializedViews'];
-}
-
 interface SourceSchemaPreviewProps {
-  source?: SourceSchemaPreviewSource;
+  source?: Pick<
+    TSource,
+    'catalog' | 'database' | 'table' | 'displayName' | 'kind'
+  >;
   iconStyles?: React.CSSProperties;
   variant?: 'icon' | 'text';
 }
-
-const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
-  [MetricsDataType.Sum]: 'Sum',
-  [MetricsDataType.Gauge]: 'Gauge',
-  [MetricsDataType.Histogram]: 'Histogram',
-  [MetricsDataType.Summary]: 'Summary',
-  [MetricsDataType.ExponentialHistogram]: 'Exponential Histogram',
-};
 
 const SourceSchemaPreview = ({
   source,
@@ -145,41 +131,18 @@ const SourceSchemaPreview = ({
 }: SourceSchemaPreviewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const isMetricSource = source?.kind === 'metric';
   const tables: (TableSchemaPreviewProps & { title: string })[] = [];
-  if (source && isMetricSource) {
-    tables.push(
-      ...Object.values(MetricsDataType)
-        .map(metricType => ({
-          metricType,
-          tableName: source.metricTables?.[metricType],
-        }))
-        .filter(({ tableName }) => !!tableName)
-        .map(({ metricType, tableName }) => ({
-          databaseName: source.from.databaseName,
-          tableName: tableName!,
-          connectionId: source.connection ?? '',
-          title: METRIC_TYPE_NAMES[metricType],
-        })),
-    );
-  } else if (source && source.from.tableName) {
+  const databaseName = source?.database;
+  const tableName = source?.table;
+  const catalogId = source?.catalog;
+  if (source && tableName && catalogId) {
     tables.push({
-      databaseName: source.from.databaseName,
-      tableName: source.from.tableName,
-      connectionId: source.connection ?? '',
-      title: source.name ?? source.from.tableName,
+      catalogId,
+      databaseName: databaseName ?? '',
+      tableName,
+      title: source.displayName ?? tableName,
     });
   }
-
-  const mvConfigs = source?.materializedViews ?? [];
-  tables.push(
-    ...mvConfigs.map(({ tableName, databaseName }) => ({
-      databaseName,
-      tableName,
-      connectionId: source!.connection ?? '',
-      title: `${tableName} (MV)`,
-    })),
-  );
 
   const isEnabled = !!source && tables.length > 0;
 

@@ -324,7 +324,7 @@ describe('localSources', () => {
     const envDefaults = [{ id: 'env-src', name: 'Env Source' }];
     mockedConfig.HDX_LOCAL_DEFAULT_SOURCES = JSON.stringify(envDefaults);
 
-    const stored = localSources.create({ name: 'My Source' } as Omit<
+    const stored = localSources.create({ displayName: 'My Source' } as Omit<
       TSource,
       'id'
     >);

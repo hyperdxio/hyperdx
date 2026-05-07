@@ -24,11 +24,9 @@ import {
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@berg/common-utils/dist/core/searchChartConfig';
 import {
-  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@berg/common-utils/dist/core/utils';
@@ -73,6 +71,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { ClickHouseQueryError } from '@/clickhouse-types';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
@@ -87,13 +86,12 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
-import { TableSourceForm } from '@/components/Sources/SourceForm';
+import { EditSourceModal } from '@/components/Sources/EditSourceModal';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
-import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
 import {
@@ -103,7 +101,7 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import { getEventBody, useSource, useSources } from '@/source';
+import { useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
@@ -114,7 +112,6 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
-import PatternTable from './components/PatternTable';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
@@ -196,32 +193,22 @@ function SourceEditModal({
   onClose: () => void;
   inputSource: string | undefined;
 }) {
-  return (
-    <Modal size="xl" opened={opened} onClose={onClose} title="Edit Source">
-      <TableSourceForm sourceId={inputSource} />
-    </Modal>
-  );
+  const { data: source } = useSource({ id: inputSource });
+  return <EditSourceModal opened={opened} onClose={onClose} source={source} />;
 }
 
 function NewSourceModal({
   opened,
   onClose,
-  onCreate,
+  onCreate: _onCreate,
 }: {
   opened: boolean;
   onClose: () => void;
   onCreate: (source: TSource) => void;
 }) {
-  return (
-    <Modal
-      size="xl"
-      opened={opened}
-      onClose={onClose}
-      title="Configure New Source"
-    >
-      <TableSourceForm isNew defaultName="My New Source" onCreate={onCreate} />
-    </Modal>
-  );
+  // New-source flow goes through Catalog now; this stays only as a fallback
+  // entry point for the search page when no sources exist yet.
+  return <EditSourceModal opened={opened} onClose={onClose} />;
 }
 
 function ResumeLiveTailButton({
@@ -389,8 +376,8 @@ function SaveSearchModalComponent({
   const { data: sourceObj } = useSource({
     id: searchedConfig.source,
   });
-  const effectiveSelect =
-    searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
+  const effectiveSelect = searchedConfig.select || '';
+  void sourceObj;
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -483,7 +470,8 @@ function SaveSearchModalComponent({
                 FROM
               </Text>
               <Text mb="sm" size="xs">
-                {chartConfig?.from.databaseName}.{chartConfig?.from.tableName}
+                {chartConfig?.from?.databaseName ?? '—'}.
+                {chartConfig?.from?.tableName ?? '—'}
               </Text>
               <Text size="xs" mb="xs">
                 WHERE
@@ -685,6 +673,13 @@ function useSearchedConfigToChartConfig(
         filters,
         select: select || defaultSearchConfig?.select || null,
         displayType: DisplayType.Search,
+        // Stamp the source id onto the chart config's `connection` field.
+        // Berg's bridge (`makeBergClient`/`postBergQuery`) keys the
+        // schema-via-Glue and QueryExecutionContext lookups off this id;
+        // an empty string here was silently routing every Lucene/More-
+        // filters/Schema-modal lookup to the no-source fallback (which
+        // returns an empty schema and rejects every column).
+        connection: sourceObj.id,
         ...(resolvedOrderBy != null ? { orderBy: resolvedOrderBy } : {}),
       });
 
@@ -753,8 +748,6 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   return useMemo(() => {
     // If no source, return undefined so that the orderBy is not set incorrectly
     if (!source) return undefined;
-    const trimmedOrderBy = source.orderByExpression?.trim();
-    if (trimmedOrderBy) return trimmedOrderBy;
     // Berg / Task 9: prefer the Source's explicit `defaultSort` when set;
     // otherwise build a default from the timestamp column (DESC). For
     // sources without any time field we leave it undefined and let the
@@ -764,8 +757,8 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
       return `${source.timestampColumn} DESC`;
     }
     return optimizeDefaultOrderBy(
-      source?.timestampValueExpression ?? '',
-      source.displayedTimestampValueExpression,
+      source.timestampColumn ?? '',
+      undefined,
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
@@ -815,9 +808,7 @@ export function DBSearchPage() {
   //
   // We fall back to the legacy `timestampValueExpression` so older
   // Source documents keep working.
-  const hasTimestamp = !!(
-    searchedSource?.timestampColumn || searchedSource?.timestampValueExpression
-  );
+  const hasTimestamp = !!searchedSource?.timestampColumn;
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -898,7 +889,7 @@ export function DBSearchPage() {
         _savedSearch?.select ??
         (searchedSource?.defaultColumns
           ? searchedSource.defaultColumns.join(', ')
-          : searchedSource?.defaultTableSelectExpression),
+          : '*'),
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
@@ -1436,10 +1427,13 @@ export function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
-  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
-
-  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
-
+  // Berg / Trino: WITH is CTE-only, no per-expression alias binding.
+  // The CH-era pattern of feeding `aliasMapToWithClauses(...)` into the
+  // chart config emitted `WITH (expr) AS "alias"` which Trino rejects
+  // with SYNTAX_ERROR.  Histograms and filter charts don't reference
+  // user-typed aliases (they're `count()` / value-distribution queries
+  // over the same time range), so dropping the WITH entirely is
+  // correct — we just stop passing it.
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
       return undefined;
@@ -1464,7 +1458,6 @@ export function DBSearchPage() {
       granularity: 'auto',
       dateRange: searchedTimeRange,
       displayType: DisplayType.StackedBar,
-      with: aliasWith,
       // Preserve the original table select string for "View Events" links
       eventTableSelect: searchedConfig.select,
       // In live mode, when the end date is aligned to the granularity, the end date does
@@ -1472,13 +1465,7 @@ export function DBSearchPage() {
       alignDateRangeToGranularity: !isLive,
       ...variableConfig,
     };
-  }, [
-    chartConfig,
-    aliasWith,
-    searchedTimeRange,
-    searchedConfig.select,
-    isLive,
-  ]);
+  }, [chartConfig, searchedTimeRange, searchedConfig.select, isLive]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -1493,13 +1480,37 @@ export function DBSearchPage() {
     (sortState: SortingState | null) => {
       setIsLive(false);
       const sort = sortState?.at(0);
+      // Athena/Trino auto-names unaliased SELECT expressions in the
+      // result set as `_col0`, `_col1`, …  Those labels exist only on
+      // the response metadata — they cannot be referenced from
+      // ORDER BY against the underlying table.  When the user
+      // click-sorts a column whose id matches that pattern, look up
+      // the original SELECT expression by ordinal so we emit
+      // `ORDER BY <expression>` (Trino-legal) instead of
+      // `ORDER BY _col0` (COLUMN_NOT_FOUND).
+      const resolveSortColumn = (id: string): string => {
+        const m = /^_col(\d+)$/.exec(id);
+        if (!m) return id;
+        const ordinal = Number(m[1]);
+        const selectStr =
+          typeof searchedConfig.select === 'string'
+            ? searchedConfig.select
+            : '';
+        const expressions = splitAndTrimWithBracket(selectStr);
+        return expressions[ordinal] ?? id;
+      };
       setSearchedConfig({
         orderBy: sort
-          ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
+          ? `${resolveSortColumn(sort.id)} ${sort.desc ? 'DESC' : 'ASC'}`
           : defaultSearchConfig.orderBy,
       });
     },
-    [setIsLive, defaultSearchConfig.orderBy, setSearchedConfig],
+    [
+      setIsLive,
+      defaultSearchConfig.orderBy,
+      setSearchedConfig,
+      searchedConfig.select,
+    ],
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
@@ -1522,7 +1533,6 @@ export function DBSearchPage() {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,
-      with: aliasWith,
     } as const;
     return chartConfig
       ? {
@@ -1540,7 +1550,7 @@ export function DBSearchPage() {
           select: '',
           ...overrides,
         };
-  }, [chartConfig, searchedTimeRange, aliasWith]);
+  }, [chartConfig, searchedTimeRange]);
 
   const openNewSourceModal = useCallback(() => {
     setNewSourceModalOpened(true);
@@ -1992,29 +2002,13 @@ export function DBSearchPage() {
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
-                          showMVOptimizationIndicator={false}
                           showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
                       </Box>
                     )}
-                    <Box flex="1" mih="0" px="sm">
-                      <PatternTable
-                        source={searchedSource}
-                        config={{
-                          ...chartConfig,
-                          dateRange: searchedTimeRange,
-                        }}
-                        bodyValueExpression={
-                          searchedSource
-                            ? (getEventBody(searchedSource) ?? '')
-                            : (chartConfig.implicitColumnExpression ?? '')
-                        }
-                        totalCountConfig={histogramTimeChartConfig}
-                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
-                      />
-                    </Box>
+                    {/* Berg has no log-pattern table view. */}
                   </Flex>
                 )}
               {/* NOTE (Berg / Task 9): the trace-latency-heatmap delta mode
@@ -2065,7 +2059,6 @@ export function DBSearchPage() {
                             config={histogramTimeChartConfig}
                             enabled={isReady}
                             showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
                             showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}

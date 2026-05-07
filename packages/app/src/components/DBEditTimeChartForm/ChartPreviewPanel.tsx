@@ -6,7 +6,6 @@ import {
   BuilderChartConfigWithOptTimestamp,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { Accordion, Divider, Stack, Text } from '@mantine/core';
@@ -27,7 +26,6 @@ import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
-import { getFirstTimestampValueExpression } from '@/source';
 import {
   orderByStringToSortingState,
   sortingStateToOrderByString,
@@ -191,7 +189,6 @@ export function ChartPreviewPanel({
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
-            showMVOptimizationIndicator={false}
           />
         </div>
       )}
@@ -202,26 +199,17 @@ export function ChartPreviewPanel({
             config={dbTimeChartConfig}
             onTimeRangeSelect={onTimeRangeSelect}
             errorVariant="inline"
-            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'pie' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
-          <DBPieChart
-            config={queriedConfig}
-            showMVOptimizationIndicator={false}
-            errorVariant="inline"
-          />
+          <DBPieChart config={queriedConfig} errorVariant="inline" />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'number' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
-          <DBNumberChart
-            config={queriedConfig}
-            showMVOptimizationIndicator={false}
-            errorVariant="inline"
-          />
+          <DBNumberChart config={queriedConfig} errorVariant="inline" />
         </div>
       )}
       {queryReady &&
@@ -244,25 +232,23 @@ export function ChartPreviewPanel({
                 orderBy: [
                   {
                     ordering: 'DESC' as const,
-                    valueExpression: getFirstTimestampValueExpression(
-                      tableSource.timestampValueExpression,
-                    ),
+                    valueExpression: tableSource.timestampColumn ?? '',
                   },
                 ],
                 dateRange,
-                timestampValueExpression: tableSource.timestampValueExpression,
-                connection: tableSource.connection,
-                from: tableSource.from,
+                timestampValueExpression: tableSource.timestampColumn ?? '',
+                connection: '',
+                from: {
+                  databaseName: tableSource.database,
+                  tableName: tableSource.table,
+                },
                 limit: { limit: 200 },
                 // Search mode requires a string select, not an array of aggregations
                 select:
                   typeof queriedConfig.select === 'string' &&
                   queriedConfig.select
                     ? queriedConfig.select
-                    : ((tableSource?.kind === SourceKind.Log ||
-                        tableSource?.kind === SourceKind.Trace) &&
-                        tableSource.defaultTableSelectExpression) ||
-                      '',
+                    : '*',
                 groupBy: undefined,
                 having: undefined,
                 granularity: undefined,

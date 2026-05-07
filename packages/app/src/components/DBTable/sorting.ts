@@ -1,8 +1,6 @@
-import {
-  ColumnMetaType,
-  convertCHDataTypeToJSType,
-} from '@berg/common-utils/dist/clickhouse';
 import { Row, SortingFnOption } from '@tanstack/react-table';
+
+import { ColumnMetaType, convertCHDataTypeToJSType } from '@/clickhouse-types';
 
 export const numericRowSortingFn = ((
   a: Row<unknown>,

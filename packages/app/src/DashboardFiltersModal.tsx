@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@berg/common-utils/dist/core/metadata';
-import {
-  DashboardFilter,
-  MetricsDataType,
-  SourceKind,
-  TSource,
-} from '@berg/common-utils/dist/types';
+import { DashboardFilter, TSource } from '@berg/common-utils/dist/types';
 import {
   Button,
   Center,
@@ -39,7 +34,6 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';
-import { getMetricTableName } from './utils';
 
 import styles from '../styles/DashboardFiltersModal.module.scss';
 
@@ -118,20 +112,17 @@ const DashboardFilterEditForm = ({
   const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({ id: sourceId });
 
-  const metricType = useWatch({ control, name: 'sourceMetricType' });
-  const tableName = source && getMetricTableName(source, metricType);
-  const tableConnection: TableConnection | undefined = tableName
+  const tableConnection: TableConnection | undefined = source?.table
     ? {
-        connectionId: source.connection ?? '',
-        databaseName: source.from.databaseName,
-        tableName,
+        connectionId: '',
+        databaseName: source.database,
+        tableName: source.table,
       }
     : undefined;
 
-  const sourceIsMetric = source?.kind === SourceKind.Metric;
-  const metricTypes = Object.values(MetricsDataType).filter(type =>
-    source?.kind === SourceKind.Metric ? source.metricTables?.[type] : false,
-  );
+  // Berg has no metric-source kind; the metric-type selector is dead code.
+  const sourceIsMetric = false;
+  const metricTypes: string[] = [];
 
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
     null,
@@ -357,7 +348,7 @@ const DashboardFiltersList = ({
             <Group gap="xs">
               <IconStack size={14} />
               <Text size="xs">
-                {sources?.find(s => s.id === filter.source)?.name}
+                {sources?.find(s => s.id === filter.source)?.displayName}
               </Text>
             </Group>
           </Paper>

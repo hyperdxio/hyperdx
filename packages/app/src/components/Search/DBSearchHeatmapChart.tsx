@@ -3,7 +3,7 @@ import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { tcFromSource } from '@berg/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
-  TTraceSource,
+  TSource,
 } from '@berg/common-utils/dist/types';
 import {
   ActionIcon,
@@ -16,8 +16,6 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconSettings } from '@tabler/icons-react';
 
 import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
-import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
 
 import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
@@ -36,12 +34,13 @@ export function DBSearchHeatmapChart({
   onAddFilter,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
-  source: TTraceSource;
+  source: TSource;
   isReady: boolean;
   onAddFilter?: AddFilterFn;
 }) {
+  void source;
   const [fields, setFields] = useQueryStates({
-    value: parseAsString.withDefault(getDurationMsExpression(source)),
+    value: parseAsString.withDefault(''),
     count: parseAsString.withDefault('count()'),
     scaleType: parseAsString.withDefault('log'),
     // Heatmap selection coordinates
@@ -121,13 +120,7 @@ export function DBSearchHeatmapChart({
                   heatmapScaleType: scaleType,
                 },
               ],
-              numberFormat:
-                fields.value === getDurationMsExpression(source)
-                  ? ({
-                      output: 'duration',
-                      factor: 0.001,
-                    } satisfies NumberFormat)
-                  : undefined,
+              numberFormat: undefined,
             }).heatmapConfig
           }
           enabled={isReady}
@@ -192,7 +185,7 @@ export function DBSearchHeatmapChart({
           onAddFilter={
             onAddFilter ? handleAddFilterAndClearSelection : undefined
           }
-          spanIdExpression={source.spanIdExpression}
+          spanIdExpression={undefined}
           legendPrefix={<ColorLegend colors={palette} />}
         />
       </Box>

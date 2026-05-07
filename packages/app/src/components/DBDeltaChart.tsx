@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -16,8 +15,8 @@ import {
 import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
+import { ClickHouseQueryError } from '@/clickhouse-types';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
@@ -81,10 +80,8 @@ export default function DBDeltaChart({
   // Build deterministic ORDER BY expression from source's spanIdExpression
   const stableSampleExpr = getStableSampleExpression(spanIdExpression);
 
-  // Get the timestamp expression from config
-  const timestampExpr = getFirstTimestampValueExpression(
-    config.timestampValueExpression,
-  );
+  // Berg: timestampValueExpression on the chart config is already the column.
+  const timestampExpr = config.timestampValueExpression;
 
   // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
   const buildAggregatedTimestampsCTE = () =>

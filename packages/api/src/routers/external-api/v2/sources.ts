@@ -1,8 +1,4 @@
-import {
-  SourceKind,
-  SourceSchema,
-  type TSource,
-} from '@berg/common-utils/dist/types';
+import { SourceSchema, type TSource } from '@berg/common-utils/dist/types';
 import express from 'express';
 
 import { getSources } from '@/controllers/sources';
@@ -29,28 +25,16 @@ export function mapGranularityToExternalFormat(granularity: string): string {
 }
 
 function mapSourceToExternalSource(source: TSource): TSource {
-  if (!('materializedViews' in source)) return source;
-  if (!Array.isArray(source.materializedViews)) return source;
-
-  return {
-    ...source,
-    materializedViews: source.materializedViews.map(view => {
-      return {
-        ...view,
-        minGranularity: mapGranularityToExternalFormat(view.minGranularity),
-      };
-    }),
-  };
+  // Berg has no materialized-view concept; the external API mapping is
+  // a pass-through.
+  void mapGranularityToExternalFormat;
+  return source;
 }
 
 function applyLegacyDefaults(
   parsed: Record<string, unknown>,
 ): Record<string, unknown> {
-  // Legacy Session sources were created before timestampValueExpression was
-  // required. The old code defaulted it to 'TimestampTime' at query time.
-  if (parsed.kind === SourceKind.Session && !parsed.timestampValueExpression) {
-    return { ...parsed, timestampValueExpression: 'TimestampTime' };
-  }
+  // Berg has no legacy Session-kind defaulting; pass through.
   return parsed;
 }
 

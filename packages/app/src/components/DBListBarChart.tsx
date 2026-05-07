@@ -1,21 +1,16 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 
-import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useResolvedNumberFormat } from '@/source';
 import type { NumberFormat } from '@/types';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 function ListItem({
   title,
@@ -183,7 +178,6 @@ export default function DBListBarChart({
   hiddenSeries,
   title,
   toolbarItems,
-  showMVOptimizationIndicator = true,
 }: {
   config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
@@ -196,7 +190,6 @@ export default function DBListBarChart({
   hiddenSeries?: string[];
   title?: React.ReactNode;
   toolbarItems?: React.ReactNode[];
-  showMVOptimizationIndicator?: boolean;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -207,11 +200,6 @@ export default function DBListBarChart({
       enabled,
     },
   );
-
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
-
-  const { data: source } = useSource({ id: config.source });
 
   const resolvedNumberFormat = useResolvedNumberFormat(config);
 
@@ -233,38 +221,12 @@ export default function DBListBarChart({
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
 
-    if (source && showMVOptimizationIndicator) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-list-bar-chart-mv-indicator"
-          config={queriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
     if (toolbarItems && toolbarItems.length > 0) {
       allToolbarItems.push(...toolbarItems);
     }
 
     return allToolbarItems;
-  }, [
-    queriedConfig,
-    source,
-    toolbarItems,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-  ]);
+  }, [toolbarItems]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
@@ -289,14 +251,6 @@ export default function DBListBarChart({
             >
               {error.message}
             </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
           </Box>
         </div>
       ) : data?.data.length === 0 ? (

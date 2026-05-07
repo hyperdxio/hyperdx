@@ -663,7 +663,14 @@ describe('Metadata', () => {
           params: {},
         },
       });
-      expect(actualConfig.where).toBe("severity = 'info'");
+      // Berg/Trino split: the user's WHERE moves into the inner
+      // `distAgg` CTE so the percentage computation in the outer SELECT
+      // operates on the already-filtered count.  The outer config's
+      // `where` is therefore empty by design.
+      const distAggCte = actualConfig.with?.find(c => c.name === 'distAgg');
+      if (!distAggCte || !('chartConfig' in distAggCte))
+        throw new Error('Expected distAgg subquery CTE');
+      expect(distAggCte.chartConfig.where).toBe("severity = 'info'");
     });
 
     it('should include filters from the config in the query', async () => {
@@ -691,7 +698,11 @@ describe('Metadata', () => {
       const actualConfig = renderChartConfigSpy.mock.calls[0][0];
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
-      expect(actualConfig.filters).toContainEqual({
+      // Same Berg/Trino split: filters live on the inner `distAgg` CTE.
+      const distAggCte = actualConfig.with?.find(c => c.name === 'distAgg');
+      if (!distAggCte || !('chartConfig' in distAggCte))
+        throw new Error('Expected distAgg subquery CTE');
+      expect(distAggCte.chartConfig.filters).toContainEqual({
         type: 'sql',
         condition: "ServiceName IN ('clickhouse')",
       });

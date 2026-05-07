@@ -1,19 +1,5 @@
-name: hdx-oss
+name: berg-oss
 services:
-  # ONLY USED FOR DEMO SSL SETUP
-  # nginx:
-  #   image: nginx:1.27.3
-  #   volumes:
-  #     - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
-  #     - ./docker/nginx/ssl:/etc/nginx/ssl
-  #     - .volumes/nginx_logs:/var/log/nginx
-  #   ports:
-  #     - 80:80
-  #     - 443:443
-  #   networks:
-  #     - internal
-  #   depends_on:
-  #     - app
   db:
     image: mongo:5.0.32-focal
     volumes:
@@ -25,81 +11,31 @@ services:
     #   - 27017:27017
     networks:
       - internal
-  otel-collector:
-    image: ${CH_IMAGE_REPO}/${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
-    environment:
-      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
-      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OPAMP_SERVER_URL: 'http://app:${HYPERDX_OPAMP_PORT}'
-      # TODO: use new schema
-      HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA: 'true'
-    ports:
-      - '13133:13133' # health_check extension
-      - '24225:24225' # fluentd receiver
-      - '4317:4317' # OTLP gRPC receiver
-      - '4318:4318' # OTLP http receiver
-      - '8888:8888' # metrics extension
-    restart: always
-    networks:
-      - internal
-    depends_on:
-      - ch-server
   app:
-    image: ${HDX_IMAGE_REPO}/${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+    image: ${BERG_IMAGE_REPO:-berg}/${IMAGE_NAME_DOCKERHUB:-berg}:${IMAGE_VERSION:-latest}
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT}
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_API_PORT: ${HYPERDX_API_PORT}
       HYPERDX_APP_PORT: ${HYPERDX_APP_PORT}
       HYPERDX_APP_URL: ${HYPERDX_APP_URL}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      MINER_API_URL: 'http://miner:5123'
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
+      MONGO_URI: 'mongodb://db:27017/berg'
       SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
-      OPAMP_PORT: ${HYPERDX_OPAMP_PORT}
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      # Per-signal OTLP endpoints (override OTEL_EXPORTER_OTLP_ENDPOINT for individual signals)
-      # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://otel-collector:4318/v1/traces'
-      # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://otel-collector:4318/v1/metrics'
-      # OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://otel-collector:4318/v1/logs'
-      OTEL_SERVICE_NAME: 'hdx-oss-app'
-      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
-      DEFAULT_CONNECTIONS:
-        '[{"name":"Local
-        ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'
-      DEFAULT_SOURCES:
-        '[{"from":{"databaseName":"default","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Logs","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Local
-        ClickHouse","traceSourceId":"Traces","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"default","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Traces","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanNameExpression":"SpanName","spanKindExpression":"SpanKind","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Local
-        ClickHouse","logSourceId":"Logs","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum","_id":"682586a8b1f81924e628e808","id":"682586a8b1f81924e628e808"},"connection":"Local
-        ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","sessionSourceId":"Sessions"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Sessions","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Local
-        ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","metricSourceId":"Metrics"}]'
+      EXPRESS_SESSION_SECRET: ${EXPRESS_SESSION_SECRET}
+      # AWS Athena configuration (Berg query engine).
+      # In EKS use IRSA; for non-IRSA deployments pass AWS_* env vars through
+      # to the container via deploy-time secrets.
+      ATHENA_REGION: ${ATHENA_REGION}
+      ATHENA_WORKGROUP: ${ATHENA_WORKGROUP}
+      ATHENA_OUTPUT_LOCATION: ${ATHENA_OUTPUT_LOCATION}
+      ATHENA_SYNC_TIMEOUT_MS: ${ATHENA_SYNC_TIMEOUT_MS:-30000}
+      ATHENA_RESULT_REUSE_TTL_MIN: ${ATHENA_RESULT_REUSE_TTL_MIN:-60}
     networks:
       - internal
     depends_on:
-      - ch-server
       - db
-  ch-server:
-    image: clickhouse/clickhouse-server:26.1-alpine
-    # WARNING: Exposing the database port will make it accessible from outside the container,
-    # potentially allowing unauthorized access. If you uncomment the ports below,
-    # ensure to secure your database (e.g., with strong authentication, proper network rules, and firewalls).
-    # ports:
-    #   - 8123:8123 # http api
-    #   - 9000:9000 # native
-    environment:
-      # default settings
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    volumes:
-      - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
-      - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data:/var/lib/clickhouse
-      - .volumes/ch_logs:/var/log/clickhouse-server
-    restart: on-failure
-    networks:
-      - internal
 networks:
   internal:

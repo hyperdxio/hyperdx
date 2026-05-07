@@ -75,6 +75,23 @@ export const ATHENA_RESULT_REUSE_TTL_MIN = Number.parseInt(
   10,
 );
 
+// Glue catalog scoping (Berg).
+//
+// GLUE_CATALOG_ID — single Glue catalog ID surfaced to the UI.  S3 Tables
+// register as `<account>:s3tablescatalog/<bucket>`-style federated catalogs;
+// set this to the catalog you want users to browse.  If unset, falls back to
+// the default account-level catalog (`AwsDataCatalog`).
+//
+// GLUE_DATABASES — comma-separated allowlist of database names (Glue
+// namespaces) to expose under the catalog.  If unset, all databases the
+// IAM role can see are listed.  Lets a deployment narrow the surface to a
+// single tenant's data without relying on IAM grants alone.
+export const GLUE_CATALOG_ID = env.GLUE_CATALOG_ID || 'AwsDataCatalog';
+export const GLUE_DATABASES: string[] = (env.GLUE_DATABASES ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 // AI Assistant
 // Provider-agnostic configuration (preferred)
 export const AI_PROVIDER = env.AI_PROVIDER as string; // 'anthropic' | 'openai'

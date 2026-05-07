@@ -63,7 +63,7 @@ const setup = (
     });
   }
 
-  app.use('/api/v1/query', isUserAuthenticated, queryRouter);
+  app.use('/v1/query', isUserAuthenticated, queryRouter);
   app.use(appErrorHandler);
   return app;
 };
@@ -100,9 +100,7 @@ describe('query router', () => {
       });
 
       const app = setup();
-      const r = await request(app)
-        .post('/api/v1/query')
-        .send({ sql: 'SELECT 5' });
+      const r = await request(app).post('/v1/query').send({ sql: 'SELECT 5' });
 
       expect(r.status).toBe(200);
       expect(r.body.rows).toEqual([{ n: 5 }]);
@@ -123,7 +121,7 @@ describe('query router', () => {
 
       const app = setup();
       const r = await request(app)
-        .post('/api/v1/query')
+        .post('/v1/query')
         .send({ sql: 'SELECT pg_sleep(60)' });
 
       expect(r.status).toBe(200);
@@ -136,7 +134,7 @@ describe('query router', () => {
     it('rejects writes with 403 + forbidden_write code', async () => {
       const app = setup();
       const r = await request(app)
-        .post('/api/v1/query')
+        .post('/v1/query')
         .send({ sql: 'INSERT INTO x VALUES (1)' });
 
       expect(r.status).toBe(403);
@@ -147,9 +145,7 @@ describe('query router', () => {
 
     it('returns 401 when unauthenticated', async () => {
       const app = setup({ authenticated: false });
-      const r = await request(app)
-        .post('/api/v1/query')
-        .send({ sql: 'SELECT 1' });
+      const r = await request(app).post('/v1/query').send({ sql: 'SELECT 1' });
 
       expect(r.status).toBe(401);
     });
@@ -160,7 +156,7 @@ describe('query router', () => {
       const app = setup();
       const sourceId = new Types.ObjectId().toString();
       const r = await request(app)
-        .post('/api/v1/query')
+        .post('/v1/query')
         .send({ sql: 'SELECT 1', sourceId });
 
       expect(r.status).toBe(404);
@@ -193,7 +189,7 @@ describe('query router', () => {
 
       const app = setup();
       const r = await request(app)
-        .post('/api/v1/query')
+        .post('/v1/query')
         .send({ sql: 'SELECT 1', sourceId: sourceId.toString() });
 
       expect(r.status).toBe(200);
@@ -206,7 +202,7 @@ describe('query router', () => {
 
     it('rejects an empty SQL body with 400 (zod validation)', async () => {
       const app = setup();
-      const r = await request(app).post('/api/v1/query').send({ sql: '' });
+      const r = await request(app).post('/v1/query').send({ sql: '' });
       expect(r.status).toBe(400);
     });
   });
@@ -218,7 +214,7 @@ describe('query router', () => {
       });
 
       const app = setup();
-      const r = await request(app).get('/api/v1/query/e1/status');
+      const r = await request(app).get('/v1/query/e1/status');
       expect(r.status).toBe(200);
       expect(r.body.status).toBe('running');
     });
@@ -242,7 +238,7 @@ describe('query router', () => {
 
       const app = setup();
       const r = await request(app)
-        .get('/api/v1/query/e1/results')
+        .get('/v1/query/e1/results')
         .query({ nextToken: 'cursor-1' });
 
       expect(r.status).toBe(200);
@@ -256,7 +252,7 @@ describe('query router', () => {
       sdk.on(StopQueryExecutionCommand).resolves({});
 
       const app = setup();
-      const r = await request(app).delete('/api/v1/query/e1');
+      const r = await request(app).delete('/v1/query/e1');
       expect(r.status).toBe(200);
       expect(r.body.ok).toBe(true);
 

@@ -1,15 +1,15 @@
 import { useMemo } from 'react';
-import {
-  filterColumnMetaByType,
-  JSDataType,
-  ResponseJSON,
-} from '@berg/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import api from '@/api';
 import { convertToTimeChartConfig } from '@/ChartUtils';
+import {
+  filterColumnMetaByType,
+  JSDataType,
+  ResponseJSON,
+} from '@/clickhouse-types';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
@@ -20,7 +20,7 @@ function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
 
   // The column may be named differently, particularly when using Materialized Views.
   return (
-    filterColumnMetaByType(meta, [JSDataType.Number])?.[0].name ?? 'count()'
+    filterColumnMetaByType(meta, [JSDataType.Number])?.[0]?.name ?? 'count()'
   );
 }
 

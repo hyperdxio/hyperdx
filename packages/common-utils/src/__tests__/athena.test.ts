@@ -68,8 +68,20 @@ describe('convertCellValue', () => {
     expect(convertCellValue('false', 'boolean')).toBe(false);
   });
 
-  it('passes date strings through as-is', () => {
-    expect(convertCellValue('2024-01-01', 'date')).toBe('2024-01-01');
+  it('normalises date / timestamp strings to ISO-8601 UTC', () => {
+    // Bare date → midnight UTC ISO so chart-side `new Date(...)` doesn't
+    // shift the bucket by the user's offset.
+    expect(convertCellValue('2024-01-01', 'date')).toBe(
+      '2024-01-01T00:00:00Z',
+    );
+    // Athena's space-separated timestamp form gets a `T` and `Z`.
+    expect(convertCellValue('2024-01-01 12:34:56.789', 'date')).toBe(
+      '2024-01-01T12:34:56.789Z',
+    );
+    // Already-zone-stamped values are passed through.
+    expect(convertCellValue('2024-01-01T00:00:00Z', 'date')).toBe(
+      '2024-01-01T00:00:00Z',
+    );
   });
 
   it.each(['array', 'map', 'row', 'json'] as const)(

@@ -11,7 +11,6 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   SavedChartConfig,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -61,11 +60,7 @@ import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import {
-  getDurationMsExpression,
-  getTraceDurationNumberFormat,
-  useSource,
-} from '@/source';
+import { useSource } from '@/source';
 
 import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
@@ -182,29 +177,21 @@ export default function EditTimeChartForm({
     configType === 'sql' && isRawSqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
-  const databaseName = tableSource?.from.databaseName;
-  const tableName = tableSource?.from.tableName;
+  const databaseName = tableSource?.database;
+  const tableName = tableSource?.table;
 
   const activeTab = displayTypeToActiveTab(displayType);
 
   const showGeneratedSql = TABS_WITH_GENERATED_SQL.has(activeTab);
 
-  const showSampleEvents =
-    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
+  const showSampleEvents = !isRawSqlInput;
 
   // Time-axis chart types only make sense when the Source has a configured
   // time column. For Berg sources without `timestampColumn`, hide line and
   // heatmap from the chart-type picker.
   const hasTimeColumn = useMemo(() => {
-    if (!tableSource) {
-      // When the source hasn't loaded yet, don't filter anything out — the
-      // user is typically editing an existing chart that already targets a
-      // time-enabled source.
-      return true;
-    }
-    return Boolean(
-      tableSource.timestampColumn || tableSource.timestampValueExpression,
-    );
+    if (!tableSource) return true;
+    return Boolean(tableSource.timestampColumn);
   }, [tableSource]);
 
   const [
@@ -224,14 +211,12 @@ export default function EditTimeChartForm({
     ],
   });
 
-  const autoDetectedNumberFormat = useMemo(
-    () =>
-      getTraceDurationNumberFormat(
-        tableSource,
-        Array.isArray(select) ? select : undefined,
-      ),
-    [tableSource, select],
-  );
+  // Berg has no source-side duration expression; never auto-detect.
+  const autoDetectedNumberFormat = useMemo(() => {
+    void tableSource;
+    void select;
+    return undefined;
+  }, [tableSource, select]);
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
     () => ({
@@ -402,21 +387,15 @@ export default function EditTimeChartForm({
         setValue('select', '');
         setValue('series', []);
       } else if (displayType === DisplayType.Heatmap) {
-        // Two entry paths into Heatmap:
-        //   - From Search/RawSQL: select is a string; clear `where` too
-        //   - From another builder tab: select is already an array
+        // Berg has no source-side duration expression; fall back to the
+        // current select's first value expression or empty string.
         const fallbackValue = Array.isArray(select)
           ? (select[0]?.valueExpression ?? '')
           : '';
-        const defaultValue =
-          tableSource?.kind === SourceKind.Trace &&
-          tableSource.durationExpression
-            ? getDurationMsExpression(tableSource)
-            : fallbackValue;
         if (typeof select === 'string') {
           setValue('where', '');
         }
-        applyHeatmapDefaults(setValue, defaultValue);
+        applyHeatmapDefaults(setValue, fallbackValue);
       } else if (!Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
@@ -439,20 +418,13 @@ export default function EditTimeChartForm({
     }
   }, [displayType, select, setValue, onSubmit, configType, tableSource]);
 
-  // Auto-populate heatmap defaults when source changes while in heatmap mode
+  // Berg has no source-side duration expression; nothing to auto-populate.
   useEffect(() => {
-    const sourceChanged = sourceId !== prevSourceIdRef.current;
     prevSourceIdRef.current = sourceId;
-
-    if (
-      sourceChanged &&
-      displayType === DisplayType.Heatmap &&
-      tableSource?.kind === SourceKind.Trace &&
-      tableSource.durationExpression
-    ) {
-      applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
-      onSubmit(true);
-    }
+    void displayType;
+    void tableSource;
+    void setValue;
+    void onSubmit;
   }, [sourceId, displayType, tableSource, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards

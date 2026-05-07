@@ -4,10 +4,7 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@berg/common-utils/dist/core/metadata';
-import {
-  BuilderChartConfigWithDateRange,
-  SourceKind,
-} from '@berg/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import {
   Accordion,
   ActionIcon,
@@ -44,10 +41,8 @@ import {
   IconRefresh,
   IconSearch,
   IconShadow,
-  IconSitemap,
 } from '@tabler/icons-react';
 
-import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useAllFields,
   useColumns,
@@ -1176,29 +1171,18 @@ const DBSearchPageFiltersComponent = ({
           isMapSubField: path.length > 1,
         };
       })
-      .filter(
-        field =>
-          showMoreFields ||
-          field.type.includes('LowCardinality') || // query only low cardinality fields by default
-          field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
-          Object.keys(filterState).includes(field.path) || // keep selected fields
-          isFieldPinned(field.path) || // keep personally pinned fields
-          isSharedFieldPinned(field.path), // keep team-shared fields
-      )
+      // Berg/Trino has no LowCardinality type tag, so include every string
+      // field as a candidate filter chip. The original CH heuristic kept
+      // only LowCardinality columns to avoid expensive value-distinct
+      // enumeration; on Iceberg/S3-Tables sources column counts are
+      // usually small enough that this is a non-issue.
       .map(({ path }) => path)
       .filter(
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
     return strings;
-  }, [
-    data,
-    jsonColumns,
-    filterState,
-    showMoreFields,
-    isFieldPinned,
-    isSharedFieldPinned,
-  ]);
+  }, [data, jsonColumns]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1477,41 +1461,13 @@ const DBSearchPageFiltersComponent = ({
     }
   }, [shownFacets, clearFilter]);
 
-  const parentSpanIdExpr =
-    source?.kind === SourceKind.Trace
-      ? source.parentSpanIdExpression
-      : undefined;
-
-  const setRootSpansOnly = useCallback(
-    (rootSpansOnly: boolean) => {
-      if (!parentSpanIdExpr) return;
-
-      if (rootSpansOnly) {
-        if (columns?.some(col => col.name === IS_ROOT_SPAN_COLUMN_NAME)) {
-          setFilterValue(IS_ROOT_SPAN_COLUMN_NAME, true, 'only');
-        } else {
-          setFilterValue(parentSpanIdExpr, '', 'only');
-        }
-      } else {
-        clearFilter(parentSpanIdExpr);
-        clearFilter(IS_ROOT_SPAN_COLUMN_NAME);
-      }
-    },
-    [setFilterValue, clearFilter, parentSpanIdExpr, columns],
-  );
-
-  const isRootSpansOnly = useMemo(() => {
-    if (!parentSpanIdExpr || source?.kind !== SourceKind.Trace) return false;
-
-    const parentSpanIdFilter = filterState?.[parentSpanIdExpr];
-    const isRootSpanFilter = filterState?.[IS_ROOT_SPAN_COLUMN_NAME];
-    return (
-      (parentSpanIdFilter?.included.size === 1 &&
-        parentSpanIdFilter?.included.has('')) ||
-      (isRootSpanFilter?.included.size === 1 &&
-        isRootSpanFilter?.included.has(true))
-    );
-  }, [filterState, source, parentSpanIdExpr]);
+  // Berg has no Trace source kind; root-spans toggle is permanently disabled.
+  void IS_ROOT_SPAN_COLUMN_NAME;
+  void columns;
+  void setFilterValue;
+  void clearFilter;
+  void filterState;
+  void source;
 
   /**
    * Renders a list of facets as FilterGroup and NestedFilterGroup components.
@@ -1735,6 +1691,15 @@ const DBSearchPageFiltersComponent = ({
               )}
             </Group>
           </Flex>
+          {/*
+            Berg strip: dropped the "Event Patterns" tab. The HyperDX
+            log-clustering pipeline relied on Drain3 + ClickHouse-side
+            templating, which Berg removed during the observability
+            strip. The "Event Deltas" tab is preserved behind its own
+            feature gate; "Results Table" is the only meaningful tab
+            for v1, but we keep the Tabs layout here so re-enabling
+            Deltas later doesn't require a layout change.
+          */}
           <Tabs
             value={analysisMode}
             onChange={value =>
@@ -1751,11 +1716,6 @@ const DBSearchPageFiltersComponent = ({
               {showDelta && (
                 <Tabs.Tab value="delta" size="xs" h="24px">
                   <Text size="xs">Event Deltas</Text>
-                </Tabs.Tab>
-              )}
-              {!IS_CLICKHOUSE_BUILD && (
-                <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
                 </Tabs.Tab>
               )}
             </Tabs.List>
@@ -1868,37 +1828,7 @@ const DBSearchPageFiltersComponent = ({
                   />
                 )}
 
-                {source?.kind === SourceKind.Trace &&
-                  source.parentSpanIdExpression && (
-                    <Checkbox
-                      size={13 as any}
-                      checked={isRootSpansOnly}
-                      ms="6px"
-                      label={
-                        <Tooltip
-                          openDelay={200}
-                          color="gray"
-                          position="right"
-                          withArrow
-                          label="Only show root spans (spans with no parent span)."
-                        >
-                          <Text size="xs" mt="-2px" component="div">
-                            <Group gap={2}>
-                              <IconSitemap
-                                size={14}
-                                style={{
-                                  display: 'inline',
-                                  verticalAlign: 'middle',
-                                }}
-                              />
-                              Root Spans Only
-                            </Group>
-                          </Text>
-                        </Tooltip>
-                      }
-                      onChange={event => setRootSpansOnly(event.target.checked)}
-                    />
-                  )}
+                {/* Berg has no Trace source kind; root-spans-only toggle removed. */}
 
                 {isLoading || isFacetsLoading ? (
                   <Flex align="center" justify="center">

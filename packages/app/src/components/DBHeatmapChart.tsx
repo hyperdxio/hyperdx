@@ -3,10 +3,6 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
-import {
-  ClickHouseQueryError,
-  inferTimestampColumn,
-} from '@berg/common-utils/dist/clickhouse';
 import { convertDateRangeToGranularityString } from '@berg/common-utils/dist/core/utils';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { DisplayType } from '@berg/common-utils/dist/types';
@@ -25,6 +21,7 @@ import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
 import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
+import { ClickHouseQueryError, inferTimestampColumn } from '@/clickhouse-types';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';

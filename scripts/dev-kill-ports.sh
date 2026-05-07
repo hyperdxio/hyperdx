@@ -4,7 +4,7 @@
 # Sourced after dev-env.sh so HYPERDX_API_PORT, HYPERDX_APP_PORT, etc. are set
 # ---------------------------------------------------------------------------
 
-PORTS="$HYPERDX_API_PORT $HYPERDX_APP_PORT $HYPERDX_OPAMP_PORT"
+PORTS="$HYPERDX_API_PORT $HYPERDX_APP_PORT"
 
 killed=0
 for port in $PORTS; do

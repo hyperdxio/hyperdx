@@ -12,7 +12,6 @@ import {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
-  Connection,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
@@ -465,7 +464,6 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 export function convertToDashboardTemplate(
   input: Dashboard,
   sources: TSource[],
-  connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
@@ -477,20 +475,20 @@ export function convertToDashboardTemplate(
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
     sources: TSource[],
-    connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
-    // Extract name from source/connection or default to '' if not found
     const tileConfig = tile.config;
     if (isBuilderSavedChartConfig(tileConfig)) {
       tileConfig.source =
-        sources.find(source => source.id === tileConfig.source)?.name ?? '';
+        sources.find(source => source.id === tileConfig.source)?.displayName ??
+        '';
     } else if (isRawSqlSavedChartConfig(tileConfig)) {
-      tileConfig.connection =
-        connections.find(conn => conn.id === tileConfig.connection)?.name ?? '';
+      // Berg has no Connection model; emit empty string for the legacy field.
+      tileConfig.connection = '';
       if (tileConfig.source) {
         tileConfig.source =
-          sources.find(source => source.id === tileConfig.source)?.name ?? '';
+          sources.find(source => source.id === tileConfig.source)
+            ?.displayName ?? '';
       }
     }
     return tile;
@@ -501,14 +499,13 @@ export function convertToDashboardTemplate(
     sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
-    // Extract name from source or default to '' if not found
     filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
+      sources.find(source => source.id === input.source)?.displayName ?? '';
     return filter;
   };
 
   for (const tile of input.tiles) {
-    output.tiles.push(convertToTileTemplate(tile, sources, connections));
+    output.tiles.push(convertToTileTemplate(tile, sources));
   }
 
   if (input.filters) {

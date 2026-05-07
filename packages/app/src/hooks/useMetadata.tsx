@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import objectHash from 'object-hash';
 import {
-  ColumnMeta,
-  filterColumnMetaByType,
-  JSDataType,
-} from '@berg/common-utils/dist/clickhouse';
-import {
   Field,
   TableConnection,
   TableMetadata,
@@ -19,6 +14,11 @@ import {
 } from '@tanstack/react-query';
 
 import api from '@/api';
+import {
+  ColumnMeta,
+  filterColumnMetaByType,
+  JSDataType,
+} from '@/clickhouse-types';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';

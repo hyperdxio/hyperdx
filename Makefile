@@ -1,7 +1,10 @@
 LATEST_VERSION := $$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json)
 BUILD_PLATFORMS = linux/arm64,linux/amd64
 
-include .env
+# Optional root .env (Berg pivot dropped the canonical root .env in favour of
+# per-package .env.development files; the dash makes this include silent if
+# the file doesn't exist).
+-include .env
 
 # ---------------------------------------------------------------------------
 # Multi-agent / worktree isolation
@@ -11,19 +14,15 @@ include .env
 # port conflicts.  Override HDX_CI_SLOT manually if you need a specific slot.
 #
 # Port mapping (base + slot):
-#   ClickHouse HTTP : 18123 + slot
 #   MongoDB         : 39999 + slot
 #   API test server : 19000 + slot
-#   OpAMP           : 14320 + slot
 # ---------------------------------------------------------------------------
 HDX_CI_SLOT      ?= $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}')
 HDX_CI_PROJECT   := int-$(HDX_CI_SLOT)
-HDX_CI_CH_PORT   := $(shell echo $$((18123 + $(HDX_CI_SLOT))))
 HDX_CI_MONGO_PORT:= $(shell echo $$((39999 + $(HDX_CI_SLOT))))
 HDX_CI_API_PORT  := $(shell echo $$((19000 + $(HDX_CI_SLOT))))
-HDX_CI_OPAMP_PORT:= $(shell echo $$((14320 + $(HDX_CI_SLOT))))
 
-export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
+export HDX_CI_MONGO_PORT HDX_CI_API_PORT
 
 # Log directory for dev-portal visibility (integration tests)
 HDX_CI_LOGS_DIR := $(HOME)/.config/hyperdx/dev-slots/$(HDX_CI_SLOT)/logs-int
@@ -61,15 +60,7 @@ install-tools:
 # Port mapping (base + slot):
 #   API server        : 30100 + slot
 #   App (Next.js)     : 30200 + slot
-#   OpAMP             : 30300 + slot
 #   MongoDB           : 30400 + slot
-#   ClickHouse HTTP   : 30500 + slot
-#   ClickHouse Native : 30600 + slot
-#   OTel health       : 30700 + slot
-#   OTel gRPC         : 30800 + slot
-#   OTel HTTP         : 30900 + slot
-#   OTel metrics      : 31000 + slot
-#   OTel JSON HTTP    : 31100 + slot
 # ---------------------------------------------------------------------------
 
 .PHONY: dev
@@ -117,7 +108,7 @@ ci-lint:
 .PHONY: dev-int-down
 dev-int-down:
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
-	@for port in $(HDX_CI_API_PORT) $(HDX_CI_OPAMP_PORT); do \
+	@for port in $(HDX_CI_API_PORT); do \
 		pids=$$(lsof -ti :$$port 2>/dev/null); \
 		for pid in $$pids; do \
 			echo "Killing process $$pid on port $$port"; \
@@ -233,91 +224,9 @@ dev-migrate-db:
 version:
 	sh ./version.sh
 
-# Build targets (local builds only)
-
-.PHONY: build-otel-collector
-build-otel-collector:
-	docker build . -f docker/otel-collector/Dockerfile \
-		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target prod
-
-.PHONY: build-local
-build-local:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target all-in-one-noauth
-
-.PHONY: build-all-in-one
-build-all-in-one:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target all-in-one-auth
-
-.PHONY: build-app
-build-app:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target prod
-
-.PHONY: build-otel-collector-nightly
-build-otel-collector-nightly:
-	docker build . -f docker/otel-collector/Dockerfile \
-		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target prod
-
-.PHONY: build-app-nightly
-build-app-nightly:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target prod
-
-.PHONY: build-local-nightly
-build-local-nightly:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target all-in-one-noauth
-
-.PHONY: build-all-in-one-nightly
-build-all-in-one-nightly:
-	docker build . -f ./docker/hyperdx/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context hyperdx=./docker/hyperdx \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
-		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target all-in-one-auth
+# Build targets
+# NOTE: Berg's per-package Dockerfiles live at packages/api/Dockerfile and
+# packages/app/Dockerfile. The legacy hyperdx all-in-one and otel-collector
+# image build targets were removed when those docker contexts were deleted
+# during the HyperDX -> Berg pivot.
 

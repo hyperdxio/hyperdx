@@ -1,10 +1,3 @@
-import {
-  chSqlToAliasMap,
-  ClickHouseQueryError,
-  parameterizedQueryToSql,
-  ResponseJSON,
-} from '@berg/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@berg/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@berg/common-utils/dist/core/metadata';
 import {
   isMetricChartConfig,
@@ -31,11 +24,16 @@ import {
 
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
+import {
+  chSqlToAliasMap,
+  ClickhouseClient,
+  ClickHouseQueryError,
+  parameterizedQueryToSql,
+  ResponseJSON,
+} from '@/clickhouse-types';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
-
-import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
 
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
@@ -259,12 +257,8 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
-  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
-  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(builderConfig, {
-      enabled: !!enabled && !!builderConfig,
-      placeholderData: undefined,
-    });
+  // Berg has no materialized-view optimisation; the chart uses the raw config.
+  void isBuilderChartConfig;
 
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
@@ -278,10 +272,8 @@ export function useQueriedChartConfig(
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
     ],
-    // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
-    // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = config;
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -333,7 +325,7 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
-    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
+    enabled: enabled && !isSourceLoading,
   });
 
   if (query.isError && options?.onError) {
@@ -341,7 +333,7 @@ export function useQueriedChartConfig(
   }
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingMVOptimization,
+    isLoading: query.isLoading,
   };
 }
 
@@ -353,13 +345,6 @@ export function useRenderedSqlChartConfig(
 
   const metadata = useMetadataWithSettings();
 
-  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
-  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(builderConfig, {
-      enabled: !!enabled && !!builderConfig,
-      placeholderData: undefined,
-    });
-
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
@@ -367,22 +352,18 @@ export function useRenderedSqlChartConfig(
   const query = useQuery({
     queryKey: ['renderedSql', config],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = await renderChartConfig(
-        optimizedConfig,
+        config,
         metadata,
         source?.querySettings,
       );
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
+    enabled: enabled && !isSourceLoading,
   });
 
-  return {
-    ...query,
-    isLoading: query.isLoading || isLoadingMVOptimization,
-  };
+  return query;
 }
 
 export function useAliasMapFromChartConfig(

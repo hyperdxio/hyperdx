@@ -177,6 +177,13 @@ export class AthenaClient {
         QueryString: sql,
         WorkGroup: opts.workgroup,
         ResultConfiguration: { OutputLocation: opts.outputLocation },
+        QueryExecutionContext:
+          opts.catalog || opts.database
+            ? {
+                Catalog: opts.catalog,
+                Database: opts.database,
+              }
+            : undefined,
         ResultReuseConfiguration: {
           ResultReuseByAgeConfiguration: {
             Enabled: true,

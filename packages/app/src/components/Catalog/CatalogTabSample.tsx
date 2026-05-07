@@ -13,19 +13,12 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { useRunQuery } from '@/hooks/useRunQuery';
 
+import { fullyQualifiedTable } from './sql';
+
 interface Props {
   catalogId: string;
   database: string;
   table: string;
-}
-
-/**
- * Quote a Trino identifier safely for a SELECT, matching the emitter from
- * Task 5. Keeps this component self-contained — no shared SQL builder
- * import — because the Sample / Stats tabs are the only consumers.
- */
-function q(id: string) {
-  return `"${id.replace(/"/g, '""')}"`;
 }
 
 function formatBytes(bytes: number): string {
@@ -50,7 +43,8 @@ function renderCell(value: unknown): React.ReactNode {
 
 export function CatalogTabSample({ catalogId, database, table }: Props) {
   const sql = useMemo(
-    () => `SELECT * FROM ${q(catalogId)}.${q(database)}.${q(table)} LIMIT 50`,
+    () =>
+      `SELECT * FROM ${fullyQualifiedTable(catalogId, database, table)} LIMIT 50`,
     [catalogId, database, table],
   );
 

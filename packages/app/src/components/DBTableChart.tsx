@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@berg/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
@@ -10,22 +9,16 @@ import { ChartConfigWithOptTimestamp } from '@berg/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
-import {
-  buildMVDateRangeIndicator,
-  convertToTableChartConfig,
-} from '@/ChartUtils';
+import { convertToTableChartConfig } from '@/ChartUtils';
 import { IS_DASHBOARD_LINKING_ENABLED } from '@/config';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useResolvedNumberFormat } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import { getClientSideSortingFn } from './DBTable/sorting';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 export default function DBTableChart({
   config,
@@ -38,7 +31,6 @@ export default function DBTableChart({
   title,
   toolbarPrefix,
   toolbarSuffix,
-  showMVOptimizationIndicator = true,
   variant,
 }: {
   config: ChartConfigWithOptTimestamp;
@@ -51,14 +43,9 @@ export default function DBTableChart({
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
-  showMVOptimizationIndicator?: boolean;
   variant?: TableVariant;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
-
-  const { data: source } = useSource({
-    id: config.source,
-  });
 
   const resolvedNumberFormat = useResolvedNumberFormat(config);
 
@@ -92,10 +79,6 @@ export default function DBTableChart({
     }
     return _config;
   }, [config, effectiveSort]);
-
-  const { data: mvOptimizationData } = useMVOptimizationExplanation(
-    isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
-  );
 
   const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
     useOffsetPaginatedQuery(queriedConfig, {
@@ -180,43 +163,12 @@ export default function DBTableChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (
-      source &&
-      showMVOptimizationIndicator &&
-      isBuilderChartConfig(queriedConfig)
-    ) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-table-chart-mv-indicator"
-          config={queriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
-  }, [
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-    queriedConfig,
-  ]);
+  }, [toolbarPrefix, toolbarSuffix]);
 
   const getOnClickLink = useOnClickLinkBuilder({
     onClick: config.onClick,
@@ -269,14 +221,6 @@ export default function DBTableChart({
             >
               {error.message}
             </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
           </Box>
         </div>
       ) : data?.data.length === 0 ? (

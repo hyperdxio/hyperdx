@@ -6,12 +6,7 @@ import {
 } from '@berg/common-utils/dist/core/metadata';
 import { MACRO_SUGGESTIONS } from '@berg/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@berg/common-utils/dist/rawSqlParams';
-import {
-  DisplayType,
-  isLogSource,
-  isMetricSource,
-  isTraceSource,
-} from '@berg/common-utils/dist/types';
+import { DisplayType } from '@berg/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconHelpCircle } from '@tabler/icons-react';
 
@@ -19,7 +14,7 @@ import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
-import { getAllMetricTables, usePrevious } from '@/utils';
+import { usePrevious } from '@/utils';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
@@ -58,24 +53,14 @@ export default function RawSqlChartEditor({
   const prevConnection = usePrevious(connection);
 
   useEffect(() => {
-    if (!sources) return;
-
-    // When the source changes, sync the connection to match.
-    if (source !== prevSource) {
-      const sourceConnection = sources.find(s => s.id === source)?.connection;
-      if (sourceConnection && sourceConnection !== connection) {
-        setValue('connection', sourceConnection);
-      }
-    } else if (!connection) {
-      // Set a default connection
-      const defaultConnection = sources[0]?.connection;
-      if (defaultConnection) {
-        setValue('connection', defaultConnection);
-      }
+    // Berg has no Connection model; the connection field is preserved on
+    // the chart config schema as an empty-string sentinel.
+    if (!connection) {
+      setValue('connection', '');
     } else if (connection !== prevConnection && prevConnection !== undefined) {
-      // When the connection changes, clear the source
       setValue('source', '');
     }
+    void prevSource;
   }, [connection, prevConnection, prevSource, setValue, source, sources]);
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
@@ -109,30 +94,8 @@ export default function RawSqlChartEditor({
 
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
-    return sources
-      .filter(s => s.connection === connection)
-      .flatMap(source => {
-        const tables: TableConnection[] = getAllMetricTables(source);
-
-        if (!isMetricSource(source)) {
-          tables.push(tcFromSource(source));
-        }
-
-        if (
-          (isLogSource(source) || isTraceSource(source)) &&
-          source.materializedViews
-        ) {
-          tables.push(
-            ...source.materializedViews.map(mv => ({
-              databaseName: mv.databaseName,
-              tableName: mv.tableName,
-              connectionId: source.connection,
-            })),
-          );
-        }
-
-        return tables;
-      });
+    void connection;
+    return sources.map(s => tcFromSource(s));
   }, [sources, connection]);
 
   return (

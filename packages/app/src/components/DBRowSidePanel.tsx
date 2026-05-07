@@ -11,14 +11,7 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import {
-  isLogSource,
-  isTraceSource,
-  SourceKind,
-  TLogSource,
-  TSource,
-  TTraceSource,
-} from '@berg/common-utils/dist/types';
+import { TSource } from '@berg/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Box, Drawer, Stack } from '@mantine/core';
 
@@ -29,10 +22,8 @@ import DBRowSidePanelHeader, {
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
-import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ContextSubpanel from './ContextSidePanel';
@@ -73,7 +64,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TLogSource | TTraceSource;
+  source?: TSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -152,29 +143,11 @@ const DBRowSidePanel = ({
     [breadcrumbPath?.length, onBreadcrumbClick, onClose],
   );
 
-  const hasOverviewPanel = useMemo(() => {
-    if (isLogSource(source) || isTraceSource(source)) {
-      if (
-        source.resourceAttributesExpression ||
-        source.eventAttributesExpression
-      ) {
-        return true;
-      }
-    } else if (
-      source.kind === SourceKind.Metric &&
-      source.resourceAttributesExpression
-    ) {
-      return true;
-    }
-    return false;
-  }, [source]);
+  // Berg sources are observability-agnostic; the overview panel is always
+  // available against the row's column data.
+  const hasOverviewPanel = useMemo(() => true, []);
 
-  const defaultTab =
-    source.kind === 'trace'
-      ? Tab.Trace
-      : hasOverviewPanel
-        ? Tab.Overview
-        : Tab.Parsed;
+  const defaultTab = hasOverviewPanel ? Tab.Overview : Tab.Parsed;
 
   const [queryTab, setQueryTab] = useQueryState(
     'sidePanelTab',
@@ -200,7 +173,9 @@ const DBRowSidePanel = ({
     timestampDate = new Date(timestampValue);
   }
 
-  const mainContentColumn = getEventBody(source);
+  // Berg has no observability-specific event-body / severity column —
+  // the row sidebar shows raw row data without these convenience columns.
+  const mainContentColumn: string | undefined = undefined;
   const mainContent = isString(normalizedRow?.['__hdx_body'])
     ? normalizedRow['__hdx_body']
     : normalizedRow?.['__hdx_body'] !== undefined
@@ -209,37 +184,9 @@ const DBRowSidePanel = ({
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 
-  const highlightedAttributeValues = useMemo(() => {
-    const attributeExpressions: NonNullable<
-      (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
-    > = [];
-    if (
-      (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
-      source.highlightedRowAttributeExpressions
-    ) {
-      attributeExpressions.push(...source.highlightedRowAttributeExpressions);
-    }
-
-    // Add service name expression to all sources, to maintain compatibility with
-    // the behavior prior to the addition of highlightedRowAttributeExpressions
-    if (
-      (isLogSource(source) || isTraceSource(source)) &&
-      source.serviceNameExpression
-    ) {
-      attributeExpressions.push({
-        sqlExpression: source.serviceNameExpression,
-      });
-    }
-
-    return rowData
-      ? getHighlightedAttributesFromData(
-          source,
-          attributeExpressions,
-          rowData.data || [],
-          rowData.meta || [],
-        )
-      : [];
-  }, [source, rowData]);
+  // Berg sources have no source-side highlighted-attribute expressions;
+  // surface an empty list to keep the panel header rendering.
+  const highlightedAttributeValues = useMemo(() => [], []);
 
   // Berg / Task 9: trace/session replay span+/- ranges, traceId resolution,
   // service-map gating and k8s-pod context detection were observability-only

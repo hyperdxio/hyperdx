@@ -1,9 +1,5 @@
 import { useMemo } from 'react';
 import {
-  filterColumnMetaByType,
-  JSDataType,
-} from '@berg/common-utils/dist/clickhouse';
-import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
 } from '@berg/common-utils/dist/guards';
@@ -13,20 +9,35 @@ import {
 } from '@berg/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
-import {
-  buildMVDateRangeIndicator,
-  convertToNumberChartConfig,
-} from '@/ChartUtils';
+import { convertToNumberChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useResolvedNumberFormat } from '@/source';
 import { formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+// Lightweight Berg replacement for the deleted ClickHouse JSDataType numeric
+// detection. Athena/Trino numeric type names; matches the meta.type values
+// emitted by the Berg /v1/query response.
+function isAthenaNumericType(type: string | undefined): boolean {
+  if (!type) return false;
+  const t = type.toLowerCase();
+  return (
+    t.startsWith('bigint') ||
+    t.startsWith('integer') ||
+    t.startsWith('int') ||
+    t.startsWith('smallint') ||
+    t.startsWith('tinyint') ||
+    t.startsWith('double') ||
+    t.startsWith('real') ||
+    t.startsWith('float') ||
+    t.startsWith('decimal') ||
+    t === 'number'
+  );
+}
 
 export default function DBNumberChart({
   config,
@@ -35,7 +46,6 @@ export default function DBNumberChart({
   title,
   toolbarPrefix,
   toolbarSuffix,
-  showMVOptimizationIndicator = true,
   errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange | RawSqlConfigWithDateRange;
@@ -44,7 +54,6 @@ export default function DBNumberChart({
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
-  showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = useMemo(
@@ -54,12 +63,6 @@ export default function DBNumberChart({
         : config,
     [config],
   );
-
-  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
-    ? queriedConfig
-    : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -71,9 +74,9 @@ export default function DBNumberChart({
   );
 
   // The value is the first numeric value in the first row of the result
-  const valueColumn = data?.meta
-    ? filterColumnMetaByType(data?.meta, [JSDataType.Number])?.[0]
-    : undefined;
+  const valueColumn = data?.meta?.find((m: { name: string; type: string }) =>
+    isAthenaNumericType(m.type),
+  );
   const resultError =
     data && !valueColumn && isRawSqlChartConfig(queriedConfig)
       ? new Error(
@@ -88,10 +91,6 @@ export default function DBNumberChart({
     : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
   const formattedValue = formatNumber(value as number, resolvedNumberFormat);
 
-  const { data: source } = useSource({
-    id: config.source,
-  });
-
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
 
@@ -99,40 +98,12 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-number-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
-  }, [
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-    queriedConfig,
-    builderQueriedConfig,
-  ]);
+  }, [toolbarPrefix, toolbarSuffix]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>

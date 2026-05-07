@@ -44,18 +44,15 @@ function tableRef(s: TSource): string {
   if (s.catalog && s.database && s.table) {
     return `${s.catalog}/${s.database}/${s.table}`;
   }
-  if (s.from?.databaseName && s.from?.tableName) {
-    return `${s.from.databaseName}/${s.from.tableName}`;
-  }
   return '—';
 }
 
 function displayName(s: TSource): string {
-  return s.displayName || s.name || '(unnamed)';
+  return s.displayName || '(unnamed)';
 }
 
 function timeColumnOf(s: TSource): string | undefined {
-  return s.timestampColumn || s.timestampValueExpression || undefined;
+  return s.timestampColumn;
 }
 
 export default function SourcesList() {
@@ -257,7 +254,7 @@ export default function SourcesList() {
                       </Table.Td>
                       <Table.Td>
                         <Text size="xs" ff="monospace" c="dimmed">
-                          {s.defaultSort || s.orderByExpression || '—'}
+                          {s.defaultSort || '—'}
                         </Text>
                       </Table.Td>
                       <Table.Td>

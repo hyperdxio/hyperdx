@@ -1,10 +1,12 @@
-import { ResponseJSON } from '@berg/common-utils/dist/clickhouse';
-import { TLogSource, TSource } from '@berg/common-utils/dist/types';
+import { TSource } from '@berg/common-utils/dist/types';
 
 import { getJSONColumnNames } from '@/components/DBRowDataPanel';
 
-type HighlightedAttributeExpressions =
-  TLogSource['highlightedRowAttributeExpressions'];
+type HighlightedAttributeExpressions = Array<{
+  sqlExpression: string;
+  luceneExpression?: string;
+  alias?: string;
+}>;
 
 export function getSelectExpressionsForHighlightedAttributes(
   expressions: HighlightedAttributeExpressions = [],
@@ -19,7 +21,7 @@ export function getHighlightedAttributesFromData(
   source: TSource,
   attributes: HighlightedAttributeExpressions = [],
   data: Record<string, unknown>[],
-  meta: ResponseJSON['meta'],
+  meta: { name: string; type: string }[] | undefined,
 ) {
   const attributeValuesByDisplayKey = new Map<string, Set<string>>();
   const sqlExpressionsByDisplayKey = new Map<string, string>();

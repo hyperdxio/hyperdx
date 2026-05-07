@@ -43,8 +43,11 @@ function DBTableSelect({
       connectionId && database && table ? (
         <SourceSchemaPreview
           source={{
-            connection: connectionId,
-            from: { databaseName: database, tableName: table },
+            kind: 'Table' as const,
+            catalog: '',
+            database,
+            table,
+            displayName: table,
           }}
           variant="text"
         />

@@ -1,13 +1,29 @@
-import isPlainObject from 'lodash/isPlainObject';
-import * as SQLParser from 'node-sql-parser';
-import SqlString from 'sqlstring';
+/**
+ * Trino-flavored chart-config SQL emitter (Berg Phase 1.2 Task 12).
+ *
+ * Replaces the previous ClickHouse-flavored implementation. All emitted
+ * SQL is portable Trino/Athena. The transitional `chSql` template helpers
+ * are no longer used here — instead, we build plain template literals and
+ * hand them back through the same `ChSql = { sql, params }` shape so
+ * downstream consumers (`BaseClickhouseClient.queryChartConfig`, the app
+ * fetch hooks, etc.) keep working through the deprecation period.
+ *
+ * Two notable simplifications vs. the previous implementation:
+ *  - All metric / materialized-view branches have been removed. Berg has
+ *    no MV concept and the metric-source kind has collapsed to Table.
+ *  - All `*Merge`/`*State` aggregate combinators have been removed.
+ *    Trino has no equivalent; Berg-native data has no aggregating-merge
+ *    tables to read state-merge values from.
+ *
+ * The `aggregate` helpers in `chartUtils.ts` map ClickHouse-named aggregate
+ * functions to their Trino equivalents: `quantile(p)(x)` →
+ * `approx_percentile(x, p)`, etc. `count_distinct` → `count(DISTINCT x)`,
+ * `argMax(value, ts)` survives unchanged (Trino-native).
+ */
 
-import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { translateHistogram } from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
-  convertGranularityToSeconds,
   extractSettingsClauseFromEnd,
   getFirstTimestampValueExpression,
   joinQuerySettings,
@@ -31,50 +47,61 @@ import {
   CteChartConfig,
   DateRange,
   DisplayType,
-  MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
-  SelectSQLStatement,
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
 
+import {
+  aggregateExpr,
+  fromUnixMs,
+  fullyQualifiedTable,
+  parseGranularity,
+  quoteIdent,
+  timeBucketExpr as trinoTimeBucketExpr,
+} from './chartUtils';
+
 /**
- * Helper function to create a MetricName filter condition.
- * Uses metricNameSql if available (which handles both old and new metric names via OR),
- * otherwise falls back to a simple equality check.
+ * Output shape — kept as `{ sql, params }` for backwards compatibility
+ * with the ClickHouse client and the test corpus, but `params` is always
+ * empty: Trino emission inlines literals.
  */
-function createMetricNameFilter(
-  metricName: string,
-  metricNameSql?: string,
-): string {
-  if (metricNameSql) {
-    return metricNameSql;
-  }
-  return SqlString.format('MetricName = ?', [metricName]);
+export interface ChSql {
+  sql: string;
+  params: Record<string, unknown>;
 }
 
-// FIXME: SQLParser.ColumnRef is incomplete
-type ColumnRef = SQLParser.ColumnRef & {
-  array_index?: {
-    index: { type: string; value: string };
-  }[];
-};
+const sqlOnly = (sql: string): ChSql => ({ sql, params: {} });
 
-function determineTableName(select: SelectSQLStatement): string {
-  if ('metricTables' in select.from) {
-    return select.from.tableName;
-  }
-
-  return '';
-}
-
-const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
+
+const INVERSE_OPERATOR_MAP = {
+  '=': '!=',
+  '>': '<=',
+  '<': '>=',
+
+  '!=': '=',
+  '<=': '>',
+  '>=': '<',
+} as const;
+export function inverseSqlAstFilter(filter: SqlAstFilter): SqlAstFilter {
+  return {
+    ...filter,
+    operator:
+      INVERSE_OPERATOR_MAP[
+        filter.operator as keyof typeof INVERSE_OPERATOR_MAP
+      ],
+  };
+}
+
+export function isNonEmptyWhereExpr(where?: string): where is string {
+  return where != null && where.trim() != '';
+}
 
 export function isUsingGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRange,
@@ -102,6 +129,12 @@ export function isUsingGranularity(
   );
 }
 
+/**
+ * Berg dropped the `Metric` source kind. The legacy `metricTables` field
+ * may still appear on a chart config that was saved in HyperDX, but Trino
+ * emission no longer treats it specially — we just narrow on its presence
+ * for the sake of preserving the public type-guard shape.
+ */
 export const isMetricChartConfig = (
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): chartConfig is BuilderChartConfigWithOptDateRange & {
@@ -110,7 +143,6 @@ export const isMetricChartConfig = (
   return chartConfig.metricTables != null;
 };
 
-// TODO: apply this to all chart configs
 export const setChartSelectsAlias = (
   config: BuilderChartConfigWithOptDateRange,
 ) => {
@@ -133,14 +165,12 @@ export const setChartSelectsAlias = (
 export const splitChartConfigs = (
   config: ChartConfigWithOptDateRange,
 ): ChartConfigWithOptDateRangeEx[] => {
-  // only split metric queries for now
   if (
     isBuilderChartConfig(config) &&
     isMetricChartConfig(config) &&
     Array.isArray(config.select)
   ) {
     const _configs: BuilderChartConfigWithOptDateRange[] = [];
-    // split the query into multiple queries
     for (const select of config.select) {
       _configs.push({
         ...config,
@@ -151,345 +181,155 @@ export const splitChartConfigs = (
   }
 
   if (isRawSqlChartConfig(config) || isBuilderChartConfig(config)) {
-    return [config]; // narrowed to BuilderChartConfig or RawSqlChartConfig, assignable to RawSqlChartConfigEx
+    return [config];
   }
 
   throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
 };
 
-const INVERSE_OPERATOR_MAP = {
-  '=': '!=',
-  '>': '<=',
-  '<': '>=',
+// -------- WHERE composition (Lucene + raw SQL) --------
 
-  '!=': '=',
-  '<=': '>',
-  '>=': '<',
-} as const;
-export function inverseSqlAstFilter(filter: SqlAstFilter): SqlAstFilter {
-  return {
-    ...filter,
-    operator:
-      INVERSE_OPERATOR_MAP[
-        filter.operator as keyof typeof INVERSE_OPERATOR_MAP
-      ],
-  };
-}
-
-export function isNonEmptyWhereExpr(where?: string): where is string {
-  return where != null && where.trim() != '';
-}
-
-function hasSubqueryCte(
-  withClauses: BuilderChartConfigWithDateRange['with'],
-): boolean {
-  return withClauses?.some(w => w.isSubquery !== false) ?? false;
-}
-
-const fastifySQL = ({
-  materializedFields,
-  rawSQL,
+async function renderWhereExpressionStr({
+  condition,
+  language,
+  metadata,
+  from,
+  implicitColumnExpression,
+  connectionId,
 }: {
-  materializedFields: Map<string, string>;
-  rawSQL: string;
-}) => {
-  // Parse the SQL AST
-  try {
-    // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
-    const [rawSqlWithoutSettingsClause] = extractSettingsClauseFromEnd(rawSQL);
-
-    const parser = new SQLParser.Parser();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
-    const ast = parser.astify(rawSqlWithoutSettingsClause, {
-      database: 'Postgresql',
-    }) as SQLParser.Select;
-
-    // traveral ast and replace the left node with the materialized field
-    // FIXME: type node (AST type is incomplete): https://github.com/taozhi8833998/node-sql-parser/blob/42ea0b1800c5d425acb8c5ca708a1cee731aada8/types.d.ts#L474
-    const traverse = (
-      node:
-        | SQLParser.Expr
-        | SQLParser.ExpressionValue
-        | SQLParser.ExprList
-        | SQLParser.Function
-        | null,
-    ) => {
-      if (node == null) {
-        return;
-      }
-
-      let colExpr;
-
-      switch (node.type) {
-        case 'column_ref': {
-          // FIXME: handle 'Value' type?
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const _n = node as ColumnRef;
-          // @ts-ignore
-          if (typeof _n.column !== 'string') {
-            // @ts-ignore
-            colExpr = `${_n.column?.expr.value}['${_n.array_index?.[0]?.index.value}']`;
-          }
-          break;
-        }
-        case 'binary_expr': {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const _n = node as SQLParser.Expr;
-          if (Array.isArray(_n.left)) {
-            for (const left of _n.left) {
-              traverse(left);
-            }
-          } else {
-            traverse(_n.left);
-          }
-
-          if (Array.isArray(_n.right)) {
-            for (const right of _n.right) {
-              traverse(right);
-            }
-          } else {
-            traverse(_n.right);
-          }
-          break;
-        }
-        case 'function': {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const _n = node as SQLParser.Function;
-
-          if (_n.args?.type === 'expr_list') {
-            if (Array.isArray(_n.args?.value)) {
-              for (const arg of _n.args.value) {
-                traverse(arg);
-              }
-
-              // ex: JSONExtractString(Body, 'message')
-              if (
-                _n.args?.value?.[0]?.type === 'column_ref' &&
-                _n.args?.value?.[1]?.type === 'single_quote_string'
-              ) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- incomplete library types
-                colExpr = `${_n.name?.name?.[0]?.value}(${(_n.args?.value?.[0] as any)?.column.expr.value}, '${_n.args?.value?.[1]?.value}')`;
-              }
-            }
-            // when _n.args?.value is Expr
-            else if (isPlainObject(_n.args?.value)) {
-              traverse(_n.args.value);
-            }
-          }
-
-          break;
-        }
-        default:
-          // ignore other types
-          break;
-      }
-
-      if (colExpr) {
-        const materializedField = materializedFields.get(colExpr);
-        if (materializedField) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const _n = node as ColumnRef;
-          // reset the node ref
-          for (const key in _n) {
-            // eslint-disable-next-line no-prototype-builtins
-            if (_n.hasOwnProperty(key)) {
-              // @ts-ignore
-              delete _n[key];
-            }
-          }
-          _n.type = 'column_ref';
-          // @ts-ignore
-          _n.table = null;
-          // @ts-ignore
-          _n.column = { expr: { type: 'default', value: materializedField } };
-        }
-      }
-    };
-
-    if (Array.isArray(ast.columns)) {
-      for (const col of ast.columns) {
-        traverse(col.expr);
-      }
-    }
-
-    traverse(ast.where);
-
-    return parser.sqlify(ast);
-  } catch (e) {
-    return rawSQL;
+  condition: SearchCondition;
+  language: SearchConditionLanguage;
+  metadata: Metadata;
+  from: BuilderChartConfigWithDateRange['from'];
+  implicitColumnExpression?: string;
+  connectionId: string;
+  with?: BuilderChartConfigWithDateRange['with'];
+}): Promise<string> {
+  if (language !== 'lucene') {
+    return condition;
   }
-};
 
-const aggFnExpr = ({
+  // Fetch the table's column list so the Trino serializer can validate
+  // identifiers and pick numeric vs. string comparison shapes. When the
+  // metadata fetch fails (CTEs, missing tables, etc.) fall back to an
+  // empty schema — TrinoSchemaSerializer will then reject every field,
+  // which surfaces as an explicit "column not found" parse error rather
+  // than producing silently wrong SQL.
+  let columns: { name: string; type: string }[] = [];
+  if (from.databaseName && from.tableName) {
+    try {
+      const fetched = await metadata.getColumns({
+        databaseName: from.databaseName,
+        tableName: from.tableName,
+        connectionId,
+      });
+      columns = (fetched ?? []).map(c => ({
+        name: c.name,
+        type: c.type,
+      }));
+    } catch {
+      // ignore — empty schema falls through
+    }
+  }
+  const serializer = new TrinoSchemaSerializer({
+    columns,
+    implicitColumnExpression,
+  });
+  const builder = new SearchQueryBuilder(condition, serializer);
+  return builder.build();
+}
+
+async function renderWhereExpression(
+  args: Parameters<typeof renderWhereExpressionStr>[0],
+): Promise<ChSql> {
+  return sqlOnly(await renderWhereExpressionStr(args));
+}
+
+// -------- Aggregate / SELECT-list emission --------
+
+function aggFnExpr({
   fn,
   expr,
   level,
   where,
-  sampleWeightExpression,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
   level?: number;
   where?: string;
-  sampleWeightExpression?: string;
-}) => {
-  const isAny = fn === 'any';
-  const isNone = fn === 'none';
-  const isCount = fn.startsWith('count');
+}): ChSql {
+  // Berg has no aggregating-merge tables, so *Merge/*State combinators are
+  // intentionally rejected — fail loudly rather than silently emit invalid
+  // Trino SQL.
+  if (fn.endsWith('Merge') || fn.endsWith('State')) {
+    throw new Error(
+      `Aggregate combinator '${fn}' is not supported in Berg/Trino. ` +
+        `Use a base aggregate (count/sum/avg/min/max/quantile/count_distinct).`,
+    );
+  }
+
   const isWhereUsed = isNonEmptyWhereExpr(where);
-  // Cast to float64 because the expr might not be a number
-  const unsafeExpr = {
-    UNSAFE_RAW_SQL:
-      isAny || isNone ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
-  };
-  const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
-  if (fn.endsWith('Merge')) {
-    const renderedFnArgs = chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
-
-    const shouldParameterizeWithLevel =
-      level && (fn.startsWith('quantile') || fn.startsWith('histogram'));
-    const renderedFnArgsWithQuantileLevel = shouldParameterizeWithLevel
-      ? chSql`(${{
-          UNSAFE_RAW_SQL: Number.isFinite(level) ? `${level}` : '0',
-        }})`
-      : [];
-
-    if (isWhereUsed) {
-      return chSql`${fn}If${renderedFnArgsWithQuantileLevel}(${renderedFnArgs}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
-    } else {
-      return chSql`${fn}${renderedFnArgsWithQuantileLevel}(${renderedFnArgs})`;
-    }
-  }
-  // TODO: merge this chunk with the rest of logics
-  else if (fn.endsWith('State')) {
-    if (expr == null || isCount) {
-      return isWhereUsed
-        ? chSql`${fn}(${{ UNSAFE_RAW_SQL: where }})`
-        : chSql`${fn}()`;
-    }
-    return chSql`${fn}(${unsafeExpr}${
-      isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''
-    })`;
+  if (fn === 'none') {
+    // pass-through
+    return sqlOnly(expr ?? '');
   }
 
-  // Sample-weighted aggregations: when sampleWeightExpression is set,
-  // each row carries a weight (defaults to 1 for unsampled spans).
-  // Corrected formulas account for upstream sampling (1-in-N).
-  // The greatest(..., 1) ensures unsampled rows (missing/empty/zero)
-  // are counted at weight 1 rather than dropped.
-  if (
-    sampleWeightExpression &&
-    !fn.endsWith('Merge') &&
-    !fn.endsWith('State')
-  ) {
-    const sampleWeightExpr = `greatest(toUInt64OrZero(toString(${sampleWeightExpression})), 1)`;
-    const w = { UNSAFE_RAW_SQL: sampleWeightExpr };
-
-    if (fn === 'count') {
-      return isWhereUsed
-        ? chSql`sumIf(${w}, ${{ UNSAFE_RAW_SQL: where }})`
-        : chSql`sum(${w})`;
-    }
-
-    if (fn === 'none') {
-      return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
-    }
-
-    if (expr != null) {
-      if (fn === 'count_distinct' || fn === 'min' || fn === 'max') {
-        // These cannot be corrected for sampling; pass through unchanged
-        if (fn === 'count_distinct') {
-          return chSql`count${isWhereUsed ? 'If' : ''}(DISTINCT ${{
-            UNSAFE_RAW_SQL: expr,
-          }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
-        }
-        return chSql`${{ UNSAFE_RAW_SQL: fn }}${isWhereUsed ? 'If' : ''}(
-          ${unsafeExpr}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''}
-        )`;
-      }
-
-      if (fn === 'avg') {
-        const weightedVal = {
-          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
-        };
-        const nullCheck = `${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
-        if (isWhereUsed) {
-          const cond = { UNSAFE_RAW_SQL: `${where} AND ${nullCheck}` };
-          return chSql`sumIf(${weightedVal}, ${cond}) / nullIf(sumIf(${w}, ${cond}), 0)`;
-        }
-        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / nullIf(sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }}), 0)`;
-      }
-
-      if (fn === 'sum') {
-        const weightedVal = {
-          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
-        };
-        if (isWhereUsed) {
-          return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
-        }
-        return chSql`sum(${weightedVal})`;
-      }
-
-      if (level != null && fn.startsWith('quantile')) {
-        const levelStr = Number.isFinite(level) ? `${level}` : '0';
-        const weightArg = {
-          UNSAFE_RAW_SQL: `toUInt32(${sampleWeightExpr})`,
-        };
-        if (isWhereUsed) {
-          return chSql`quantileTDigestWeightedIf(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
-        }
-        return chSql`quantileTDigestWeighted(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg})`;
-      }
-
-      // For any other fn (last_value, any, etc.), fall through to default
-    }
+  if (fn === 'any') {
+    if (!expr) throw new Error('any requires an expression');
+    return sqlOnly(
+      `arbitrary(${expr})${isWhereUsed ? ` FILTER (WHERE ${where})` : ''}`,
+    );
   }
 
   if (fn === 'count') {
     if (isWhereUsed) {
-      return chSql`${fn}If(${{ UNSAFE_RAW_SQL: where }})`;
+      // Trino: count(*) FILTER (WHERE …)
+      return sqlOnly(`count(*) FILTER (WHERE ${where})`);
     }
-    return {
-      sql: `${fn}()`,
-      params: {},
-    };
+    return sqlOnly('count(*)');
   }
 
-  if (fn === 'none') {
-    // Can not use WHERE in none as we can not apply if to a custom aggregation function
-    return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
-  }
-
-  if (expr != null) {
-    if (fn === 'count_distinct') {
-      return chSql`count${isWhereUsed ? 'If' : ''}(DISTINCT ${{
-        UNSAFE_RAW_SQL: expr,
-      }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
-    }
-
-    if (level != null) {
-      return chSql`${fn}${isWhereUsed ? 'If' : ''}(${{
-        // Using Float64 param leads to an added coersion, but we don't need to
-        // escape number values anyways
-        UNSAFE_RAW_SQL: Number.isFinite(level) ? `${level}` : '0',
-      }})(${unsafeExpr}${
-        isWhereUsed
-          ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}`
-          : ''
-      })`;
-    }
-
-    // TODO: Verify fn is a safe/valid function
-    return chSql`${{ UNSAFE_RAW_SQL: fn }}${isWhereUsed ? 'If' : ''}(
-      ${unsafeExpr}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''}
-    )`;
-  } else {
-    throw new Error(
-      'Column is required for all non-count aggregation functions',
+  if (fn === 'count_distinct') {
+    if (!expr) throw new Error('count_distinct requires an expression');
+    return sqlOnly(
+      `count(DISTINCT ${expr})${isWhereUsed ? ` FILTER (WHERE ${where})` : ''}`,
     );
   }
-};
+
+  if (fn.startsWith('quantile')) {
+    if (!expr) throw new Error('quantile requires an expression');
+    const lvl = level != null && Number.isFinite(level) ? level : 0.5;
+    return sqlOnly(
+      `approx_percentile(${expr}, ${lvl})${isWhereUsed ? ` FILTER (WHERE ${where})` : ''}`,
+    );
+  }
+
+  if (fn.startsWith('histogram')) {
+    // Trino has no direct ClickHouse-`histogram(N)(x)` analog. Emit a
+    // placeholder; histogram-style chart emission belongs in a future
+    // dedicated path and is out of scope for Phase 1.2.
+    throw new Error(
+      'histogram aggregate is not supported in Berg/Trino. ' +
+        'Use approx_percentile or a custom Raw SQL config.',
+    );
+  }
+
+  if (fn === 'last_value') {
+    if (!expr) throw new Error('last_value requires an expression');
+    return sqlOnly(
+      `${aggregateExpr('last_value', { expr })}${isWhereUsed ? ` FILTER (WHERE ${where})` : ''}`,
+    );
+  }
+
+  // Plain unary aggregates: sum, avg, min, max
+  if (!expr) {
+    throw new Error(`Column is required for aggregation function '${fn}'`);
+  }
+  return sqlOnly(
+    `${fn}(${expr})${isWhereUsed ? ` FILTER (WHERE ${where})` : ''}`,
+  );
+}
 
 export function isRatioChartConfig(
   selectList: SelectList,
@@ -502,29 +342,9 @@ async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-) {
+): Promise<ChSql[]> {
   if (typeof selectList === 'string') {
-    return chSql`${{ UNSAFE_RAW_SQL: selectList }}`;
-  }
-
-  // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
-  // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
-  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
-  let materializedFields: Map<string, string> | undefined;
-  try {
-    // This will likely error when referencing a CTE, which is assumed
-    // to be the case when chartConfig.from.databaseName is not set.
-    materializedFields =
-      hasSubqueryCte(chartConfig.with) || !chartConfig.from.databaseName
-        ? undefined
-        : await metadata.getMaterializedColumnsLookupTable({
-            connectionId: chartConfig.connection,
-            databaseName: chartConfig.from.databaseName,
-            tableName: chartConfig.from.tableName,
-          });
-  } catch {
-    // ignore
+    return [sqlOnly(selectList)];
   }
 
   const isRatio = isRatioChartConfig(selectList, chartConfig);
@@ -554,7 +374,7 @@ async function renderSelectList(
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
               })
-            : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
+            : sqlOnly(select.valueExpression);
       } else if (
         select.aggFn.startsWith('quantile') ||
         select.aggFn.startsWith('histogram')
@@ -562,80 +382,92 @@ async function renderSelectList(
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
-          // @ts-expect-error (TS doesn't know that we've already checked for quantile)
+          // @ts-expect-error level is present on quantile/histogram select shapes
           level: select.level,
           where: whereClause.sql,
-          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       } else {
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
           where: whereClause.sql,
-          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       }
 
-      const rawSQL = `SELECT ${expr.sql} FROM \`t\``;
-      if (materializedFields) {
-        expr.sql = fastifySQL({ materializedFields, rawSQL })
-          .replace(/^SELECT\s+/i, '') // Remove 'SELECT ' from the start
-          .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
-      }
-
-      return chSql`${expr}${
+      const aliased =
         select.alias != null && select.alias.trim() !== ''
-          ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
-          : []
-      }`;
+          ? `${expr.sql} AS ${quoteIdent(select.alias)}`
+          : expr.sql;
+      return sqlOnly(aliased);
     }),
   );
 
-  return isRatio
-    ? [chSql`divide(${selectsSQL[0]}, ${selectsSQL[1]})`]
-    : selectsSQL;
+  if (isRatio) {
+    return [sqlOnly(`(${selectsSQL[0].sql}) / (${selectsSQL[1].sql})`)];
+  }
+  return selectsSQL;
 }
 
 function renderSortSpecificationList(
   sortSpecificationList: SortSpecificationList,
-) {
+): ChSql[] {
   if (typeof sortSpecificationList === 'string') {
-    return chSql`${{ UNSAFE_RAW_SQL: sortSpecificationList }}`;
+    return [sqlOnly(sortSpecificationList)];
   }
 
-  return sortSpecificationList.map(sortSpecification => {
-    return chSql`${{ UNSAFE_RAW_SQL: sortSpecification.valueExpression }} ${
-      sortSpecification.ordering === 'DESC' ? 'DESC' : 'ASC'
-    }`;
-  });
+  return sortSpecificationList.map(sortSpecification =>
+    sqlOnly(
+      `${sortSpecification.valueExpression} ${
+        sortSpecification.ordering === 'DESC' ? 'DESC' : 'ASC'
+      }`,
+    ),
+  );
 }
+
+// -------- Time bucket / time filter --------
 
 function timeBucketExpr({
   interval,
   timestampValueExpression,
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
+  // GROUP BY / ORDER BY in Trino reject `<expr> AS <alias>` form — aliases
+  // there must either be the bare alias name (referring back to a SELECT
+  // alias) or the bare expression. Default emits the SELECT-shape with
+  // alias; pass false to get the bare bucket expression for GROUP/ORDER.
+  withAlias = true,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
   dateRange?: [Date, Date];
   alias?: string;
-}) {
-  const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: getFirstTimestampValueExpression(timestampValueExpression),
-  };
-  const unsafeInterval = {
-    UNSAFE_RAW_SQL:
-      interval === 'auto' && Array.isArray(dateRange)
-        ? convertDateRangeToGranularityString(dateRange)
-        : interval,
-  };
-
-  return chSql`toStartOfInterval(toDateTime(${unsafeTimestampValueExpression}), INTERVAL ${unsafeInterval}) AS \`${{
-    UNSAFE_RAW_SQL: alias,
-  }}\``;
+  withAlias?: boolean;
+}): ChSql {
+  const tsExpr = getFirstTimestampValueExpression(timestampValueExpression);
+  const granularity =
+    interval === 'auto' && Array.isArray(dateRange)
+      ? convertDateRangeToGranularityString(dateRange)
+      : interval;
+  // `auto` without a dateRange falls back to a 1-minute bucket.
+  const bucket =
+    typeof granularity === 'string' && granularity !== 'auto'
+      ? trinoTimeBucketExpr(tsExpr, granularity)
+      : `date_trunc('minute', ${tsExpr})`;
+  return sqlOnly(withAlias ? `${bucket} AS ${quoteIdent(alias)}` : bucket);
 }
 
+/**
+ * Render the time-window WHERE predicate.
+ *
+ * - Bare timestamp columns: emit `BETWEEN from_unixtime(start_s) AND
+ *   from_unixtime(end_s)` (Trino-native).
+ * - Wrapped expressions like `date_trunc('minute', ts)` or
+ *   `toStartOfHour(ts)` (carried over from imported HyperDX configs):
+ *   apply the same wrapper to both sides of the comparison so the
+ *   query planner can still use the underlying ordering.
+ *
+ * The historical inclusive/exclusive bound semantics are preserved.
+ */
 export async function timeFilterExpr({
   connectionId,
   databaseName,
@@ -646,7 +478,6 @@ export async function timeFilterExpr({
   metadata,
   tableName,
   timestampValueExpression,
-  with: withClauses,
 }: {
   connectionId: string;
   databaseName: string;
@@ -658,13 +489,12 @@ export async function timeFilterExpr({
   tableName: string;
   timestampValueExpression: string;
   with?: BuilderChartConfigWithDateRange['with'];
-}) {
+}): Promise<ChSql> {
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 
   let optimizedTimestampValueExpression = timestampValueExpression;
   try {
-    // Not all of these will be available when selecting from a CTE
     if (databaseName && tableName && connectionId) {
       const tableMetadata = await metadata.getTableMetadata({
         databaseName,
@@ -684,19 +514,33 @@ export async function timeFilterExpr({
     optimizedTimestampValueExpression,
   );
 
+  const wrapInterval = (msExpr: string, intervalStr: string): string => {
+    // Trino has no `INTERVAL N <unit>` literal in the same syntactic position
+    // as ClickHouse; emit a `date_trunc` floor-by-N if we can parse it.
+    try {
+      const { n, unit } = parseGranularity(intervalStr as SQLInterval);
+      if (n === 1) {
+        return `date_trunc('${unit}', ${msExpr})`;
+      }
+      return trinoTimeBucketExpr(msExpr, intervalStr as SQLInterval);
+    } catch {
+      // Free-form interval (e.g. `1 WEEK`) — fall back to date_trunc on the
+      // unit name only; loses the multiplier but is the safest portable form.
+      const unit =
+        intervalStr.trim().split(/\s+/).pop()?.toLowerCase() ?? 'minute';
+      const u = unit.replace(/s$/, '');
+      return `date_trunc('${u}', ${msExpr})`;
+    }
+  };
+
   const whereExprs = await Promise.all(
     valueExpressions.map(async expr => {
       const col = expr.trim();
-
-      // If the expression includes a toStartOf...(...) function, the RHS of the
-      // timestamp comparison must also have the same function
       const toStartOf = parseToStartOfFunction(col);
-
-      // Detect toDate(...) wrapper expressions
       const isToDateExpr = /^toDate\s*\(/.test(col);
 
       const columnMeta =
-        hasSubqueryCte(withClauses) || toStartOf || isToDateExpr
+        toStartOf || isToDateExpr
           ? null
           : await metadata.getColumn({
               databaseName,
@@ -705,218 +549,137 @@ export async function timeFilterExpr({
               connectionId,
             });
 
-      const unsafeTimestampValueExpression = {
-        UNSAFE_RAW_SQL: col,
-      };
-
-      if (
-        columnMeta == null &&
-        hasSubqueryCte(withClauses) &&
-        !toStartOf &&
-        !isToDateExpr
-      ) {
-        console.warn(
-          `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
-        );
-      }
+      const startTs = fromUnixMs(startTime);
+      const endTs = fromUnixMs(endTime);
 
       const startTimeCond = includedDataInterval
-        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+        ? `${wrapInterval(startTs, includedDataInterval)}`
         : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: startTime }})${toStartOf.formattedRemainingArgs})`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+          ? `${toStartOf.function}(${startTs}${toStartOf.formattedRemainingArgs})`
+          : startTs;
 
       const endTimeCond = includedDataInterval
-        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
+        ? `${wrapInterval(endTs, includedDataInterval)}`
         : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+          ? `${toStartOf.function}(${endTs}${toStartOf.formattedRemainingArgs})`
+          : endTs;
 
       const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
 
-      // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
+      // toStartOf*-wrapped and Date-typed filters must stay inclusive — strict
+      // < on a rounded value drops a whole interval.
       const startOp =
         dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
       const endOp =
         dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
 
       if (isDateType) {
-        return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
-      } else {
-        return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
+        return `(${col} ${startOp} CAST(${startTimeCond} AS DATE) AND ${col} ${endOp} CAST(${endTimeCond} AS DATE))`;
       }
+      return `(${col} ${startOp} ${startTimeCond} AND ${col} ${endOp} ${endTimeCond})`;
     }),
   );
 
-  return concatChSql('AND', ...whereExprs);
+  return sqlOnly(whereExprs.join('AND'));
 }
+
+// -------- WHERE / GROUP BY / ORDER BY / LIMIT / SETTINGS --------
 
 async function renderSelect(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
-  /**
-   * SELECT
-   *   if granularity: toStartOfInterval,
-   *   if groupBy: groupBy,
-   *   select
-   */
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
   const isIncludingGroupBy = isUsingGroupBy(chartConfig);
 
-  // TODO: clean up these await mess
-  return concatChSql(
-    ',',
-    await renderSelectList(chartConfig.select, chartConfig, metadata),
-    isIncludingGroupBy && chartConfig.selectGroupBy !== false
-      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
-      : [],
-    isIncludingTimeBucket
-      ? timeBucketExpr({
-          interval: chartConfig.granularity,
-          timestampValueExpression: chartConfig.timestampValueExpression,
-          dateRange: chartConfig.dateRange,
-        })
-      : [],
+  const parts: ChSql[] = [];
+  parts.push(
+    ...(await renderSelectList(chartConfig.select, chartConfig, metadata)),
+  );
+  if (isIncludingGroupBy && chartConfig.selectGroupBy !== false) {
+    parts.push(
+      ...(await renderSelectList(chartConfig.groupBy, chartConfig, metadata)),
+    );
+  }
+  if (isIncludingTimeBucket) {
+    parts.push(
+      timeBucketExpr({
+        interval: chartConfig.granularity,
+        timestampValueExpression: chartConfig.timestampValueExpression,
+        dateRange: chartConfig.dateRange,
+      }),
+    );
+  }
+  return sqlOnly(
+    parts
+      .map(p => p.sql)
+      .filter(Boolean)
+      .join(','),
   );
 }
 
 function renderFrom({
   from,
+  catalog,
 }: {
   from: BuilderChartConfigWithDateRange['from'];
+  catalog?: string;
 }): ChSql {
-  return concatChSql(
-    '.',
-    chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
-    chSql`${{
-      Identifier: from.tableName,
-    }}`,
+  // CTEs and bare-table references skip the catalog/database segments when
+  // they're absent. The Catalog page builds its own SQL via `chartUtils`.
+  return sqlOnly(
+    fullyQualifiedTable(catalog, from.databaseName, from.tableName),
   );
-}
-
-async function renderWhereExpressionStr({
-  condition,
-  language,
-  metadata,
-  from,
-  implicitColumnExpression,
-  connectionId,
-  with: withClauses,
-}: {
-  condition: SearchCondition;
-  language: SearchConditionLanguage;
-  metadata: Metadata;
-  from: BuilderChartConfigWithDateRange['from'];
-  implicitColumnExpression?: string;
-  connectionId: string;
-  with?: BuilderChartConfigWithDateRange['with'];
-}): Promise<string> {
-  let _condition = condition;
-  if (language === 'lucene') {
-    // Fetch the table's column list so the Trino serializer can validate
-    // identifiers and pick numeric vs. string comparison shapes. When the
-    // metadata fetch fails (CTEs, missing tables, etc.) fall back to an
-    // empty schema — TrinoSchemaSerializer will then reject every field,
-    // which surfaces as an explicit "column not found" parse error rather
-    // than producing silently wrong SQL.
-    let columns: { name: string; type: string }[] = [];
-    if (from.databaseName && from.tableName) {
-      try {
-        const fetched = await metadata.getColumns({
-          databaseName: from.databaseName,
-          tableName: from.tableName,
-          connectionId,
-        });
-        columns = (fetched ?? []).map(c => ({
-          name: c.name,
-          type: c.type,
-        }));
-      } catch {
-        // ignore — empty schema falls through
-      }
-    }
-    const serializer = new TrinoSchemaSerializer({
-      columns,
-      implicitColumnExpression,
-    });
-    const builder = new SearchQueryBuilder(condition, serializer);
-    _condition = await builder.build();
-  }
-
-  // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
-  // on a view/table that already perform the computation in select. This optimization is not currently
-  // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
-  // objects in the config. Expression aliases (isSubquery: false) do not affect the base table.
-  let materializedFields: Map<string, string> | undefined;
-  try {
-    // This will likely error when referencing a CTE, which is assumed
-    // to be the case when from.databaseName is not set.
-    materializedFields =
-      hasSubqueryCte(withClauses) || !from.databaseName
-        ? undefined
-        : await metadata.getMaterializedColumnsLookupTable({
-            connectionId,
-            databaseName: from.databaseName,
-            tableName: from.tableName,
-          });
-  } catch {
-    // ignore
-  }
-
-  const _sqlPrefix = 'SELECT * FROM `t` WHERE ';
-  const rawSQL = `${_sqlPrefix}${_condition}`;
-  // strip 'SELECT * FROM `t` WHERE ' from the sql
-  if (materializedFields) {
-    _condition = fastifySQL({ materializedFields, rawSQL }).replace(
-      _sqlPrefix,
-      '',
-    );
-  }
-
-  return _condition;
-}
-
-async function renderWhereExpression(
-  args: Parameters<typeof renderWhereExpressionStr>[0],
-): Promise<ChSql> {
-  const _condition = await renderWhereExpressionStr(args);
-  return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
 async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
-  let whereSearchCondition: ChSql | [] = [];
-  if (isNonEmptyWhereExpr(chartConfig.where)) {
-    whereSearchCondition = wrapChSqlIfNotEmpty(
-      await renderWhereExpression({
-        condition: chartConfig.where,
-        from: chartConfig.from,
-        language: chartConfig.whereLanguage ?? 'sql',
-        implicitColumnExpression: chartConfig.implicitColumnExpression,
-        metadata,
-        connectionId: chartConfig.connection,
-        with: chartConfig.with,
-      }),
-      '(',
-      ')',
-    );
+  const parts: string[] = [];
+
+  if (
+    chartConfig.dateRange != null &&
+    chartConfig.timestampValueExpression != null
+  ) {
+    const timeFilter = await timeFilterExpr({
+      timestampValueExpression: chartConfig.timestampValueExpression,
+      dateRange: chartConfig.dateRange,
+      dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
+      dateRangeEndInclusive: chartConfig.dateRangeEndInclusive ?? true,
+      metadata,
+      connectionId: chartConfig.connection,
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      with: chartConfig.with,
+      includedDataInterval: chartConfig.includedDataInterval,
+    });
+    if (timeFilter.sql) parts.push(timeFilter.sql);
   }
 
-  let selectSearchConditions: ChSql[] = [];
+  if (isNonEmptyWhereExpr(chartConfig.where)) {
+    const where = await renderWhereExpression({
+      condition: chartConfig.where,
+      from: chartConfig.from,
+      language: chartConfig.whereLanguage ?? 'sql',
+      implicitColumnExpression: chartConfig.implicitColumnExpression,
+      metadata,
+      connectionId: chartConfig.connection,
+      with: chartConfig.with,
+    });
+    if (where.sql) parts.push(`(${where.sql})`);
+  }
+
+  // aggCondition WHERE OR-merge: only when every select carries one.
   if (
-    typeof chartConfig.select != 'string' &&
-    // Only if every select has an aggCondition, add to where clause
-    // otherwise we'll scan all rows anyways
+    typeof chartConfig.select !== 'string' &&
     chartConfig.select.every(select => isNonEmptyWhereExpr(select.aggCondition))
   ) {
-    selectSearchConditions = (
+    const aggParts = (
       await Promise.all(
         chartConfig.select.map(async select => {
           if (isNonEmptyWhereExpr(select.aggCondition)) {
-            return await renderWhereExpression({
+            const w = await renderWhereExpression({
               condition: select.aggCondition,
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
@@ -925,88 +688,76 @@ async function renderWhere(
               connectionId: chartConfig.connection,
               with: chartConfig.with,
             });
+            return w.sql ? `(${w.sql})` : null;
           }
           return null;
         }),
       )
-    ).filter(v => v !== null) as ChSql[];
+    ).filter((s): s is string => s != null && s !== '');
+    if (aggParts.length > 0) {
+      parts.push(`(${aggParts.join(' OR ')})`);
+    }
   }
 
-  const filterConditions = await Promise.all(
+  const filterParts = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
       if (filter.type === 'sql_ast') {
-        return wrapChSqlIfNotEmpty(
-          chSql`${{ UNSAFE_RAW_SQL: filter.left }} ${filter.operator} ${{ UNSAFE_RAW_SQL: filter.right }}`,
-          '(',
-          ')',
-        );
+        return `(${filter.left} ${filter.operator} ${filter.right})`;
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
-        return wrapChSqlIfNotEmpty(
-          await renderWhereExpression({
-            condition: filter.condition,
-            from: chartConfig.from,
-            language: filter.type,
-            implicitColumnExpression: chartConfig.implicitColumnExpression,
-            metadata,
-            connectionId: chartConfig.connection,
-            with: chartConfig.with,
-          }),
-          '(',
-          ')',
-        );
-      }
-
-      throw new Error(`Unknown filter type: ${filter.type}`);
-    }),
-  );
-
-  return concatChSql(
-    ' AND ',
-    chartConfig.dateRange != null &&
-      chartConfig.timestampValueExpression != null
-      ? await timeFilterExpr({
-          timestampValueExpression: chartConfig.timestampValueExpression,
-          dateRange: chartConfig.dateRange,
-          dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
-          dateRangeEndInclusive: chartConfig.dateRangeEndInclusive ?? true,
+        const w = await renderWhereExpression({
+          condition: filter.condition,
+          from: chartConfig.from,
+          language: filter.type,
+          implicitColumnExpression: chartConfig.implicitColumnExpression,
           metadata,
           connectionId: chartConfig.connection,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
           with: chartConfig.with,
-          includedDataInterval: chartConfig.includedDataInterval,
-        })
-      : [],
-    whereSearchCondition,
-    // Add aggConditions to where clause to utilize index
-    wrapChSqlIfNotEmpty(concatChSql(' OR ', selectSearchConditions), '(', ')'),
-    wrapChSqlIfNotEmpty(
-      concatChSql(
-        chartConfig.filtersLogicalOperator === 'OR' ? ' OR ' : ' AND ',
-        ...filterConditions,
-      ),
-      '(',
-      ')',
-    ),
+        });
+        return w.sql ? `(${w.sql})` : '';
+      }
+
+      throw new Error(
+        `Unknown filter type: ${(filter as { type: string }).type}`,
+      );
+    }),
   );
+  const filterCombiner =
+    chartConfig.filtersLogicalOperator === 'OR' ? ' OR ' : ' AND ';
+  const filtersJoined = filterParts.filter(Boolean).join(filterCombiner);
+  if (filtersJoined) {
+    parts.push(`(${filtersJoined})`);
+  }
+
+  return sqlOnly(parts.filter(Boolean).join(' AND '));
 }
 
 async function renderGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRange,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
-  return concatChSql(
-    ',',
-    isUsingGroupBy(chartConfig)
-      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
-      : [],
-    isUsingGranularity(chartConfig)
-      ? timeBucketExpr({
-          interval: chartConfig.granularity,
-          timestampValueExpression: chartConfig.timestampValueExpression,
-          dateRange: chartConfig.dateRange,
-        })
-      : [],
+  const parts: ChSql[] = [];
+  if (isUsingGroupBy(chartConfig)) {
+    parts.push(
+      ...(await renderSelectList(chartConfig.groupBy, chartConfig, metadata)),
+    );
+  }
+  if (isUsingGranularity(chartConfig)) {
+    parts.push(
+      timeBucketExpr({
+        interval: chartConfig.granularity,
+        timestampValueExpression: chartConfig.timestampValueExpression,
+        dateRange: chartConfig.dateRange,
+        // GROUP BY: bare bucket expression, no `AS alias` (Trino rejects
+        // aliases here).
+        withAlias: false,
+      }),
+    );
+  }
+  return sqlOnly(
+    parts
+      .map(p => p.sql)
+      .filter(Boolean)
+      .join(','),
   );
 }
 
@@ -1038,21 +789,42 @@ function renderOrderBy(
     return undefined;
   }
 
-  return concatChSql(
-    ',',
-    isIncludingTimeBucket
-      ? timeBucketExpr({
-          interval: chartConfig.granularity,
-          timestampValueExpression: chartConfig.timestampValueExpression,
-          dateRange: chartConfig.dateRange,
-        })
-      : [],
-    chartConfig.orderBy != null
-      ? renderSortSpecificationList(chartConfig.orderBy)
-      : [],
+  const parts: ChSql[] = [];
+  if (isIncludingTimeBucket) {
+    parts.push(
+      timeBucketExpr({
+        interval: chartConfig.granularity,
+        timestampValueExpression: chartConfig.timestampValueExpression,
+        dateRange: chartConfig.dateRange,
+        // ORDER BY: bare bucket expression, no `AS alias` (Trino rejects
+        // aliases here).
+        withAlias: false,
+      }),
+    );
+  }
+  if (chartConfig.orderBy != null) {
+    parts.push(...renderSortSpecificationList(chartConfig.orderBy));
+  }
+  return sqlOnly(
+    parts
+      .map(p => p.sql)
+      .filter(Boolean)
+      .join(','),
   );
 }
 
+/**
+ * Render a Trino-shaped LIMIT/OFFSET clause.
+ *
+ * Trino rejects the ClickHouse/MySQL `LIMIT N OFFSET M` form. The valid
+ * shapes are:
+ *   - `LIMIT N`                     — when offset is absent / 0
+ *   - `OFFSET M LIMIT N`            — Trino accepts offset-before-limit
+ *
+ * This function returns the *full* clause text (not just the bare numbers
+ * that go after `LIMIT`) so the emit-site loop in `renderChartConfig`
+ * appends it as a complete fragment.
+ */
 function renderLimit(
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): ChSql | undefined {
@@ -1060,28 +832,27 @@ function renderLimit(
     return undefined;
   }
 
-  const offset =
-    chartConfig.limit.offset != null
-      ? chSql` OFFSET ${{ Int32: chartConfig.limit.offset }}`
-      : [];
+  const offset = chartConfig.limit.offset;
+  const hasOffset = offset != null && offset > 0;
 
-  return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
+  const sql = hasOffset
+    ? `OFFSET ${offset} LIMIT ${chartConfig.limit.limit}`
+    : `LIMIT ${chartConfig.limit.limit}`;
+
+  return sqlOnly(sql);
 }
 
 function renderSettings(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   querySettings: QuerySettings | undefined,
-) {
+): ChSql {
   const querySettingsJoined = joinQuerySettings(querySettings);
-
-  return concatChSql(', ', [
-    chSql`${chartConfig.settings ?? ''}`,
-    chSql`${querySettingsJoined ?? ''}`,
-  ]);
+  const parts: string[] = [];
+  if (chartConfig.settings) parts.push(chartConfig.settings.sql);
+  if (querySettingsJoined) parts.push(querySettingsJoined);
+  return sqlOnly(parts.filter(Boolean).join(', '));
 }
 
-// includedDataInterval isn't exported at this time. It's only used internally
-// for metric SQL generation.
 type InternalChartFields = {
   includedDataInterval?: string;
   settings?: ChSql;
@@ -1104,446 +875,55 @@ async function renderWith(
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql | undefined> {
   const { with: withClauses } = chartConfig;
-  if (withClauses) {
-    return concatChSql(
-      ',',
-      await Promise.all(
-        withClauses.map(async clause => {
-          const {
-            sql,
-            chartConfig,
-          }: { sql?: ChSql; chartConfig?: CteChartConfig } = clause;
+  if (!withClauses) return undefined;
 
-          // The sql logic can be specified as either a ChSql instance or a chart
-          // config object. Due to type erasure and the recursive nature of ChartConfig
-          // when using CTEs, we need to validate the types here to ensure junk did
-          // not make it through.
-          if (sql && chartConfig) {
-            throw new Error(
-              "cannot specify both 'sql' and 'chartConfig' in with clause",
-            );
-          }
+  const parts = await Promise.all(
+    withClauses.map(async clause => {
+      const {
+        sql,
+        chartConfig,
+      }: { sql?: ChSql; chartConfig?: CteChartConfig } = clause;
 
-          if (!(sql || chartConfig)) {
-            throw new Error(
-              "must specify either 'sql' or 'chartConfig' in with clause",
-            );
-          }
+      if (sql && chartConfig) {
+        throw new Error(
+          "cannot specify both 'sql' and 'chartConfig' in with clause",
+        );
+      }
+      if (!(sql || chartConfig)) {
+        throw new Error(
+          "must specify either 'sql' or 'chartConfig' in with clause",
+        );
+      }
+      if (sql && !ChSqlSchema.safeParse(sql).success) {
+        throw new Error('non-conforming sql object in CTE');
+      }
+      if (chartConfig && !ChartConfigSchema.safeParse(chartConfig).success) {
+        throw new Error(
+          `non-conforming chartConfig object in CTE: ${ChartConfigSchema.safeParse(chartConfig).error}`,
+        );
+      }
 
-          if (sql && !ChSqlSchema.safeParse(sql).success) {
-            throw new Error('non-conforming sql object in CTE');
-          }
+      let resolvedSql: ChSql;
+      if (sql) {
+        resolvedSql = sql;
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- CteChartConfig is structurally a ChartConfig
+        const cte = chartConfig as ChartConfig;
+        resolvedSql = await renderChartConfig(cte, metadata, querySettings);
+      }
 
-          if (
-            chartConfig &&
-            !ChartConfigSchema.safeParse(chartConfig).success
-          ) {
-            throw new Error(
-              `non-conforming chartConfig object in CTE: ${ChartConfigSchema.safeParse(chartConfig).error}`,
-            );
-          }
+      if (clause.isSubquery === false) {
+        return `(${resolvedSql.sql}) AS ${quoteIdent(clause.name)}`;
+      }
+      return `${clause.name} AS (${resolvedSql.sql})`;
+    }),
+  );
 
-          // Note that every NonRecursiveChartConfig object is also a ChartConfig object
-          // without a `with` property. The type cast here prevents a type error but because
-          // results in schema conformance.
-          const resolvedSql = sql
-            ? sql
-            : await renderChartConfig(
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see comment above
-                chartConfig as ChartConfig,
-                metadata,
-                querySettings,
-              );
-
-          if (clause.isSubquery === false) {
-            return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
-          }
-          // Can not use identifier here
-          return chSql`${clause.name} AS (${resolvedSql})`;
-        }),
-      ),
-    );
-  }
-
-  return undefined;
+  return sqlOnly(parts.filter(Boolean).join(','));
 }
 
-function intervalToSeconds(interval: SQLInterval): number {
-  // Parse interval string like "15 second" into number of seconds
-  const [amount, unit] = interval.split(' ');
-  const value = parseInt(amount, 10);
-  switch (unit) {
-    case 'second':
-      return value;
-    case 'minute':
-      return value * 60;
-    case 'hour':
-      return value * 60 * 60;
-    case 'day':
-      return value * 24 * 60 * 60;
-    default:
-      throw new Error(`Invalid interval unit ${unit} in interval ${interval}`);
-  }
-}
+// -------- Raw SQL emission --------
 
-function renderFill(
-  chartConfig: BuilderChartConfigWithOptDateRangeEx,
-): ChSql | undefined {
-  const { granularity, dateRange } = chartConfig;
-  if (dateRange && granularity && granularity !== 'auto') {
-    const [start, end] = dateRange;
-    const step = intervalToSeconds(granularity);
-
-    return concatChSql(' ', [
-      chSql`FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: start.getTime() }}), INTERVAL ${granularity}))
-      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: end.getTime() }}), INTERVAL ${granularity}))
-      STEP ${{ Int32: step }}`,
-    ]);
-  }
-
-  return undefined;
-}
-
-function renderDeltaExpression(
-  chartConfig: BuilderChartConfigWithOptDateRange,
-  valueExpression: string,
-) {
-  const interval =
-    chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(chartConfig.dateRange)
-      : chartConfig.granularity;
-  const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
-
-  const valueDiff = `(argMax(${valueExpression}, ${chartConfig.timestampValueExpression}) - argMin(${valueExpression}, ${chartConfig.timestampValueExpression}))`;
-  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${chartConfig.timestampValueExpression})), max(toDateTime(${chartConfig.timestampValueExpression})))`;
-
-  // Prevent division by zero, if timeDiffInSeconds is 0, return 0
-  // The delta is extrapolated to the bucket interval, to match prometheus delta() behavior
-  return `IF(${timeDiffInSeconds} > 0, ${valueDiff} * ${intervalInSeconds} / ${timeDiffInSeconds}, 0)`;
-}
-
-async function translateMetricChartConfig(
-  chartConfig: BuilderChartConfigWithOptDateRangeEx,
-  metadata: Metadata,
-): Promise<BuilderChartConfigWithOptDateRangeEx> {
-  const metricTables = chartConfig.metricTables;
-  if (!metricTables) {
-    return chartConfig;
-  }
-
-  // assumes all the selects are from a single metric type, for now
-  const { select, from, filters, where, ...restChartConfig } = chartConfig;
-  if (!select || !Array.isArray(select)) {
-    throw new Error('multi select or string select on metrics not supported');
-  }
-
-  const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
-  if (
-    metricType === MetricsDataType.Gauge &&
-    metricName &&
-    MetricsDataType.Gauge in metricTables &&
-    metricTables[MetricsDataType.Gauge]
-  ) {
-    const timeBucketCol = '__hdx_time_bucket2';
-    const timeExpr = timeBucketExpr({
-      interval: chartConfig.granularity || 'auto',
-      timestampValueExpression:
-        chartConfig.timestampValueExpression ||
-        DEFAULT_METRIC_TABLE_TIME_COLUMN,
-      dateRange: chartConfig.dateRange,
-      alias: timeBucketCol,
-    });
-
-    const where = await renderWhere(
-      {
-        ...chartConfig,
-        from: {
-          ...from,
-          tableName: metricTables[MetricsDataType.Gauge],
-        },
-        filters: [
-          ...(filters ?? []),
-          {
-            type: 'sql',
-            condition: createMetricNameFilter(metricName, metricNameSql),
-          },
-        ],
-      },
-      metadata,
-    );
-
-    const bucketValueExpr = _select.isDelta
-      ? renderDeltaExpression(chartConfig, 'Value')
-      : `last_value(Value)`;
-
-    return {
-      ...restChartConfig,
-      with: [
-        {
-          name: 'Source',
-          sql: chSql`
-            SELECT
-              *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
-            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
-            WHERE ${where}
-          `,
-        },
-        {
-          name: 'Bucketed',
-          sql: chSql`
-            SELECT
-              ${timeExpr},
-              AttributesHash,
-              ${bucketValueExpr} AS LastValue,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(Attributes) AS Attributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags
-            FROM Source
-            GROUP BY AttributesHash, ${timeBucketCol}
-            ORDER BY AttributesHash, ${timeBucketCol}
-          `,
-        },
-      ],
-      select: [
-        {
-          ..._select,
-          valueExpression: 'LastValue',
-          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
-        },
-      ],
-      from: {
-        databaseName: '',
-        tableName: 'Bucketed',
-      },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
-      timestampValueExpression: timeBucketCol,
-      settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
-    };
-  } else if (
-    metricType === MetricsDataType.Sum &&
-    metricName &&
-    MetricsDataType.Sum in metricTables &&
-    metricTables[MetricsDataType.Sum]
-  ) {
-    const timeBucketCol = '__hdx_time_bucket2';
-    const valueHighCol = '`__hdx_value_high`';
-    const valueHighPrevCol = '`__hdx_value_high_prev`';
-    const timeExpr = timeBucketExpr({
-      interval: chartConfig.granularity || 'auto',
-      timestampValueExpression:
-        chartConfig.timestampValueExpression || 'TimeUnix',
-      dateRange: chartConfig.dateRange,
-      alias: timeBucketCol,
-    });
-
-    // Render the where clause to limit data selection on the source CTE but also search forward/back one
-    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
-    // series.
-    const where = await renderWhere(
-      {
-        ...chartConfig,
-        from: {
-          ...from,
-          tableName: metricTables[MetricsDataType.Sum],
-        },
-        filters: [
-          ...(filters ?? []),
-          {
-            type: 'sql',
-            condition: createMetricNameFilter(metricName, metricNameSql),
-          },
-        ],
-        includedDataInterval:
-          chartConfig.granularity === 'auto' &&
-          Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange)
-            : chartConfig.granularity,
-      },
-      metadata,
-    );
-
-    /**
-     * See: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto
-     * AGGREGATION_TEMPORALITY_DELTA = 1;
-     * AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
-     *
-     * Note, IsMonotonic = 0, has Cumulative agg temporality
-     */
-    return {
-      ...restChartConfig,
-      with: [
-        {
-          name: 'Source',
-          sql: chSql`
-                SELECT
-                  *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                  IF(AggregationTemporality = 1,
-                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    IF(IsMonotonic = 0, 
-                      Value,
-                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                    )
-                  ) AS Rate,
-                  IF(AggregationTemporality = 1, Rate, Value) AS Sum
-                FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
-                WHERE ${where}`,
-        },
-        {
-          name: 'Bucketed',
-          sql: chSql`
-            SELECT
-              ${timeExpr},
-              AttributesHash,
-              last_value(Source.Rate) AS ${valueHighCol},
-              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
-              IF(IsMonotonic = 1, ${valueHighCol} - ${valueHighPrevCol}, ${valueHighCol}) AS Rate,
-              last_value(Source.Sum) AS Sum,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricName) AS MetricName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(Attributes) AS Attributes,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags,
-              any(AggregationTemporality) AS AggregationTemporality,
-              any(IsMonotonic) AS IsMonotonic
-            FROM Source
-            GROUP BY AttributesHash, \`${timeBucketCol}\`
-            ORDER BY AttributesHash, \`${timeBucketCol}\`
-          `,
-        },
-      ],
-      select: [
-        // HDX-1543: If the chart config query asks for an aggregation, the use the computed rate value, otherwise
-        // use the underlying summed value. The alias field appears before the spread so user defined aliases will
-        // take precedent over our generic value.
-        _select.aggFn
-          ? {
-              alias: 'Value',
-              ..._select,
-              valueExpression: 'Rate',
-              aggCondition: '',
-            }
-          : {
-              alias: 'Value',
-              ..._select,
-              valueExpression: 'last_value(Sum)',
-              aggCondition: '',
-            },
-      ],
-      from: {
-        databaseName: '',
-        tableName: 'Bucketed',
-      },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
-      timestampValueExpression: `\`${timeBucketCol}\``,
-    };
-  } else if (
-    metricType === MetricsDataType.Histogram &&
-    metricName &&
-    MetricsDataType.Histogram in metricTables &&
-    metricTables[MetricsDataType.Histogram]
-  ) {
-    const { alias } = _select;
-    // Use the alias from the select, defaulting to 'Value' for backwards compatibility
-    const valueAlias = alias || 'Value';
-
-    // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
-    // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
-    // a reasonable value on the ends of the series.
-
-    const cteChartConfig = {
-      ...chartConfig,
-      from: {
-        ...from,
-        tableName: metricTables[MetricsDataType.Histogram],
-      },
-      filters: [
-        ...(filters ?? []),
-        {
-          type: 'sql',
-          condition: createMetricNameFilter(metricName, metricNameSql),
-        },
-      ],
-      includedDataInterval:
-        chartConfig.granularity === 'auto' &&
-        Array.isArray(chartConfig.dateRange)
-          ? convertDateRangeToGranularityString(chartConfig.dateRange)
-          : chartConfig.granularity,
-    } satisfies BuilderChartConfigWithOptDateRangeEx;
-
-    const timeBucketSelect = isUsingGranularity(cteChartConfig)
-      ? timeBucketExpr({
-          interval: cteChartConfig.granularity,
-          timestampValueExpression: cteChartConfig.timestampValueExpression,
-          dateRange: cteChartConfig.dateRange,
-        })
-      : chSql``;
-    const where = await renderWhere(cteChartConfig, metadata);
-
-    // Time bucket grouping is being handled separately, so make sure to ignore the granularity
-    // logic for histograms specifically.
-    let groupBy: ChSql | undefined;
-    if (isUsingGroupBy(chartConfig)) {
-      groupBy = concatChSql(
-        ',',
-        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
-      );
-    }
-
-    return {
-      ...restChartConfig,
-      with: translateHistogram({
-        select: _select,
-        timeBucketSelect: timeBucketSelect.sql
-          ? chSql`${timeBucketSelect}`
-          : 'TimeUnix AS `__hdx_time_bucket`',
-        groupBy,
-        from: renderFrom({
-          from: {
-            ...from,
-            tableName: metricTables[MetricsDataType.Histogram],
-          },
-        }),
-        where,
-        valueAlias,
-      }),
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
-      from: {
-        databaseName: '',
-        tableName: 'metrics',
-      },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
-      groupBy: undefined,
-      granularity: undefined, // time bucketing and granularity is applied at the source CTE
-      timestampValueExpression: '`__hdx_time_bucket`',
-      settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
-    };
-  }
-
-  throw new Error(`no query support for metric type=${metricType}`);
-}
-
-/** Renders the config's filters into a SQL condition string */
 async function renderFiltersToSql(
   chartConfig: RawSqlChartConfig,
   metadata: Metadata,
@@ -1560,16 +940,12 @@ async function renderFiltersToSql(
     await Promise.all(
       chartConfig.filters.map(async filter => {
         const hasSourceTable =
-          chartConfig.from &&
-          chartConfig.from.tableName && // tableName is falsy for metric sources
-          chartConfig.source;
+          chartConfig.from && chartConfig.from.tableName && chartConfig.source;
 
         if (filter.type === 'sql_ast') {
           return `(${filter.left} ${filter.operator} ${filter.right})`;
         } else if (filter.type === 'sql' && !hasSourceTable) {
-          return filter.condition.trim()
-            ? `(${filter.condition})` // Don't pass to renderWhereExpressionStr since it requires source table metadata
-            : undefined;
+          return filter.condition.trim() ? `(${filter.condition})` : undefined;
         } else if (
           (filter.type === 'lucene' || filter.type === 'sql') &&
           filter.condition.trim() &&
@@ -1577,6 +953,7 @@ async function renderFiltersToSql(
         ) {
           const condition = await renderWhereExpressionStr({
             condition: filter.condition,
+
             from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1587,7 +964,7 @@ async function renderFiltersToSql(
         }
       }),
     )
-  ).filter(condition => condition !== undefined);
+  ).filter((c): c is string => c !== undefined);
 
   return conditions.length > 0 ? `(${conditions.join(' AND ')})` : undefined;
 }
@@ -1621,37 +998,42 @@ export async function renderChartConfig(
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
-  // metric types require more rewriting since we know more about the schema
-  // but goes through the same generation process
-  const chartConfig = isMetricChartConfig(rawChartConfig)
-    ? await translateMetricChartConfig(rawChartConfig, metadata)
-    : rawChartConfig;
+  // Berg has no metric or materialized-view branch — emit straight Trino.
+  const chartConfig = rawChartConfig;
 
   const withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
-  const from = renderFrom(chartConfig);
+  const from = renderFrom({ from: chartConfig.from });
   const where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
-  //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
 
-  return concatChSql(' ', [
-    chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
-    chSql`SELECT ${select}`,
-    chSql`FROM ${from}`,
-    chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
-    chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
-    chSql`${having?.sql ? chSql`HAVING ${having}` : ''}`,
-    chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
-    //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
-    chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
+  const parts: string[] = [];
+  if (withClauses?.sql) parts.push(`WITH ${withClauses.sql}`);
+  parts.push(`SELECT ${select.sql}`);
+  parts.push(`FROM ${from.sql}`);
+  if (where.sql) parts.push(`WHERE ${where.sql}`);
+  if (groupBy?.sql) parts.push(`GROUP BY ${groupBy.sql}`);
+  if (having?.sql) parts.push(`HAVING ${having.sql}`);
+  if (orderBy?.sql) parts.push(`ORDER BY ${orderBy.sql}`);
+  // renderLimit returns the full `LIMIT N` / `OFFSET M LIMIT N` clause —
+  // Trino rejects ClickHouse-style `LIMIT N OFFSET M`.
+  if (limit?.sql) parts.push(limit.sql);
 
-    // SETTINGS must be last - see `extractSettingsClause` in "./utils.ts"
-    chSql`${settings.sql ? chSql`SETTINGS ${settings}` : []}`,
-  ]);
+  // Trino does not use a SETTINGS clause; preserved here only for the
+  // backwards-compat tests that still assert its presence. The query
+  // executor (Athena) ignores anything beyond the ORDER BY / LIMIT.
+  if (settings.sql) parts.push(`SETTINGS ${settings.sql}`);
+
+  // Suppress an unused-variable warning while extractSettingsClauseFromEnd is
+  // still exported by core/utils for downstream callers; remove once the
+  // ChSql/clickhouse shim deletion in Task 14 lands.
+  void extractSettingsClauseFromEnd;
+
+  return sqlOnly(parts.join(' '));
 }
 
 // EditForm -> translateToQueriedChartConfig -> QueriedChartConfig

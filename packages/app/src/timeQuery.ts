@@ -548,7 +548,6 @@ export function getLiveTailTimeRange(): [Date, Date] {
 // Lucene/SQL WHERE via AND.
 type TimeRangeSource = {
   timestampColumn?: string;
-  timestampValueExpression?: string;
 };
 
 export function getTimeRangeWhereClause(
@@ -556,7 +555,7 @@ export function getTimeRangeWhereClause(
   range: { start: Date; end: Date } | [Date, Date],
 ): string {
   if (!source) return '1=1';
-  const column = source.timestampColumn ?? source.timestampValueExpression;
+  const column = source.timestampColumn;
   if (!column) return '1=1';
   const start = Array.isArray(range) ? range[0] : range.start;
   const end = Array.isArray(range) ? range[1] : range.end;

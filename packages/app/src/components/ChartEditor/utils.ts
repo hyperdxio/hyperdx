@@ -8,14 +8,9 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
-  getSampleWeightExpression,
-  isLogSource,
-  isMetricSource,
-  isTraceSource,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
-  SourceKind,
   TSource,
 } from '@berg/common-utils/dist/types';
 
@@ -26,18 +21,15 @@ import { ChartEditorFormState } from './types';
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
+    'select' | 'having' | 'orderBy' | 'displayType' | 'onClick'
   >,
->(config: C, source: TSource): C {
-  const isMetricSource = source.kind === SourceKind.Metric;
+>(config: C, _source: TSource): C {
   return {
     ...config,
-    // Strip out metric-specific fields for non-metric sources
-    select:
-      !isMetricSource && Array.isArray(config.select)
-        ? config.select.map(s => omit(s, ['metricName', 'metricType']))
-        : config.select,
-    metricTables: isMetricSource ? config.metricTables : undefined,
+    // Berg has no metric kinds; metric-name/metric-type stripping is a no-op.
+    select: Array.isArray(config.select)
+      ? config.select.map(s => omit(s, ['metricName', 'metricType']))
+      : config.select,
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
@@ -128,13 +120,9 @@ export function convertFormStateToChartConfig(
       sqlTemplate: form.sqlTemplate ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
-      from: source?.from,
-      implicitColumnExpression:
-        source && (isLogSource(source) || isTraceSource(source))
-          ? source.implicitColumnExpression
-          : undefined,
-      metricTables:
-        source && isMetricSource(source) ? source.metricTables : undefined,
+      from: source
+        ? { databaseName: source.database, tableName: source.table }
+        : undefined,
     };
 
     return { ...rawSqlConfig, dateRange };
@@ -148,22 +136,12 @@ export function convertFormStateToChartConfig(
 
     const newConfig: ChartConfigWithDateRange = {
       ...omit(form, ['series', 'configType', 'sqlTemplate']),
-      from: source.from,
-      timestampValueExpression: source.timestampValueExpression,
+      from: { databaseName: source.database, tableName: source.table },
+      timestampValueExpression: source.timestampColumn ?? '',
       dateRange,
-      connection: source.connection,
-      implicitColumnExpression:
-        isLogSource(source) || isTraceSource(source)
-          ? source.implicitColumnExpression
-          : undefined,
-      sampleWeightExpression: getSampleWeightExpression(source),
-      metricTables: isMetricSource(source) ? source.metricTables : undefined,
+      connection: '',
       where: form.where ?? '',
-      select: isSelectEmpty
-        ? ((isLogSource(source) || isTraceSource(source)) &&
-            source.defaultTableSelectExpression) ||
-          ''
-        : mergedSelect,
+      select: isSelectEmpty ? '*' : mergedSelect,
     };
 
     return structuredClone(normalizeChartConfig(newConfig, source));
@@ -220,7 +198,6 @@ export const validateChartForm = (
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
-    source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
     form.displayType !== DisplayType.Search
   ) {
@@ -234,23 +211,8 @@ export const validateChartForm = (
     });
   }
 
-  // Validate metric names for metric sources
-  if (
-    source?.kind === SourceKind.Metric &&
-    Array.isArray(form.series) &&
-    form.displayType !== DisplayType.Markdown &&
-    form.displayType !== DisplayType.Search &&
-    !isRawSqlChart
-  ) {
-    form.series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        errors.push({
-          path: `series.${index}.metricName`,
-          message: `Metric is required`,
-        });
-      }
-    });
-  }
+  // Berg has no metric source kind, so metric-name validation is gone.
+  void source;
 
   // Validate number, pie, and heatmap charts only have one series
   if (

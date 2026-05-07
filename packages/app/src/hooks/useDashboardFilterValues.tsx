@@ -1,13 +1,7 @@
 import { useMemo } from 'react';
 import {
-  GetKeyValueCall,
-  optimizeGetKeyValuesCalls,
-} from '@berg/common-utils/dist/core/materializedViews';
-import {
   BuilderChartConfigWithDateRange,
   DashboardFilter,
-  isLogSource,
-  isTraceSource,
 } from '@berg/common-utils/dist/types';
 import {
   useQueries,
@@ -15,11 +9,12 @@ import {
   UseQueryResult,
 } from '@tanstack/react-query';
 
-import { useClickhouseClient } from '@/clickhouse';
 import { useSources } from '@/source';
-import { getMetricTableName, mapKeyBy } from '@/utils';
+import { mapKeyBy } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
+
+type GetKeyValueCall<C> = { chartConfig: C; keys: string[] };
 
 type FilterSourceKey = {
   sourceId: string;
@@ -51,8 +46,6 @@ function useOptimizedKeyValuesCalls({
   filters: DashboardFilter[];
   dateRange: [Date, Date];
 }) {
-  const clickhouseClient = useClickhouseClient();
-  const metadata = useMetadataWithSettings();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
   // Group filters by (source, metricType, where, whereLanguage) so that we can test each group for MV compatibility separately.
@@ -79,19 +72,14 @@ function useOptimizedKeyValuesCalls({
           filterFromKey(key);
         const source = sources!.find(s => s.id === sourceId)!;
         const keyExpressions = filtersInGroup.map(f => f.expression);
-        const tableName = getMetricTableName(source, metricType) ?? '';
 
         const chartConfig: BuilderChartConfigWithDateRange = {
-          timestampValueExpression: source.timestampValueExpression,
-          connection: source.connection ?? '',
+          timestampValueExpression: source.timestampColumn ?? '',
+          connection: '',
           from: {
-            databaseName: source.from.databaseName,
-            tableName,
+            databaseName: source.database,
+            tableName: source.table,
           },
-          implicitColumnExpression:
-            isTraceSource(source) || isLogSource(source)
-              ? source.implicitColumnExpression
-              : undefined,
           dateRange,
           source: source.id,
           where,
@@ -110,25 +98,21 @@ function useOptimizedKeyValuesCalls({
             whereLanguage,
           ],
           enabled: !isLoadingSources,
-          staleTime: 1000 * 60 * 5, // Cache every 5 min
-          queryFn: async ({ signal }) => {
-            const calls = await optimizeGetKeyValuesCalls({
-              chartConfig,
-              source,
-              clickhouseClient,
-              metadata,
-              keys: keyExpressions,
-              signal,
-            });
-            // Enrich each call with the filter IDs that correspond to each key expression
-            return calls.map(call => ({
-              ...call,
-              filterIds: call.keys.map(expression =>
-                filtersInGroup
-                  .filter(f => f.expression === expression)
-                  .map(f => f.id),
-              ),
-            }));
+          staleTime: 1000 * 60 * 5,
+          queryFn: async () => {
+            // Berg has no MV optimisation; emit a single direct call.
+            const calls: EnrichedCall[] = [
+              {
+                chartConfig,
+                keys: keyExpressions,
+                filterIds: keyExpressions.map(expression =>
+                  filtersInGroup
+                    .filter(f => f.expression === expression)
+                    .map(f => f.id),
+                ),
+              },
+            ];
+            return calls;
           },
         };
       }),

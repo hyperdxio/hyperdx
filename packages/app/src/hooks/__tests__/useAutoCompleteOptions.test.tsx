@@ -1,6 +1,7 @@
-import { JSDataType } from '@berg/common-utils/dist/clickhouse';
 import { Field } from '@berg/common-utils/dist/core/metadata';
 import { renderHook } from '@testing-library/react';
+
+import { JSDataType } from '@/clickhouse-types';
 
 import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';

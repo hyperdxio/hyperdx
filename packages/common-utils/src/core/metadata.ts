@@ -11,16 +11,14 @@ import {
   filterColumnMetaByType,
   JSDataType,
   tableExpr,
-} from '@/clickhouse';
+} from '@/_legacy_chTypes';
 import { renderChartConfig } from '@/core/renderChartConfig';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   TSource,
 } from '@/types';
-import { isLogSource, isTraceSource } from '@/types';
 
-import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { getDistributedTableArgs, objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
@@ -1067,31 +1065,51 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
+        // Berg/Trino rewrite: the original CH query stacked three
+        // CH-only constructs in one SELECT — `count()` (Trino requires
+        // `count(*)`), self-referential column aliases (`total` and
+        // `__hdx_count` re-used inside the same SELECT), and a
+        // `cityHash64(col, rand()) % factor = 0` sampling filter.  None
+        // of those work on Athena.  We drop the row-level sampling
+        // (scoring 100 buckets on an Iceberg scan is already fast) and
+        // do the percentage in a second pass over the GROUP BY result
+        // via a CTE so the alias is visible.
+        void samples;
         const config: BuilderChartConfigWithDateRange = {
           ...chartConfig,
           with: [
             ...(chartConfig.with || []),
-            // Add CTE to get total row count and sample factor
             {
-              name: 'tableStats',
+              name: 'distAgg',
               chartConfig: {
-                ...omit(chartConfig, ['with', 'groupBy', 'orderBy', 'limit']),
-                select: `count() as total, greatest(CAST(total / ${samples} AS UInt32), 1) as sample_factor`,
+                ...omit(chartConfig, ['with', 'orderBy', 'limit']),
+                select: `${key} AS __hdx_value, count(*) AS __hdx_count`,
+                // Group by the raw expression, not the SELECT alias.
+                // Trino rejects self-references to a SELECT alias from
+                // within the same SELECT, and `renderChartConfig`
+                // auto-appends the GROUP BY column to the SELECT list
+                // unless `selectGroupBy` is `false` — which would emit a
+                // bare `__hdx_value` after the alias and trigger a
+                // COLUMN_NOT_FOUND.
+                groupBy: key,
+                selectGroupBy: false,
               },
+              isSubquery: true,
             },
           ],
-          // Add sampling condition as a filter. The query will still read all rows to evaluate
-          // the sampling condition, but will only read values column from selected rows.
-          filters: [
-            ...(chartConfig.filters || []),
-            {
-              type: 'sql',
-              condition: `cityHash64(${chartConfig.timestampValueExpression}, rand()) % (SELECT sample_factor FROM tableStats) = 0`,
-            },
-          ],
-          select: `${key} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
+          select:
+            '__hdx_value, __hdx_count * 100.0 / sum(__hdx_count) OVER () AS __hdx_percentage',
+          from: { databaseName: '', tableName: 'distAgg' },
+          where: '',
+          filters: [],
+          // Outer query reads the `distAgg` CTE which only exposes the
+          // aggregated `__hdx_value` / `__hdx_count` columns — there's no
+          // `timestamp` column to filter on.  Clearing the timestamp
+          // expression suppresses `renderWhere`'s automatic time-filter
+          // injection (it's gated on a non-null timestampValueExpression).
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          timestampValueExpression: undefined as unknown as string,
           orderBy: '__hdx_percentage DESC',
-          groupBy: `__hdx_value`,
           limit: { limit },
         };
 
@@ -1171,8 +1189,15 @@ export class Metadata {
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
+              // Trino equivalent of CH's `groupUniqArray(N)(col)`:
+              // `slice(array_agg(DISTINCT col), 1, N)`.  Athena rejects
+              // `groupUniqArray` outright, and there is no native limited
+              // distinct-aggregate form.
               select: keys
-                .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+                .map(
+                  (k, i) =>
+                    `slice(array_agg(DISTINCT ${k}), 1, ${limit}) AS param${i}`,
+                )
                 .join(', '),
             }
           : await (async () => {
@@ -1201,10 +1226,12 @@ export class Metadata {
                     isSubquery: true,
                   },
                 ],
+                // Same Trino-shape replacement as above for the CTE
+                // outer SELECT.
                 select: keys
                   .map(
                     (_, i) =>
-                      `groupUniqArray(${limit})(param${i}) AS param${i}`,
+                      `slice(array_agg(DISTINCT param${i}), 1, ${limit}) AS param${i}`,
                   )
                   .join(', '),
                 connection: chartConfig.connection,
@@ -1283,19 +1310,13 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
-        const defaultKeyValueCall = { chartConfig, keys };
-        const canHaveMVs =
-          source && (isLogSource(source) || isTraceSource(source));
-        const getKeyValueCalls = canHaveMVs
-          ? await optimizeGetKeyValuesCalls({
-              chartConfig,
-              keys,
-              source,
-              clickhouseClient: this.clickhouseClient,
-              metadata: this,
-              signal,
-            })
-          : [defaultKeyValueCall];
+        // Berg has no materialized-view concept; always issue the single
+        // direct keyvalue lookup against the source table. The legacy
+        // multi-MV optimization branch (`optimizeGetKeyValuesCalls`)
+        // shipped with HyperDX has been deleted along with `core/
+        // materializedViews.ts`.
+        void source;
+        const getKeyValueCalls = [{ chartConfig, keys }];
 
         const allResults = await Promise.all(
           getKeyValueCalls.map(async ({ chartConfig, keys }) =>
@@ -1350,10 +1371,16 @@ export function tcFromChartConfig(
 }
 
 export function tcFromSource(source?: TSource): TableConnection {
+  // Berg routes column-metadata lookups through `clickhouse.ts`'s
+  // `postBergQuery`, which uses the `connectionId` (= source id) to
+  // hit `/api/sources/:id/columns` and resolve the underlying Glue
+  // schema.  Pre-Berg this field was always blank because CH only
+  // needed `database.table` to issue `DESCRIBE`, but on Berg an empty
+  // value silently makes every metadata call return an empty schema.
   return {
-    databaseName: source?.from?.databaseName ?? '',
-    tableName: source?.from?.tableName ?? '',
-    connectionId: source?.connection ?? '',
+    databaseName: source?.database ?? '',
+    tableName: source?.table ?? '',
+    connectionId: source?.id ?? '',
   };
 }
 

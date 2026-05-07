@@ -11,18 +11,12 @@ import {
   YAxis,
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/types';
-import { ClickHouseQueryError } from '@berg/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@berg/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
-import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 function HistogramChart({
   graphResults,
@@ -196,7 +190,6 @@ export default function DBHistogramChart({
   title,
   toolbarPrefix,
   toolbarSuffix,
-  showMVOptimizationIndicator = true,
 }: {
   config: BuilderChartConfigWithDateRange;
   queryKeyPrefix?: string;
@@ -204,7 +197,6 @@ export default function DBHistogramChart({
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
-  showMVOptimizationIndicator?: boolean;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -216,13 +208,8 @@ export default function DBHistogramChart({
     },
   );
 
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
-
   // Don't ask me why...
   const buckets = data?.data?.[0]?.data;
-
-  const { data: source } = useSource({ id: config.source });
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -231,39 +218,12 @@ export default function DBHistogramChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-histogram-chart-mv-indicator"
-          config={queriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
-  }, [
-    queriedConfig,
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-  ]);
+  }, [toolbarPrefix, toolbarSuffix]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
@@ -288,14 +248,6 @@ export default function DBHistogramChart({
             >
               {error.message}
             </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
           </Box>
         </div>
       ) : data?.data.length === 0 ? (

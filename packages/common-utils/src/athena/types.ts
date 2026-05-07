@@ -40,6 +40,16 @@ export interface ExecuteOptions {
   outputLocation: string;
   region: string;
   /**
+   * Catalog (and optional database) to set as Athena's
+   * `QueryExecutionContext`.  When set, SQL identifiers don't need to
+   * three-part-qualify the catalog — `"db"."table"` resolves under
+   * this catalog.  Required for federated catalogs like
+   * `s3tablescatalog/<bucket>` whose names contain characters Athena
+   * doesn't accept inside quoted SQL identifiers.
+   */
+  catalog?: string;
+  database?: string;
+  /**
    * How long Athena's `ResultReuseByAgeConfiguration` allows a cached result
    * to be reused.  Defaults to 60 minutes when omitted.
    */

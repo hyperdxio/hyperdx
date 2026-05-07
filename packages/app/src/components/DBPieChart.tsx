@@ -8,13 +8,11 @@ import {
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
 import {
-  buildMVDateRangeIndicator,
   convertToPieChartConfig,
   formatResponseForPieChart,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useResolvedNumberFormat } from '@/source';
 import type { NumberFormat } from '@/types';
 import { formatNumber, getColorProps, truncateMiddle } from '@/utils';
 
@@ -23,7 +21,6 @@ import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 const PieChartTooltip = memo(
   ({
@@ -104,7 +101,6 @@ export const DBPieChart = ({
   title,
   enabled = true,
   queryKeyPrefix,
-  showMVOptimizationIndicator = true,
   toolbarPrefix,
   toolbarSuffix,
   errorVariant,
@@ -113,15 +109,10 @@ export const DBPieChart = ({
   title?: React.ReactNode;
   enabled?: boolean;
   queryKeyPrefix?: string;
-  showMVOptimizationIndicator?: boolean;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   errorVariant?: ChartErrorStateVariant;
 }) => {
-  const { data: source } = useSource({
-    id: config.source,
-  });
-
   const resolvedNumberFormat = useResolvedNumberFormat(config);
 
   const queriedConfig = useMemo(() => {
@@ -129,12 +120,6 @@ export const DBPieChart = ({
       ? convertToPieChartConfig(config)
       : config;
   }, [config]);
-
-  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
-    ? queriedConfig
-    : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -152,45 +137,17 @@ export const DBPieChart = ({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-table-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
-  }, [
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-    queriedConfig,
-    builderQueriedConfig,
-  ]);
+  }, [toolbarPrefix, toolbarSuffix]);
 
   const [pieChartData, responseFormatError] = useMemo(() => {
     if (!data) return [[], null];
     try {
-      return [formatResponseForPieChart(data, getColorProps), null];
+      return [formatResponseForPieChart(data as any, getColorProps), null];
     } catch (error) {
       return [[], error instanceof Error ? error : new Error(String(error))];
     }

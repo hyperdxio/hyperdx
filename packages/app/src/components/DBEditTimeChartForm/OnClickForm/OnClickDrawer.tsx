@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { validateOnClickTemplate } from '@berg/common-utils/dist/core/linkUrlBuilder';
-import { isSearchableSource, OnClick } from '@berg/common-utils/dist/types';
+import { OnClick } from '@berg/common-utils/dist/types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Box,
@@ -35,8 +35,8 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
   const { data: sources } = useSources();
 
   const sourceOptions = useMemo(() => {
-    return sources?.filter(isSearchableSource).map(source => ({
-      label: source.name,
+    return sources?.map(source => ({
+      label: source.displayName,
       value: source.id,
     }));
   }, [sources]);
@@ -169,7 +169,7 @@ export default function OnClickDrawer({
     const validTargetIds =
       watchedOnClick.type === 'dashboard'
         ? dashboards?.map(d => d.id)
-        : sources?.filter(isSearchableSource).map(s => s.id);
+        : sources?.map(s => s.id);
 
     if (!validTargetIds) return false;
     return !validTargetIds.includes(watchedOnClick.target.id);

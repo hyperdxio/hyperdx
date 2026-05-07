@@ -42,7 +42,7 @@ const setup = (opts: { authenticated: boolean } = { authenticated: true }) => {
     });
   }
 
-  app.use('/api/v1', isUserAuthenticated, catalogRouter);
+  app.use('/v1', isUserAuthenticated, catalogRouter);
   app.use(appErrorHandler);
   return app;
 };
@@ -54,14 +54,14 @@ describe('catalog router', () => {
 
   it('GET /api/v1/catalogs returns the default catalog', async () => {
     const app = setup();
-    const r = await request(app).get('/api/v1/catalogs');
+    const r = await request(app).get('/v1/catalogs');
     expect(r.status).toBe(200);
     expect(r.body.catalogs).toEqual(['AwsDataCatalog']);
   });
 
   it('GET /api/v1/catalogs requires auth', async () => {
     const app = setup({ authenticated: false });
-    const r = await request(app).get('/api/v1/catalogs');
+    const r = await request(app).get('/v1/catalogs');
     expect(r.status).toBe(401);
   });
 
@@ -71,9 +71,7 @@ describe('catalog router', () => {
     });
 
     const app = setup();
-    const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases',
-    );
+    const r = await request(app).get('/v1/catalogs/AwsDataCatalog/databases');
     expect(r.status).toBe(200);
     expect(r.body.databases).toEqual(['db1', 'db2']);
   });
@@ -86,9 +84,7 @@ describe('catalog router', () => {
     );
 
     const app = setup();
-    const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases',
-    );
+    const r = await request(app).get('/v1/catalogs/AwsDataCatalog/databases');
     expect(r.status).toBe(200);
     expect(r.body.databases).toEqual([]);
   });
@@ -117,7 +113,7 @@ describe('catalog router', () => {
 
     const app = setup();
     const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases/db1/tables',
+      '/v1/catalogs/AwsDataCatalog/databases/db1/tables',
     );
     expect(r.status).toBe(200);
     expect(r.body.tables).toEqual([
@@ -135,7 +131,7 @@ describe('catalog router', () => {
 
     const app = setup();
     const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases/db1/tables/missing/schema',
+      '/v1/catalogs/AwsDataCatalog/databases/db1/tables/missing/schema',
     );
     expect(r.status).toBe(404);
     expect(r.body.code).toBe('not_found');
@@ -150,7 +146,7 @@ describe('catalog router', () => {
 
     const app = setup();
     const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases/db1/tables/locked/schema',
+      '/v1/catalogs/AwsDataCatalog/databases/db1/tables/locked/schema',
     );
     expect(r.status).toBe(403);
     expect(r.body.code).toBe('access_denied');
@@ -179,7 +175,7 @@ describe('catalog router', () => {
 
     const app = setup();
     const r = await request(app).get(
-      '/api/v1/catalogs/AwsDataCatalog/databases/db1/tables/events/schema',
+      '/v1/catalogs/AwsDataCatalog/databases/db1/tables/events/schema',
     );
     expect(r.status).toBe(200);
     expect(r.body.table).toBe('events');

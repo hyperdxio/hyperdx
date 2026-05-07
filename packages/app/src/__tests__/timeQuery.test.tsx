@@ -391,15 +391,7 @@ describe('getTimeRangeWhereClause', () => {
     );
   });
 
-  it('falls back to legacy timestampValueExpression', () => {
-    const sql = getTimeRangeWhereClause(
-      { timestampValueExpression: 'Timestamp' },
-      range,
-    );
-    expect(sql).toBe(
-      '"Timestamp" BETWEEN from_unixtime(1777852800) AND from_unixtime(1777856400)',
-    );
-  });
+  // Berg: timestampValueExpression has been removed from the source shape.
 
   it('accepts a {start, end} object as the range', () => {
     const sql = getTimeRangeWhereClause(
