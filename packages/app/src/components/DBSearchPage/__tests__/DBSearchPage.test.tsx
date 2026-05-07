@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 
-import { DBSearchPage } from '../DBSearchPage';
+import { DBSearchPage } from '..';
 
 const mockRouterPush = jest.fn();
 const mockSetSearchedConfig = jest.fn();
@@ -25,6 +25,10 @@ jest.mock('next/router', () => ({
   __esModule: true,
   default: {
     push: (...args: unknown[]) => mockRouterPush(...args),
+    events: {
+      on: jest.fn(),
+      off: jest.fn(),
+    },
   },
 }));
 
@@ -127,18 +131,18 @@ jest.mock('@/theme/ThemeProvider', () => ({
   useBrandDisplayName: () => 'HyperDX',
 }));
 
-jest.mock('../hooks/useMetadata', () => ({
+jest.mock('@/hooks/useMetadata', () => ({
   useTableMetadata: () => ({
     data: { sorting_key: 'Timestamp' },
     isLoading: false,
   }),
 }));
 
-jest.mock('../hooks/useSqlSuggestions', () => ({
+jest.mock('@/hooks/useSqlSuggestions', () => ({
   useSqlSuggestions: () => [],
 }));
 
-jest.mock('../components/Search/DirectTraceSidePanel', () => ({
+jest.mock('@/components/Search/DirectTraceSidePanel', () => ({
   __esModule: true,
   default: (props: Record<string, any>) => {
     latestDirectTracePanelProps = props;
@@ -196,22 +200,22 @@ jest.mock('@/components/Tags', () => ({
 jest.mock('@/components/TimePicker', () => ({
   TimePicker: () => <div />,
 }));
-jest.mock('../components/ChartSQLPreview', () => ({
+jest.mock('@/components/ChartSQLPreview', () => ({
   SQLPreview: () => <div />,
 }));
-jest.mock('../components/DBSqlRowTableWithSidebar', () => () => <div />);
-jest.mock('../components/PatternTable', () => () => <div />);
-jest.mock('../components/Search/DBSearchHeatmapChart', () => ({
+jest.mock('@/components/DBSqlRowTableWithSidebar', () => () => <div />);
+jest.mock('@/components/PatternTable', () => () => <div />);
+jest.mock('@/components/Search/DBSearchHeatmapChart', () => ({
   DBSearchHeatmapChart: () => <div />,
 }));
-jest.mock('../components/SourceSchemaPreview', () => () => <div />);
-jest.mock('../components/Error/ErrorBoundary', () => ({
+jest.mock('@/components/SourceSchemaPreview', () => () => <div />);
+jest.mock('@/components/Error/ErrorBoundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
 
-jest.mock('../utils/queryParsers', () => ({
+jest.mock('@/utils/queryParsers', () => ({
   parseAsJsonEncoded: () => 'parseAsJsonEncoded',
   parseAsSortingStateString: {
     parse: () => null,
@@ -219,7 +223,7 @@ jest.mock('../utils/queryParsers', () => ({
   parseAsStringEncoded: 'parseAsStringEncoded',
 }));
 
-jest.mock('../api', () => ({
+jest.mock('@/api', () => ({
   __esModule: true,
   default: {
     useMe: () => ({
