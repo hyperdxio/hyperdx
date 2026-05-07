@@ -119,45 +119,45 @@ import useDashboardContainers, {
 } from '@/hooks/useDashboardContainers';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
-import ChartContainer from './components/charts/ChartContainer';
+import ChartContainer from '@/components/charts/ChartContainer';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
-} from './components/DBHeatmapChart';
-import { DBPieChart } from './components/DBPieChart';
-import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
-import OnboardingModal from './components/OnboardingModal';
+} from '@/components/DBHeatmapChart';
+import { DBPieChart } from '@/components/DBPieChart';
+import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
+import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
-} from './components/SearchInput/SearchWhereInput';
-import { Tags } from './components/Tags';
-import useDashboardFilters from './hooks/useDashboardFilters';
-import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import useTileSelection from './hooks/useTileSelection';
-import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
+} from '@/components/SearchInput/SearchWhereInput';
+import { Tags } from '@/components/Tags';
+import useDashboardFilters from '@/hooks/useDashboardFilters';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
+import useTileSelection from '@/hooks/useTileSelection';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 import {
   buildEventsSearchUrl,
   buildTableRowSearchUrl,
   DEFAULT_CHART_CONFIG,
-} from './ChartUtils';
-import { useConnections } from './connection';
-import { useDashboard } from './dashboard';
-import DashboardFilters from './DashboardFilters';
-import DashboardFiltersModal from './DashboardFiltersModal';
-import { EditablePageName } from './EditablePageName';
-import { GranularityPickerControlled } from './GranularityPicker';
-import HDXMarkdownChart from './HDXMarkdownChart';
-import { withAppNav } from './layout';
+} from '@/ChartUtils';
+import { useConnections } from '@/connection';
+import { useDashboard } from '@/dashboard';
+import DashboardFilters from '@/DashboardFilters';
+import DashboardFiltersModal from '@/DashboardFiltersModal';
+import { EditablePageName } from '@/EditablePageName';
+import { GranularityPickerControlled } from '@/GranularityPicker';
+import HDXMarkdownChart from '@/HDXMarkdownChart';
+import { withAppNav } from '@/layout';
 import {
   getFirstTimestampValueExpression,
   useSource,
   useSources,
-} from './source';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import { useConfirm } from './useConfirm';
-import { FormatTime } from './useFormatTime';
-import { getMetricTableName } from './utils';
-import { useZIndex, ZIndexContext } from './zIndex';
+} from '@/source';
+import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useConfirm } from '@/useConfirm';
+import { FormatTime } from '@/useFormatTime';
+import { getMetricTableName } from '@/utils';
+import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
