@@ -23,8 +23,14 @@ declare global {
   }
 }
 
-const HOOK_INIT_SCRIPT = (mode: 'modern' | 'no-modern' | 'fail-both') => {
-  return () => {
+// Note: addInitScript serialises the function via .toString(), which strips
+// closure variables. Pass `mode` as the Playwright arg parameter so it is
+// properly serialised and available inside the page.
+async function installCopyHook(
+  page: Page,
+  mode: 'modern' | 'no-modern' | 'fail-both' = 'modern',
+) {
+  await page.addInitScript((m: string) => {
     window.__copyHistory = [];
     window.__forceModernThrow = false;
     window.__forceExecCommandFalse = false;
@@ -44,7 +50,7 @@ const HOOK_INIT_SCRIPT = (mode: 'modern' | 'no-modern' | 'fail-both') => {
     };
 
     // Modern API installation depends on mode
-    if (mode === 'modern') {
+    if (m === 'modern') {
       Object.defineProperty(navigator, 'clipboard', {
         value: {
           writeText: async (text: string) => {
@@ -66,18 +72,11 @@ const HOOK_INIT_SCRIPT = (mode: 'modern' | 'no-modern' | 'fail-both') => {
         value: undefined,
         configurable: true,
       });
-      if (mode === 'fail-both') {
+      if (m === 'fail-both') {
         window.__forceExecCommandFalse = true;
       }
     }
-  };
-};
-
-async function installCopyHook(
-  page: Page,
-  mode: 'modern' | 'no-modern' | 'fail-both' = 'modern',
-) {
-  await page.addInitScript(HOOK_INIT_SCRIPT(mode));
+  }, mode);
 }
 
 async function getCopyHistory(page: Page): Promise<CopyEntry[]> {
