@@ -30,7 +30,6 @@ import {
   Flex,
   Group,
   Menu,
-  Modal,
   Paper,
   Text,
   Tooltip,
@@ -62,7 +61,6 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
-import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { TimePicker } from '@/components/TimePicker';
 import {
@@ -99,9 +97,9 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useConfirm } from '@/useConfirm';
 import { FormatTime } from '@/useFormatTime';
 import { getMetricTableName } from '@/utils';
-import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import { DashboardTile, type MoveTarget } from './DashboardTile';
+import { EditTileModal } from './EditTileModal';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -124,86 +122,6 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
 );
-
-const EditTileModal = ({
-  dashboardId,
-  chart,
-  onClose,
-  onSave,
-  isSaving,
-  dateRange,
-}: {
-  dashboardId?: string;
-  chart: Tile | undefined;
-  onClose: () => void;
-  dateRange: [Date, Date];
-  isSaving?: boolean;
-  onSave: (chart: Tile) => void;
-}) => {
-  const contextZIndex = useZIndex();
-  const modalZIndex = contextZIndex + 10;
-  const confirm = useConfirm();
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
-  useEffect(() => {
-    if (chart != null) {
-      setHasUnsavedChanges(false);
-    }
-  }, [chart]);
-
-  const handleClose = useCallback(() => {
-    if (isSaving) return;
-    if (hasUnsavedChanges) {
-      confirm(
-        'You have unsaved changes. Discard them and close the editor?',
-        'Discard',
-      ).then(ok => {
-        if (ok) {
-          // Reset dirty state before closing so any re-invocation of
-          // handleClose (e.g. from Mantine focus management after the
-          // confirm modal closes) doesn't re-show the confirm dialog.
-          setHasUnsavedChanges(false);
-          onClose();
-        }
-      });
-    } else {
-      onClose();
-    }
-  }, [confirm, isSaving, hasUnsavedChanges, onClose]);
-
-  return (
-    <Modal
-      opened={chart != null}
-      onClose={handleClose}
-      withCloseButton={false}
-      centered
-      size="90%"
-      padding="xs"
-      zIndex={modalZIndex}
-    >
-      {chart != null && (
-        <ZIndexContext.Provider value={modalZIndex + 10}>
-          <EditTimeChartForm
-            dashboardId={dashboardId}
-            chartConfig={chart.config}
-            dateRange={dateRange}
-            isSaving={isSaving}
-            onSave={config => {
-              onSave({
-                ...chart,
-                config: config,
-              });
-            }}
-            onClose={handleClose}
-            onDirtyChange={setHasUnsavedChanges}
-            isDashboardForm
-            autoRun
-          />
-        </ZIndexContext.Provider>
-      )}
-    </Modal>
-  );
-};
 
 const updateLayout = (newLayout: RGL.Layout[]) => {
   return (dashboard: Dashboard) => {
