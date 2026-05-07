@@ -253,18 +253,35 @@ router.put(
         });
       }
 
-      // Update webhook
+      // Build update: use $unset for cleared map fields so Mongoose removes them
+      const $set: Record<string, unknown> = {
+        name,
+        service,
+        url: resolvedUrl,
+        description,
+        body,
+      };
+      const $unset: Record<string, 1> = {};
+
+      if (resolvedHeaders !== undefined) {
+        $set.headers = resolvedHeaders;
+      } else {
+        $unset.headers = 1;
+      }
+      if (resolvedQueryParams !== undefined) {
+        $set.queryParams = resolvedQueryParams;
+      } else {
+        $unset.queryParams = 1;
+      }
+
+      const updateOp: Record<string, unknown> = { $set };
+      if (Object.keys($unset).length > 0) {
+        updateOp.$unset = $unset;
+      }
+
       const updatedWebhook = await Webhook.findOneAndUpdate(
         { _id: id, team: teamId },
-        {
-          name,
-          service,
-          url: resolvedUrl,
-          description,
-          queryParams: resolvedQueryParams,
-          headers: resolvedHeaders,
-          body,
-        },
+        updateOp,
         { new: true, select: { __v: 0, team: 0 } },
       );
 
