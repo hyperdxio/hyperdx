@@ -12,7 +12,7 @@
 import React from 'react';
 import { renderHook } from '@testing-library/react';
 
-import { DEFAULT_THEME, themes } from '../index';
+import { DEFAULT_THEME, THEME_NAMES, themes } from '../index';
 import {
   AppThemeProvider,
   useAppTheme,
@@ -77,7 +77,7 @@ describe('ThemeProvider', () => {
       const { result } = renderHook(() => useAppTheme(), { wrapper });
 
       expect(result.current.availableThemes).toEqual(
-        expect.arrayContaining(['hyperdx', 'clickstack']),
+        expect.arrayContaining([...THEME_NAMES]),
       );
     });
 

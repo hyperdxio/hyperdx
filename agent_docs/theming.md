@@ -190,38 +190,33 @@ export const myTheme: ThemeConfig = {
 };
 ```
 
-### 5. Register the theme in four places
+### 5. Register the theme in three places
 
-**`types.ts`** — extend the union:
+`THEME_NAMES` in `types.ts` is the single source of truth — the `ThemeName` union, the Zod `z.enum(...)` in `theme/index.ts`, and the SSR allowlist in `pages/_document.tsx` all derive from it.
+
+**`types.ts`** — add the name to the `THEME_NAMES` tuple:
 ```ts
-export type ThemeName = 'hyperdx' | 'clickstack' | 'nord' | … | 'mytheme';
+export const THEME_NAMES = [
+  'hyperdx',
+  'clickstack',
+  …,
+  'mytheme',
+] as const;
 ```
 
-**`theme/index.ts`** — import, validate, and register:
+**`theme/index.ts`** — import and add to the registry:
 ```ts
 import { myTheme } from './themes/mytheme';
 
-// add to validateThemeConfig calls:
-validateThemeConfig(myTheme, 'mytheme');
-
-// add to registry:
 export const themes: Record<ThemeName, ThemeConfig> = {
   …
   mytheme: myTheme,
 };
-
-// update Zod enum:
-name: z.enum(['hyperdx', 'clickstack', …, 'mytheme']),
 ```
 
 **`themes/_base-tokens.scss`** — add the `@use` so the scoped CSS is bundled:
 ```scss
-@use './mytheme/tokens' as mytheme-tokens;
-```
-
-**`pages/_document.tsx`** — add to `VALID_THEME_NAMES`:
-```ts
-const VALID_THEME_NAMES = ['hyperdx', 'clickstack', …, 'mytheme'] as const;
+@use './mytheme/tokens';
 ```
 
 ---

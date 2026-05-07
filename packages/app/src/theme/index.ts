@@ -279,3 +279,4 @@ export function getTheme(name: ThemeName = DEFAULT_THEME): ThemeConfig {
 
 // Re-export types
 export type { ThemeConfig, ThemeName } from './types';
+export { THEME_NAMES } from './types';

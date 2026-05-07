@@ -16,6 +16,7 @@ import {
   safeLocalStorageGet,
   safeLocalStorageRemove,
   safeLocalStorageSet,
+  THEME_NAMES,
   THEME_STORAGE_KEY,
   themes,
 } from '../index';
@@ -42,6 +43,37 @@ describe('theme/index', () => {
       expect(themes.clickstack).toBeDefined();
       expect(themes.clickstack.name).toBe('clickstack');
       expect(themes.clickstack.displayName).toBe('ClickStack');
+    });
+
+    it('should contain nord theme', () => {
+      expect(themes.nord).toBeDefined();
+      expect(themes.nord.name).toBe('nord');
+      expect(themes.nord.displayName).toBe('Nord');
+      expect(themes.nord.cssClass).toBe('theme-nord');
+    });
+
+    it('should contain catppuccin theme', () => {
+      expect(themes.catppuccin).toBeDefined();
+      expect(themes.catppuccin.name).toBe('catppuccin');
+      expect(themes.catppuccin.displayName).toBe('Catppuccin');
+      expect(themes.catppuccin.cssClass).toBe('theme-catppuccin');
+    });
+
+    it('should contain onedark theme', () => {
+      expect(themes.onedark).toBeDefined();
+      expect(themes.onedark.name).toBe('onedark');
+      expect(themes.onedark.displayName).toBe('One Dark');
+      expect(themes.onedark.cssClass).toBe('theme-onedark');
+    });
+
+    it('THEME_NAMES should match themes registry keys', () => {
+      expect([...THEME_NAMES].sort()).toEqual(Object.keys(themes).sort());
+    });
+
+    it('each theme cssClass should be `theme-${name}`', () => {
+      THEME_NAMES.forEach(name => {
+        expect(themes[name].cssClass).toBe(`theme-${name}`);
+      });
     });
 
     it('should have required properties for each theme', () => {
@@ -75,7 +107,7 @@ describe('theme/index', () => {
 
   describe('DEFAULT_THEME', () => {
     it('should be a valid theme name', () => {
-      expect(['hyperdx', 'clickstack']).toContain(DEFAULT_THEME);
+      expect(THEME_NAMES).toContain(DEFAULT_THEME);
     });
 
     it('should exist in themes registry', () => {

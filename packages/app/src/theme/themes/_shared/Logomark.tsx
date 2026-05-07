@@ -1,9 +1,12 @@
+import React from 'react';
+
 /**
  * Generic HyperDX logomark for IDE-inspired themes.
  * Uses the same hexagon + lightning bolt shape as the HyperDX brand mark,
  * but fills with --color-text so it renders white in dark mode and black in light mode.
  */
 export default function Logomark({ size = 16 }: { size?: number }) {
+  const clipId = `clip-shared-${React.useId()}`;
   return (
     <svg
       width={size}
@@ -12,7 +15,7 @@ export default function Logomark({ size = 16 }: { size?: number }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <g clipPath="url(#clip0_shared)">
+      <g clipPath={`url(#${clipId})`}>
         <path
           d="M256 0L477.703 128V384L256 512L34.2975 384V128L256 0Z"
           fill="var(--color-text)"
@@ -23,7 +26,7 @@ export default function Logomark({ size = 16 }: { size?: number }) {
         />
       </g>
       <defs>
-        <clipPath id="clip0_shared">
+        <clipPath id={clipId}>
           <rect width="512" height="512" fill="white" />
         </clipPath>
       </defs>
