@@ -1,0 +1,252 @@
+name: Deep Code Review
+
+# Multi-agent PR review using EveryInc/compound-engineering-plugin's
+# /ce-code-review skill. Runs alongside the default Claude review (which lives
+# in claude-code-review.yml).
+#
+# Reviewer selection is orchestrator-driven by the plugin in v3.x. 4 always-on
+# personas (correctness, testing, maintainability, project-standards) run on
+# every PR; cross-cutting and stack-specific reviewers (security, performance,
+# api-contract, reliability, frontend-races, architecture, adversarial, etc.)
+# are LLM-selected from the diff. Roster is not pinnable -- the v2.x
+# `compound-engineering.local.md` / `review_agents:` mechanism was removed.
+# Expect ~6-13 reviewers per PR depending on diff scope.
+#
+# Triggers automatically on every non-draft PR. The multi-agent fan-out is
+# significantly more expensive than the default single-pass review, so expect
+# higher Anthropic API spend and longer wall-clock latency than
+# claude-code-review.yml.
+#
+# Author can request automated fixes for the findings by commenting
+# `/just-fix-it` on the PR -- see deep-resolve.yml.
+#
+# To compare quality vs. the default review, look for the two distinct sticky
+# comments (markers: <!-- claude-code-review --> and <!-- deep-review -->).
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
+
+concurrency:
+  group: deep-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  deep-review:
+    if:
+      github.event_name == 'workflow_dispatch' || github.event.action ==
+      'ready_for_review' || !github.event.pull_request.draft
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber =
+              context.eventName === 'workflow_dispatch'
+                ? Number('${{ inputs.pr_number }}')
+                : context.payload.pull_request.number;
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('base_repo', pr.base.repo.full_name);
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('base_sha', pr.base.sha);
+
+      # Check out the PR head so reviewer sub-agents can read the actual code.
+      # Works for both same-repo and forked PRs.
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      # Make the PR base SHA reachable in the local git object graph so the
+      # skill's `base:<sha>` argument works for `git diff`. For fork PRs the
+      # base lives in a different repo than `origin`.
+      - name: Fetch PR base SHA
+        run: |
+          set -e
+          BASE_REPO_URL="https://github.com/${{ steps.pr.outputs.base_repo }}.git"
+          BASE_SHA="${{ steps.pr.outputs.base_sha }}"
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=50 "$BASE_REPO_URL" "$BASE_SHA" || \
+              git fetch --no-tags --depth=50 "$BASE_REPO_URL" "${{ steps.pr.outputs.base_ref }}"
+          fi
+
+      # Pre-clone the plugin marketplace at a pinned tag and pass it to the
+      # action as a local path. The action's `plugin_marketplaces` input
+      # validator rejects the `#<ref>` suffix that the underlying
+      # `/plugin marketplace add` CLI accepts, so we cannot pin via URL.
+      # See base-action/src/install-plugins.ts:MARKETPLACE_URL_REGEX.
+      # Bump `ref` deliberately; do not track main.
+      - name: Checkout compound-engineering plugin
+        uses: actions/checkout@v6
+        with:
+          repository: EveryInc/compound-engineering-plugin
+          ref: compound-engineering-v3.6.1
+          path: ce-plugin
+
+      - name: Run deep review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }} # bypasses OIDC auth (required for pull_request_target)
+          allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
+          allowed_non_write_users: '*' # allow fork-PR contributors to trigger reviews
+
+          plugin_marketplaces: |
+            ./ce-plugin
+          plugins: |
+            compound-engineering@compound-engineering-plugin
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            BASE SHA: ${{ steps.pr.outputs.base_sha }}
+
+            Run the compound-engineering multi-agent code review against this
+            PR's diff. The PR head is already checked out and the base SHA is
+            reachable locally.
+
+            Step 1. Invoke the plugin skill (note the namespace prefix --
+            `/compound-engineering:ce-code-review`, NOT `/review`):
+
+              /compound-engineering:ce-code-review mode:report-only base:${{ steps.pr.outputs.base_sha }}
+
+            - `mode:report-only` is required: it disables file edits, commits,
+              and on-disk artifacts, and is the only mode that is parallel-safe
+              with the default Claude review running on the same PR.
+            - `base:<sha>` short-circuits the skill's own scope detection so it
+              does not try to `gh pr checkout` (which `report-only` would block).
+
+            The skill will fan out to ~6-13 reviewer sub-agents -- 4
+            always-on (correctness, testing, maintainability, project-
+            standards) plus cross-cutting and stack-specific reviewers
+            selected by the orchestrator based on the diff -- and return a
+            merged, deduplicated findings report.
+
+            Step 2. Format the merged findings as scannable markdown using
+            the structure below. Group by severity. Do NOT prefix each
+            finding line with `P{n}` -- severity is conveyed by the section
+            heading.
+
+            Per-finding two-line structure:
+                - **`path/to/file.ext:line`** -- one tight sentence on the issue.
+                  - **Fix:** one imperative sentence.
+                  - <sub>*reviewer-a, reviewer-b*</sub>
+            Omit the <sub> line when only a single reviewer flagged the issue.
+
+            Section headings (omit any section with zero findings):
+                ### 🔴 P0/P1 -- must fix
+                ### 🟡 P2 -- recommended
+
+            Wrap all P3 findings inside a collapsed details block so they
+            do not dominate the comment:
+                <details>
+                <summary>🔵 P3 nitpicks (N)</summary>
+
+                - **`path:line`** -- issue.
+                  - **Fix:** remediation.
+
+                </details>
+
+            If there are no P0/P1 findings, lead with
+            `✅ No critical issues found.` then any P2 advice underneath.
+
+            After all findings, append a horizontal rule and footer:
+                ---
+                **Reviewers (N):** comma-separated list of reviewers that ran.
+
+                **Testing gaps:** (include only if substantive) one-line bullets.
+
+            Style rules:
+            - Wrap every file path in an inline code span.
+            - Keep the issue line and fix line each to a single sentence;
+              no inline parentheticals such as "(corroborated by ...)" --
+              reviewer credit belongs only in the <sub> line.
+            - Use code spans for identifiers, type names, and config keys.
+
+            CRITICAL OUTPUT REQUIREMENTS:
+            1. Return a JSON object with a single "review" field whose VALUE
+               is a plain markdown STRING. Do NOT put another JSON object
+               inside the "review" string -- the workflow has observed the
+               skill's tier-2 output looking JSON-shaped and the model
+               wrapping it a second time, which posts raw JSON in the
+               comment. The `review` value must be markdown text only.
+            2. The review markdown MUST start with EXACTLY these two lines:
+               <!-- deep-review -->
+               ## Deep Review
+            3. Do NOT post the review yourself with `gh` or any comment tool --
+               the workflow posts the structured output as a sticky comment.
+
+          claude_args: |
+            --setting-sources user
+            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
+            --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
+
+      - name: Find existing deep review comment
+        uses: peter-evans/find-comment@v4
+        id: find-comment
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- deep-review -->'
+          direction: last
+
+      # fromJSON() in `with:` has been observed to leave structured_output JSON
+      # unparsed for the sibling claude-code-review workflow. Extract via jq.
+      #
+      # Defensive double-unwrap: the model has been observed to return
+      # `{"review": "{\"review\": \"<markdown>\"}"}` -- wrapping its own JSON
+      # output a second time when the underlying skill returns a JSON-shaped
+      # response. Detect that case (the inner string parses as an object with
+      # a `review` key) and unwrap once more so we post markdown, not JSON.
+      - name: Extract review from structured output
+        id: extract
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
+        run: |
+          REVIEW="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review')"
+          if printf '%s' "$REVIEW" | jq -e 'type == "object" and has("review")' >/dev/null 2>&1; then
+            REVIEW="$(printf '%s' "$REVIEW" | jq -r '.review')"
+          fi
+          {
+            echo 'review<<DEEP_REVIEW_EOF'
+            printf '%s' "$REVIEW"
+            echo
+            echo 'DEEP_REVIEW_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post or update deep review
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          body: ${{ steps.extract.outputs.review }}
+          edit-mode: replace

@@ -146,6 +146,13 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
       ),
     orderBy: z.string().optional().describe('Sort results by this column'),
     asRatio: z.boolean().optional(),
+    groupByColumnsOnLeft: z
+      .boolean()
+      .optional()
+      .describe(
+        'Render Group By columns on the left side of the table, before the series columns. ' +
+          'Default false (Group By columns on the right).',
+      ),
   }),
 });
 
