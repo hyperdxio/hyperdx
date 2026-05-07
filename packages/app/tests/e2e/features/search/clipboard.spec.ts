@@ -7,6 +7,13 @@
  * and `document.execCommand('copy')` to a shared `window.__copyHistory` array
  * so we can assert which path each call site actually took without depending
  * on Chromium clipboard permissions or polluted state from previous tests.
+ *
+ * One test (`row JSON button writes through to the real OS clipboard via the
+ * fallback`) does NOT install the hook so it exercises the real
+ * `document.execCommand('copy')` path end-to-end and reads the result via
+ * `navigator.clipboard.readText()`. That keeps us honest: the hook only
+ * confirms code-path routing, not that the OS clipboard actually receives
+ * the text.
  */
 import { Page } from '@playwright/test';
 
@@ -49,8 +56,11 @@ async function installCopyHook(
       return realExec(cmd, ...(rest as []));
     };
 
-    // Modern API installation depends on mode
     if (m === 'modern') {
+      Object.defineProperty(window, 'isSecureContext', {
+        value: true,
+        configurable: true,
+      });
       Object.defineProperty(navigator, 'clipboard', {
         value: {
           writeText: async (text: string) => {
@@ -67,7 +77,13 @@ async function installCopyHook(
         configurable: true,
       });
     } else {
-      // Simulate non-secure context: navigator.clipboard is undefined
+      // Simulate non-secure context end-to-end: both `isSecureContext` and
+      // the clipboard API are absent so `copyTextToClipboard` routes
+      // straight to the synchronous execCommand fallback.
+      Object.defineProperty(window, 'isSecureContext', {
+        value: false,
+        configurable: true,
+      });
       Object.defineProperty(navigator, 'clipboard', {
         value: undefined,
         configurable: true,
@@ -83,6 +99,9 @@ async function getCopyHistory(page: Page): Promise<CopyEntry[]> {
   return await page.evaluate(() => window.__copyHistory ?? []);
 }
 
+const FAILURE_TOAST =
+  "Couldn't copy to clipboard. If you're on plain HTTP, switch to HTTPS or localhost.";
+
 async function openSearchAndFirstRow(searchPage: SearchPage) {
   await searchPage.goto();
   await searchPage.submitEmptySearch();
@@ -95,6 +114,11 @@ async function openParsedTab(searchPage: SearchPage) {
   await searchPage.sidePanel.clickTab('parsed');
 }
 
+async function hoverFirstRowAndClickCopyJson(searchPage: SearchPage) {
+  await searchPage.table.firstRow.hover();
+  await searchPage.table.firstRow.getByTestId('row-copy-json-button').click();
+}
+
 test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
   test('row JSON button copies via the modern API and shows a success toast', async ({
     page,
@@ -103,19 +127,13 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openSearchAndFirstRow(searchPage);
 
-    // The rowButtons container is opacity-0 until the row is hovered.
-    await searchPage.table.firstRow.hover();
-    const copyJsonButton = searchPage.table.firstRow
-      .locator('[class*="rowButtons"] .tabler-icon-copy')
-      .first();
-    await copyJsonButton.click();
+    await hoverFirstRowAndClickCopyJson(searchPage);
 
     await expect(page.getByText('Copied row as JSON')).toBeVisible();
 
     const history = await getCopyHistory(page);
     expect(history).toHaveLength(1);
     expect(history[0].source).toBe('modern');
-    // Should be a JSON object string (parses cleanly).
     expect(() => JSON.parse(history[0].text)).not.toThrow();
   });
 
@@ -127,10 +145,7 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     await openSearchAndFirstRow(searchPage);
 
     await searchPage.table.firstRow.hover();
-    const copyLinkButton = searchPage.table.firstRow
-      .locator('[class*="rowButtons"] .tabler-icon-link')
-      .first();
-    await copyLinkButton.click();
+    await searchPage.table.firstRow.getByTestId('row-copy-link-button').click();
 
     await expect(page.getByText('Copied shareable link')).toBeVisible();
 
@@ -140,6 +155,45 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     expect(history[0].text).toContain('rowWhere=');
   });
 
+  test('row URL button falls back to execCommand when the modern API is unavailable', async ({
+    page,
+  }) => {
+    await installCopyHook(page, 'no-modern');
+    const searchPage = new SearchPage(page);
+    await openSearchAndFirstRow(searchPage);
+
+    await searchPage.table.firstRow.hover();
+    await searchPage.table.firstRow.getByTestId('row-copy-link-button').click();
+
+    await expect(page.getByText('Copied shareable link')).toBeVisible();
+
+    const history = await getCopyHistory(page);
+    expect(history).toHaveLength(1);
+    expect(history[0].source).toBe('fallback');
+    expect(history[0].text).toContain('rowWhere=');
+  });
+
+  test('field-value popover copy button uses the modern API and shows a success toast', async ({
+    page,
+  }) => {
+    await installCopyHook(page, 'modern');
+    const searchPage = new SearchPage(page);
+    await openSearchAndFirstRow(searchPage);
+
+    // Hover a cell to open the field popover; click the copy button by testid.
+    const firstCell = searchPage.table.firstRow.locator('td').nth(1);
+    await firstCell.hover();
+    const copyFieldButton = page.getByTestId('field-copy-value-button');
+    await expect(copyFieldButton).toBeVisible();
+    await copyFieldButton.click();
+
+    await expect(page.getByText('Copied field value')).toBeVisible();
+
+    const history = await getCopyHistory(page);
+    expect(history).toHaveLength(1);
+    expect(history[0].source).toBe('modern');
+  });
+
   test('parsed-tab "Copy row as JSON" icon copies via the modern API', async ({
     page,
   }) => {
@@ -147,21 +201,7 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openParsedTab(searchPage);
 
-    // HyperJsonMenu renders the row-level copy button with a `Copy row as JSON`
-    // tooltip and the Tabler IconCopy SVG.
-    const sidePanelCopy = page
-      .getByTitle('Copy row as JSON')
-      .or(page.locator('[title="Copy row as JSON"]'))
-      .first();
-    // Fallback locator: the IconCopy inside the side panel's HyperJsonMenu group.
-    const sideCopyByIcon = searchPage.sidePanel.container
-      .locator('.tabler-icon-copy')
-      .first();
-    if (await sidePanelCopy.isVisible().catch(() => false)) {
-      await sidePanelCopy.click();
-    } else {
-      await sideCopyByIcon.click();
-    }
+    await page.getByTestId('json-viewer-copy-row').click();
 
     await expect(
       page.getByText('Value copied to clipboard').first(),
@@ -169,7 +209,10 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
 
     const history = await getCopyHistory(page);
     expect(history.length).toBeGreaterThanOrEqual(1);
-    expect(history[history.length - 1].source).toBe('modern');
+    const last = history[history.length - 1];
+    expect(last.source).toBe('modern');
+    // Should be a JSON object string (parses cleanly).
+    expect(() => JSON.parse(last.text)).not.toThrow();
   });
 
   test('parsed-tab line action "Copy Value" copies via the modern API', async ({
@@ -179,16 +222,14 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openParsedTab(searchPage);
 
-    // Hover a string leaf so the line menu mounts (HyperJson only mounts
-    // LineMenu when hovered).
-    const stringEl = page.locator('[class*="string"]').first();
+    const stringEl = page.getByTestId('hyperjson-value-string').first();
     await expect(stringEl).toBeVisible();
     await stringEl.hover();
 
-    const copyValueButton = page
+    await page
       .getByRole('button', { name: /Copy Value/ })
-      .first();
-    await copyValueButton.click();
+      .first()
+      .click();
 
     await expect(
       page.getByText('Value copied to clipboard').first(),
@@ -199,6 +240,36 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     expect(history[history.length - 1].source).toBe('modern');
   });
 
+  test('parsed-tab line action "Copy Object" copies a nested object as JSON', async ({
+    page,
+  }) => {
+    await installCopyHook(page, 'modern');
+    const searchPage = new SearchPage(page);
+    await openParsedTab(searchPage);
+
+    const objectEl = page.getByTestId('hyperjson-value-object').first();
+    await expect(objectEl).toBeVisible();
+    await objectEl.hover();
+
+    await page
+      .getByRole('button', { name: /Copy Object/ })
+      .first()
+      .click();
+
+    await expect(
+      page.getByText('Copied object to clipboard').first(),
+    ).toBeVisible();
+
+    const history = await getCopyHistory(page);
+    expect(history.length).toBeGreaterThanOrEqual(1);
+    const last = history[history.length - 1];
+    expect(last.source).toBe('modern');
+    // Copy Object always serialises a JSON object; assert it parses.
+    const parsed = JSON.parse(last.text);
+    expect(typeof parsed).toBe('object');
+    expect(parsed).not.toBeNull();
+  });
+
   test('row JSON button falls back to execCommand when the modern API is unavailable', async ({
     page,
   }) => {
@@ -206,11 +277,7 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openSearchAndFirstRow(searchPage);
 
-    await searchPage.table.firstRow.hover();
-    const copyJsonButton = searchPage.table.firstRow
-      .locator('[class*="rowButtons"] .tabler-icon-copy')
-      .first();
-    await copyJsonButton.click();
+    await hoverFirstRowAndClickCopyJson(searchPage);
 
     await expect(page.getByText('Copied row as JSON')).toBeVisible();
 
@@ -220,7 +287,48 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     expect(() => JSON.parse(history[0].text)).not.toThrow();
   });
 
-  test('row JSON button shows the failure toast when both paths fail', async ({
+  test('row JSON button writes through to the real OS clipboard via the fallback', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Clipboard read permission flow tested only on chromium',
+    );
+
+    // Force the fallback path WITHOUT installing the hook. The browser's
+    // real document.execCommand('copy') should land the text on the OS
+    // clipboard, which we then read via navigator.clipboard.readText.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'isSecureContext', {
+        value: false,
+        configurable: true,
+      });
+    });
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    const searchPage = new SearchPage(page);
+    await openSearchAndFirstRow(searchPage);
+
+    await hoverFirstRowAndClickCopyJson(searchPage);
+
+    await expect(page.getByText('Copied row as JSON')).toBeVisible();
+
+    // Re-grant clipboard permissions and read what landed on the OS clipboard.
+    const onClipboard = await page.evaluate(async () => {
+      try {
+        return await navigator.clipboard.readText();
+      } catch {
+        return '';
+      }
+    });
+    expect(onClipboard.length).toBeGreaterThan(0);
+    expect(() => JSON.parse(onClipboard)).not.toThrow();
+  });
+
+  test('row JSON button shows the failure toast when both paths fail and keeps isCopied false', async ({
     page,
   }) => {
     const consoleErrors: string[] = [];
@@ -230,20 +338,58 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openSearchAndFirstRow(searchPage);
 
-    await searchPage.table.firstRow.hover();
-    const copyJsonButton = searchPage.table.firstRow
-      .locator('[class*="rowButtons"] .tabler-icon-copy')
-      .first();
-    await copyJsonButton.click();
+    await hoverFirstRowAndClickCopyJson(searchPage);
 
+    await expect(page.getByText(FAILURE_TOAST)).toBeVisible();
+
+    // Regression test for the `if (ok) setIsCopied(true)` guard: the icon's
+    // tooltip must NOT switch to "Copied entire row as JSON!" on a failed
+    // copy. The Mantine Tooltip exposes the title via the wrapped div.
+    const copyJsonButton = searchPage.table.firstRow.getByTestId(
+      'row-copy-json-button',
+    );
+    await expect(copyJsonButton).toBeVisible();
+    // The inner Tooltip target wraps the data-testid'd div. Inspect the
+    // sibling Tooltip-rendered label after hovering to surface the current
+    // tooltip text.
+    await copyJsonButton.hover();
     await expect(
-      page.getByText(
-        "Couldn't copy. HyperDX needs HTTPS or localhost to use the browser clipboard API.",
-      ),
+      page.getByText('Copy entire row as JSON', { exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByText('Copied entire row as JSON!', { exact: true }),
+    ).toBeHidden();
 
     const history = await getCopyHistory(page);
     expect(history).toHaveLength(0);
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('field-value popover shows the failure toast when both paths fail', async ({
+    page,
+  }) => {
+    await installCopyHook(page, 'fail-both');
+    const searchPage = new SearchPage(page);
+    await openSearchAndFirstRow(searchPage);
+
+    const firstCell = searchPage.table.firstRow.locator('td').nth(1);
+    await firstCell.hover();
+    const copyFieldButton = page.getByTestId('field-copy-value-button');
+    await expect(copyFieldButton).toBeVisible();
+    await copyFieldButton.click();
+
+    await expect(page.getByText(FAILURE_TOAST)).toBeVisible();
+  });
+
+  test('parsed-tab "Copy row as JSON" shows the failure toast when both paths fail', async ({
+    page,
+  }) => {
+    await installCopyHook(page, 'fail-both');
+    const searchPage = new SearchPage(page);
+    await openParsedTab(searchPage);
+
+    await page.getByTestId('json-viewer-copy-row').click();
+
+    await expect(page.getByText(FAILURE_TOAST)).toBeVisible();
   });
 });
