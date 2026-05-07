@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -949,11 +949,13 @@ async function getSourceConnectionMismatches(
  *         id:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: Unique identifier for the tab within its container.
  *           example: "errors"
  *         title:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: Display title for the tab.
  *           example: "Errors"
  *
@@ -968,11 +970,13 @@ async function getSourceConnectionMismatches(
  *         id:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: Unique identifier for the container within the dashboard.
  *           example: "service-health"
  *         title:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: Display title for the container.
  *           example: "Service Health"
  *         collapsed:
@@ -990,6 +994,7 @@ async function getSourceConnectionMismatches(
  *         tabs:
  *           type: array
  *           description: Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.
+ *           maxItems: 20
  *           items:
  *             $ref: '#/components/schemas/DashboardContainerTab'
  *
@@ -1035,11 +1040,13 @@ async function getSourceConnectionMismatches(
  *         containerId:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.
  *           example: "service-health"
  *         tabId:
  *           type: string
  *           minLength: 1
+ *           maxLength: 256
  *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
  *           example: "errors"
  *
@@ -1191,6 +1198,7 @@ async function getSourceConnectionMismatches(
  *         containers:
  *           type: array
  *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
  *           items:
  *             $ref: '#/components/schemas/DashboardContainer'
  *
@@ -1208,6 +1216,7 @@ async function getSourceConnectionMismatches(
  *         tiles:
  *           type: array
  *           description: List of tiles/charts to include in the dashboard.
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *         tags:
@@ -1242,6 +1251,7 @@ async function getSourceConnectionMismatches(
  *         containers:
  *           type: array
  *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
  *           items:
  *             $ref: '#/components/schemas/DashboardContainer'
  *
@@ -1258,6 +1268,7 @@ async function getSourceConnectionMismatches(
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
@@ -1293,6 +1304,7 @@ async function getSourceConnectionMismatches(
  *         containers:
  *           type: array
  *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
  *           items:
  *             $ref: '#/components/schemas/DashboardContainer'
  *
@@ -1945,7 +1957,10 @@ router.put(
         existingTileIds,
       );
 
-      const setPayload: Record<string, unknown> = {
+      // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+      // that misnamed or wrong-shape fields fail at compile time. The
+      // legacy `Record<string, unknown>` accepted anything.
+      const setPayload: Partial<IDashboard> = {
         name,
         tiles: internalTiles,
         tags: tags && uniq(tags),

@@ -1820,12 +1820,14 @@
           "id": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "Unique identifier for the tab within its container.",
             "example": "errors"
           },
           "title": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "Display title for the tab.",
             "example": "Errors"
           }
@@ -1843,12 +1845,14 @@
           "id": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "Unique identifier for the container within the dashboard.",
             "example": "service-health"
           },
           "title": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "Display title for the container.",
             "example": "Service Health"
           },
@@ -1870,6 +1874,7 @@
           "tabs": {
             "type": "array",
             "description": "Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.",
+            "maxItems": 20,
             "items": {
               "$ref": "#/components/schemas/DashboardContainerTab"
             }
@@ -1925,12 +1930,14 @@
           "containerId": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.",
             "example": "service-health"
           },
           "tabId": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 256,
             "description": "References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.",
             "example": "errors"
           }
@@ -2140,6 +2147,7 @@
           "containers": {
             "type": "array",
             "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
             "items": {
               "$ref": "#/components/schemas/DashboardContainer"
             }
@@ -2162,6 +2170,7 @@
           "tiles": {
             "type": "array",
             "description": "List of tiles/charts to include in the dashboard.",
+            "maxItems": 500,
             "items": {
               "$ref": "#/components/schemas/TileInput"
             }
@@ -2208,6 +2217,7 @@
           "containers": {
             "type": "array",
             "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
             "items": {
               "$ref": "#/components/schemas/DashboardContainer"
             }
@@ -2229,6 +2239,7 @@
           },
           "tiles": {
             "type": "array",
+            "maxItems": 500,
             "items": {
               "$ref": "#/components/schemas/TileInput"
             },
@@ -2277,6 +2288,7 @@
           "containers": {
             "type": "array",
             "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
             "items": {
               "$ref": "#/components/schemas/DashboardContainer"
             }

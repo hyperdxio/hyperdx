@@ -9,6 +9,7 @@ import {
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
+  validateDashboardContainersConsistency,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
@@ -301,14 +302,24 @@ function convertTileToExternalChart(
           select: [DEFAULT_SELECT_ITEM],
         };
 
+  // Treat empty-string container/tab refs as absent so legacy Mongo docs
+  // (the underlying `tiles` field is `Mixed`, so older entries may carry
+  // `containerId: ""`) round-trip through the external schema, which now
+  // enforces `min(1)`. Without this, a GET that hit a legacy doc would
+  // return a tile that the next PUT couldn't validate.
+  const { id, x, y, w, h, containerId, tabId } = tile;
   return {
-    ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
+    id,
+    x,
+    y,
+    w,
+    h,
     name: tile.config.name ?? '',
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
-    ...(tile.containerId !== undefined
-      ? { containerId: tile.containerId }
+    ...(typeof containerId === 'string' && containerId.length > 0
+      ? { containerId }
       : {}),
-    ...(tile.tabId !== undefined ? { tabId: tile.tabId } : {}),
+    ...(typeof tabId === 'string' && tabId.length > 0 ? { tabId } : {}),
   };
 }
 
@@ -502,17 +513,23 @@ export function convertToInternalTileConfig(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const strippedConfig = _.omitBy(internalConfig, _.isNil) as SavedChartConfig;
 
+  // Mirror the spread-conditional pattern used in `convertTileToExternalChart`:
+  // destructure statically (compile-time narrowing) and include the optional
+  // refs only when set, so a tile without a containerId never persists
+  // `containerId: undefined` to Mongo. The previous `pick(...)` over the
+  // external tile included `name`, but the internal `Tile` type stores the
+  // name on `config`, not at the top level (`strippedConfig` carries it).
+  // Stripping the top-level `name` brings the runtime shape back in line
+  // with `DashboardDocument['tiles'][number]`.
+  const { id, x, y, w, h, containerId, tabId } = externalTile;
   return {
-    ...pick(externalTile, [
-      'id',
-      'x',
-      'y',
-      'w',
-      'h',
-      'name',
-      'containerId',
-      'tabId',
-    ]),
+    id,
+    x,
+    y,
+    w,
+    h,
+    ...(containerId !== undefined ? { containerId } : {}),
+    ...(tabId !== undefined ? { tabId } : {}),
     config: strippedConfig,
   };
 }
@@ -732,84 +749,15 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
         });
       }
 
-      const containers = data.containers ?? [];
-
-      // Single pass over containers: container-id uniqueness and per-container
-      // tab-id uniqueness. The container-by-id map is built INSIDE this pass
-      // and is only used for the tile-resolution loop below; building a Map
-      // up-front would last-write-win on duplicate ids, masking the duplicate
-      // before this loop reports it.
-      const containerById = new Map<string, DashboardContainer>();
-      const seenContainerIds = new Set<string>();
-      let hasDuplicateContainerId = false;
-      containers.forEach((container, containerIdx) => {
-        if (seenContainerIds.has(container.id)) {
-          hasDuplicateContainerId = true;
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Container IDs must be unique: "${container.id}"`,
-            path: ['containers', containerIdx, 'id'],
-          });
-        } else {
-          seenContainerIds.add(container.id);
-          containerById.set(container.id, container);
-        }
-
-        if (container.tabs) {
-          const seenTabIds = new Set<string>();
-          container.tabs.forEach((tab, tabIdx) => {
-            if (seenTabIds.has(tab.id)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Duplicate tab id "${tab.id}" in container "${container.id}"`,
-                path: ['containers', containerIdx, 'tabs', tabIdx, 'id'],
-              });
-            }
-            seenTabIds.add(tab.id);
-          });
-        }
-      });
-
-      // If container ids weren't unique, tile-level resolution would
-      // produce confusing errors on top of the duplicate-id ones; skip
-      // the tile pass and let the user fix the container layer first.
-      if (hasDuplicateContainerId) return;
-
-      // Each tile's containerId resolves to a real container,
-      // and each tile's tabId resolves to a tab in that container.
-      data.tiles.forEach((tile, tileIdx) => {
-        if (tile.containerId !== undefined) {
-          const container = containerById.get(tile.containerId);
-          if (!container) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Tile references unknown containerId "${tile.containerId}"`,
-              path: ['tiles', tileIdx, 'containerId'],
-            });
-          }
-        }
-
-        if (tile.tabId !== undefined) {
-          if (tile.containerId === undefined) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'tabId requires containerId to be set',
-              path: ['tiles', tileIdx, 'tabId'],
-            });
-            return;
-          }
-          const container = containerById.get(tile.containerId);
-          if (!container) return;
-          const tab = container.tabs?.find(t => t.id === tile.tabId);
-          if (!tab) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Tile references unknown tabId "${tile.tabId}" in container "${tile.containerId}"`,
-              path: ['tiles', tileIdx, 'tabId'],
-            });
-          }
-        }
-      });
+      // Container-id uniqueness, per-container tab-id uniqueness, and
+      // tile-level containerId/tabId reference resolution all live in the
+      // shared helper so the canonical `DashboardSchema` and this body
+      // schema agree on what a valid containers + tiles payload is.
+      validateDashboardContainersConsistency(
+        data.containers ?? [],
+        data.tiles,
+        ctx,
+      );
     });
 }
 
