@@ -16,6 +16,7 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  getHeatmapTilesWithIncompatibleSources,
   getMissingConnections,
   getMissingSources,
   isConfigTile,
@@ -660,6 +661,89 @@ async function getSourceConnectionMismatches(
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
  *
+ *     HeatmapSelectItem:
+ *       type: object
+ *       required:
+ *         - aggFn
+ *         - valueExpression
+ *       description: >
+ *         Single select item for a heatmap tile. The aggFn must be the literal
+ *         "heatmap"; the value being bucketed is provided in valueExpression
+ *         and the count contributing to each bucket in countExpression. The
+ *         heatmap-specific fields (countExpression, heatmapScaleType) are
+ *         persisted on the select item, not the chart config.
+ *       properties:
+ *         aggFn:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Aggregation marker. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         valueExpression:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 10000
+ *           description: SQL expression for the value being bucketed on the y-axis. Must be non-empty.
+ *           example: "Duration"
+ *         countExpression:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             SQL expression for the count contributing to each bucket. Defaults
+ *             to "count()" in the editor when omitted.
+ *           example: "count()"
+ *         alias:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Display alias for the select item.
+ *           example: "Request Duration"
+ *         heatmapScaleType:
+ *           type: string
+ *           enum: [log, linear]
+ *           description: Scale type used to bucket values on the y-axis.
+ *           example: "log"
+ *
+ *     HeatmapChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a heatmap tile. Heatmap is builder-only
+ *         (no Raw SQL variant) and currently supports trace sources. The
+ *         row-level filter lives at the chart-config level (where /
+ *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one heatmap select item.
+ *           items:
+ *             $ref: '#/components/schemas/HeatmapSelectItem'
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Row-level filter (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "ServiceName = 'api'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *           default: "lucene"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
  *     SearchChartConfig:
  *       type: object
  *       required:
@@ -901,14 +985,15 @@ async function getSourceConnectionMismatches(
  *         determines which variant group applies. For displayTypes that support
  *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
  *         configType is the secondary discriminant: omit it for the builder
- *         variant or set it to "sql" for the Raw SQL variant. The search and
- *         markdown displayTypes only have a builder variant.
+ *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
+ *         search, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
@@ -919,6 +1004,7 @@ async function getSourceConnectionMismatches(
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
@@ -1597,12 +1683,17 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
+      const [
+        missingSources,
+        missingConnections,
+        sourceConnectionMismatches,
+        heatmapNonTraceSources,
+      ] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+        getSourceConnectionMismatches(teamId, tiles),
+        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1620,6 +1711,13 @@ router.post(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });
@@ -1820,12 +1918,17 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
+      const [
+        missingSources,
+        missingConnections,
+        sourceConnectionMismatches,
+        heatmapNonTraceSources,
+      ] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+        getSourceConnectionMismatches(teamId, tiles),
+        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1843,6 +1946,13 @@ router.put(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });

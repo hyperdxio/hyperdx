@@ -2299,6 +2299,34 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const heatmapChart: ExternalDashboardTile = {
+        name: 'Heatmap Chart',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+              countExpression: 'count()',
+              alias: 'Duration Heatmap',
+              heatmapScaleType: 'log',
+            },
+          ],
+          where: "ServiceName = 'api'",
+          whereLanguage: 'sql',
+          numberFormat: {
+            output: 'time',
+            factor: 0.001,
+            unit: 'ms',
+          },
+        },
+      };
+
       // Act
       const response = await authRequest('post', BASE_URL)
         .send({
@@ -2310,6 +2338,7 @@ describe('External API v2 Dashboards - new format', () => {
             numberChart,
             markdownChart,
             pieChart,
+            heatmapChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -2322,6 +2351,165 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(heatmapChart);
+    });
+
+    // Schema-level rejections that exercise pure Zod constraints
+    // (discriminated-union absence, `min(1)` on valueExpression, and
+    // `length(1)` on the select array). The non-Trace-source case
+    // exercises the new `getHeatmapTilesWithIncompatibleSources` path
+    // and stays its own test below.
+    it.each([
+      {
+        label: 'raw SQL heatmap tile (heatmap is builder-only)',
+        config: {
+          configType: 'sql',
+          displayType: 'heatmap',
+          connectionId: () => connection._id.toString(),
+          sqlTemplate: 'SELECT 1 FROM otel_logs WHERE {timeFilter}',
+          sourceId: () => traceSource._id.toString(),
+        },
+      },
+      {
+        label: 'heatmap tile with empty valueExpression',
+        config: {
+          displayType: 'heatmap',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ aggFn: 'heatmap', valueExpression: '' }],
+        },
+      },
+      {
+        label: 'heatmap tile with multiple select items',
+        config: {
+          displayType: 'heatmap',
+          sourceId: () => traceSource._id.toString(),
+          select: [
+            { aggFn: 'heatmap', valueExpression: 'Duration' },
+            { aggFn: 'heatmap', valueExpression: 'OtherValue' },
+          ],
+        },
+      },
+    ])('rejects $label', async ({ config }) => {
+      // Resolve any lazy id fns now that the test setup has run.
+      const resolved = Object.fromEntries(
+        Object.entries(config).map(([key, value]) => [
+          key,
+          typeof value === 'function' ? value() : value,
+        ]),
+      );
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with rejected heatmap',
+          tiles: [
+            {
+              name: 'Heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: resolved,
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+    });
+
+    it('rejects heatmap tile with a non-Trace source (UI restricts to trace)', async () => {
+      // Exercises the runtime check in
+      // `getHeatmapTilesWithIncompatibleSources` rather than a pure Zod
+      // constraint, kept as its own test so the assertion on the error
+      // message stays pinned to the new code path.
+      const heatmapMetricSource = {
+        name: 'Heatmap Metric Source',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: metricSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Heatmap on Metric Source',
+          tiles: [heatmapMetricSource],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Heatmap tiles require a Trace source',
+      );
+    });
+
+    it('round-trips a heatmap tile with only required fields', async () => {
+      // Covers the minimal payload path: countExpression, alias,
+      // heatmapScaleType, where, whereLanguage, and numberFormat are all
+      // omitted on the request. Guards against a regression where the
+      // deserializer's `!== undefined` checks (v2/utils/dashboards.ts)
+      // drop optional fields silently or coerce defaults that don't
+      // survive the read-back.
+      const heatmapMinimalRequest = {
+        name: 'Minimal Heatmap',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+        },
+      };
+
+      // Persistence applies two normalizations:
+      //   `where: z.string().optional().default('')` (Zod schema), and
+      //   the deserializer at v2/utils/dashboards.ts:514 fills
+      //   `whereLanguage` with 'lucene' when omitted so the Mongo doc
+      //   stays consistent across heatmap and non-heatmap chart types.
+      // Both surface on read-back. The optional select-item fields stay
+      // undefined.
+      const expectedResponse: ExternalDashboardTile = {
+        ...heatmapMinimalRequest,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+            },
+          ],
+          where: '',
+          whereLanguage: 'lucene',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Minimal Heatmap',
+          tiles: [heatmapMinimalRequest],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        expectedResponse,
+      );
     });
 
     it('can round-trip all raw SQL chart config types', async () => {
@@ -3138,6 +3326,35 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const heatmapChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Heatmap Chart',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'heatmap',
+              valueExpression: 'Duration',
+              countExpression: 'count()',
+              alias: 'Duration Heatmap',
+              heatmapScaleType: 'linear',
+            },
+          ],
+          where: 'service:api',
+          whereLanguage: 'lucene',
+          numberFormat: {
+            output: 'time',
+            factor: 0.001,
+            unit: 'ms',
+          },
+        },
+      };
+
       // Create an initial dashboard to update
       const initialDashboard = await createTestDashboard();
 
@@ -3148,7 +3365,14 @@ describe('External API v2 Dashboards - new format', () => {
       )
         .send({
           name: 'Dashboard with All Chart Types',
-          tiles: [lineChart, barChart, tableChart, numberChart, markdownChart],
+          tiles: [
+            lineChart,
+            barChart,
+            tableChart,
+            numberChart,
+            markdownChart,
+            heatmapChart,
+          ],
           tags: ['round-trip-test'],
         })
         .expect(200);
@@ -3168,6 +3392,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
         omit(markdownChart, ['id']),
+      );
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+        omit(heatmapChart, ['id']),
       );
     });
 

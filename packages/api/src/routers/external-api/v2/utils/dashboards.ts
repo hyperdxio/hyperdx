@@ -1,5 +1,8 @@
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isHeatmapCompatibleSource,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
@@ -28,6 +31,7 @@ import {
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
+  ExternalDashboardHeatmapSelectItem,
   ExternalDashboardRawSqlTileConfig,
   externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
@@ -87,6 +91,23 @@ const DEFAULT_SELECT_ITEM: ExternalDashboardSelectItem = {
   aggFn: 'count',
   where: '',
 };
+
+const convertToExternalHeatmapSelectItem = (
+  item: Exclude<BuilderSavedChartConfig['select'][number], string>,
+): ExternalDashboardHeatmapSelectItem => ({
+  aggFn: 'heatmap',
+  valueExpression: item.valueExpression,
+  // Use `!== undefined` (not truthy) to match the deserializer in
+  // convertToInternalTileConfig so empty-string round-trips do not
+  // silently drop fields.
+  ...(item.countExpression !== undefined
+    ? { countExpression: item.countExpression }
+    : {}),
+  ...(item.alias !== undefined ? { alias: item.alias } : {}),
+  ...(item.heatmapScaleType !== undefined
+    ? { heatmapScaleType: item.heatmapScaleType }
+    : {}),
+});
 
 const convertToExternalSelectItem = (
   item: Exclude<BuilderSavedChartConfig['select'][number], string>,
@@ -267,7 +288,35 @@ const convertToExternalTileChartConfig = (
         displayType: config.displayType,
         markdown: stringValueOrDefault(config.markdown, ''),
       };
-    case DisplayType.Heatmap:
+    case DisplayType.Heatmap: {
+      // The internal heatmap schema requires `select[0]` to be a builder
+      // item with a non-empty `valueExpression`. Legacy/corrupted Mongo
+      // docs that lack one would otherwise be emitted with
+      // `valueExpression: ''`, which violates the external schema's
+      // `min(1)` rule on read (the response is never re-validated).
+      // Returning undefined here lets the caller fall through to
+      // `defaultTileConfig` so callers see a coherent payload.
+      const item = Array.isArray(config.select) ? config.select[0] : undefined;
+      if (
+        item === undefined ||
+        typeof item === 'string' ||
+        !item.valueExpression
+      ) {
+        logger.warn(
+          { tileId: sourceId, hasItem: item !== undefined },
+          'Heatmap tile is missing select[0].valueExpression; falling back to default tile config',
+        );
+        return undefined;
+      }
+      return {
+        displayType: DisplayType.Heatmap,
+        sourceId,
+        select: [convertToExternalHeatmapSelectItem(item)],
+        where: stringValueOrDefault(config.where, ''),
+        whereLanguage: config.whereLanguage ?? 'lucene',
+        numberFormat: config.numberFormat,
+      };
+    }
     case undefined:
       logger.error(
         { config },
@@ -453,6 +502,68 @@ export function convertToInternalTileConfig(
           name,
         } satisfies BuilderSavedChartConfig;
         break;
+      case 'heatmap': {
+        // Heatmap is builder-only and uses a single select item with
+        // its own shape: aggFn is the literal 'heatmap' on the external
+        // surface, mapped to the internal 'count' aggFn that the editor
+        // form persists, with the heatmap-specific countExpression /
+        // heatmapScaleType fields preserved on the select item. The
+        // row-level filter lives at the chart-config level (matching
+        // HeatmapSeriesEditor in the UI), not on the select item.
+        const item = externalConfig.select[0];
+        internalConfig = {
+          ...pick(externalConfig, ['numberFormat']),
+          displayType: DisplayType.Heatmap,
+          // Match the editor's `applyHeatmapDefaults` (in
+          // `packages/app/src/components/DBEditTimeChartForm/EditTimeChartForm.tsx`,
+          // search for `aggFn: 'count'`) for the two fields the editor
+          // always writes on the select item: `aggFn: 'count'` and
+          // `aggCondition: ''`.
+          //
+          // Where this path intentionally diverges from the editor:
+          //
+          //   - `aggConditionLanguage` is hardcoded `'lucene'`; the
+          //     editor uses `getStoredLanguage() ?? 'lucene'` (a user
+          //     session preference). For a UI-saved heatmap whose
+          //     author had `'sql'` selected, a GET -> PUT round-trip
+          //     through this converter will downgrade the persisted
+          //     value to `'lucene'`. The chart renderer does not read
+          //     `aggConditionLanguage` for heatmap tiles (heatmap has
+          //     no per-select where), so the change is invisible at
+          //     render time.
+          //
+          //   - The editor unconditionally writes
+          //     `numberFormat: { output: 'duration', factor: 0.001 }`
+          //     and `series.0.countExpression: 'count()'`. Both are
+          //     passed through verbatim from the external payload here
+          //     and left absent otherwise, so an API-built tile
+          //     renders without duration formatting unless the caller
+          //     asks for it.
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: item.valueExpression,
+              ...(item.countExpression !== undefined
+                ? { countExpression: item.countExpression }
+                : {}),
+              ...(item.alias !== undefined ? { alias: item.alias } : {}),
+              ...(item.heatmapScaleType !== undefined
+                ? { heatmapScaleType: item.heatmapScaleType }
+                : {}),
+            },
+          ],
+          source: externalConfig.sourceId,
+          // `where` is `z.string().max(10000).optional().default('')` so
+          // it is always a string post-parse; sibling pie/number/table
+          // arms write the unconditional value too.
+          where: externalConfig.where,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      }
       case 'search':
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),
@@ -533,6 +644,38 @@ export async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/**
+ * Returns source IDs referenced by heatmap tiles that exist but are not
+ * compatible with heatmap rendering. The heatmap UI gates the source picker
+ * via the same `HEATMAP_ALLOWED_SOURCE_KINDS` set used here (see
+ * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
+ * UI and API gates move together.
+ */
+export async function getHeatmapTilesWithIncompatibleSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const heatmapSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      !isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.displayType === 'heatmap' &&
+      tile.config.sourceId
+    ) {
+      heatmapSourceIds.add(tile.config.sourceId);
+    }
+  }
+  if (heatmapSourceIds.size === 0) return [];
+
+  const existingSources = await getSources(team.toString());
+  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
+  return [...heatmapSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && !isHeatmapCompatibleSource(source);
+  });
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
