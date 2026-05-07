@@ -4013,6 +4013,136 @@ describe('External API v2 Dashboards - new format', () => {
         .expect(400);
       expect(tabResp.body.message).toContain('tiles.0.tabId');
     });
+
+    // The cap mirrors `DASHBOARD_CONTAINER_ID_MAX` in
+    // `packages/common-utils/src/types.ts`. The 256-char id sits at the
+    // boundary; 257 chars must reject.
+    it('accepts a 256-char containerId, rejects 257', async () => {
+      const sourceId = traceSource._id.toString();
+      const idAtMax = 'a'.repeat(256);
+      const idTooLong = 'a'.repeat(257);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Containers id at boundary',
+          tiles: [buildTile(sourceId, { containerId: idAtMax })],
+          tags: [],
+          containers: [{ id: idAtMax, title: 'At boundary', collapsed: false }],
+        })
+        .expect(200);
+
+      const overResp = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Containers id over boundary',
+          tiles: [buildTile(sourceId, { containerId: idTooLong })],
+          tags: [],
+          containers: [
+            { id: idTooLong, title: 'Over boundary', collapsed: false },
+          ],
+        })
+        .expect(400);
+      expect(overResp.body.message).toContain('tiles.0.containerId');
+    });
+
+    it('accepts a 256-char tabId, rejects 257', async () => {
+      const sourceId = traceSource._id.toString();
+      const tabAtMax = 'b'.repeat(256);
+      const tabTooLong = 'b'.repeat(257);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Tab id at boundary',
+          tiles: [
+            buildTile(sourceId, {
+              containerId: 'service-health',
+              tabId: tabAtMax,
+            }),
+          ],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [{ id: tabAtMax, title: 'At boundary' }],
+            },
+          ],
+        })
+        .expect(200);
+
+      const overResp = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Tab id over boundary',
+          tiles: [
+            buildTile(sourceId, {
+              containerId: 'service-health',
+              tabId: tabTooLong,
+            }),
+          ],
+          tags: [],
+          containers: [
+            {
+              id: 'service-health',
+              title: 'Service Health',
+              collapsed: false,
+              tabs: [{ id: tabTooLong, title: 'Over boundary' }],
+            },
+          ],
+        })
+        .expect(400);
+      expect(overResp.body.message).toContain('tiles.0.tabId');
+    });
+
+    // Cap of 500 mirrors `DASHBOARD_MAX_TILES`. Tested at boundary so the
+    // limit doesn't accidentally drift.
+    it('rejects a payload of 501 tiles', async () => {
+      const sourceId = traceSource._id.toString();
+      const tooManyTiles = Array.from({ length: 501 }, (_, i) =>
+        buildTile(sourceId, { name: `Tile ${i}` }),
+      );
+
+      const resp = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Too many tiles',
+          tiles: tooManyTiles,
+          tags: [],
+        })
+        .expect(400);
+      // Zod surfaces the path; we just want a 400 with a clear pointer.
+      expect(resp.body.message).toContain('tiles');
+    });
+
+    // Older Mongo docs predate the containers feature and `tiles: Mixed`
+    // doesn't enforce `min(1)`. A doc with `containerId: ""` left over
+    // from earlier code paths must round-trip on read as if absent so
+    // a subsequent PUT can validate. Insert directly into Mongo so we
+    // bypass the create-path schema (which now rejects empty strings).
+    it('treats an empty-string containerId on a legacy doc as absent on read', async () => {
+      const sourceId = traceSource._id.toString();
+      const tile = buildTile(sourceId, { name: 'Legacy empty containerId' });
+      const created = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Legacy doc round-trip',
+          tiles: [tile],
+          tags: [],
+        })
+        .expect(200);
+      const dashboardId = created.body.data.id;
+
+      // Mutate Mongo directly to simulate the legacy state.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        { $set: { 'tiles.0.containerId': '', 'tiles.0.tabId': '' } },
+      );
+
+      const getResp = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboardId}`,
+      ).expect(200);
+      const [returnedTile] = getResp.body.data.tiles;
+      expect(returnedTile.containerId).toBeUndefined();
+      expect(returnedTile.tabId).toBeUndefined();
+    });
   });
 
   describe('DELETE /:id', () => {
