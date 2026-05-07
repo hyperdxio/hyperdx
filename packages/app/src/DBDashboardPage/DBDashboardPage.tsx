@@ -6,11 +6,8 @@ import produce from 'immer';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
-  AlertState,
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   Filter,
@@ -45,27 +42,27 @@ import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useConfirm } from '@/useConfirm';
-import { getMetricTableName } from '@/utils';
 
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardToolbar } from './DashboardToolbar';
-import { DashboardTile, type MoveTarget } from './DashboardTile';
-import { DashboardQueryFormValues } from './types';
+import { DashboardTile } from './DashboardTile';
+import { DashboardQueryFormValues, type MoveTarget } from './types';
+import {
+  buildMoveTargets,
+  downloadObjectAsJson,
+  getAlertingTabIdsByContainer,
+  getDashboardTableConnections,
+  getTilesByContainerId,
+  getUngroupedTiles,
+  hasLayoutChanged,
+  tileToLayoutItem,
+  updateLayout,
+} from './utils';
 import { EditTileModal } from './EditTileModal';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-
-const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
-  i: chart.id,
-  x: chart.x,
-  y: chart.y,
-  w: chart.w,
-  h: chart.h,
-  minH: 1,
-  minW: 1,
-});
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
@@ -73,33 +70,6 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
 );
-
-const updateLayout = (newLayout: RGL.Layout[]) => {
-  return (dashboard: Dashboard) => {
-    for (const chart of dashboard.tiles) {
-      const newChartLayout = newLayout.find(layout => layout.i === chart.id);
-      if (newChartLayout) {
-        chart.x = newChartLayout.x;
-        chart.y = newChartLayout.y;
-        chart.w = newChartLayout.w;
-        chart.h = newChartLayout.h;
-      }
-    }
-  };
-};
-
-// Download an object to users computer as JSON using specified name
-function downloadObjectAsJson(object: object, fileName = 'output') {
-  const dataStr =
-    'data:text/json;charset=utf-8,' +
-    encodeURIComponent(JSON.stringify(object));
-  const downloadAnchorNode = document.createElement('a');
-  downloadAnchorNode.setAttribute('href', dataStr);
-  downloadAnchorNode.setAttribute('download', fileName + '.json');
-  document.body.appendChild(downloadAnchorNode); // required for firefox
-  downloadAnchorNode.click();
-  downloadAnchorNode.remove();
-}
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const brandName = useBrandDisplayName();
@@ -124,29 +94,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const { data: connections } = useConnections();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
-  const tableConnections = useMemo(() => {
-    if (!dashboard) return [];
-    const tc: TableConnection[] = [];
-
-    for (const { config } of dashboard.tiles) {
-      if (!isBuilderSavedChartConfig(config)) continue;
-      const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
-      // TODO: will need to update this when we allow for multiple metrics per chart
-      const firstSelect = config.select[0];
-      const metricType =
-        typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
-      const tableName = getMetricTableName(source, metricType);
-      if (!tableName) continue;
-      tc.push({
-        databaseName: source.from.databaseName,
-        tableName: tableName,
-        connectionId: source.connection,
-      });
-    }
-
-    return tc;
-  }, [dashboard, sources]);
+  const tableConnections = useMemo(
+    () => getDashboardTableConnections({ dashboard, sources }),
+    [dashboard, sources],
+  );
 
   const [granularity, setGranularity] = useQueryState(
     'granularity',
@@ -447,32 +398,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   // Valid move targets: groups and individual tabs within groups
-  const moveTargetContainers = useMemo<MoveTarget[]>(() => {
-    const targets: MoveTarget[] = [];
-    for (const c of containers) {
-      const cTabs = c.tabs ?? [];
-      if (cTabs.length >= 2) {
-        for (const tab of cTabs) {
-          targets.push({
-            containerId: c.id,
-            tabId: tab.id,
-            label: tab.title,
-            allTabs: cTabs.map(t => ({ id: t.id, title: t.title })),
-          });
-        }
-      } else if (cTabs.length === 1) {
-        // 1-tab group: show just the group name, target the single tab
-        targets.push({
-          containerId: c.id,
-          tabId: cTabs[0].id,
-          label: cTabs[0].title,
-        });
-      } else {
-        targets.push({ containerId: c.id, label: c.title });
-      }
-    }
-    return targets;
-  }, [containers]);
+  const moveTargetContainers = useMemo<MoveTarget[]>(
+    () => buildMoveTargets(containers),
+    [containers],
+  );
 
   const hasContainers = containers.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
@@ -630,24 +559,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     (gridTiles: Tile[]) => (newLayout: RGL.Layout[]) => {
       if (!dashboard) return;
       const currentLayout = gridTiles.map(tileToLayoutItem);
-      let hasDiff = false;
-      if (newLayout.length !== currentLayout.length) {
-        hasDiff = true;
-      } else {
-        for (const curr of newLayout) {
-          const old = currentLayout.find(l => l.i === curr.i);
-          if (
-            old?.x !== curr.x ||
-            old?.y !== curr.y ||
-            old?.h !== curr.h ||
-            old?.w !== curr.w
-          ) {
-            hasDiff = true;
-            break;
-          }
-        }
-      }
-      if (hasDiff) {
+      if (hasLayoutChanged({ currentLayout, newLayout })) {
         setDashboard(produce(dashboard, updateLayout(newLayout)));
       }
     },
@@ -802,41 +714,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   };
 
   // Orphaned tiles (containerId not matching any container) render as ungrouped.
-  const tilesByContainerId = useMemo(() => {
-    const map = new Map<string, Tile[]>();
-    for (const c of containers) {
-      map.set(
-        c.id,
-        allTiles.filter(t => t.containerId === c.id),
-      );
-    }
-    return map;
-  }, [containers, allTiles]);
+  const tilesByContainerId = useMemo(
+    () => getTilesByContainerId({ containers, allTiles }),
+    [containers, allTiles],
+  );
 
-  const alertingTabIdsByContainer = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const container of containers) {
-      const tiles = tilesByContainerId.get(container.id) ?? [];
-      const firstTabId = container.tabs?.[0]?.id;
-      const alerting = new Set<string>();
-      for (const tile of tiles) {
-        if (tile.config.alert?.state === AlertState.ALERT) {
-          const attributedTabId = tile.tabId ?? firstTabId;
-          if (attributedTabId) alerting.add(attributedTabId);
-        }
-      }
-      if (alerting.size > 0) map.set(container.id, alerting);
-    }
-    return map;
-  }, [containers, tilesByContainerId]);
+  const alertingTabIdsByContainer = useMemo(
+    () => getAlertingTabIdsByContainer({ containers, tilesByContainerId }),
+    [containers, tilesByContainerId],
+  );
 
   const ungroupedTiles = useMemo(
-    () =>
-      hasContainers
-        ? allTiles.filter(
-            t => !t.containerId || !tilesByContainerId.has(t.containerId),
-          )
-        : allTiles,
+    () => getUngroupedTiles({ hasContainers, allTiles, tilesByContainerId }),
     [hasContainers, allTiles, tilesByContainerId],
   );
 

@@ -68,14 +68,7 @@ import {
 import { getMetricTableName } from '@/utils';
 
 import { HeatmapTile } from './HeatmapTile';
-
-export type MoveTarget = {
-  containerId: string;
-  tabId?: string;
-  label: string;
-  // For tabs: all tabs in order with the target tab ID
-  allTabs?: { id: string; title: string }[];
-};
+import { type MoveTarget } from './types';
 
 type DashboardTileProps = {
   chart: Tile;
