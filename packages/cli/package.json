@@ -26,8 +26,8 @@
     "compile:macos-x64": "bun build src/cli.tsx --compile --target=bun-darwin-x64 --outfile dist/hdx-darwin-x64"
   },
   "devDependencies": {
-    "@clickhouse/client": "^1.12.1",
-    "@clickhouse/client-common": "^1.12.1",
+    "@clickhouse/client": "head",
+    "@clickhouse/client-common": "head",
     "@hyperdx/common-utils": "^0.18.1",
     "@types/crypto-js": "^4.2.2",
     "@types/react": "^19.0.0",
