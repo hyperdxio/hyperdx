@@ -138,7 +138,7 @@ jobs:
       # output a second time so the comment body posts as raw JSON. Detect
       # that case (the inner string parses as an object with a `review` key)
       # and unwrap once more so we post markdown, not JSON. Mirrors the same
-      # fix applied to compound-review.yml.
+      # fix applied to deep-review.yml.
       - name: Extract review from structured output
         id: extract-review
         env:
