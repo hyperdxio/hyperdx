@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
+import { copyTextWithToast } from '@/utils/clipboard';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
@@ -24,60 +25,74 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
+  // Rows are virtualised and recycle on scroll; cancel pending state resets on
+  // unmount so we don't setState on a recycled row.
+  const copyResetRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const urlCopyResetRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+      if (urlCopyResetRef.current) clearTimeout(urlCopyResetRef.current);
+    };
+  }, []);
 
   const copyRowData = async () => {
-    try {
-      // Filter out internal metadata fields that start with __ or are generated IDs
+    // Filter out internal metadata fields that start with __ or are generated IDs
+    const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
 
-      const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
-
-      // Parse JSON string fields to make them proper JSON objects
-      const parsedRow = Object.entries(cleanRow).reduce(
-        (acc, [key, value]) => {
-          if (
-            typeof value === 'string' &&
-            (value.startsWith('{') || value.startsWith('['))
-          ) {
-            try {
-              acc[key] = JSON.parse(value);
-            } catch {
-              // If parsing fails, keep the original string
-              acc[key] = value;
-            }
-          } else {
+    // Parse JSON string fields to make them proper JSON objects
+    const parsedRow = Object.entries(cleanRow).reduce(
+      (acc, [key, value]) => {
+        if (
+          typeof value === 'string' &&
+          (value.startsWith('{') || value.startsWith('['))
+        ) {
+          try {
+            acc[key] = JSON.parse(value);
+          } catch {
+            // If parsing fails, keep the original string
             acc[key] = value;
           }
-          return acc;
-        },
-        {} as Record<string, any>,
-      );
+        } else {
+          acc[key] = value;
+        }
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
 
-      const rowData = JSON.stringify(parsedRow, null, 2);
-      await navigator.clipboard.writeText(rowData);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy row data to clipboard:', error);
-      // Optionally show an error toast notification to the user
-    }
+    const rowData = JSON.stringify(parsedRow, null, 2);
+    const ok = await copyTextWithToast(rowData, 'Copied row as JSON');
+    if (!ok || !isMountedRef.current) return;
+    setIsCopied(true);
+    if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    copyResetRef.current = setTimeout(() => {
+      if (isMountedRef.current) setIsCopied(false);
+    }, 2000);
   };
 
   const copyRowUrl = async () => {
-    try {
-      const rowWhereResult = getRowWhere(row);
-      const currentUrl = new URL(window.location.href);
-      // Add the row identifier as query parameters
-      currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
-      if (sourceId) {
-        currentUrl.searchParams.set('rowSource', sourceId);
-      }
-      await navigator.clipboard.writeText(currentUrl.toString());
-      setIsUrlCopied(true);
-      setTimeout(() => setIsUrlCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy URL to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const rowWhereResult = getRowWhere(row);
+    const currentUrl = new URL(window.location.href);
+    // Add the row identifier as query parameters
+    currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
+    if (sourceId) {
+      currentUrl.searchParams.set('rowSource', sourceId);
     }
+    const ok = await copyTextWithToast(
+      currentUrl.toString(),
+      'Copied shareable link',
+    );
+    if (!ok || !isMountedRef.current) return;
+    setIsUrlCopied(true);
+    if (urlCopyResetRef.current) clearTimeout(urlCopyResetRef.current);
+    urlCopyResetRef.current = setTimeout(() => {
+      if (isMountedRef.current) setIsUrlCopied(false);
+    }, 2000);
   };
 
   return (
@@ -98,6 +113,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         title={
           isCopied ? 'Copied entire row as JSON!' : 'Copy entire row as JSON'
         }
+        data-testid="row-copy-json-button"
       >
         <IconCopy size={16} />
       </DBRowTableIconButton>
@@ -110,6 +126,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
             ? 'Copied shareable link!'
             : 'Copy shareable link to this specific row'
         }
+        data-testid="row-copy-link-button"
       >
         <IconLink size={16} />
       </DBRowTableIconButton>
