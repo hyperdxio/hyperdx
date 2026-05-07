@@ -76,6 +76,7 @@ type HDXLineChartTooltipProps = {
   lineDataMap: { [keyName: string]: LineData };
   previousPeriodOffsetSeconds?: number;
   numberFormat?: NumberFormat;
+  numberFormatByKey: Map<string, NumberFormat>;
 } & Record<string, any>;
 
 const HDXLineChartTooltip = withErrorBoundary(
@@ -85,6 +86,7 @@ const HDXLineChartTooltip = withErrorBoundary(
       payload,
       label,
       numberFormat,
+      numberFormatByKey,
       lineDataMap,
       previousPeriodOffsetSeconds,
     } = props;
@@ -121,12 +123,16 @@ const HDXLineChartTooltip = withErrorBoundary(
                 !isPreviousPeriod && previousKey
                   ? payloadByKey.get(previousKey)
                   : undefined;
+              const valueColumnName =
+                lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
+              const numberFormatForKey =
+                numberFormatByKey.get(valueColumnName) ?? numberFormat;
 
               return (
                 <TooltipItem
                   key={p.dataKey}
                   p={p}
-                  numberFormat={numberFormat}
+                  numberFormat={numberFormatForKey}
                   previous={previousPayload}
                 />
               );
@@ -332,7 +338,9 @@ export const MemoChart = memo(function MemoChart({
   referenceLines,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
-  numberFormat,
+  axisNumberFormat,
+  fallbackNumberFormat,
+  tooltipNumberFormatsByKey,
   isLoading,
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
@@ -350,7 +358,9 @@ export const MemoChart = memo(function MemoChart({
   lineData: LineData[];
   referenceLines?: React.ReactNode;
   displayType?: DisplayType;
-  numberFormat?: NumberFormat;
+  axisNumberFormat?: NumberFormat;
+  fallbackNumberFormat?: NumberFormat;
+  tooltipNumberFormatsByKey: Map<string, NumberFormat>;
   logReferenceTimestamp?: number;
   isLoading?: boolean;
   timestampKey?: string;
@@ -474,9 +484,9 @@ export const MemoChart = memo(function MemoChart({
 
   const tickFormatter = useCallback(
     (value: number) => {
-      return numberFormat
+      return axisNumberFormat
         ? formatNumber(value, {
-            ...numberFormat,
+            ...axisNumberFormat,
             average: true,
             mantissa: 0,
             unit: undefined,
@@ -486,7 +496,7 @@ export const MemoChart = memo(function MemoChart({
             compactDisplay: 'short',
           }).format(value);
     },
-    [numberFormat],
+    [axisNumberFormat],
   );
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
@@ -677,7 +687,8 @@ export const MemoChart = memo(function MemoChart({
           <Tooltip
             content={
               <HDXLineChartTooltip
-                numberFormat={numberFormat}
+                numberFormat={fallbackNumberFormat}
+                numberFormatByKey={tooltipNumberFormatsByKey}
                 lineDataMap={lineDataMap}
                 previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
               />

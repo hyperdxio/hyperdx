@@ -28,7 +28,7 @@ import { formatNumber } from '../utils';
 
 import { ChartConfigDisplaySettings } from './ChartDisplaySettingsDrawer';
 
-const FORMAT_ICONS: Record<string, React.ReactNode> = {
+export const FORMAT_ICONS: Record<string, React.ReactNode> = {
   number: <IconNumbers size={14} />,
   currency: <IconCurrencyDollar size={14} />,
   percent: <IconPercentage size={14} />,
@@ -154,9 +154,10 @@ const hasNumericUnit = (output: string) =>
   output === 'byte' || output === 'data_rate' || output === 'throughput';
 
 export const NumberFormatForm: React.FC<{
-  control: Control<ChartConfigDisplaySettings>;
+  control: Control<Pick<ChartConfigDisplaySettings, 'numberFormat'>>;
   setValue: UseFormSetValue<ChartConfigDisplaySettings>;
-}> = ({ control, setValue }) => {
+  disclaimer?: React.ReactNode;
+}> = ({ control, setValue, disclaimer }) => {
   const format =
     useWatch({ control, name: 'numberFormat' }) ?? DEFAULT_NUMBER_FORMAT;
 
@@ -360,6 +361,7 @@ export const NumberFormatForm: React.FC<{
             </>
           ) : null}
         </Stack>
+        {disclaimer}
       </Stack>
     </>
   );

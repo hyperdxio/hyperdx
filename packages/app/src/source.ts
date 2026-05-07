@@ -3,15 +3,18 @@ import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
+  ColumnMetaType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
-  ChartConfigWithOptDateRange,
+  BuilderSavedChartConfig,
+  ChartConfigWithOptTimestamp,
   MetricsDataType,
   NumberFormat,
   SourceKind,
@@ -429,9 +432,9 @@ function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
 }
 
 /**
- * Returns a NumberFormat for duration display if the chart config's select
- * expressions exactly match a trace source's durationExpression. Returns
- * undefined if no match is detected.
+ * Returns a NumberFormat for duration display if the given select expressions
+ * exactly matches a trace source's durationExpression. Returns undefined if
+ * no match is detected.
  *
  * Only applies when the aggregate function preserves the unit of the input
  * (e.g. avg, min, max, sum, p95). Functions like count and count_distinct
@@ -442,51 +445,161 @@ function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
  */
 export function getTraceDurationNumberFormat(
   source: TSource | undefined,
-  selectExpressions:
-    | Array<{ valueExpression?: string; aggFn?: string }>
-    | undefined,
+  selectExpression: { valueExpression?: string; aggFn?: string },
 ): NumberFormat | undefined {
   if (!source || source.kind !== SourceKind.Trace || !source.durationExpression)
     return undefined;
-  if (!selectExpressions || selectExpressions.length === 0) return undefined;
 
   const durationExpr = source.durationExpression;
   const precision = source.durationPrecision ?? 9;
 
-  for (const sel of selectExpressions) {
-    if (!sel.valueExpression) continue;
-    if (!isDurationPreservingAggFn(sel.aggFn)) continue;
+  if (!selectExpression.valueExpression) return undefined;
+  if (!isDurationPreservingAggFn(selectExpression.aggFn)) return undefined;
 
-    if (sel.valueExpression === durationExpr) {
-      return {
-        output: 'duration',
-        factor: Math.pow(10, -precision),
-      };
-    }
+  if (selectExpression.valueExpression === durationExpr) {
+    return {
+      output: 'duration',
+      factor: Math.pow(10, -precision),
+    };
   }
 
   return undefined;
 }
 
 /**
- * Hook that resolves the effective numberFormat for a chart config.
- * If the config already has an explicit numberFormat, it's returned as-is.
- * Otherwise, auto-detects duration format when the chart uses a trace source
- * with duration expressions.
+ * Gets the first series-specific number format from the config's select expressions, if any.
+ *
+ * The priority is as follows:
+ * 1. The first series-specific numberFormat defined in the config's series, if any
+ * 2. The first inferred duration-type format, when aggregating Duration values from a trace source
  */
-export function useResolvedNumberFormat(
-  config: ChartConfigWithOptDateRange,
-): NumberFormat | undefined {
+export function getFirstSeriesNumberFormat(
+  selectItems: Exclude<BuilderSavedChartConfig['select'], string | undefined>,
+  source: TSource | undefined,
+) {
+  for (const series of selectItems) {
+    if (series.numberFormat) {
+      return series.numberFormat;
+    }
+  }
+
+  for (const series of selectItems) {
+    const format = getTraceDurationNumberFormat(source, series);
+    if (format) {
+      return format;
+    }
+  }
+}
+
+/** Get the number format to use for a single-series chart type. */
+export function useSingleSeriesNumberFormat(
+  config: ChartConfigWithOptTimestamp,
+) {
   const { data: source } = useSource({ id: config.source });
 
   return useMemo(() => {
-    if (config.numberFormat) return config.numberFormat;
+    if (
+      isBuilderChartConfig(config) &&
+      Array.isArray(config.select) &&
+      config.select.length > 0
+    ) {
+      if (config.select[0].numberFormat) {
+        return config.select[0].numberFormat;
+      }
 
-    if (!isBuilderChartConfig(config)) return undefined;
+      if (config.numberFormat) {
+        return config.numberFormat;
+      }
 
-    const select = Array.isArray(config.select) ? config.select : undefined;
-    return getTraceDurationNumberFormat(source, select);
-  }, [config, source]);
+      return getTraceDurationNumberFormat(source, config.select[0]);
+    }
+
+    return config.numberFormat;
+  }, [source, config]);
+}
+
+interface ResolvedNumberFormats {
+  /** A map from result column name to resolved number format, if any. */
+  formatByColumn: Map<string, NumberFormat>;
+  /** The chart-wide number format if present, or the first series-specific number format */
+  chartFormat?: NumberFormat;
+}
+
+/**
+ * Returns the number formats to use when formatting chart series values.
+ *
+ * The chart-wide number format is determined with the following priorities:
+ * - The config's numberFormat field, if any
+ * - The first series-specific numberFormat defined in the config's select expressions, if any
+ * - The inferred duration format from the first duration-type series, if any
+ *
+ * The series-specific number format for each result column is determined with the following priorities:
+ * - The series' numberFormat defined in the config, if present
+ * - The config's top-level numberFormat, if present
+ * - The inferred duration-type format, when selecting Duration values
+ *
+ * The series-specific formats are returned in a map from result column name (from `meta`) to number format.
+ * These mappings are only available when meta is provided. Any series which does not have a format in the
+ * map should fall back to the config's number format.
+ */
+export function useChartNumberFormats(
+  config: ChartConfigWithOptTimestamp,
+  meta?: ColumnMetaType[],
+): ResolvedNumberFormats {
+  const { data: source } = useSource({ id: config.source });
+
+  return useMemo(() => {
+    // The chart-wide number format does not depend on meta, so that it can be
+    // resolved without querying.
+    const chartFormat =
+      config.numberFormat ??
+      (isBuilderChartConfig(config) && Array.isArray(config.select)
+        ? getFirstSeriesNumberFormat(config.select, source)
+        : undefined);
+
+    // meta must be provided to map result column names (from meta) to number formats
+    if (!meta) {
+      return { formatByColumn: new Map(), chartFormat };
+    }
+
+    // For Raw-SQL or string-based select configs, series-specific formats are not available
+    if (!isBuilderChartConfig(config) || !Array.isArray(config.select)) {
+      return { formatByColumn: new Map(), chartFormat };
+    }
+
+    // Ratio-based configs have exactly two series, which
+    // are merged into the first result column.
+    if (isRatioChartConfig(config.select, config)) {
+      const effectiveNumberFormat =
+        config.select[0]?.numberFormat ??
+        config.select[1]?.numberFormat ??
+        config.numberFormat;
+      const formatByColumn =
+        meta[0] && effectiveNumberFormat
+          ? new Map([[meta[0].name, effectiveNumberFormat]])
+          : new Map();
+      return { formatByColumn, chartFormat };
+    }
+
+    // The series-specific number format is mapped to the query meta's column
+    // name by index - the assumption is that query result columns are in
+    // the order that they exist in the config's select.
+    const allColumns = meta.map(column => column.name);
+    const formatByColumn = new Map();
+    for (let i = 0; i < config.select.length; i++) {
+      const series = config.select[i];
+      const key = allColumns[i];
+      const effectiveNumberFormat =
+        series.numberFormat ??
+        config.numberFormat ??
+        getTraceDurationNumberFormat(source, series);
+      if (effectiveNumberFormat) {
+        formatByColumn.set(key, effectiveNumberFormat);
+      }
+    }
+
+    return { formatByColumn, chartFormat };
+  }, [source, meta, config]);
 }
 
 // defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto

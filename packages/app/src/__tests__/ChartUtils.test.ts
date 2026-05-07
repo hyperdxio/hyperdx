@@ -130,6 +130,7 @@ describe('ChartUtils', () => {
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
       ]);
@@ -220,6 +221,7 @@ describe('ChartUtils', () => {
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
         {
@@ -228,6 +230,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
+          valueColumnName: 'max',
           isDashed: false,
         },
         {
@@ -238,6 +241,7 @@ describe('ChartUtils', () => {
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
         {
@@ -246,6 +250,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
+          valueColumnName: 'max',
           isDashed: false,
         },
       ]);
@@ -306,6 +311,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
           displayName: 'info',
+          valueColumnName: 'count()',
           isDashed: false,
         },
         {
@@ -314,6 +320,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
           displayName: 'debug',
+          valueColumnName: 'count()',
           isDashed: false,
         },
         {
@@ -322,6 +329,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
           displayName: 'error',
+          valueColumnName: 'count()',
           isDashed: false,
         },
       ]);
@@ -411,6 +419,7 @@ describe('ChartUtils', () => {
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
         {
@@ -419,6 +428,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
+          valueColumnName: 'max',
           isDashed: false,
         },
         {
@@ -429,6 +439,7 @@ describe('ChartUtils', () => {
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
         {
@@ -437,6 +448,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
+          valueColumnName: 'max',
           isDashed: false,
         },
       ]);
@@ -635,6 +647,7 @@ describe('ChartUtils', () => {
           currentPeriodKey: 'foo · {"key":"val"} · [1,2,3]',
           previousPeriodKey: 'foo · {"key":"val"} · [1,2,3] (previous)',
           displayName: 'foo · {"key":"val"} · [1,2,3]',
+          valueColumnName: 'count()',
           isDashed: false,
         },
       ]);
@@ -724,6 +737,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: false,
         },
         {
@@ -733,6 +747,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
+          valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           isDashed: true,
         },
       ]);

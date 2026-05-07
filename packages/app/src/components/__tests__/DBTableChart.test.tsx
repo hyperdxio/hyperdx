@@ -30,7 +30,9 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
   useSources: jest.fn().mockReturnValue({ data: [] }),
-  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
+  useChartNumberFormats: jest
+    .fn()
+    .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
 }));
 
 jest.mock('@/HDXMultiSeriesTableChart', () => ({
