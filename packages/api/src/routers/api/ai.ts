@@ -16,7 +16,15 @@ import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
+import rateLimiter from '@/utils/rateLimiter';
+import { redactSecrets } from '@/utils/redactSecrets';
 import { objectIdSchema } from '@/utils/zod';
+
+import {
+  buildSystemPrompt,
+  summarizeBodySchema,
+  wrapContent,
+} from './aiSummarize';
 
 const router = express.Router();
 
@@ -108,6 +116,79 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
         );
 
         return res.json(chartConfig);
+      } catch (err) {
+        if (err instanceof APICallError) {
+          throw new Api500Error(
+            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
+          );
+        }
+        throw err;
+      }
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /ai/summarize
+//
+// Generate a natural-language summary of a log, trace, or pattern using the
+// configured LLM. Prompts are registered per-kind in ./aiSummarize.ts.
+//
+// User content is redacted of obvious secrets and wrapped in <data>...</data>
+// tags so the model can separate data from instructions. Rate-limited per
+// authenticated user (falls back to authorization header / IP for callers
+// without an attached user, e.g. tests).
+// ---------------------------------------------------------------------------
+
+const SUMMARIZE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const SUMMARIZE_RATE_LIMIT_MAX = 30;
+
+// Hard ceiling on model output. Summaries are 4 sentences max per the prompt
+// rules, so ~150 tokens covers the legitimate range; 1024 leaves headroom for
+// future prompt expansion while preventing a misbehaving model from streaming
+// an unbounded response within the per-minute rate limit.
+const SUMMARIZE_MAX_OUTPUT_TOKENS = 1024;
+
+const summarizeRateLimiter = rateLimiter({
+  windowMs: SUMMARIZE_RATE_LIMIT_WINDOW_MS,
+  max: SUMMARIZE_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // The /ai router is mounted behind isUserAuthenticated, so req.user is set
+  // in production and the user-id branch is the only one taken. The header /
+  // IP fallback exists for the test harness and as defense-in-depth if the
+  // mount ever changes.
+  keyGenerator: req => {
+    const userId = req.user?._id?.toString();
+    if (userId) return `user:${userId}`;
+    return req.headers.authorization ?? req.ip ?? 'unknown';
+  },
+});
+
+router.post(
+  '/summarize',
+  summarizeRateLimiter,
+  validateRequest({ body: summarizeBodySchema }),
+  async (req, res, next) => {
+    try {
+      const model = getAIModel();
+      const { kind, content, tone } = req.body;
+
+      const systemPrompt = buildSystemPrompt(kind, tone);
+      const wrappedPrompt = wrapContent(redactSecrets(content));
+
+      try {
+        const result = await generateText({
+          model,
+          system: systemPrompt,
+          experimental_telemetry: { isEnabled: true },
+          maxOutputTokens: SUMMARIZE_MAX_OUTPUT_TOKENS,
+          prompt: wrappedPrompt,
+        });
+
+        return res.json({ summary: result.text });
       } catch (err) {
         if (err instanceof APICallError) {
           throw new Api500Error(
