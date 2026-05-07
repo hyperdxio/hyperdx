@@ -1,6 +1,7 @@
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  alertNoteSchema,
   AlertThresholdType,
   DashboardFilterSchema,
   MetricsDataType,
@@ -509,7 +510,7 @@ export const alertSchema = z
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
-    note: z.string().min(1).max(4096).nullish(),
+    note: alertNoteSchema,
   })
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertScheduleOffsetMinutes)

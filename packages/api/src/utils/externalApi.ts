@@ -229,7 +229,7 @@ export type ExternalAlert = {
   id: string;
   name?: string | null;
   message?: string | null;
-  note?: string;
+  note?: string | null;
   threshold: number;
   thresholdMax?: number;
   interval: AlertInterval;
@@ -328,7 +328,7 @@ export function translateAlertDocumentToExternalAlert(
     id: alertObj._id.toString(),
     name: alertObj.name,
     message: alertObj.message,
-    ...(alertObj.note != null && { note: alertObj.note }),
+    note: alertObj.note ?? null,
     threshold: alertObj.threshold,
     thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,

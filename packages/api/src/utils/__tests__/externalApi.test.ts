@@ -47,23 +47,23 @@ describe('utils/externalApi', () => {
   });
 
   describe('note handling', () => {
-    it('omits note when the value is null', () => {
+    it('returns note as null when the value is null', () => {
       const alert = createAlertDocument({ note: null });
 
       const translated = translateAlertDocumentToExternalAlert(alert);
 
-      expect(translated).not.toHaveProperty('note');
+      expect(translated.note).toBeNull();
     });
 
-    it('omits note when the value is undefined', () => {
+    it('returns note as null when the value is undefined', () => {
       const alert = createAlertDocument({ note: undefined });
 
       const translated = translateAlertDocumentToExternalAlert(alert);
 
-      expect(translated).not.toHaveProperty('note');
+      expect(translated.note).toBeNull();
     });
 
-    it('includes note when the value is a non-empty string', () => {
+    it('returns note when the value is a non-empty string', () => {
       const alert = createAlertDocument({ note: 'threshold raised to 100' });
 
       const translated = translateAlertDocumentToExternalAlert(alert);

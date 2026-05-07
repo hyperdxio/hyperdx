@@ -181,7 +181,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "Test Alert Message"
  *         note:
  *           type: string
- *           description: Freeform note for the alert. Supports markdown formatting. Accepted as null on input; omitted from responses when not set.
+ *           description: Freeform note for the alert. Supports markdown formatting.
  *           nullable: true
  *           minLength: 1
  *           maxLength: 4096
