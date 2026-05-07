@@ -514,13 +514,31 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, ['numberFormat']),
           displayType: DisplayType.Heatmap,
-          // Parity with `applyHeatmapDefaults` in
-          // `packages/app/src/components/DBEditTimeChartForm/EditTimeChartForm.tsx`
-          // (search for `aggFn: 'count'`): the editor never reads
-          // `aggCondition`/`aggConditionLanguage` for heatmap tiles, but
-          // we persist the same defaults here so an API-built tile
-          // matches a UI-built tile byte-for-byte and downstream
-          // consumers that derive from the saved doc behave the same.
+          // Match the editor's `applyHeatmapDefaults` (in
+          // `packages/app/src/components/DBEditTimeChartForm/EditTimeChartForm.tsx`,
+          // search for `aggFn: 'count'`) for the two fields the editor
+          // always writes on the select item: `aggFn: 'count'` and
+          // `aggCondition: ''`.
+          //
+          // Where this path intentionally diverges from the editor:
+          //
+          //   - `aggConditionLanguage` is hardcoded `'lucene'`; the
+          //     editor uses `getStoredLanguage() ?? 'lucene'` (a user
+          //     session preference). For a UI-saved heatmap whose
+          //     author had `'sql'` selected, a GET -> PUT round-trip
+          //     through this converter will downgrade the persisted
+          //     value to `'lucene'`. The chart renderer does not read
+          //     `aggConditionLanguage` for heatmap tiles (heatmap has
+          //     no per-select where), so the change is invisible at
+          //     render time.
+          //
+          //   - The editor unconditionally writes
+          //     `numberFormat: { output: 'duration', factor: 0.001 }`
+          //     and `series.0.countExpression: 'count()'`. Both are
+          //     passed through verbatim from the external payload here
+          //     and left absent otherwise, so an API-built tile
+          //     renders without duration formatting unless the caller
+          //     asks for it.
           select: [
             {
               aggFn: 'count',
