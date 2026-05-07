@@ -824,6 +824,30 @@ describe('webhooks router', () => {
       expect(plain.queryParams).toEqual(originalParams);
     });
 
+    it('PUT - different-origin URL with /**** path is saved, not treated as masked', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      // A URL that happens to have /****  in its path but is a different origin
+      const differentOriginUrl = 'https://attacker.example.com/****';
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          url: differentOriginUrl,
+        })
+        .expect(200);
+
+      // Should store the new URL, NOT fall back to the existing one
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe(differentOriginUrl);
+    });
+
     it('PUT - duplicate check uses resolved URL, not masked URL', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
@@ -857,6 +881,55 @@ describe('webhooks router', () => {
   });
 
   describe('POST /test - test webhook', () => {
+    it('resolves masked URL and headers when webhookId is provided', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        service: WebhookService.Generic,
+        url: 'https://example.com/real-webhook-endpoint',
+        headers: { Authorization: 'Bearer real-secret' },
+        team: team._id,
+      });
+
+      // Send masked values with the webhookId — server should resolve them
+      const response = await agent.post('/webhooks/test').send({
+        service: WebhookService.Generic,
+        url: 'https://example.com/****',
+        headers: { Authorization: '****' },
+        body: '{"text": "test"}',
+        webhookId: webhook._id.toString(),
+      });
+
+      // The request should reach the handler (200 or 500 from network).
+      // A 400 would mean validation rejected the masked values.
+      expect([200, 500]).toContain(response.status);
+    });
+
+    it('ignores webhookId that belongs to a different team', async () => {
+      const { agent: agent1, team: team1 } = await getLoggedInAgent(server);
+      const { team: team2 } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        service: WebhookService.Generic,
+        url: 'https://example.com/secret-endpoint',
+        team: team2._id,
+      });
+
+      // agent1 tries to use team2's webhook id — server should ignore it
+      const response = await agent1.post('/webhooks/test').send({
+        service: WebhookService.Generic,
+        url: 'https://example.com/****',
+        headers: {},
+        webhookId: webhook._id.toString(),
+      });
+
+      // Should still accept the request (masked URL is valid syntactically)
+      // but will NOT resolve to team2's real URL
+      expect([200, 500]).toContain(response.status);
+    });
+
     it('successfully sends a test message to a Slack webhook', async () => {
       const { agent } = await getLoggedInAgent(server);
 

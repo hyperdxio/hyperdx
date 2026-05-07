@@ -144,6 +144,7 @@ export function WebhookForm({
         url,
         body: defaultBody,
         headers: parsedHeaders,
+        ...(isEditing && { webhookId: webhook._id }),
       });
       notifications.show({
         color: 'green',
