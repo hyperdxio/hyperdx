@@ -10,7 +10,12 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  isLogSource,
+  isTraceSource,
+  MetadataMaterializedViews,
+} from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -123,14 +128,19 @@ export function useJsonColumns(
 
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+  },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
+  const { dateRange, ...queryOptions } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -139,7 +149,7 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields(tc)),
+        tableConnections.map(tc => metadata.getAllFields({ ...tc, dateRange })),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -164,13 +174,15 @@ export function useMultipleAllFields(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...options,
+    ...queryOptions,
   });
 }
 
 export function useAllFields(
   tableConnection: TableConnection | undefined,
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+  },
 ) {
   return useMultipleAllFields(
     tableConnection ? [tableConnection] : [],
@@ -212,6 +224,8 @@ export function useMultipleGetKeyValues(
     keys,
     limit,
     disableRowLimit,
+    mode = 'exact',
+    metadataMVs: metadataMVsOverride,
   }: {
     chartConfigs:
       | BuilderChartConfigWithDateRange
@@ -219,6 +233,9 @@ export function useMultipleGetKeyValues(
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    /** Pass directly to skip source-based resolution (e.g. when chartConfig has no source) */
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -235,12 +252,50 @@ export function useMultipleGetKeyValues(
   const query = useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
+      mode,
+      metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
       maxKeys,
     ],
     queryFn: async ({ signal }) => {
+      if (mode === 'all') {
+        const firstConfig = chartConfigsArr[0];
+        if (!firstConfig || keys.length === 0) return [];
+
+        // Use explicit override, or resolve from source
+        const firstSource = firstConfig.source
+          ? sources?.find(s => s.id === firstConfig.source)
+          : undefined;
+        const metadataMVs =
+          metadataMVsOverride ??
+          (firstSource &&
+          (isLogSource(firstSource) || isTraceSource(firstSource))
+            ? firstSource.metadataMaterializedViews
+            : undefined);
+
+        const { databaseName, tableName } = firstConfig.from;
+        const connectionId = firstConfig.connection;
+        const dateRange = firstConfig.dateRange;
+
+        return Promise.all(
+          keys.slice(0, maxKeys).map(async keyExpression => {
+            const value = await metadata.getAllKeyValues({
+              databaseName,
+              tableName,
+              keyExpression,
+              connectionId,
+              metadataMVs,
+              dateRange,
+              signal,
+            });
+            return { key: keyExpression, value };
+          }),
+        );
+      }
+
+      // 'exact' mode
       return (
         await Promise.all(
           chartConfigsArr.map(chartConfig => {
@@ -312,11 +367,15 @@ export function useGetKeyValues(
     keys,
     limit,
     disableRowLimit,
+    mode,
+    metadataMVs,
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -326,6 +385,8 @@ export function useGetKeyValues(
       keys,
       limit,
       disableRowLimit,
+      mode,
+      metadataMVs,
     },
     options,
   );

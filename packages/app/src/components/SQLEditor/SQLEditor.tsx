@@ -28,6 +28,7 @@ type SQLEditorProps = {
   enableLineWrapping?: boolean;
   tableConnections?: TableConnection[];
   additionalCompletions?: SQLCompletion[];
+  dateRange?: [Date, Date];
 };
 
 export default function SQLEditor({
@@ -38,12 +39,15 @@ export default function SQLEditor({
   enableLineWrapping = false,
   tableConnections,
   additionalCompletions,
+  dateRange,
 }: SQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
   const compartmentRef = useRef<Compartment>(new Compartment());
 
-  const { data: fields } = useMultipleAllFields(tableConnections ?? []);
+  const { data: fields } = useMultipleAllFields(tableConnections ?? [], {
+    dateRange,
+  });
 
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {

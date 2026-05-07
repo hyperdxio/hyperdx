@@ -1830,6 +1830,7 @@ export function DBSearchPage() {
               label="SELECT"
               size="xs"
               allowMultiline
+              dateRange={searchedTimeRange}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1841,6 +1842,7 @@ export function DBSearchPage() {
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
+              dateRange={searchedTimeRange}
             />
           </Box>
           <>
@@ -1901,6 +1903,7 @@ export function DBSearchPage() {
             enableHotkey
             data-testid="search-input"
             minWidth="min(600px, 100%)"
+            dateRange={searchedTimeRange}
           />
           <Flex
             gap="sm"

@@ -1,10 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
-import { Popover, Textarea, UnstyledButton } from '@mantine/core';
+import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
+import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
-import { useDebounce } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
@@ -16,6 +16,8 @@ export default function AutocompleteInput({
   onChange,
   placeholder = 'Search your events for anything...',
   autocompleteOptions,
+  isLoadingValues,
+  tokenInfo,
   size = 'sm',
   aboveSuggestions,
   belowSuggestions,
@@ -35,6 +37,8 @@ export default function AutocompleteInput({
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   autocompleteOptions?: { value: string; label: string }[];
+  isLoadingValues?: boolean;
+  tokenInfo?: TokenInfo;
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
   showSuggestionsOnEmpty?: boolean;
@@ -94,16 +98,14 @@ export default function AutocompleteInput({
     [autocompleteOptions],
   );
 
-  const debouncedValue = useDebounce(value ?? '', 200);
   const suggestedProperties = useMemo(() => {
-    const tokens = debouncedValue.split(' ');
-    const lastToken = tokens[tokens.length - 1];
+    const token = tokenInfo?.token ?? '';
 
-    if (lastToken.length === 0 && showSuggestionsOnEmpty) {
+    if (token.length === 0 && showSuggestionsOnEmpty) {
       return autocompleteOptions ?? [];
     }
-    return fuse.search(lastToken).map(result => result.item);
-  }, [debouncedValue, fuse, autocompleteOptions, showSuggestionsOnEmpty]);
+    return fuse.search(token).map(result => result.item);
+  }, [tokenInfo, fuse, autocompleteOptions, showSuggestionsOnEmpty]);
 
   const onSelectSearchHistory = (query: string) => {
     setSelectedQueryHistoryIndex(-1);
@@ -116,13 +118,30 @@ export default function AutocompleteInput({
   const onAcceptSuggestion = (suggestion: string) => {
     setSelectedAutocompleteIndex(-1);
 
-    const newValue =
-      value == null
-        ? suggestion
-        : value.split(' ').slice(0, -1).join(' ') +
-          `${value.split(' ').length > 1 ? ' ' : ''}${suggestion}`;
+    if (value == null || !tokenInfo) {
+      onChange(suggestion);
+      inputRef.current?.focus();
+      return;
+    }
+
+    // Replace the token at cursor with the suggestion
+    const tokens = [...tokenInfo.tokens];
+    tokens[tokenInfo.index] = suggestion;
+    const newValue = tokens.join(' ');
+
+    // Place cursor right after the inserted suggestion
+    let newCursorPos = 0;
+    for (let i = 0; i <= tokenInfo.index; i++) {
+      newCursorPos += tokens[i].length;
+      if (i < tokenInfo.index) newCursorPos++; // space
+    }
+
     onChange(newValue);
-    inputRef.current?.focus();
+
+    requestAnimationFrame(() => {
+      inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+      inputRef.current?.focus();
+    });
   };
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -238,6 +257,7 @@ export default function AutocompleteInput({
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (suggestedProperties.length > 0) {
+                  e.preventDefault();
                   setSelectedAutocompleteIndex(
                     Math.min(
                       selectedAutocompleteIndex + 1,
@@ -252,6 +272,7 @@ export default function AutocompleteInput({
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (suggestedProperties.length > 0) {
+                  e.preventDefault();
                   setSelectedAutocompleteIndex(
                     Math.max(selectedAutocompleteIndex - 1, 0),
                   );
@@ -281,6 +302,9 @@ export default function AutocompleteInput({
                 <div className={styles.suggestionsHeaderRow}>
                   <div className={styles.suggestionsHeader}>
                     {suggestionsHeader}
+                    {isLoadingValues && (
+                      <Loader size={12} ml={6} color="var(--color-text)" />
+                    )}
                   </div>
                   {suggestedProperties.length > suggestionsLimit && (
                     <div className={styles.suggestionsLimit}>
