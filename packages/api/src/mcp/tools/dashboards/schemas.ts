@@ -92,7 +92,11 @@ const mcpTileLayoutSchema = z.object({
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('line').describe('Line chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     select: z
       .array(mcpTileSelectItemSchema)
       .min(1)
@@ -123,7 +127,11 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z.string().optional(),
     fillNulls: z.boolean().optional().default(true),
@@ -135,7 +143,11 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('table').describe('Tabular aggregated data'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z
       .string()
@@ -208,7 +220,11 @@ const mcpNumberFormatSchema = z
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     select: z
       .array(mcpTileSelectItemSchema)
       .length(1)
@@ -225,7 +241,11 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('pie').describe('Pie chart'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     select: z.array(mcpTileSelectItemSchema).length(1),
     groupBy: z
       .string()
@@ -237,10 +257,78 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+// Heatmap charts use a dedicated select item schema. The aggFn is the literal
+// 'heatmap' (not part of AggregateFunctionSchema) and the item carries the
+// heatmap-specific fields countExpression and heatmapScaleType from
+// DerivedColumnSchema in common-utils.
+const mcpHeatmapSelectItemSchema = z.object({
+  aggFn: z
+    .literal('heatmap')
+    .describe('Always "heatmap" for heatmap chart select items.'),
+  valueExpression: z
+    .string()
+    .describe(
+      'Column or expression to bucket on the Y axis. Required for heatmap. ' +
+        'Use PascalCase for top-level columns (e.g. "Duration"). ' +
+        "For span attributes use: SpanAttributes['key'] " +
+        "(e.g. SpanAttributes['http.duration']).",
+    ),
+  countExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Optional count expression used to normalize heatmap cells. ' +
+        'When omitted, cells count rows.',
+    ),
+  alias: z.string().optional().describe('Display label for this series'),
+  heatmapScaleType: z
+    .enum(['log', 'linear'])
+    .optional()
+    .describe('Color scale for the heatmap. Defaults to "log".'),
+});
+
+// Heatmap charts apply where/whereLanguage at the chart-config level rather
+// than per-series. The HeatmapSeriesEditor in the UI doesn't render per-row
+// filters and the persisted shape (BuilderChartConfig via SelectSQLStatement)
+// stores them at the top level, mirrored by the external API at
+// packages/api/src/utils/zod.ts.
+const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('heatmap')
+      .describe('Heatmap chart bucketing values over time'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    select: z
+      .array(mcpHeatmapSelectItemSchema)
+      .length(1)
+      .describe('Exactly one heatmap series'),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(
+        'Display formatting for the value axis. ' +
+          'Example: { output: "time", factor: 0.000000001 } for nanosecond durations.',
+      ),
+  }),
+});
+
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Call hyperdx_list_sources to find available sources.',
+      ),
     where: z
       .string()
       .optional()
@@ -278,7 +366,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
     connectionId: z
       .string()
       .describe(
-        'Connection ID (not sourceId) – call hyperdx_list_sources to find available connections',
+        'Connection ID (not sourceId). Call hyperdx_list_sources to find available connections.',
       ),
     sqlTemplate: z
       .string()
@@ -304,6 +392,7 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
@@ -313,7 +402,7 @@ export const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
     'Array of dashboard tiles. Each tile needs a name, optional layout (x/y/w/h), and a config block. ' +
-      'The config block varies by displayType – use hyperdx_list_sources for sourceId and connectionId values.\n\n' +
+      'The config block varies by displayType. Use hyperdx_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
       '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
@@ -323,5 +412,8 @@ export const mcpTilesParam = z
       '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
-      '"numberFormat": { "output": "time", "factor": 0.000000001 } } }',
+      '"numberFormat": { "output": "time", "factor": 0.000000001 } } }\n' +
+      '5. Heatmap: { "name": "Latency Distribution", "config": { "displayType": "heatmap", "sourceId": "<from list_sources>", ' +
+      '"where": "SpanKind:SPAN_KIND_SERVER", "whereLanguage": "lucene", ' +
+      '"select": [{ "aggFn": "heatmap", "valueExpression": "Duration", "heatmapScaleType": "log" }] } }',
   );

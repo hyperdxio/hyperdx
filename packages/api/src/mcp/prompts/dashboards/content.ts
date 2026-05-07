@@ -32,6 +32,8 @@ Use BUILDER tiles (with sourceId) for most cases:
   number      — Single KPI metric (total requests, current error rate, p99 latency)
   table       — Ranked lists (top endpoints by latency, error counts by service)
   pie         — Proportional breakdowns (traffic share by service, errors by type)
+  heatmap     - Latency / value distribution over time (Duration distribution, request size buckets).
+                Trace sources only. Use aggFn: "heatmap" with a numeric valueExpression.
   search      — Browse raw log/event rows (error logs, recent traces)
   markdown    — Dashboard notes, section headers, or documentation
 
@@ -167,6 +169,7 @@ returned for each source to discover the real values used in your data.
 - Not validating with hyperdx_query_tile after saving — tiles can silently fail
 - Number and Pie tiles accept exactly 1 select item — not multiple
 - Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99
+- Heatmap tiles only work with Trace sources, and require aggFn:"heatmap" with a numeric valueExpression. No groupBy.
 - Assuming StatusCode or SeverityText values — always inspect the source first`;
 }
 
@@ -669,6 +672,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   line    — 1-20 select items. Optional groupBy splits into series.
   stacked_bar — 1-20 select items. Optional groupBy splits into stacks.
   table   — 1-20 select items. Optional groupBy defines row groups.
+  heatmap : Exactly 1 select item with aggFn:"heatmap" and a numeric valueExpression. No groupBy. Trace sources only.
   search  — No select items (select is a column list string). where is the filter.
   markdown — No select items. Set markdown field with content.
 
