@@ -29,6 +29,7 @@ import {
 
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
+import { copyTextWithToast } from '@/utils/clipboard';
 
 type JSONExtractFn =
   | 'JSONExtractString'
@@ -220,15 +221,12 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
       {rowData != null && (
         <UnstyledButton
           onClick={() => {
-            window.navigator.clipboard.writeText(
+            copyTextWithToast(
               typeof rowData === 'string'
                 ? rowData
                 : JSON.stringify(rowData, null, 2),
+              'Value copied to clipboard',
             );
-            notifications.show({
-              color: 'green',
-              message: `Value copied to clipboard`,
-            });
           }}
           variant="copy"
           title={'Copy row as JSON'}
@@ -559,13 +557,10 @@ export function DBRowJsonViewer({
           copiedObj = keyPath.length === 0 ? rowData : get(rowData, keyPath);
         }
 
-        window.navigator.clipboard.writeText(
+        copyTextWithToast(
           JSON.stringify(copiedObj, null, 2),
+          'Copied object to clipboard',
         );
-        notifications.show({
-          color: 'green',
-          message: `Copied object to clipboard`,
-        });
       };
 
       if (typeof value === 'object') {
@@ -584,15 +579,12 @@ export function DBRowJsonViewer({
             </Group>
           ),
           onClick: () => {
-            window.navigator.clipboard.writeText(
+            copyTextWithToast(
               typeof value === 'string'
                 ? value
                 : JSON.stringify(value, null, 2),
+              'Value copied to clipboard',
             );
-            notifications.show({
-              color: 'green',
-              message: `Value copied to clipboard`,
-            });
           },
         });
       }
