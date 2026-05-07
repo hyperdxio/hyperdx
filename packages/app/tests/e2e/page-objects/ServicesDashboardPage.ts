@@ -50,6 +50,10 @@ export class ServicesDashboardPage {
     return this.page.getByTestId('services-dashboard-page');
   }
 
+  get topEndpointsTable(): Locator {
+    return this.page.getByTestId('services-top-endpoints-table');
+  }
+
   getChart(chartTestId: string): Locator {
     return this.page
       .getByTestId(chartTestId)

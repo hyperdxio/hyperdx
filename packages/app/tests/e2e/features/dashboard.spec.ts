@@ -1,3 +1,10 @@
+// Dashboard feature tests — complex workflows and end-to-end scenarios.
+// Covers: persistence, multi-step CRUD workflows, granularity, unsaved changes,
+// alerts on tiles, filters (create/populate/delete), saved queries, URL params,
+// and Raw SQL tile types.
+//
+// For simple, isolated dashboard CRUD operations (duplicate tile, add section,
+// edit tile name, delete dashboard), see dashboard-interactions.spec.ts.
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { AlertsPage } from '../page-objects/AlertsPage';

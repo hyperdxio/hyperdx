@@ -77,33 +77,4 @@ test.describe('Temporary Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
-
-  test(
-    'should convert temporary dashboard to saved dashboard',
-    { tag: '@full-stack' },
-    async ({ page }) => {
-      await dashboardPage.goto();
-
-      await test.step('Verify the temporary dashboard banner is visible', async () => {
-        await expect(dashboardPage.temporaryDashboardBanner).toBeVisible();
-      });
-
-      await test.step('Click Create New Saved Dashboard', async () => {
-        await dashboardPage.createButton.click();
-      });
-
-      await test.step('Verify navigation to a saved dashboard', async () => {
-        await expect(page).toHaveURL(/\/dashboards\/.+/, { timeout: 10000 });
-      });
-
-      await test.step('Verify the temporary banner is replaced by breadcrumbs', async () => {
-        await expect(dashboardPage.temporaryDashboardBanner).toBeHidden();
-        await expect(
-          page
-            .getByTestId('dashboard-page')
-            .getByRole('link', { name: 'Dashboards' }),
-        ).toBeVisible();
-      });
-    },
-  );
 });

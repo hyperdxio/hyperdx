@@ -600,30 +600,35 @@ export default function EditTimeChartForm({
                 <Tabs.Tab
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
+                  data-testid="chart-type-line"
                 >
                   Line/Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
                   leftSection={<IconTable size={16} />}
+                  data-testid="chart-type-table"
                 >
                   Table
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Number}
                   leftSection={<IconNumbers size={16} />}
+                  data-testid="chart-type-number"
                 >
                   Number
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
                   leftSection={<IconChartPie size={16} />}
+                  data-testid="chart-type-pie"
                 >
                   Pie
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
                   leftSection={<IconList size={16} />}
+                  data-testid="chart-type-search"
                 >
                   Search
                 </Tabs.Tab>
@@ -636,6 +641,7 @@ export default function EditTimeChartForm({
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}
+                  data-testid="chart-type-markdown"
                 >
                   Markdown
                 </Tabs.Tab>
