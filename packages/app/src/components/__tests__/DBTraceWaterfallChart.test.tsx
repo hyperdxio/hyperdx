@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -309,6 +310,56 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(
       screen.getByText('http span https://api.example.com/users'),
     ).toBeInTheDocument();
+  });
+
+  it('renders Spans and Logs chips when log source is present', async () => {
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(screen.getByTestId('show-spans-chip')).toBeInTheDocument();
+    expect(screen.getByTestId('show-logs-chip')).toBeInTheDocument();
+  });
+
+  it('does not render Logs chip when no log source', async () => {
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('show-spans-chip')).toBeInTheDocument();
+    expect(screen.queryByTestId('show-logs-chip')).not.toBeInTheDocument();
+  });
+
+  it('hides log rows when Logs chip is toggled off', async () => {
+    const user = userEvent.setup();
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+
+    const showLogsChip = screen.getByTestId('show-logs-chip');
+    await user.click(showLogsChip);
+
+    await waitFor(() => {
+      expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    });
+  });
+
+  it('hides span rows when Spans chip is toggled off', async () => {
+    const user = userEvent.setup();
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+
+    const showSpansChip = screen.getByTestId('show-spans-chip');
+    await user.click(showSpansChip);
+
+    await waitFor(() => {
+      expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    });
   });
 });
 
