@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { formatDistanceToNow } from 'date-fns';
 import produce from 'immer';
 import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -23,12 +21,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Anchor,
   Box,
-  Breadcrumbs,
   Button,
   Flex,
-  Group,
   Menu,
   Paper,
   Text,
@@ -37,18 +32,11 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconChartBar,
-  IconDeviceFloppy,
-  IconDotsVertical,
-  IconDownload,
   IconFilterEdit,
   IconPlayerPlay,
   IconPlus,
   IconRefresh,
   IconSquaresDiagonal,
-  IconTags,
-  IconTrash,
-  IconUpload,
-  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -57,7 +45,6 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
-import { FavoriteButton } from '@/components/FavoriteButton';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -72,7 +59,6 @@ import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { Tags } from '@/components/Tags';
 import useDashboardFilters from '@/hooks/useDashboardFilters';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import useTileSelection from '@/hooks/useTileSelection';
@@ -83,16 +69,15 @@ import { useConnections } from '@/connection';
 import { useDashboard } from '@/dashboard';
 import DashboardFilters from '@/DashboardFilters';
 import DashboardFiltersModal from '@/DashboardFiltersModal';
-import { EditablePageName } from '@/EditablePageName';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useConfirm } from '@/useConfirm';
-import { FormatTime } from '@/useFormatTime';
 import { getMetricTableName } from '@/utils';
 
 import { DashboardContainerRow } from './DashboardContainerRow';
+import { DashboardHeader } from './DashboardHeader';
 import { DashboardTile, type MoveTarget } from './DashboardTile';
 import { EditTileModal } from './EditTileModal';
 
@@ -989,200 +974,57 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         }}
       />
 
-      {isLocalDashboard ? (
-        <>
-          <Breadcrumbs mb="xs" mt="xs" fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed">
-              Temporary Dashboard
-            </Text>
-          </Breadcrumbs>
-          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-            <Flex justify="space-between" align="center">
-              <Text size="sm">
-                This is a temporary dashboard and can not be saved.
-              </Text>
-              <Button
-                variant="primary"
-                fw={400}
-                onClick={onCreateDashboard}
-                data-testid="create-dashboard-button"
-              >
-                Create New Saved Dashboard
-              </Button>
-            </Flex>
-          </Paper>
-        </>
-      ) : (
-        <Group align="flex-start" mb="xs" mt="xs" justify="space-between">
-          <Breadcrumbs fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
-              {dashboard?.name ?? 'Untitled'}
-            </Text>
-          </Breadcrumbs>
-          {!isLocalDashboard && dashboard && (
-            <Text size="xs" c="dimmed">
-              {dashboard.createdBy && (
-                <span>
-                  Created by{' '}
-                  {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
-                </span>
-              )}
-              {dashboard.updatedAt && (
-                <Tooltip
-                  label={
-                    <>
-                      <FormatTime value={dashboard.updatedAt} format="short" />
-                      {dashboard.updatedBy
-                        ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
-                        : ''}
-                    </>
-                  }
-                >
-                  <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
-                </Tooltip>
-              )}
-            </Text>
-          )}
-        </Group>
-      )}
-      <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
-        <EditablePageName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
-        <Group gap="xs">
-          {!isLocalDashboard && dashboard?.id && (
-            <FavoriteButton
-              resourceType="dashboard"
-              resourceId={dashboard.id}
-            />
-          )}
-          {!isLocalDashboard && dashboard?.id && (
-            <Tags
-              allowCreate
-              values={dashboard?.tags || []}
-              onChange={handleUpdateTags}
-            >
-              <Button
-                variant="secondary"
-                px="xs"
-                size="xs"
-                style={{ flexShrink: 0 }}
-              >
-                <IconTags size={14} className="me-2" />
-                {dashboard?.tags?.length || 0}{' '}
-                {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
-              </Button>
-            </Tags>
-          )}
-          {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-            <Menu width={250}>
-              <Menu.Target>
-                <ActionIcon
-                  variant="secondary"
-                  size="input-xs"
-                  data-testid="dashboard-menu-button"
-                >
-                  <IconDotsVertical size={14} />
-                </ActionIcon>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                {hasTiles && (
-                  <Menu.Item
-                    leftSection={<IconDownload size={16} />}
-                    onClick={() => {
-                      if (!sources || !dashboard) {
-                        notifications.show({
-                          color: 'red',
-                          message: 'Export Failed',
-                        });
-                        return;
-                      }
-                      downloadObjectAsJson(
-                        convertToDashboardTemplate(
-                          dashboard,
-                          // TODO: fix this type issue
-                          sources,
-                          connections,
-                        ),
-                        dashboard?.name,
-                      );
-                    }}
-                  >
-                    Export Dashboard
-                  </Menu.Item>
-                )}
-                <Menu.Item
-                  leftSection={<IconUpload size={16} />}
-                  onClick={() => {
-                    if (dashboard && !dashboard.tiles.length) {
-                      router.push(
-                        `/dashboards/import?dashboardId=${dashboard.id}`,
-                      );
-                    } else {
-                      router.push('/dashboards/import');
-                    }
-                  }}
-                >
-                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  data-testid="save-default-query-filters-menu-item"
-                  leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleSaveQuery}
-                >
-                  {hasSavedQueryAndFilterDefaults
-                    ? 'Update Default Query & Filters'
-                    : 'Save Query & Filters as Default'}
-                </Menu.Item>
-                {hasSavedQueryAndFilterDefaults && (
-                  <Menu.Item
-                    data-testid="remove-default-query-filters-menu-item"
-                    leftSection={<IconX size={16} />}
-                    color="red"
-                    onClick={handleRemoveSavedQuery}
-                  >
-                    Remove Default Query & Filters
-                  </Menu.Item>
-                )}
-                <Menu.Divider />
-                <Menu.Item
-                  leftSection={<IconTrash size={16} />}
-                  color="red"
-                  onClick={() =>
-                    deleteDashboard.mutate(dashboard?.id ?? '', {
-                      onSuccess: () => {
-                        router.push('/dashboards');
-                      },
-                    })
-                  }
-                >
-                  Delete Dashboard
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Group>
-        {/* <Button variant="outline" size="sm">
-          Save
-        </Button> */}
-      </Flex>
+      <DashboardHeader
+        dashboard={dashboard}
+        dashboardHash={dashboardHash}
+        isLocalDashboard={isLocalDashboard}
+        hasTiles={hasTiles}
+        hasSavedQueryAndFilterDefaults={hasSavedQueryAndFilterDefaults}
+        onCreateDashboard={onCreateDashboard}
+        onRenameDashboard={editedName => {
+          if (dashboard != null) {
+            setDashboard({
+              ...dashboard,
+              name: editedName,
+            });
+          }
+        }}
+        onUpdateTags={handleUpdateTags}
+        onExportDashboard={() => {
+          if (!sources || !dashboard) {
+            notifications.show({
+              color: 'red',
+              message: 'Export Failed',
+            });
+            return;
+          }
+          downloadObjectAsJson(
+            convertToDashboardTemplate(
+              dashboard,
+              // TODO: fix this type issue
+              sources,
+              connections,
+            ),
+            dashboard?.name,
+          );
+        }}
+        onImportDashboard={() => {
+          if (dashboard && !dashboard.tiles.length) {
+            router.push(`/dashboards/import?dashboardId=${dashboard.id}`);
+          } else {
+            router.push('/dashboards/import');
+          }
+        }}
+        onSaveQuery={handleSaveQuery}
+        onRemoveSavedQuery={handleRemoveSavedQuery}
+        onDeleteDashboard={() =>
+          deleteDashboard.mutate(dashboard?.id ?? '', {
+            onSuccess: () => {
+              router.push('/dashboards');
+            },
+          })
+        }
+      />
       <Flex
         gap="sm"
         mt="sm"
