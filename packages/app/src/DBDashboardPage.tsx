@@ -813,6 +813,15 @@ const Tile = forwardRef(
                       dateRange={dateRange}
                     />
                   )}
+                {queriedConfig?.displayType === DisplayType.Timeline && (
+                  <ChartContainer title={title} toolbarItems={toolbar}>
+                    <Flex h="100%" align="center" justify="center">
+                      <Text c="dimmed" size="sm">
+                        Timeline renderer not yet available. Update your client.
+                      </Text>
+                    </Flex>
+                  </ChartContainer>
+                )}
                 {effectiveMarkdownConfig?.displayType ===
                   DisplayType.Markdown &&
                   'markdown' in effectiveMarkdownConfig && (
