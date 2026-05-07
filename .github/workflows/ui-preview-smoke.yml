@@ -1,0 +1,163 @@
+name: UI preview smoke
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'packages/app/**'
+      - 'packages/common-utils/**'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to smoke-test
+        required: true
+        type: string
+
+concurrency:
+  group: ui-smoke-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if:
+      github.event_name == 'workflow_dispatch' || github.event.action ==
+      'ready_for_review' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+
+    steps:
+      # claude-code-action requires a valid git working tree (it configures
+      # git user before running). We only drive Playwright at the Vercel
+      # preview URL — we never execute repo code — so checking out the base
+      # branch is sufficient and avoids running any fork-supplied code under
+      # pull_request_target.
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve PR metadata + body
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prNumber =
+              context.eventName === 'workflow_dispatch'
+                ? Number('${{ inputs.pr_number }}')
+                : context.payload.pull_request.number;
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            fs.writeFileSync('/tmp/pr-body.md', pr.body || '');
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_sha', pr.head.sha);
+
+      - name: Wait for Vercel preview
+        id: vercel
+        uses: patrickedqvist/wait-for-vercel-preview@v1.3.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          max_timeout: 600
+          check_interval: 10
+          # For workflow_dispatch we need to point at the PR head commit.
+          # For pull_request_target the action picks up the PR sha automatically.
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install -g playwright
+          playwright install --with-deps chromium
+
+      - name: Run agent against preview
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          mcp_servers: |
+            {
+              "playwright": {
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "@playwright/mcp@latest",
+                  "--browser=chromium",
+                  "--headless"
+                ]
+              }
+            }
+          prompt: |
+            Execute the UI test plan for PR #${{ steps.pr.outputs.number }}
+            on its Vercel preview deploy.
+
+            Preview URL: ${{ steps.vercel.outputs.url }}
+            Repo: ${{ github.repository }}
+            PR body: read /tmp/pr-body.md (use the Bash cat tool).
+
+            This preview is built in LOCAL_MODE with a pre-configured demo
+            ClickHouse connection and otel_logs / otel_traces sources. No
+            registration or source setup is needed — open the URL and go.
+
+            Workflow:
+
+            1. Read /tmp/pr-body.md.
+            2. Find the section headed exactly
+               "### How to test on Vercel preview". Within it, parse:
+                 - "**Preview routes:**" line — comma-separated list of paths
+                   (e.g. "/chart, /dashboards/<id>"). Strip whitespace.
+                 - "**Steps:**" — a numbered list of imperative actions.
+            3. If the section is missing, empty, contains only the HTML
+               comment template placeholder, or is marked "N/A" or
+               "non-UI change": post a single PR comment containing exactly
+               the text below, then exit with status 0.
+
+               > <!-- ui-preview-smoke -->
+               > ## UI Preview Smoke
+               >
+               > Skipped: this PR has no `How to test on Vercel preview`
+               > plan. Add `**Preview routes:**` and a numbered `**Steps:**`
+               > list to enable automated smoke testing.
+
+            4. Otherwise, for each Preview route in order:
+                 a. Open `<Preview URL><route>` in the Playwright browser.
+                 b. Execute the numbered steps verbatim, in order.
+                 c. Treat any step beginning with "Verify", "Confirm",
+                    "Assert", "Check", or "Ensure" as an assertion. If an
+                    assertion fails, record the failure and continue to the
+                    next route.
+                 d. After each route capture: full-page screenshot, any
+                    console errors at level "error", any 4xx/5xx network
+                    responses, any uncaught exception dialogs.
+            5. Post a single PR comment via the JSON schema below. Use ✅
+               for passed routes, ❌ for any route with at least one failed
+               assertion or runtime error. For every failure, include the
+               step text, what was asserted, and what you observed instead.
+
+            Constraints:
+              - Do not invent steps the author didn't write.
+              - Do not exercise routes outside the "Preview routes:" list.
+              - If a step is ambiguous, note the ambiguity in your comment
+                and proceed with your best interpretation. Never fabricate
+                an assertion that wasn't requested.
+              - Cap total runtime at 8 minutes. If a single step hangs
+                more than 30s, mark it failed and continue.
+
+          claude_args: |
+            --setting-sources user
+            --allowedTools "Bash(cat /tmp/pr-body.md),Bash(gh pr view:*),mcp__playwright__*"
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string","description":"Complete markdown summary starting with <!-- ui-preview-smoke --> on the first line and ## UI Preview Smoke on the second line"}},"required":["summary"]}'
