@@ -4,6 +4,8 @@ import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
+import { copyTextWithToast } from '@/utils/clipboard';
+
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
@@ -83,15 +85,12 @@ const DBRowTableFieldWithPopover = ({
   };
 
   const copyFieldValue = async () => {
-    try {
-      const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      await navigator.clipboard.writeText(value);
+    const value =
+      typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+    const ok = await copyTextWithToast(value, 'Copied field value');
+    if (ok) {
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-      // Optionally show an error toast notification to the user
     }
   };
 
