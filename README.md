@@ -1,5 +1,8 @@
 # Berg
 
+> **Beta.** APIs, storage shapes, and config keys may change between minor versions until 1.0 — pin to a tagged  
+> GitHub release if stability matters.
+
 A Kibana-style web UI for AWS S3 Tables, backed by Athena and the Glue Data
 Catalog. Forked from [HyperDX](https://hyperdx.io) / ClickStack and repurposed
 for analytical query workflows on Iceberg-managed S3 Tables.
@@ -34,7 +37,7 @@ externally)
 - AWS account with:
   - Athena workgroup + S3 results bucket
   - Glue catalog (regular Glue or S3 Tables federation `s3tablescatalog/...`)
-  - IAM principal with `athena:`*, `glue:Get*`, `s3:Get*` / `s3:Put*` on the
+  - IAM principal with `athena:`*, `glue:Get`*, `s3:Get*` / `s3:Put*` on the
   results bucket. For local dev, an `AWS_PROFILE` works; in production use
   EKS IRSA / ECS task role.
 

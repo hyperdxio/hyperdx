@@ -1,6 +1,6 @@
 {
   "name": "@berg/api",
-  "version": "2.24.1",
+  "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -9,7 +9,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.47",
-    "@berg/common-utils": "^0.18.1",
+    "@berg/common-utils": "^0.1.0",
     "@esm2cjs/p-queue": "^7.3.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@modelcontextprotocol/sdk": "^1.27.1",

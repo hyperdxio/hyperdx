@@ -1,6 +1,6 @@
 {
   "name": "@berg/app",
-  "version": "2.24.1",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -26,7 +26,7 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@berg/common-utils": "^0.18.1",
+    "@berg/common-utils": "^0.1.0",
     "@codemirror/autocomplete": "^6.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
