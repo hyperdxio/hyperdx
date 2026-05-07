@@ -110,6 +110,19 @@ describe('redactSecrets', () => {
       );
     });
 
+    it('redacts a JWT-shaped Bearer with underscores in the signature', () => {
+      // base64url uses both "_" and "-"; a real JWT signature routinely
+      // contains underscores. Without "_" in the bearer alphabet the
+      // match terminated at the first underscore and the signature tail
+      // leaked past the [REDACTED] marker.
+      const line =
+        'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.AbC_DeF_GhIjKl';
+      const out = redactSecrets(line);
+      expect(out).toContain('Bearer [REDACTED]');
+      expect(out).not.toContain('AbC_DeF_GhIjKl');
+      expect(out).not.toContain('GhIjKl');
+    });
+
     it('redacts Basic values', () => {
       expect(redactSecrets('Authorization: Basic dXNlcjpwYXNz')).toContain(
         'Basic [REDACTED]',
@@ -241,6 +254,51 @@ describe('redactSecrets', () => {
       const line = 'fetch ssh://git@github.com/acme/repo';
       expect(redactSecrets(line)).toBe(line);
     });
+
+    it('redacts user:pass in a postgres connection string', () => {
+      const out = redactSecrets(
+        'DATABASE_URL=postgres://app:hunter2@db.internal:5432/orders',
+      );
+      expect(out).toContain(
+        'postgres://[REDACTED]:[REDACTED]@db.internal:5432/orders',
+      );
+      expect(out).not.toContain('hunter2');
+    });
+
+    it('redacts user:pass in a postgresql connection string', () => {
+      const out = redactSecrets(
+        'jdbc:postgresql://app:hunter2@db.internal:5432/orders',
+      );
+      expect(out).toContain(
+        'postgresql://[REDACTED]:[REDACTED]@db.internal:5432/orders',
+      );
+      expect(out).not.toContain('hunter2');
+    });
+
+    it('redacts user:pass in a mongodb+srv connection string', () => {
+      const out = redactSecrets(
+        'mongo: mongodb+srv://svc:hunter2@cluster.mongodb.net/db',
+      );
+      expect(out).toContain(
+        'mongodb+srv://[REDACTED]:[REDACTED]@cluster.mongodb.net/db',
+      );
+      expect(out).not.toContain('hunter2');
+    });
+
+    it('redacts user:pass in mysql, redis, amqp, kafka, clickhouse', () => {
+      const cases = [
+        ['mysql://app:hunter2@db.local/orders', 'mysql'],
+        ['rediss://default:hunter2@cache.local:6379/0', 'rediss'],
+        ['amqps://app:hunter2@rabbit.local:5671/vh', 'amqps'],
+        ['kafka://app:hunter2@broker.local:9092/topic', 'kafka'],
+        ['clickhouse://default:hunter2@ch.local:9000/default', 'clickhouse'],
+      ];
+      for (const [input, scheme] of cases) {
+        const out = redactSecrets(input);
+        expect(out.startsWith(`${scheme}://[REDACTED]:[REDACTED]@`)).toBe(true);
+        expect(out).not.toContain('hunter2');
+      }
+    });
   });
 
   describe('AWS access keys', () => {
@@ -311,14 +369,48 @@ describe('redactSecrets', () => {
     });
   });
 
+  describe('LLM vendor API keys', () => {
+    it('redacts an OpenAI sk- key', () => {
+      const key = 'sk-' + 'A'.repeat(48);
+      const out = redactSecrets(`OPENAI_API_KEY=${key}`);
+      expect(out).toContain('[REDACTED_LLM_KEY]');
+      expect(out).not.toContain(key);
+    });
+
+    it('redacts an Anthropic sk-ant- key', () => {
+      const key = 'sk-ant-' + 'B'.repeat(48);
+      const out = redactSecrets(`ANTHROPIC_API_KEY=${key}`);
+      expect(out).toContain('[REDACTED_LLM_KEY]');
+      expect(out).not.toContain(key);
+    });
+
+    it('redacts a free-floating sk- key in a log line', () => {
+      const key = 'sk-' + 'C'.repeat(40);
+      const out = redactSecrets(`request body contained ${key} apparently`);
+      expect(out).toContain('[REDACTED_LLM_KEY]');
+      expect(out).not.toContain(key);
+    });
+
+    it('does not match short fragments', () => {
+      // "sk-" alone, or with very few trailing chars, is a common
+      // English fragment ("sk-ip", "sk-line"). The pattern requires
+      // at least 20 chars after the prefix.
+      const line = 'task: sk-ip-the-rest and sk-line are not tokens';
+      expect(redactSecrets(line)).toBe(line);
+    });
+  });
+
   describe('multi-secret payloads', () => {
     it('redacts every distinct secret in one pass', () => {
+      const llmKey = 'sk-' + 'L'.repeat(48);
       const input = [
         'conn url: https://alice:hunter2@db.example.com/app',
-        'auth: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1IjoxfQ.sig',
+        'pg url:   postgres://svc:hunter2@db.internal/orders',
+        'auth: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1IjoxfQ.AbC_DeF_GhIjKl',
         'aws: AKIAIOSFODNN7EXAMPLE',
         'gh: ghp_' + 'X'.repeat(36),
         'slack: xoxb-1111-aaaaaaaaaa',
+        `openai: ${llmKey}`,
         'env: password=hunter2 api_key=abc',
       ].join('\n');
 
@@ -327,11 +419,15 @@ describe('redactSecrets', () => {
       expect(out).not.toContain('hunter2');
       expect(out).not.toContain('AKIAIOSFODNN7EXAMPLE');
       expect(out).not.toContain('xoxb-1111-aaaaaaaaaa');
+      expect(out).not.toContain(llmKey);
+      expect(out).not.toContain('GhIjKl');
       expect(out).toContain('[REDACTED]:[REDACTED]@db.example.com');
+      expect(out).toContain('postgres://[REDACTED]:[REDACTED]@db.internal');
       expect(out).toContain('Bearer [REDACTED]');
       expect(out).toContain('[REDACTED_AWS_KEY]');
       expect(out).toContain('[REDACTED_GITHUB_TOKEN]');
       expect(out).toContain('[REDACTED_SLACK_TOKEN]');
+      expect(out).toContain('[REDACTED_LLM_KEY]');
       expect(out).toContain('password=[REDACTED]');
       expect(out).toContain('api_key=[REDACTED]');
     });
@@ -349,6 +445,7 @@ describe('redactSecrets', () => {
           'aws-access-key',
           'slack-token',
           'github-token',
+          'llm-vendor-key',
           'key-value',
           'json-quoted',
           'http-header',
