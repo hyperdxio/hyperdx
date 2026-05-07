@@ -35,6 +35,85 @@ import { SQLPreview } from './ChartSQLPreview';
 
 type Mode2DataArray = [number[], number[], number[]];
 
+/**
+ * Drag-select bounds in data space: x in seconds (URL convention), y in
+ * the y-axis's natural unit (NOT log-space; callers pass the actual value
+ * users would expect to see, e.g. ms latency). yMin may be 0 when the
+ * selection touched the bottom bucket; the renderer clamps to the chart's
+ * visible y-axis floor.
+ */
+export type SelectionBounds = {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+};
+
+/**
+ * Reapply a persisted selection rectangle to a uPlot instance. Called on
+ * chart create and whenever the bounds prop changes; uPlot's `u.select`
+ * is owned by the chart, so it gets wiped on any chart recreation. We use
+ * the URL-backed bounds as the source of truth and mirror them onto the
+ * chart imperatively. fireHook=false avoids re-entering the setSelect hook.
+ */
+function applySelectionToChart(
+  u: uPlot,
+  bounds: SelectionBounds | null | undefined,
+  scaleType: HeatmapScaleType,
+) {
+  // The clear path runs BEFORE the scale-not-populated guard below so a
+  // null bounds always clears the rectangle, even on first paint when
+  // u.scales.y is not yet populated. Keep this ordering when refactoring;
+  // swapping it would suppress clears while scales are loading.
+  if (bounds == null) {
+    u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+    return;
+  }
+
+  const { xMin, xMax, yMin, yMax } = bounds;
+
+  // x is in seconds in the URL; uPlot's x-axis is configured ms:1 so
+  // values are stored as ms.
+  const xMinPx = u.valToPos(xMin * 1000, 'x');
+  const xMaxPx = u.valToPos(xMax * 1000, 'x');
+
+  const yScaleMin = u.scales.y?.min;
+  const yScaleMax = u.scales.y?.max;
+  if (yScaleMin == null || yScaleMax == null) {
+    return;
+  }
+
+  // For log scale, y-axis values are stored in log-space. Convert and
+  // clamp to the visible axis: yMin may be 0 (bottom-bucket adjustment in
+  // HeatmapContainer's onFilter wrapper); yMax may exceed the axis.
+  let yLowPlot: number;
+  let yHighPlot: number;
+  if (scaleType === 'log') {
+    yHighPlot = yMax > 0 ? Math.min(Math.log(yMax), yScaleMax) : yScaleMax;
+    yLowPlot = yMin > 0 ? Math.max(Math.log(yMin), yScaleMin) : yScaleMin;
+  } else {
+    yHighPlot = Math.min(yMax, yScaleMax);
+    yLowPlot = Math.max(yMin, yScaleMin);
+  }
+
+  // uPlot's y-axis: high data values map to small pixel y (top of chart).
+  const yHighPx = u.valToPos(yHighPlot, 'y');
+  const yLowPx = u.valToPos(yLowPlot, 'y');
+
+  const left = Math.min(xMinPx, xMaxPx);
+  const right = Math.max(xMinPx, xMaxPx);
+
+  u.setSelect(
+    {
+      left,
+      top: yHighPx,
+      width: right - left,
+      height: Math.max(0, yLowPx - yHighPx),
+    },
+    false,
+  );
+}
+
 // From: https://github.com/leeoniya/uPlot/blob/a4edb297a9b80baf781f4d05a40fb52fae737bff/demos/latency-heatmap.html#L436
 function heatmapPaths(opts: {
   disp: { fill: { lookup: string[]; values: any } };
@@ -534,6 +613,7 @@ function HeatmapContainer({
   enabled = true,
   onFilter,
   onClearFilter,
+  selectionBounds,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -544,6 +624,14 @@ function HeatmapContainer({
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
   onClearFilter?: () => void;
+  /**
+   * The currently-applied drag-select bounds. When provided, the heatmap
+   * draws the dashed selection rectangle and reapplies it after any uPlot
+   * recreation (theme switch, prop change, resize) so the user always sees
+   * which slice they filtered. Caller owns the URL/query-state plumbing;
+   * this is purely a visual mirror of that state.
+   */
+  selectionBounds?: SelectionBounds | null;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
@@ -600,39 +688,54 @@ function HeatmapContainer({
     enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
   });
 
-  const generatedTsBuckets = timeBucketByGranularity(
-    dateRange[0],
-    dateRange[1],
-    granularity,
+  // Memoize so timeBucketByGranularity's fresh Date[] doesn't defeat
+  // the heatmapData memoization downstream. dateRange itself may be a
+  // fresh array each render, so depend on primitive ms + granularity.
+  const fromMs = dateRange[0]?.getTime() ?? 0;
+  const toMs = dateRange[1]?.getTime() ?? 0;
+  const generatedTsBuckets = useMemo(
+    () => timeBucketByGranularity(dateRange[0], dateRange[1], granularity),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fromMs, toMs, granularity],
   );
 
-  const timestampColumn = inferTimestampColumn(data?.meta ?? []);
+  // Stable [time, bucket, count] arrays let uplot-react skip its setData
+  // path when only URL-state (xMin/xMax/yMin/yMax) changed. Pairs with the
+  // selectionBounds prop on Heatmap below: the prop reapplies u.select on
+  // any chart recreation, this memo prevents the recreation in the
+  // common case.
+  const heatmapData = useMemo<Mode2DataArray>(() => {
+    const time: number[] = [];
+    const bucket: number[] = [];
+    const count: number[] = [];
 
-  // Compute the y-axis value for a given bucket index.
-  // For log scale we store values in log space so that bins are uniformly
-  // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
-  // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
-  // with actual log-spaced values the first increment is tiny relative to the
-  // full range and tiles render at ~0px height (invisible).
-  const bucketToYValue = (j: number) => {
-    if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
-      // Return the natural-log of the actual bucket boundary so that the
-      // y-values are uniformly spaced.  Tick labels are exponentiated back
-      // via the tickFormatter below.
-      const actualValue =
-        effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
-      return Math.log(actualValue);
+    // timestampColumn is derived from data.meta, so data covers the dep.
+    const timestampColumn = inferTimestampColumn(data?.meta ?? []);
+
+    if (data == null || timestampColumn == null) {
+      return [time, bucket, count];
     }
-    // Linear: min + j * step
-    return effectiveMin + j * ((max - effectiveMin) / nBuckets);
-  };
 
-  const time: number[] = []; // x values
-  const bucket: number[] = []; // y value series 1
-  const count: number[] = []; // y value series 2
-  if (data != null && timestampColumn != null) {
+    // Compute the y-axis value for a given bucket index.
+    // For log scale we store values in log space so that bins are uniformly
+    // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
+    // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
+    // with actual log-spaced values the first increment is tiny relative to
+    // the full range and tiles render at ~0px height (invisible).
+    const bucketToYValue = (j: number) => {
+      if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
+        // Return the natural-log of the actual bucket boundary so that the
+        // y-values are uniformly spaced.  Tick labels are exponentiated back
+        // via the tickFormatter below.
+        const actualValue =
+          effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+        return Math.log(actualValue);
+      }
+      // Linear: min + j * step
+      return effectiveMin + j * ((max - effectiveMin) / nBuckets);
+    };
+
     let dataIndex = 0;
-
     for (let i = 0; i < generatedTsBuckets.length; i++) {
       const generatedTs = generatedTsBuckets[i].getTime();
 
@@ -657,7 +760,11 @@ function HeatmapContainer({
         }
       }
     }
-  }
+
+    return [time, bucket, count];
+  }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
+
+  const time = heatmapData[0];
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -743,7 +850,7 @@ function HeatmapContainer({
       ) : (
         <Heatmap
           key={JSON.stringify(config)}
-          data={[time, bucket, count]}
+          data={heatmapData}
           numberFormat={config.numberFormat}
           onFilter={
             onFilter
@@ -752,7 +859,7 @@ function HeatmapContainer({
                   // clamped by greatest(value, effectiveMin).  If the
                   // selection touches that bucket, widen yMin to 0 so
                   // the downstream SQL filter captures all those spans.
-                  // The 1.1× threshold adds 10% headroom to account for
+                  // The 1.1x threshold adds 10% headroom to account for
                   // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
                     scaleType === 'log' && yMin <= effectiveMin * 1.1
@@ -765,6 +872,7 @@ function HeatmapContainer({
           onClearFilter={onClearFilter}
           scaleType={scaleType}
           palette={palette}
+          selectionBounds={selectionBounds}
         />
       )}
     </ChartContainer>
@@ -875,6 +983,7 @@ function Heatmap({
   onClearFilter,
   scaleType = 'linear',
   palette,
+  selectionBounds,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
@@ -882,6 +991,7 @@ function Heatmap({
   onClearFilter?: () => void;
   scaleType?: HeatmapScaleType;
   palette: string[];
+  selectionBounds?: SelectionBounds | null;
 }) {
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
@@ -919,6 +1029,32 @@ function Heatmap({
   // persisted u.select rectangle (which is owned by uPlot, not React).
   const uplotRef = useRef<uPlot | null>(null);
 
+  // Hold selectionBounds and scaleType in refs so the uPlot `ready` hook
+  // (captured inside the options useMemo via closure) always sees the
+  // latest values without needing them in the memo's dep array. Mutating
+  // a ref doesn't trigger re-renders, so the options identity stays
+  // stable across selection/scale changes.
+  const selectionBoundsRef = useRef(selectionBounds);
+  const scaleTypeRef = useRef(scaleType);
+  // Runs every commit; mirrors latest props into refs (no deps array on
+  // purpose).
+  useEffect(() => {
+    selectionBoundsRef.current = selectionBounds;
+    scaleTypeRef.current = scaleType;
+  });
+
+  // Reapply the URL-backed selection whenever the bounds prop changes
+  // (e.g. a fresh drag-select arrives via the round-trip through the
+  // parent's URL state, or the parent clears the filter). This complements
+  // the uPlot `ready` hook below: that handles initial chart creation
+  // (and any recreation), this handles bounds changes against an existing
+  // chart.
+  useEffect(() => {
+    if (uplotRef.current) {
+      applySelectionToChart(uplotRef.current, selectionBounds, scaleType);
+    }
+  }, [selectionBounds, scaleType]);
+
   // Timestamp of the most recent drag-end. Guards the container's onClick
   // handler from clearing the selection when the synthetic click event
   // that fires on mouseup-after-drag arrives.
@@ -926,6 +1062,24 @@ function Heatmap({
 
   const { ref, width, height } = useElementSize();
 
+  // Stabilize on numberFormat content, not reference. Callers (e.g.
+  // DBSearchHeatmapChart) build a fresh `numberFormat` object on every
+  // render; depending on its identity would rebuild tickFormatter, then
+  // the options memo, then uplot-react would see new top-level keys via
+  // optionsUpdateState and treat the change as 'create', destroying the
+  // chart and wiping u.select. Hashing the contents lets the memo skip
+  // when the actual format is unchanged. (HDX-4147)
+  //
+  // Relies on NumberFormat being JSON-serializable: today it is plain
+  // config (string + number fields), so JSON.stringify is a faithful
+  // fingerprint. If the type ever grows a function-valued field
+  // (e.g. a custom `formatter` callback), switch to a shallow-equal
+  // helper keyed on the known fields, because functions stringify to
+  // undefined and would silently skip rebuilds.
+  const numberFormatKey = useMemo(
+    () => (numberFormat ? JSON.stringify(numberFormat) : ''),
+    [numberFormat],
+  );
   const tickFormatter = useCallback(
     (value: number) => {
       // y-values are stored in log space for log scale; exponentiate back
@@ -951,7 +1105,8 @@ function Heatmap({
             compactDisplay: 'short',
           }).format(actualValue);
     },
-    [numberFormat, scaleType],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [numberFormatKey, scaleType],
   );
 
   const options: uPlot.Options = useMemo(() => {
@@ -1080,6 +1235,17 @@ function Heatmap({
         }),
         {
           hooks: {
+            // Fires once after uPlot finishes initial layout/draw. At
+            // onCreate time scales aren't reliably populated for mode-2
+            // facet data, so reapplying the URL-backed selection from
+            // here ensures valToPos has the bounds it needs. (HDX-4147)
+            ready: u => {
+              applySelectionToChart(
+                u,
+                selectionBoundsRef.current,
+                scaleTypeRef.current,
+              );
+            },
             setSelect: u => {
               // Ignore zero-size selections (e.g. single-click)
               if (u.select.width <= 0 || u.select.height <= 0) {
