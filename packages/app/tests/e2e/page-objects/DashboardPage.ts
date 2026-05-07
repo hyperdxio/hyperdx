@@ -664,6 +664,25 @@ export class DashboardPage {
       .filter({ hasText: 'Link error' });
   }
 
+  /**
+   * Banner shown on the dashboard page when the URL's `filters=` param
+   * references expressions that don't correspond to any declared dashboard
+   * filter. Users can dismiss it with the close button.
+   */
+  get ignoredUrlFiltersBanner() {
+    return this.page.getByTestId('ignored-url-filters-banner');
+  }
+
+  /**
+   * Dismiss the ignored-URL-filters banner by clicking its close button.
+   * Mantine's Alert renders the close button with `aria-label="Dismiss"`.
+   */
+  async dismissIgnoredUrlFiltersBanner() {
+    await this.ignoredUrlFiltersBanner
+      .getByRole('button', { name: 'Dismiss' })
+      .click();
+  }
+
   // Getters for assertions
 
   get createButton() {

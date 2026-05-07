@@ -50,6 +50,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
   Breadcrumbs,
@@ -69,6 +70,7 @@ import {
 import { useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
@@ -1244,8 +1246,36 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
-    useDashboardFilters(filters);
+  const {
+    filterValues,
+    setFilterValue,
+    filterQueries,
+    setFilterQueries,
+    ignoredFilterExpressions,
+  } = useDashboardFilters(filters);
+
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
+
+  // Warn when the URL has filter values that don't correspond to any declared
+  // dashboard filter — they'd otherwise be silently dropped, and users who
+  // arrive via a shared link, bookmark, or onClick action might not notice.
+  // Only consider URL filters ignored once the dashboard has finished loading
+  // so we don't flash the banner before `dashboard.filters` is available.
+  //
+  // Latched on dashboard load only — not on every URL change — so the banner
+  // doesn't flash while navigating between dashboards due to nuqs state changing
+  // before the next router state. Known limitation - when navigating to the current
+  // dashboard with new and invalid filters in the URL, the banner will not show up.
+  const [shouldShowIgnoredFiltersBanner, setShouldShowIgnoredFiltersBanner] =
+    useState<boolean>(false);
+  useEffect(() => {
+    if (!dashboardReady) return;
+    setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.id, dashboardReady]);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
@@ -2293,6 +2323,23 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           Run
         </Button>
       </Flex>
+      {shouldShowIgnoredFiltersBanner && (
+        <Alert
+          mt="sm"
+          color="yellow"
+          icon={<IconAlertTriangle size={16} />}
+          title="Some filters could not be applied"
+          data-testid="ignored-url-filters-banner"
+          withCloseButton
+          closeButtonLabel="Dismiss"
+          onClose={() => setShouldShowIgnoredFiltersBanner(false)}
+        >
+          No dashboard filter(s) found for{' '}
+          {ignoredFilterExpressions.length === 1 ? 'expression' : 'expressions'}{' '}
+          in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with a
+          matching expression to apply these filters.
+        </Alert>
+      )}
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}
