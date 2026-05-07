@@ -3,7 +3,7 @@ const env = process.env;
 // DEFAULTS
 const DEFAULT_APP_TYPE = 'api';
 const DEFAULT_EXPRESS_SESSION = 'berg is cool';
-const DEFAULT_FRONTEND_URL = `http://localhost:${env.HYPERDX_APP_PORT}`;
+const DEFAULT_FRONTEND_URL = `http://localhost:${env.BERG_APP_PORT}`;
 
 function requireEnv(name: string): string {
   const v = env[name];
@@ -23,12 +23,12 @@ export const EXPRESS_SESSION_SECRET = (env.EXPRESS_SESSION_SECRET ||
   DEFAULT_EXPRESS_SESSION) as string;
 export const FRONTEND_URL = (env.FRONTEND_URL ||
   DEFAULT_FRONTEND_URL) as string;
-const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
-export const IS_APP_IMAGE = HYPERDX_IMAGE === 'hyperdx';
-export const IS_ALL_IN_ONE_IMAGE = HYPERDX_IMAGE === 'all-in-one-auth';
-export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
-export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
-export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
+const BERG_IMAGE = env.BERG_IMAGE;
+export const IS_APP_IMAGE = BERG_IMAGE === 'hyperdx';
+export const IS_ALL_IN_ONE_IMAGE = BERG_IMAGE === 'all-in-one-auth';
+export const IS_LOCAL_IMAGE = BERG_IMAGE === 'all-in-one-noauth';
+export const BERG_API_KEY = env.BERG_API_KEY as string;
+export const BERG_LOG_LEVEL = env.BERG_LOG_LEVEL as string;
 export const IS_CI = NODE_ENV === 'test';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';

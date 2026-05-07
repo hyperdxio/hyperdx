@@ -14,16 +14,16 @@ services:
   app:
     image: ${BERG_IMAGE_REPO:-berg}/${IMAGE_NAME_DOCKERHUB:-berg}:${IMAGE_VERSION:-latest}
     ports:
-      - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
-      - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
+      - ${BERG_API_PORT}:${BERG_API_PORT}
+      - ${BERG_APP_PORT}:${BERG_APP_PORT}
     environment:
-      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT}
-      HYPERDX_API_PORT: ${HYPERDX_API_PORT}
-      HYPERDX_APP_PORT: ${HYPERDX_APP_PORT}
-      HYPERDX_APP_URL: ${HYPERDX_APP_URL}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      FRONTEND_URL: ${BERG_APP_URL}:${BERG_APP_PORT}
+      BERG_API_PORT: ${BERG_API_PORT}
+      BERG_APP_PORT: ${BERG_APP_PORT}
+      BERG_APP_URL: ${BERG_APP_URL}
+      BERG_LOG_LEVEL: ${BERG_LOG_LEVEL}
       MONGO_URI: 'mongodb://db:27017/berg'
-      SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
+      SERVER_URL: http://127.0.0.1:${BERG_API_PORT}
       EXPRESS_SESSION_SECRET: ${EXPRESS_SESSION_SECRET}
       # AWS Athena configuration (Berg query engine).
       # In EKS use IRSA; for non-IRSA deployments pass AWS_* env vars through

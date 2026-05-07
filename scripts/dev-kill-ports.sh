@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 # ---------------------------------------------------------------------------
 # Kill orphaned dev processes on slot-specific ports
-# Sourced after dev-env.sh so HYPERDX_API_PORT, HYPERDX_APP_PORT, etc. are set
+# Sourced after dev-env.sh so BERG_API_PORT, BERG_APP_PORT, etc. are set
 # ---------------------------------------------------------------------------
 
-PORTS="$HYPERDX_API_PORT $HYPERDX_APP_PORT"
+PORTS="$BERG_API_PORT $BERG_APP_PORT"
 
 killed=0
 for port in $PORTS; do

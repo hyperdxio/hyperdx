@@ -4,7 +4,7 @@ import pinoHttp from 'pino-http';
 
 import * as config from '@/config';
 
-const MAX_LEVEL = config.HYPERDX_LOG_LEVEL ?? 'debug';
+const MAX_LEVEL = config.BERG_LOG_LEVEL ?? 'debug';
 
 // Configure transport based on environment.
 const getTransport = () => {
