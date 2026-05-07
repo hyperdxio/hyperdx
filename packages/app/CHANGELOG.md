@@ -1,5 +1,61 @@
 # @hyperdx/app
 
+## 2.25.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+- ef571cc0: feat: heatmap charts in chart editor and dashboards
+
+  - Heatmap is now a selectable display type in the chart editor tabs
+  - Dashboard tiles render heatmaps via the shared `DBHeatmapChart` component
+  - Heatmap source picker restricted to trace sources; value/count expressions auto-populate from the source's duration expression
+  - Display Settings drawer (scale, value, count) shared across search Event Deltas, chart editor, and dashboards
+  - Click a dashboard heatmap tile to open Event Deltas with source, where clause, filters, and time range preserved
+  - Dynamic Y-axis sizing measures formatted tick labels so long labels (e.g. "1.67min") are not clipped
+
+### Patch Changes
+
+- a5294f8d: fix: prevent false "data source not set" error on markdown dashboard tiles
+- 24699cde: fix: Infer singular quantileXXX() from MV quantilesXXXState()
+- 4e9caeca: Support per-signal OTLP exporter endpoints for Hyperdx internal telemetry
+- 29586e7b: Enable end-to-end PR testing on Vercel previews by inlining the Express API into the Next.js `/api/[...all]` serverless function (opt-in via `HDX_PREVIEW_INLINE_API=true`). Production deploys (Docker fullstack image, standalone Next output) are unchanged — they keep proxying `/api/*` to the separately-deployed API service.
+
+  Also realigns `clickhouseProxy.ts` with the upstream EE implementation (modulo CHC and RBAC code paths): query params are now parsed from the request URL via `validateAndSanitizePath()` + `URL.searchParams` instead of `req.query`, which fixes a `Setting all is neither a builtin setting nor started with the prefix 'custom_'` regression on Vercel previews where Next.js's `[...all]` catch-all route polluted `req.query`. Adds path-injection hardening, POST-only enforcement, and exposes `X-ClickHouse-Mixed-Response` / `X-ClickHouse-Service-Unavailable` response headers for the browser ClickHouse client.
+
+- 6811ea05: fix: numbers from filters bar was always showing 0 instead of the count
+- 3af4e920: Standardize query param libraries
+- c2a9f96f: feat: Add more dashboard onClick linking options
+- 88b2b646: fix: use block_number/block_offset to uniquely identify log rows
+- Updated dependencies [a5294f8d]
+- Updated dependencies [eb16df44]
+- Updated dependencies [24699cde]
+- Updated dependencies [fecbfff7]
+- Updated dependencies [5c6da48c]
+- Updated dependencies [29586e7b]
+- Updated dependencies [ef571cc0]
+- Updated dependencies [1c73d0c4]
+- Updated dependencies [c2a9f96f]
+- Updated dependencies [88b2b646]
+  - @hyperdx/common-utils@0.19.0
+  - @hyperdx/api@2.25.0
+
 ## 2.24.1
 
 ### Patch Changes

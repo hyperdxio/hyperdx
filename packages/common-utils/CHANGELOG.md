@@ -1,5 +1,41 @@
 # @hyperdx/common-utils
 
+## 0.19.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+### Patch Changes
+
+- a5294f8d: fix: prevent false "data source not set" error on markdown dashboard tiles
+- 24699cde: fix: Infer singular quantileXXX() from MV quantilesXXXState()
+- ef571cc0: feat: heatmap charts in chart editor and dashboards
+
+  - Heatmap is now a selectable display type in the chart editor tabs
+  - Dashboard tiles render heatmaps via the shared `DBHeatmapChart` component
+  - Heatmap source picker restricted to trace sources; value/count expressions auto-populate from the source's duration expression
+  - Display Settings drawer (scale, value, count) shared across search Event Deltas, chart editor, and dashboards
+  - Click a dashboard heatmap tile to open Event Deltas with source, where clause, filters, and time range preserved
+  - Dynamic Y-axis sizing measures formatted tick labels so long labels (e.g. "1.67min") are not clipped
+
+- c2a9f96f: feat: Add more dashboard onClick linking options
+
 ## 0.18.1
 
 ### Patch Changes
