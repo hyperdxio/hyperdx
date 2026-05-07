@@ -146,13 +146,20 @@ export const Table = ({
                 'text-truncate': !wrapLinesEnabled,
               });
 
+              // maxWidth: 100% prevents long unbreakable strings (URLs,
+              // hashes) from forcing the inner div wider than the table
+              // cell, which would visually overflow into the next column.
+              const cellDivStyle: React.CSSProperties = {
+                maxWidth: '100%',
+              };
+
               if (onRowClick) {
                 return (
                   <div
                     role="link"
                     tabIndex={0}
                     className={className}
-                    style={{ cursor: 'pointer' }}
+                    style={{ ...cellDivStyle, cursor: 'pointer' }}
                     // Left-click: fires onClick with button === 0. The parent
                     // handler detects meta/ctrl for cmd/ctrl-click → new tab.
                     onClick={e => onRowClick(row.original, e)}
@@ -180,7 +187,11 @@ export const Table = ({
                 );
               }
 
-              return <div className={className}>{formattedValue}</div>;
+              return (
+                <div className={className} style={cellDivStyle}>
+                  {formattedValue}
+                </div>
+              );
             },
             size:
               i === numColumns - 2
@@ -336,7 +347,11 @@ export const Table = ({
               >
                 {row.getVisibleCells().map(cell => {
                   return (
-                    <td key={cell.id} title={`${cell.getValue()}`}>
+                    <td
+                      key={cell.id}
+                      title={`${cell.getValue()}`}
+                      style={{ overflow: 'hidden' }}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
