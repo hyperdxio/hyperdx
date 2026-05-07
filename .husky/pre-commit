@@ -3,4 +3,9 @@ set -e
 
 . "$(dirname -- "$0")/_/husky.sh"
 
+# Block commits that introduce known-sensitive values (AWS account IDs
+# next to AWS resources, AKIA access keys, secret-key assignments).
+# Bypass per-line: append `# allow-secret-scan`.
+./scripts/check-secrets.sh
+
 npx lint-staged
