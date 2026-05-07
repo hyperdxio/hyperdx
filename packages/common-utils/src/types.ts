@@ -255,8 +255,17 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
-// Base webhook schema (matches backend IWebhook but with JSON-serialized types)
-// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
+/**
+ * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
+ * When making changes here, consider if they need to be made to the external
+ * API schema as well (packages/api/src/utils/zod.ts).
+ *
+ * NOTE: The internal API (`GET /api/webhooks`) returns masked/redacted values:
+ *   - `url`         → `<origin>/****`  (path hidden, may embed tokens)
+ *   - `headers`     → keys preserved, every value replaced with `****`
+ *   - `queryParams` → keys preserved, every value replaced with `****`
+ * The external API v2 strips these fields entirely via separate Zod schemas.
+ */
 export const WebhookSchema = z.object({
   _id: z.string(),
   createdAt: z.string(),
