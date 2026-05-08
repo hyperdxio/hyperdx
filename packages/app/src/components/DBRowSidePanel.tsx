@@ -45,6 +45,7 @@ import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
+import { getInitialDrawerWidthPercent } from './DrawerUtils';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -109,8 +110,12 @@ const DBRowSidePanel = ({
   onClose,
   breadcrumbPath,
   onBreadcrumbClick,
+  isFullWidth,
+  onToggleFullWidth,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
 }) => {
   const {
     data: rowData,
@@ -329,6 +334,8 @@ const DBRowSidePanel = ({
           rowData={normalizedRow}
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbClick={handleBreadcrumbClick}
+          isFullWidth={isFullWidth}
+          onToggleFullWidth={onToggleFullWidth}
         />
       </Box>
       {/* <SidePanelHeader
@@ -558,8 +565,14 @@ export default function DBRowSidePanelErrorBoundary({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const initialWidth = 80;
-  const { size, startResize } = useResizable(initialWidth);
+  const { size, setSize, startResize } = useResizable(
+    getInitialDrawerWidthPercent(),
+  );
+
+  const isFullWidth = size >= 99;
+  const toggleFullWidth = useCallback(() => {
+    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+  }, [isFullWidth, setSize]);
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
@@ -629,6 +642,8 @@ export default function DBRowSidePanelErrorBoundary({
               breadcrumbPath={breadcrumbPath}
               setSubDrawerOpen={setSubDrawerOpen}
               onBreadcrumbClick={onBreadcrumbClick}
+              isFullWidth={isFullWidth}
+              onToggleFullWidth={isNestedPanel ? undefined : toggleFullWidth}
             />
           </ErrorBoundary>
         </div>
