@@ -17,7 +17,7 @@ import {
   Anchor,
   Box,
   Center,
-  Checkbox,
+  Chip,
   Code,
   Divider,
   Group,
@@ -611,6 +611,8 @@ export function DBTraceWaterfallChartContainer({
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSpans, setShowSpans] = useState(true);
+  const [showLogs, setShowLogs] = useState(true);
 
   const { nodesMap, flattenedNodes } = useMemo(() => {
     const rootNodes: Node[] = [];
@@ -738,14 +740,34 @@ export function DBTraceWaterfallChartContainer({
     [nodesMap],
   );
 
-  const spanCount = flattenedNodes.length;
-  const errorCount = flattenedNodes.filter(
+  const visibleNodes = useMemo(() => {
+    if (showSpans && showLogs) return flattenedNodes;
+    return flattenedNodes.filter(node => {
+      if (node.type === SourceKind.Log) return showLogs;
+      return showSpans;
+    });
+  }, [flattenedNodes, showSpans, showLogs]);
+
+  const spanCount = visibleNodes.filter(
+    node => node.type !== SourceKind.Log,
+  ).length;
+  const logCount = visibleNodes.filter(
+    node => node.type === SourceKind.Log,
+  ).length;
+  const errorCount = visibleNodes.filter(
     node =>
       node.StatusCode === 'Error' ||
       node.SeverityText?.toLowerCase() === 'error',
   ).length;
 
-  const spanCountString = `${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+  const countParts: string[] = [];
+  if (spanCount > 0) {
+    countParts.push(`${spanCount} span${spanCount !== 1 ? 's' : ''}`);
+  }
+  if (logCount > 0) {
+    countParts.push(`${logCount} log${logCount !== 1 ? 's' : ''}`);
+  }
+  const itemCountString = countParts.join(', ') || '0 items';
   const errorCountString = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
 
   // TODO: Add duration filter?
@@ -764,7 +786,7 @@ export function DBTraceWaterfallChartContainer({
 
   const timelineRows = useMemo(
     () =>
-      flattenedNodes.map((result, i) => {
+      visibleNodes.map((result, i) => {
         const tookMs = (result.Duration || 0) * 1000;
         const startOffset = parseTimestampToMs(result.Timestamp);
         const start = startOffset - minOffset;
@@ -941,7 +963,7 @@ export function DBTraceWaterfallChartContainer({
       }),
     [
       collapsedIds,
-      flattenedNodes,
+      visibleNodes,
       formatTime,
       highlightedRowWhere,
       isFilterActive,
@@ -953,8 +975,7 @@ export function DBTraceWaterfallChartContainer({
       setCollapseTooltipShown,
     ],
   );
-  // TODO: Highlighting support
-  const initialScrollRowIndex = flattenedNodes.findIndex(v => {
+  const initialScrollRowIndex = visibleNodes.findIndex(v => {
     return v.id === highlightedRowWhere;
   });
 
@@ -1009,17 +1030,57 @@ export function DBTraceWaterfallChartContainer({
       <Group my="xs" justify="space-between">
         <Group gap="md">
           <Text size="xs">
-            {spanCountString},{' '}
+            {itemCountString},{' '}
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
           </Text>
-          <Checkbox
-            size="xs"
-            label="Show span events"
-            checked={showSpanEvents}
-            onChange={() => setShowSpanEvents(!showSpanEvents)}
-          />
+          <Group gap="xs" align="center">
+            <Text size="xs" c="dimmed">
+              Show:
+            </Text>
+            <Group gap={4}>
+              <Chip
+                size="xs"
+                color="gray"
+                checked={showSpans}
+                onChange={() => setShowSpans(!showSpans)}
+                data-testid="show-spans-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Spans
+              </Chip>
+              {logTableSource && (
+                <Chip
+                  size="xs"
+                  color="gray"
+                  checked={showLogs}
+                  onChange={() => setShowLogs(!showLogs)}
+                  data-testid="show-logs-chip"
+                  styles={{
+                    label: { paddingInline: 8, height: 22, minHeight: 22 },
+                  }}
+                >
+                  Logs
+                </Chip>
+              )}
+              <Chip
+                size="xs"
+                color="gray"
+                checked={showSpanEvents}
+                onChange={() => setShowSpanEvents(!showSpanEvents)}
+                disabled={!showSpans}
+                data-testid="show-span-events-chip"
+                styles={{
+                  label: { paddingInline: 8, height: 22, minHeight: 22 },
+                }}
+              >
+                Span events
+              </Chip>
+            </Group>
+          </Group>
         </Group>
         <span>
           <Anchor
@@ -1072,10 +1133,14 @@ export function DBTraceWaterfallChartContainer({
           <div>
             An unknown error occurred. <ContactSupportText />
           </div>
-        ) : flattenedNodes.length === 0 ? (
-          (emptyState ?? (
-            <div className="my-3">No matching spans or logs found</div>
-          ))
+        ) : visibleNodes.length === 0 ? (
+          flattenedNodes.length > 0 ? (
+            <div className="my-3">All items are hidden by filters</div>
+          ) : (
+            (emptyState ?? (
+              <div className="my-3">No matching spans or logs found</div>
+            ))
+          )
         ) : (
           <TimelineChart
             maxHeight={heightPx}
