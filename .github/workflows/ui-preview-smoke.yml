@@ -71,8 +71,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           max_timeout: 600
           check_interval: 10
-          # For workflow_dispatch we need to point at the PR head commit.
-          # For pull_request_target the action picks up the PR sha automatically.
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -84,13 +82,15 @@ jobs:
           npm install -g playwright
           playwright install --with-deps chromium
 
-      - name: Run agent against preview
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          mcp_servers: |
-            {
+      # claude-code-action@v1 has no `mcp_servers` input (the action ignores
+      # it and warns at runtime). The supported mechanism is a `.mcp.json`
+      # at the working-directory root, which the action picks up because it
+      # auto-sets `enableAllProjectMcpServers: true` in Claude's settings.
+      - name: Write MCP config (Playwright)
+        run: |
+          cat > .mcp.json <<'EOF'
+          {
+            "mcpServers": {
               "playwright": {
                 "command": "npx",
                 "args": [
@@ -101,19 +101,43 @@ jobs:
                 ]
               }
             }
+          }
+          EOF
+
+      - name: Run agent against preview
+        id: agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            Execute the UI test plan for PR #${{ steps.pr.outputs.number }}
-            on its Vercel preview deploy.
+            Smoke-test PR #${{ steps.pr.outputs.number }} on its Vercel
+            preview deploy.
 
             Preview URL: ${{ steps.vercel.outputs.url }}
             Repo: ${{ github.repository }}
-            PR body: read /tmp/pr-body.md (use the Bash cat tool).
+
+            Read the PR body with: cat /tmp/pr-body.md
 
             This preview is built in LOCAL_MODE with a pre-configured demo
             ClickHouse connection and otel_logs / otel_traces sources. No
             registration or source setup is needed — open the URL and go.
 
-            Workflow:
+            CRITICAL OUTPUT REQUIREMENTS:
+              1. Return a JSON object with a single "summary" field whose
+                 VALUE is a plain markdown STRING. Do NOT put another JSON
+                 envelope inside the string — that posts raw JSON in the
+                 comment.
+              2. The summary markdown MUST start with EXACTLY these two
+                 lines (the comment marker is required for the workflow to
+                 update the same comment on subsequent runs):
+                   <!-- ui-preview-smoke -->
+                   ## UI Preview Smoke
+              3. Do NOT post comments yourself with `gh` or any other tool.
+                 The workflow posts (or updates) the PR comment using your
+                 `summary` field.
+
+            Procedure:
 
             1. Read /tmp/pr-body.md.
             2. Find the section headed exactly
@@ -123,41 +147,83 @@ jobs:
                  - "**Steps:**" — a numbered list of imperative actions.
             3. If the section is missing, empty, contains only the HTML
                comment template placeholder, or is marked "N/A" or
-               "non-UI change": post a single PR comment containing exactly
-               the text below, then exit with status 0.
+               "non-UI change", return summary:
 
-               > <!-- ui-preview-smoke -->
-               > ## UI Preview Smoke
-               >
-               > Skipped: this PR has no `How to test on Vercel preview`
-               > plan. Add `**Preview routes:**` and a numbered `**Steps:**`
-               > list to enable automated smoke testing.
+                 <!-- ui-preview-smoke -->
+                 ## UI Preview Smoke
+
+                 Skipped: this PR has no `How to test on Vercel preview`
+                 plan. Add `**Preview routes:**` and a numbered `**Steps:**`
+                 list to enable automated smoke testing.
 
             4. Otherwise, for each Preview route in order:
-                 a. Open `<Preview URL><route>` in the Playwright browser.
+                 a. Open `<Preview URL><route>` via the Playwright MCP
+                    browser tools (mcp__playwright__*).
                  b. Execute the numbered steps verbatim, in order.
                  c. Treat any step beginning with "Verify", "Confirm",
                     "Assert", "Check", or "Ensure" as an assertion. If an
                     assertion fails, record the failure and continue to the
                     next route.
-                 d. After each route capture: full-page screenshot, any
-                    console errors at level "error", any 4xx/5xx network
-                    responses, any uncaught exception dialogs.
-            5. Post a single PR comment via the JSON schema below. Use ✅
-               for passed routes, ❌ for any route with at least one failed
-               assertion or runtime error. For every failure, include the
-               step text, what was asserted, and what you observed instead.
+                 d. After each route capture: any console errors at level
+                    "error", any 4xx/5xx network responses, any uncaught
+                    exception dialogs.
+            5. Build the summary markdown with one section per route.
+               Use ✅ for routes that passed every assertion, ❌ for any
+               route with a failed assertion, console error, or 5xx
+               response. For each failure include the step text, what was
+               asserted, and what you observed instead.
 
             Constraints:
               - Do not invent steps the author didn't write.
               - Do not exercise routes outside the "Preview routes:" list.
-              - If a step is ambiguous, note the ambiguity in your comment
+              - If a step is ambiguous, note the ambiguity in the summary
                 and proceed with your best interpretation. Never fabricate
                 an assertion that wasn't requested.
-              - Cap total runtime at 8 minutes. If a single step hangs
-                more than 30s, mark it failed and continue.
+              - Cap total runtime at 8 minutes. If a single step hangs more
+                than 30s, mark it failed and continue.
 
           claude_args: |
             --setting-sources user
             --allowedTools "Bash(cat /tmp/pr-body.md),Bash(gh pr view:*),mcp__playwright__*"
             --json-schema '{"type":"object","properties":{"summary":{"type":"string","description":"Complete markdown summary starting with <!-- ui-preview-smoke --> on the first line and ## UI Preview Smoke on the second line"}},"required":["summary"]}'
+
+      # The agent's structured_output is a JSON string. Pull the `summary`
+      # field via jq. Defensive double-unwrap mirrors the workaround in
+      # claude-code-review.yml: the model has been observed to nest its
+      # output as `{"summary":"{\"summary\":\"<markdown>\"}"}`, which would
+      # post raw JSON instead of markdown.
+      - name: Extract summary from structured output
+        if: steps.agent.outputs.structured_output != ''
+        id: extract
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        run: |
+          SUMMARY="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.summary')"
+          if printf '%s' "$SUMMARY" | jq -e 'type == "object" and has("summary")' >/dev/null 2>&1; then
+            SUMMARY="$(printf '%s' "$SUMMARY" | jq -r '.summary')"
+          fi
+          {
+            echo 'summary<<UI_SMOKE_EOF'
+            printf '%s' "$SUMMARY"
+            echo
+            echo 'UI_SMOKE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Find existing smoke comment
+        if: steps.extract.outputs.summary != ''
+        id: find-comment
+        uses: peter-evans/find-comment@v4
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- ui-preview-smoke -->'
+          direction: last
+
+      - name: Post or update smoke comment
+        if: steps.extract.outputs.summary != ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          body: ${{ steps.extract.outputs.summary }}
+          edit-mode: replace
