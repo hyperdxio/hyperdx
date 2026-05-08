@@ -21,23 +21,28 @@
 //
 // Patterns covered:
 //   pem               PEM key blocks (-----BEGIN ... PRIVATE KEY-----)
-//   basic-auth-url    scheme://user:pass@host. Schemes: http(s), ftp,
-//                     ssh, postgres(ql), mysql, mariadb, mongodb(+srv),
-//                     redis(s), amqp(s), kafka, clickhouse.
+//   basic-auth-url    scheme://user:pass@host. Schemes: http(s),
+//                     ws(s), ftp, sftp, ssh, postgres(ql), mysql,
+//                     mariadb, mongodb(+srv), mssql, sqlserver,
+//                     snowflake, redis(s), amqp(s), kafka(+ssl),
+//                     clickhouse, smtp(s), ldap(s), nats. Match is
+//                     case-insensitive (RFC 3986 schemes are).
 //   key-value         password=secret, api_key=abc
 //   json-quoted       {"password":"secret"} and similar
 //   http-header       X-Api-Key: abc, Api-Key: abc
-//   bearer            Authorization: Bearer xxx (token alphabet now
-//                     includes "_" so JWT signatures are fully covered).
+//   bearer            Authorization: Bearer xxx. Token is \S+ so
+//                     opaque non-JWT bearers (with ":", "%", or
+//                     quote chars in them) round-trip cleanly.
 //   basic             Authorization: Basic xxx
 //   jwt               eyJ... three dot-separated base64 segments
 //   aws-access-key    AKIA[16 chars], ASIA[16 chars]
 //   slack-token       xox[a-z]-... shape
 //   github-token      ghp_, gho_, ghu_, ghs_, ghr_ prefixes
-//   llm-vendor-key    sk-... (OpenAI), sk-ant-... (Anthropic). This
-//                     redactor specifically fronts an LLM-provider
-//                     call, so vendor-shaped keys must not leak to
-//                     the very provider that issued them.
+//   llm-vendor-key    sk-... (OpenAI), sk-ant-... (Anthropic),
+//                     AIza... (Google Gemini). This redactor
+//                     specifically fronts an LLM-provider call, so
+//                     vendor-shaped keys must not leak to the very
+//                     provider that issued them.
 //
 // Known gaps (extend when seen in production):
 //   URL-percent-encoded values; non-LLM vendor tokens (Stripe, Twilio,
@@ -71,24 +76,28 @@ const PATTERNS: RedactionPattern[] = [
   },
   // scheme://user:pass@host. Password may contain "@"; the engine
   // backtracks to the last "@" before the host. Host is captured and
-  // preserved in the replacement. The scheme group covers HTTP-family
-  // protocols plus the database/queue connection strings most likely
-  // to land in observability payloads with embedded credentials:
-  // postgres / mysql / mongodb / redis / amqp / kafka / clickhouse.
+  // preserved in the replacement. Match is case-insensitive (RFC 3986
+  // declares schemes case-insensitive, so HTTPS://user:pw@host is the
+  // same authority as the lowercase form). The scheme group covers
+  // HTTP-family protocols plus the database / queue / messaging
+  // connection strings most likely to land in observability payloads
+  // with embedded credentials. Schemes listed alphabetically.
   {
     name: 'basic-auth-url',
-    re: /\b(https?|ftp|ssh|postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?|kafka|clickhouse):\/\/([^/\s:@]+):([^/\s]+)@([^/\s@]+)/g,
+    re: /\b(amqps?|clickhouse|ftp|https?|kafka(?:\+ssl)?|ldaps?|mariadb|mongodb(?:\+srv)?|mssql|mysql|nats|postgres(?:ql)?|rediss?|sftp|smtps?|snowflake|sqlserver|ssh|wss?):\/\/([^/\s:@]+):([^/\s]+)@([^/\s@]+)/gi,
     replace: '$1://[REDACTED]:[REDACTED]@$4',
   },
-  // Authorization: Bearer xxx. The token alphabet covers both URL-safe
-  // base64 ("_-" plus alphanumerics) and the standard base64 alphabet
-  // ("+/" plus "=" padding) so a JWT bearer ("eyJ..._...sig") and a
-  // token with literal "+" / "=" both round-trip cleanly. Without "_"
-  // a JWT terminates at the first underscore inside the signature and
-  // the trailing bytes leak past the [REDACTED] marker.
+  // Authorization: Bearer xxx. RFC 6750's b64token alphabet
+  // (alphanumerics, "-._~+/", optional "=" padding) is a strict
+  // subset of \S+, and observability payloads regularly carry
+  // opaque non-JWT bearers with ":", "%", or quote chars in them.
+  // Anything narrower than \S+ leaks the suffix past [REDACTED];
+  // \S+ stops at whitespace, which is what actually terminates a
+  // bearer token in practice (header line break, log delimiter,
+  // JSON field boundary).
   {
     name: 'bearer',
-    re: /Bearer\s+[A-Za-z0-9._~+/=_-]+/gi,
+    re: /Bearer\s+\S+/gi,
     replace: 'Bearer [REDACTED]',
   },
   // Authorization: Basic xxx (base64 user:pass)
@@ -125,15 +134,17 @@ const PATTERNS: RedactionPattern[] = [
     replace: '[REDACTED_GITHUB_TOKEN]',
   },
   // LLM-vendor API keys: OpenAI ("sk-..."), Anthropic ("sk-ant-..."),
-  // and adjacent vendors that follow the "sk-" convention. This
-  // redactor specifically fronts an LLM call; a leaked vendor key
-  // would be exfiltrated to the very provider that issued it.
-  // Floor at 20 chars after the prefix to avoid catching English
-  // words like "sk-ip-line" or short test fixtures while still
-  // covering OpenAI's 48+ char and Anthropic's longer formats.
+  // and adjacent vendors that follow the "sk-" convention; plus
+  // Google Gemini ("AIza..." with 35 trailing chars, 39 total).
+  // This redactor specifically fronts an LLM call; a leaked vendor
+  // key would be exfiltrated to the very provider that issued it.
+  // The "sk-" branch floors at 20 chars after the prefix to avoid
+  // catching English words like "sk-ip-line" or short test fixtures
+  // while still covering OpenAI's 48+ char and Anthropic's longer
+  // formats. Gemini keys are exactly 39 chars wide.
   {
     name: 'llm-vendor-key',
-    re: /\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}\b/g,
+    re: /\b(?:sk-(?:ant-)?[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{35})\b/g,
     replace: '[REDACTED_LLM_KEY]',
   },
   // key=value with secret-ish key. Three value forms: double-quoted,
