@@ -134,10 +134,12 @@ jobs:
             core.setOutput('routes', routes);
             core.notice(`UI test plan found. Routes: ${routes}`);
 
-      # Run unconditionally — both the skip path and the full smoke path
-      # need it to keep the comment sticky across runs.
+      # Run unconditionally (including when plan-check threw) so the
+      # consolidated infrastructure-failure poster below can update the
+      # sticky comment instead of creating a fresh one each broken run.
       - name: Find existing smoke comment
         id: find-comment
+        if: always() && steps.pr.outcome == 'success'
         uses: peter-evans/find-comment@v4
         with:
           issue-number: ${{ steps.pr.outputs.number }}
@@ -162,9 +164,14 @@ jobs:
             enable automated smoke testing.
 
       # ─── Full smoke path ──────────────────────────────────────────────
+      # `continue-on-error: true` so a Vercel timeout/deploy-error doesn't
+      # short-circuit the job — downstream steps gate on
+      # `vercel.outcome == 'success'` and the consolidated fallback
+      # poster reports the failure to the PR.
       - name: Wait for Vercel preview
         if: steps.plan.outputs.has_plan == 'true'
         id: vercel
+        continue-on-error: true
         uses: patrickedqvist/wait-for-vercel-preview@v1.3.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -172,13 +179,17 @@ jobs:
           check_interval: 10
 
       - name: Setup Node
-        if: steps.plan.outputs.has_plan == 'true'
+        if:
+          steps.plan.outputs.has_plan == 'true' && steps.vercel.outcome ==
+          'success'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install Playwright + Chromium
-        if: steps.plan.outputs.has_plan == 'true'
+        if:
+          steps.plan.outputs.has_plan == 'true' && steps.vercel.outcome ==
+          'success'
         run: |
           npm install -g playwright
           playwright install --with-deps chromium
@@ -187,19 +198,45 @@ jobs:
       # it and warns at runtime). The supported mechanism is a `.mcp.json`
       # at the working-directory root, which the action picks up because it
       # auto-sets `enableAllProjectMcpServers: true` in Claude's settings.
+      #
+      # Parse the Vercel preview URL into a `scheme://host` origin and
+      # pass it to `@playwright/mcp` as `--allowed-origins`. The version
+      # is pinned (not `@latest`) so a future MCP release can't silently
+      # change browser/tool behavior under us. We abort the step if the
+      # URL doesn't match `^https?://[^/]+`, rather than the prior `sed`
+      # which silently passed bogus input through and produced a
+      # malformed `--allowed-origins=` arg.
+      #
+      # Residual: per the package's own README, `--allowed-origins` is
+      # "not a security boundary" — it's a navigation hint, not a
+      # process-level egress control. A determined attacker who lands
+      # arbitrary JS in the preview origin can still issue cross-origin
+      # `fetch`. We accept that as residual; the upstream fix is at the
+      # MCP/browser layer.
       - name: Write MCP config (Playwright)
-        if: steps.plan.outputs.has_plan == 'true'
+        if:
+          steps.plan.outputs.has_plan == 'true' && steps.vercel.outcome ==
+          'success'
+        env:
+          VERCEL_URL: ${{ steps.vercel.outputs.url }}
         run: |
-          cat > .mcp.json <<'EOF'
+          set -euo pipefail
+          if [[ ! "$VERCEL_URL" =~ ^(https?://[^/]+) ]]; then
+            echo "::error::Vercel URL '$VERCEL_URL' is not a valid origin" >&2
+            exit 1
+          fi
+          ORIGIN="${BASH_REMATCH[1]}"
+          cat > .mcp.json <<EOF
           {
             "mcpServers": {
               "playwright": {
                 "command": "npx",
                 "args": [
                   "-y",
-                  "@playwright/mcp@latest",
+                  "@playwright/mcp@0.0.75",
                   "--browser=chromium",
-                  "--headless"
+                  "--headless",
+                  "--allowed-origins=${ORIGIN}"
                 ]
               }
             }
@@ -207,8 +244,11 @@ jobs:
           EOF
 
       - name: Run agent against preview
-        if: steps.plan.outputs.has_plan == 'true'
+        if:
+          steps.plan.outputs.has_plan == 'true' && steps.vercel.outcome ==
+          'success'
         id: agent
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -279,7 +319,7 @@ jobs:
 
           claude_args: |
             --setting-sources user
-            --allowedTools "Bash(cat /tmp/pr-body.md),Bash(gh pr view:*),mcp__playwright__*"
+            --allowedTools "Bash(cat /tmp/pr-body.md),mcp__playwright__*"
             --json-schema '{"type":"object","properties":{"summary":{"type":"string","description":"Complete markdown summary starting with <!-- ui-preview-smoke --> on the first line and ## UI Preview Smoke on the second line"}},"required":["summary"]}'
 
       # The agent's structured_output is a JSON string. Pull the `summary`
@@ -287,23 +327,32 @@ jobs:
       # claude-code-review.yml: the model has been observed to nest its
       # output as `{"summary":"{\"summary\":\"<markdown>\"}"}`, which would
       # post raw JSON instead of markdown.
+      # Per-run random heredoc delimiter so attacker-influenced summary
+      # content (the agent's output reflects the PR body, which on a fork
+      # PR is fully attacker-controlled) can't land the literal delimiter
+      # on its own line and inject `name=value` pairs into $GITHUB_OUTPUT.
+      # `set -euo pipefail` plus `|| SUMMARY=''` on the jq parse means
+      # any malformed structured_output yields an empty SUMMARY; the
+      # consolidated fallback poster below picks that up.
       - name: Extract summary from structured output
         if:
           steps.plan.outputs.has_plan == 'true' &&
           steps.agent.outputs.structured_output != ''
         id: extract
+        continue-on-error: true
         env:
           STRUCTURED_OUTPUT: ${{ steps.agent.outputs.structured_output }}
         run: |
-          SUMMARY="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.summary')"
+          set -euo pipefail
+          SUMMARY="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.summary')" || SUMMARY=''
           if printf '%s' "$SUMMARY" | jq -e 'type == "object" and has("summary")' >/dev/null 2>&1; then
-            SUMMARY="$(printf '%s' "$SUMMARY" | jq -r '.summary')"
+            SUMMARY="$(printf '%s' "$SUMMARY" | jq -r '.summary')" || SUMMARY=''
           fi
+          DELIM="EOF_$(openssl rand -hex 16)"
           {
-            echo 'summary<<UI_SMOKE_EOF'
-            printf '%s' "$SUMMARY"
-            echo
-            echo 'UI_SMOKE_EOF'
+            printf 'summary<<%s\n' "$DELIM"
+            printf '%s\n' "$SUMMARY"
+            printf '%s\n' "$DELIM"
           } >> "$GITHUB_OUTPUT"
 
       - name: Post or update smoke comment
@@ -316,3 +365,33 @@ jobs:
           issue-number: ${{ steps.pr.outputs.number }}
           body: ${{ steps.extract.outputs.summary }}
           edit-mode: replace
+
+      # Consolidated infrastructure-failure poster. Fires when the PR
+      # would otherwise be left with no contextual comment, in any of:
+      #   - plan step itself errored (regex bug, runner exception)
+      #   - has_plan == 'true' but Vercel never produced a usable preview
+      #   - has_plan == 'true' and Vercel succeeded but the agent /
+      #     extract step produced no summary (timeout, malformed JSON,
+      #     missing `.summary` field)
+      # Without this, F4/F5/F6 leave the PR with a red check and either
+      # no comment or a stale prior-run comment.
+      - name: Post infrastructure-failure comment
+        if: |
+          always() && steps.pr.outcome == 'success' && (
+            steps.plan.outcome == 'failure' ||
+            (steps.plan.outputs.has_plan == 'true' &&
+             steps.vercel.outcome != 'success') ||
+            (steps.plan.outputs.has_plan == 'true' &&
+             steps.vercel.outcome == 'success' &&
+             steps.extract.outputs.summary == '')
+          )
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          edit-mode: replace
+          body: |
+            <!-- ui-preview-smoke -->
+            ## UI Preview Smoke
+
+            Smoke run did not complete. See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
