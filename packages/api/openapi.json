@@ -4282,7 +4282,7 @@
       },
       "put": {
         "summary": "Update Dashboard",
-        "description": "Updates an existing dashboard",
+        "description": "Updates an existing dashboard.\n\n**Concurrency:** This endpoint does not support optimistic\nconcurrency control. Concurrent PUT requests for the same\ndashboard may silently overwrite each other, which can leave\norphan tile-to-container references on layout-shape edits.\nClients should serialize edits to a given dashboard.\n",
         "operationId": "updateDashboard",
         "tags": [
           "Dashboards"

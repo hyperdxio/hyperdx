@@ -4143,6 +4143,190 @@ describe('External API v2 Dashboards - new format', () => {
       expect(returnedTile.containerId).toBeUndefined();
       expect(returnedTile.tabId).toBeUndefined();
     });
+
+    // P0/P1-1 regression: PUT must preserve the existing containers
+    // array when the body omits the field. Tile-level container ref
+    // resolution runs against the effective container set (body
+    // containers OR existing doc containers), not against the body's
+    // containers in isolation. Without this guard, a PUT that updates
+    // only `tiles` and references a real preserved container is
+    // rejected with "Tile references unknown containerId" because the
+    // body's containers fall back to an empty array.
+    it('preserves existing containers on PUT when the body omits the field', async () => {
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          tabs: [{ id: 'errors', title: 'Errors' }],
+        },
+      ];
+
+      const created = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Preserve containers on PUT',
+          tiles: [
+            buildTile(sourceId, {
+              name: 'In container',
+              containerId: 'service-health',
+              tabId: 'errors',
+            }),
+          ],
+          tags: [],
+          containers,
+        })
+        .expect(200);
+      const dashboardId = created.body.data.id;
+      const [createdTile] = created.body.data.tiles;
+
+      // PUT keeps the same tile (still pointing at service-health/errors)
+      // but does not include `containers` in the body. The handler must
+      // fall back to the existing containers and resolve the tile ref
+      // against them, so the request succeeds.
+      const putResp = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Preserve containers on PUT',
+          tiles: [createdTile],
+          tags: [],
+        })
+        .expect(200);
+
+      // Containers were preserved on the doc and round-trip on the
+      // response, even though the request body didn't carry them.
+      expect(putResp.body.data.containers).toEqual(containers);
+      const [putTile] = putResp.body.data.tiles;
+      expect(putTile.containerId).toBe('service-health');
+      expect(putTile.tabId).toBe('errors');
+    });
+
+    // P0/P1-1 negative case: even when the body omits `containers`, a
+    // tile that references a containerId not present in the existing
+    // dashboard's containers must still be rejected. The fallback only
+    // permits real containers, not arbitrary ones.
+    it('rejects a PUT that references an unknown containerId when body omits containers', async () => {
+      const sourceId = traceSource._id.toString();
+      const created = await authRequest('post', BASE_URL)
+        .send({
+          name: 'PUT unknown containerId',
+          tiles: [buildTile(sourceId, { name: 'Real tile' })],
+          tags: [],
+          containers: [{ id: 'real', title: 'Real', collapsed: false }],
+        })
+        .expect(200);
+      const dashboardId = created.body.data.id;
+
+      const resp = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'PUT unknown containerId',
+          tiles: [
+            buildTile(sourceId, {
+              name: 'Bad ref',
+              containerId: 'does-not-exist',
+            }),
+          ],
+          tags: [],
+        })
+        .expect(400);
+      expect(resp.body.message).toContain(
+        'unknown containerId "does-not-exist"',
+      );
+    });
+
+    // Critical P2-4 regression: a Mongo doc with a tile.containerId
+    // that no longer matches any container in the doc (a container
+    // got removed without re-homing the tile, or the doc predates
+    // the containers feature) must round-trip as if the ref were
+    // absent. Without this self-heal, the GET response would carry
+    // a containerId that the next PUT body schema rejects, breaking
+    // the round-trip for legacy data.
+    it('drops orphan tile.containerId on read when no container matches', async () => {
+      const sourceId = traceSource._id.toString();
+      const created = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Orphan containerId heal',
+          tiles: [buildTile(sourceId, { name: 'Real tile' })],
+          tags: [],
+          containers: [
+            {
+              id: 'real',
+              title: 'Real',
+              collapsed: false,
+              tabs: [{ id: 'errors', title: 'Errors' }],
+            },
+          ],
+        })
+        .expect(200);
+      const dashboardId = created.body.data.id;
+
+      // Mutate Mongo directly to plant an orphan ref. `tiles` is
+      // `Mixed`, so the model layer doesn't enforce ref consistency;
+      // historical writes (or future bugs) can leave the doc in this
+      // shape.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.containerId': 'ghost-container',
+            'tiles.0.tabId': 'ghost-tab',
+          },
+        },
+      );
+
+      const getResp = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboardId}`,
+      ).expect(200);
+      const [returnedTile] = getResp.body.data.tiles;
+      expect(returnedTile.containerId).toBeUndefined();
+      expect(returnedTile.tabId).toBeUndefined();
+    });
+
+    // Critical P2-4 regression (tab-only orphan): a tile that points
+    // at a real container but a tab that no longer exists in that
+    // container must drop only `tabId`, keeping `containerId`.
+    // Without this, a stale tabId would fail the next PUT body schema
+    // even though the container itself is fine.
+    it('drops orphan tile.tabId on read when no tab matches', async () => {
+      const sourceId = traceSource._id.toString();
+      const created = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Orphan tabId heal',
+          tiles: [
+            buildTile(sourceId, {
+              name: 'Real tile',
+              containerId: 'real',
+              tabId: 'errors',
+            }),
+          ],
+          tags: [],
+          containers: [
+            {
+              id: 'real',
+              title: 'Real',
+              collapsed: false,
+              tabs: [{ id: 'errors', title: 'Errors' }],
+            },
+          ],
+        })
+        .expect(200);
+      const dashboardId = created.body.data.id;
+
+      // Replace the tile's tabId with one that doesn't exist in the
+      // container.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        { $set: { 'tiles.0.tabId': 'ghost-tab' } },
+      );
+
+      const getResp = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboardId}`,
+      ).expect(200);
+      const [returnedTile] = getResp.body.data.tiles;
+      expect(returnedTile.containerId).toBe('real');
+      expect(returnedTile.tabId).toBeUndefined();
+    });
   });
 
   describe('DELETE /:id', () => {

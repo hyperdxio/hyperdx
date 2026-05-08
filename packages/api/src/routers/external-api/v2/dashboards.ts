@@ -12,6 +12,7 @@ import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
   cleanupDashboardAlerts,
+  collectTileContainerRefIssues,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
@@ -1688,6 +1689,20 @@ router.post(
         containers,
       } = req.body;
 
+      // Tile-level container/tab ref resolution: container structure
+      // (duplicate ids, tab uniqueness) was checked by the body schema;
+      // tile-resolution runs here against the request body's containers
+      // (POST has no existing dashboard to fall back to).
+      const tileRefIssues = collectTileContainerRefIssues(
+        containers ?? [],
+        tiles,
+      );
+      if (tileRefIssues.length > 0) {
+        return res.status(400).json({
+          message: tileRefIssues.join('; '),
+        });
+      }
+
       const [missingSources, missingConnections, sourceConnectionMismatches] =
         await Promise.all([
           getMissingSources(teamId, tiles, filters),
@@ -1750,7 +1765,14 @@ router.post(
  * /api/v2/dashboards/{id}:
  *   put:
  *     summary: Update Dashboard
- *     description: Updates an existing dashboard
+ *     description: |
+ *       Updates an existing dashboard.
+ *
+ *       **Concurrency:** This endpoint does not support optimistic
+ *       concurrency control. Concurrent PUT requests for the same
+ *       dashboard may silently overwrite each other, which can leave
+ *       orphan tile-to-container references on layout-shape edits.
+ *       Clients should serialize edits to a given dashboard.
  *     operationId: updateDashboard
  *     tags: [Dashboards]
  *     parameters:
@@ -1941,9 +1963,17 @@ router.put(
         });
       }
 
+      // PUT performs a read-modify-write on the dashboard doc with no
+      // optimistic-concurrency check (no `If-Match` / `updatedAt`
+      // guard). Concurrent PUTs may silently overwrite each other,
+      // which can leave orphan tile->container refs on layout-shape
+      // edits. The endpoint contract is at-most-one-writer; the
+      // OpenAPI description above documents this. Adding ETag-style
+      // concurrency would be a breaking change to the request shape
+      // and is tracked separately.
       const existingDashboard = await Dashboard.findOne(
         { _id: dashboardId, team: teamId },
-        { tiles: 1, filters: 1 },
+        { tiles: 1, filters: 1, containers: 1 },
       ).lean();
       const existingTileIds = new Set(
         (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
@@ -1951,6 +1981,26 @@ router.put(
       const existingFilterIds = new Set(
         (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
       );
+
+      // Tile-level container/tab ref resolution: container structure
+      // was checked by the body schema; tile-resolution runs here
+      // against the effective container set so an omitted `containers`
+      // body field (which preserves the existing array on write) is
+      // resolved against the doc's existing containers rather than an
+      // empty fallback. Without this, a PUT that updates only `tiles`
+      // and leaves a tile pointing at a real preserved container
+      // would be rejected with "Tile references unknown containerId".
+      const effectiveContainers =
+        containers ?? existingDashboard?.containers ?? [];
+      const tileRefIssues = collectTileContainerRefIssues(
+        effectiveContainers,
+        tiles,
+      );
+      if (tileRefIssues.length > 0) {
+        return res.status(400).json({
+          message: tileRefIssues.join('; '),
+        });
+      }
 
       const internalTiles = convertExternalTilesToInternal(
         tiles,

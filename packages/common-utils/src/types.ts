@@ -1007,46 +1007,33 @@ type ContainerForValidation = z.infer<typeof DashboardContainerSchema>;
 type TileForValidation = { containerId?: string; tabId?: string };
 
 /**
- * Single-pass cross-validation of dashboard containers + tile container/tab
- * references. Used by both `buildDashboardBodySchema.superRefine` (external
- * API request body) and the canonical `DashboardSchema` refinement so a
- * Dashboard document can never carry orphan tile references regardless of
- * which path produced it.
+ * Pass 1: container-id uniqueness and per-container tab-id uniqueness.
+ *
+ * Returns the container-by-id map and a flag indicating whether any
+ * duplicate container ids were seen, so callers that intend to do
+ * tile-ref resolution next can short-circuit on the duplicate-id case
+ * (resolving against a last-write-wins map would mask the duplicate
+ * with cascading "unknown containerId" errors).
  *
  * Issues raised:
  * - Duplicate container ids (path `<containersPath>[i].id`).
  * - Duplicate tab ids within a container (path
  *   `<containersPath>[i].tabs[j].id`).
- * - A tile's `containerId` references an unknown container (path
- *   `<tilesPath>[k].containerId`).
- * - A tile's `tabId` is set without `containerId` (path
- *   `<tilesPath>[k].tabId`).
- * - A tile's `tabId` references an unknown tab (path
- *   `<tilesPath>[k].tabId`).
- *
- * If duplicate container ids exist, tile-level resolution is skipped to
- * avoid stacking confusing "unknown containerId" errors on top of the
- * duplicate-id error: fix the container layer first.
  */
-export function validateDashboardContainersConsistency<
-  T extends TileForValidation,
->(
+export function validateDashboardContainersStructure(
   containers: ContainerForValidation[],
-  tiles: T[],
   ctx: z.RefinementCtx,
-  paths?: {
-    containersPath?: (string | number)[];
-    tilesPath?: (string | number)[];
-  },
-): void {
+  paths?: { containersPath?: (string | number)[] },
+): {
+  containerById: Map<string, ContainerForValidation>;
+  hasDuplicateContainerId: boolean;
+} {
   const containersPath = paths?.containersPath ?? ['containers'];
-  const tilesPath = paths?.tilesPath ?? ['tiles'];
 
-  // Single pass over containers: container-id uniqueness and per-container
-  // tab-id uniqueness. The container-by-id map is built INSIDE this pass
-  // and is only used for the tile-resolution loop below; building a Map
-  // up-front would last-write-win on duplicate ids, masking the duplicate
-  // before this loop reports it.
+  // The container-by-id map is built INSIDE this pass and is only used
+  // by the tile-resolution helper below; building a Map up-front would
+  // last-write-win on duplicate ids, masking the duplicate before this
+  // loop reports it.
   const containerById = new Map<string, ContainerForValidation>();
   const seenContainerIds = new Set<string>();
   let hasDuplicateContainerId = false;
@@ -1078,13 +1065,32 @@ export function validateDashboardContainersConsistency<
     }
   });
 
-  // If container ids weren't unique, tile-level resolution would
-  // produce confusing errors on top of the duplicate-id ones; skip
-  // the tile pass and let the user fix the container layer first.
-  if (hasDuplicateContainerId) return;
+  return { containerById, hasDuplicateContainerId };
+}
 
-  // Each tile's containerId resolves to a real container,
-  // and each tile's tabId resolves to a tab in that container.
+/**
+ * Pass 2: each tile's containerId resolves to a real container, and
+ * each tile's tabId resolves to a tab in that container. Caller is
+ * responsible for skipping this pass when container ids aren't unique
+ * (the structure helper returns `hasDuplicateContainerId` for that
+ * reason).
+ *
+ * Issues raised:
+ * - A tile's `containerId` references an unknown container (path
+ *   `<tilesPath>[k].containerId`).
+ * - A tile's `tabId` is set without `containerId` (path
+ *   `<tilesPath>[k].tabId`).
+ * - A tile's `tabId` references an unknown tab (path
+ *   `<tilesPath>[k].tabId`).
+ */
+export function validateDashboardTileContainerRefs<T extends TileForValidation>(
+  containerById: Map<string, ContainerForValidation>,
+  tiles: T[],
+  ctx: z.RefinementCtx,
+  paths?: { tilesPath?: (string | number)[] },
+): void {
+  const tilesPath = paths?.tilesPath ?? ['tiles'];
+
   tiles.forEach((tile, tileIdx) => {
     if (tile.containerId !== undefined) {
       const container = containerById.get(tile.containerId);
@@ -1117,6 +1123,45 @@ export function validateDashboardContainersConsistency<
         });
       }
     }
+  });
+}
+
+/**
+ * Composite validation of dashboard containers + tile container/tab
+ * references. Runs the structure pass and (if container ids were
+ * unique) the tile-ref pass. Kept for callers that have both
+ * containers and tiles in one schema scope.
+ *
+ * The external API splits these passes across a schema-level
+ * structure check and a handler-level tile-ref check so the PUT path
+ * can fall back to the existing dashboard's containers when the
+ * request body omits the field; see
+ * `routers/external-api/v2/utils/dashboards.ts` and the handlers in
+ * `routers/external-api/v2/dashboards.ts`.
+ */
+export function validateDashboardContainersConsistency<
+  T extends TileForValidation,
+>(
+  containers: ContainerForValidation[],
+  tiles: T[],
+  ctx: z.RefinementCtx,
+  paths?: {
+    containersPath?: (string | number)[];
+    tilesPath?: (string | number)[];
+  },
+): void {
+  const { containerById, hasDuplicateContainerId } =
+    validateDashboardContainersStructure(containers, ctx, {
+      containersPath: paths?.containersPath,
+    });
+
+  // If container ids weren't unique, tile-level resolution would
+  // produce confusing errors on top of the duplicate-id ones; skip
+  // the tile pass and let the user fix the container layer first.
+  if (hasDuplicateContainerId) return;
+
+  validateDashboardTileContainerRefs(containerById, tiles, ctx, {
+    tilesPath: paths?.tilesPath,
   });
 }
 
