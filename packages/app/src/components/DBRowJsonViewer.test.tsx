@@ -207,10 +207,10 @@ describe('DBRowJsonViewer', () => {
       expect(buildJSONExtractQuery([], ['LogAttributes'])).toBeNull();
     });
 
-    it('builds query for single-level path with default JSONExtractString', () => {
+    it('builds query for single-level path with json_extract_scalar', () => {
       expect(
         buildJSONExtractQuery(['LogAttributes', 'field1'], ['LogAttributes']),
-      ).toBe("JSONExtractString(LogAttributes, 'field1')");
+      ).toBe("json_extract_scalar(LogAttributes, '$.field1')");
     });
 
     it('builds query for nested path', () => {
@@ -219,63 +219,45 @@ describe('DBRowJsonViewer', () => {
           ['LogAttributes', 'nested', 'field3'],
           ['LogAttributes'],
         ),
-      ).toBe("JSONExtractString(LogAttributes, 'nested', 'field3')");
-    });
-
-    it('uses JSONExtractFloat when specified', () => {
-      expect(
-        buildJSONExtractQuery(
-          ['SpanAttributes', 'count'],
-          ['SpanAttributes'],
-          [],
-          'JSONExtractFloat',
-        ),
-      ).toBe("JSONExtractFloat(SpanAttributes, 'count')");
-    });
-
-    it('uses JSONExtractBool when specified', () => {
-      expect(
-        buildJSONExtractQuery(
-          ['LogAttributes', 'enabled'],
-          ['LogAttributes'],
-          [],
-          'JSONExtractBool',
-        ),
-      ).toBe("JSONExtractBool(LogAttributes, 'enabled')");
+      ).toBe("json_extract_scalar(LogAttributes, '$.nested.field3')");
     });
 
     it('handles path segments that look like array indices', () => {
       expect(
         buildJSONExtractQuery(['LogAttributes', '0', 'id'], ['LogAttributes']),
-      ).toBe("JSONExtractString(LogAttributes, '0', 'id')");
+      ).toBe("json_extract_scalar(LogAttributes, '$[0].id')");
     });
 
-    it('uses full column path for Map column with parsed JSON value', () => {
+    it('steps into Map columns with element_at and JSON-extracts the rest', () => {
       expect(
         buildJSONExtractQuery(
           ['LogAttributes', 'config', 'host'],
           ['LogAttributes', 'config'],
         ),
-      ).toBe("JSONExtractString(LogAttributes['config'], 'host')");
+      ).toBe(
+        "json_extract_scalar(element_at(LogAttributes, 'config'), '$.host')",
+      );
     });
 
-    it('uses full column path for deeply nested Map column with parsed JSON', () => {
+    it('steps into deeply nested Map columns', () => {
       expect(
         buildJSONExtractQuery(
           ['LogAttributes', 'config', 'database', 'host'],
           ['LogAttributes', 'config'],
         ),
-      ).toBe("JSONExtractString(LogAttributes['config'], 'database', 'host')");
+      ).toBe(
+        "json_extract_scalar(element_at(LogAttributes, 'config'), '$.database.host')",
+      );
     });
 
-    it('uses JSON dot notation for JSON column with parsed JSON value', () => {
+    it('folds map keys into the JSON path for JSON columns', () => {
       expect(
         buildJSONExtractQuery(
           ['LogAttributes', 'config', 'host'],
           ['LogAttributes', 'config'],
           ['LogAttributes'],
         ),
-      ).toBe("JSONExtractString(LogAttributes.`config`, 'host')");
+      ).toBe("json_extract_scalar(LogAttributes, '$.config.host')");
     });
   });
 });

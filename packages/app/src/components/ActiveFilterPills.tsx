@@ -4,6 +4,8 @@ import { IconX } from '@tabler/icons-react';
 
 import type { FilterStateHook } from '@/searchFilters';
 
+import { cleanedFacetName } from './DBSearchPageFilters';
+
 const MAX_VISIBLE_PILLS = 8;
 
 type PillItem = {
@@ -66,9 +68,10 @@ function FilterPill({
 }) {
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
+  const fieldLabel = cleanedFacetName(pill.field);
 
   return (
-    <Tooltip label={`${pill.field}${operator}${pill.value}`} openDelay={300}>
+    <Tooltip label={`${fieldLabel}${operator}${pill.value}`} openDelay={300}>
       <span
         style={{
           ...pillStyle,
@@ -85,7 +88,7 @@ function FilterPill({
           style={{ flexShrink: 0, maxWidth: 100 }}
           truncate="start"
         >
-          {pill.field}
+          {fieldLabel}
         </Text>
         <Text span size="xxs" c={isExcluded ? 'red.4' : 'dimmed'}>
           {operator}

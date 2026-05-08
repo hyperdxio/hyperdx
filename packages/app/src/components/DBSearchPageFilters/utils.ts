@@ -19,6 +19,15 @@ export function parseMapFieldName(
   // First clean the ClickHouse expression
   const cleanKey = cleanClickHouseExpression(key);
 
+  // Bail out when the whole key is a SQL function call —
+  // `json_extract_scalar(payload, '$.user._id')` shaped expressions would
+  // otherwise be split on the first dot inside the JSON-path literal,
+  // producing a nonsense base name like `json_extract_scalar(payload, '$`.
+  // `Map['key']` access (the format the existing facet UI relies on) does
+  // NOT match this guard because it begins with an identifier followed by
+  // `[`, not `(`.
+  if (/^[A-Za-z_][\w]*\s*\(/.test(cleanKey)) return null;
+
   // Match patterns like: ResourceAttributes['some.property'], SpanAttributes['key'], or json_column.key
   const mapPattern = /^([^[]+)\[['"]([^'"]+)['"]\]$/;
   const match = cleanKey.match(mapPattern);

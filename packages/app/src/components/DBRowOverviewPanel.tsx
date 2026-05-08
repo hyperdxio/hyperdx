@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { TSource } from '@berg/common-utils/dist/types';
-import { Accordion, Box, Text } from '@mantine/core';
+import { Accordion, Box, Group, Loader, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
 
@@ -17,16 +17,26 @@ export function RowOverviewPanel({
   source,
   rowId,
   aliasWith,
+  prefetchedRow,
+  tableSelect,
   hideHeader = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  prefetchedRow?: Record<string, any>;
+  tableSelect?: string;
   hideHeader?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data, isFetching } = useRowData({
+    source,
+    rowId,
+    aliasWith,
+    prefetchedRow,
+    tableSelect,
+  });
 
   const jsonColumns = getJSONColumnNames(data?.meta);
 
@@ -69,9 +79,17 @@ export function RowOverviewPanel({
         {Object.keys(allColumns).length > 0 && (
           <Accordion.Item value="allColumns">
             <Accordion.Control>
-              <Text size="sm" ps="md">
-                Columns
-              </Text>
+              <Group gap="xs" ps="md">
+                <Text size="sm">Columns</Text>
+                {isFetching && firstRow != null && (
+                  <Group gap={4} align="center">
+                    <Loader size="xs" type="dots" />
+                    <Text size="xs" c="dimmed">
+                      Loading additional fields…
+                    </Text>
+                  </Group>
+                )}
+              </Group>
             </Accordion.Control>
             <Accordion.Panel>
               <Box px="md">

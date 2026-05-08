@@ -30,25 +30,40 @@ import {
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
-type JSONExtractFn =
-  | 'JSONExtractString'
-  | 'JSONExtractFloat'
-  | 'JSONExtractBool';
+// JSON path segment: numeric → `[n]`, otherwise `.key`. Berg runs on Trino/Athena,
+// which uses `json_extract_scalar(col, '$.a.b[0]')`-style paths.
+function toJsonPath(parts: string[]): string {
+  return parts.reduce((acc, p) => {
+    return /^\d+$/.test(p) ? `${acc}[${p}]` : `${acc}.${p}`;
+  }, '$');
+}
 
 export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
   jsonColumns: string[] = [],
-  jsonExtractFn: JSONExtractFn = 'JSONExtractString',
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
   if (nestedPath.length === 0) {
     return null; // No nested path to extract
   }
 
-  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
-  const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-  return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
+  const [columnName, ...mapPath] = parsedJsonRootPath;
+  if (!columnName) return null;
+
+  // For a JSON column the whole path lives inside the JSON document, so fold
+  // the map keys into the JSON path. For a Map column we step into each map
+  // key with element_at first, then JSON-extract the remainder.
+  if (mapPath.length === 0 || jsonColumns.includes(columnName)) {
+    return `json_extract_scalar(${columnName}, '${toJsonPath([
+      ...mapPath,
+      ...nestedPath,
+    ])}')`;
+  }
+
+  let base = columnName;
+  for (const k of mapPath) base = `element_at(${base}, '${k}')`;
+  return `json_extract_scalar(${base}, '${toJsonPath(nestedPath)}')`;
 }
 
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -383,7 +398,7 @@ export function DBRowJsonViewer({
           onClick: () => {
             let filterFieldPath = fieldPath;
 
-            // Handle parsed JSON from string columns using JSONExtractString
+            // Parsed JSON: emit a Trino json_extract_scalar(...) expression.
             if (isInParsedJson && parsedJsonRootPath) {
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
@@ -395,13 +410,13 @@ export function DBRowJsonViewer({
               } else {
                 // We're at the root of the parsed JSON, treat as string
                 filterFieldPath = isJsonColumn
-                  ? `toString(${fieldPath})`
+                  ? `cast(${fieldPath} as varchar)`
                   : fieldPath;
               }
             } else {
               // Regular JSON column or non-JSON field
               filterFieldPath = isJsonColumn
-                ? `toString(${fieldPath})`
+                ? `cast(${fieldPath} as varchar)`
                 : fieldPath;
             }
 
@@ -426,31 +441,27 @@ export function DBRowJsonViewer({
           title: 'Search for this value only',
           onClick: () => {
             let searchFieldPath = fieldPath;
+            let usedJsonExtract = false;
 
-            // Handle parsed JSON from string columns using JSONExtractString
+            // Parsed JSON: emit a Trino json_extract_scalar(...) expression.
             if (isInParsedJson && parsedJsonRootPath) {
-              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
-
-              if (typeof value === 'number') {
-                jsonExtractFn = 'JSONExtractFloat';
-              } else if (typeof value === 'boolean') {
-                jsonExtractFn = 'JSONExtractBool';
-              }
-
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
-                jsonExtractFn,
               );
 
               if (jsonQuery) {
                 searchFieldPath = jsonQuery;
+                usedJsonExtract = true;
               }
             }
 
+            // json_extract_scalar always returns varchar, so when we wrapped
+            // the field with it we must compare the value as a string too.
+            const quoteAsString = usedJsonExtract || typeof value === 'string';
             let defaultWhere = `${searchFieldPath} = ${
-              typeof value === 'string' ? `'${value}'` : value
+              quoteAsString ? `'${value}'` : value
             }`;
 
             // FIXME: TOTAL HACK
@@ -479,7 +490,8 @@ export function DBRowJsonViewer({
           onClick: () => {
             let chartFieldPath = fieldPath;
 
-            // Handle parsed JSON from string columns using JSONExtractString
+            // Parsed JSON: emit a Trino json_extract_scalar(...) expression.
+            // Wrap with try_cast to a numeric type since avg() needs numeric.
             if (isInParsedJson && parsedJsonRootPath) {
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
@@ -487,7 +499,7 @@ export function DBRowJsonViewer({
                 jsonColumns,
               );
               if (jsonQuery) {
-                chartFieldPath = jsonQuery;
+                chartFieldPath = `try_cast(${jsonQuery} as double)`;
               }
             }
 
@@ -506,7 +518,7 @@ export function DBRowJsonViewer({
       if (toggleColumn && typeof value !== 'object') {
         let columnFieldPath = fieldPath;
 
-        // Handle parsed JSON from string columns using JSONExtractString
+        // Parsed JSON: emit a Trino json_extract_scalar(...) expression.
         if (isInParsedJson && parsedJsonRootPath) {
           const jsonQuery = buildJSONExtractQuery(
             keyPath,

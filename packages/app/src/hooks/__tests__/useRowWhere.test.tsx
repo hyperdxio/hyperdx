@@ -169,7 +169,14 @@ describe('processRowToWhereClause', () => {
     ).toBe('');
   });
 
-  it('should handle long strings with MD5', () => {
+  it('drops wide string columns from the row WHERE rather than emitting an MD5 round-trip', () => {
+    // The previous implementation hashed `substr(value, 1, 1000)` and
+    // compared md5(...) = md5(...) on the server. That forced Athena to
+    // run md5 over every row in the time/scalar slice and dominated
+    // row-detail latency without meaningfully improving selectivity.
+    // Wide strings are now skipped entirely; the remaining scalar
+    // columns + LIMIT 1 identify the row in practice (same approach we
+    // already take for JSON/Map/Array columns).
     const columnMap = new Map([
       [
         'description',
@@ -186,10 +193,7 @@ describe('processRowToWhereClause', () => {
     const row = { description: longString };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe(
-      `lower(to_hex(md5(cast(substr(description, 1, 1000) as varbinary))))='md5_${'a'.repeat(600)}'`,
-    );
-    expect(MD5).toHaveBeenCalledWith('a'.repeat(600));
+    expect(result).toBe('');
   });
 
   it('should handle multiple columns with AND', () => {

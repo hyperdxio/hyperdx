@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from 'react';
-import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';
 import { BuilderChartConfig } from '@berg/common-utils/dist/types';
 
@@ -14,9 +13,21 @@ const MAX_STRING_LENGTH = 512;
 // Type for WITH clause entries, derived from ChartConfig's with property
 export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
 
-// Internal row field names used by the table component for row tracking
+// Internal row field names used by the table component for row tracking.
+//
+// `ID` is the row's WHERE clause — a stable identifier that survives
+// requeries and is used for highlighted-line matching and the side-panel
+// `rowWhere` URL parameter.  Multiple rendered rows may share an `ID` when
+// the row WHERE collapses to the same scalar predicates (e.g. several
+// rows in the same `timestamp + service` slice once we drop wide-string
+// disambiguators), so it is NOT unique per rendered row.
+//
+// `EXPANSION_ID` is a per-rendered-row key (`<where>#<index>`) used only
+// for inline-expansion state, where collisions cause sibling rows to
+// expand together.
 export const INTERNAL_ROW_FIELDS = {
   ID: '__hyperdx_id',
+  EXPANSION_ID: '__hyperdx_expansion_id',
   ALIAS_WITH: '__hyperdx_alias_with',
 } as const;
 
@@ -101,19 +112,16 @@ export function processRowToWhereClause(
           ]);
 
         default:
-          // Handle the case when string is too long
+          // Skip wide string blobs (e.g. `payload`) from the row WHERE.
+          // The previous `lower(to_hex(md5(substr(?, 1, 1000)))) = ?`
+          // path forced Athena to compute an MD5 over every row in the
+          // (timestamp + scalar) slice, adding 5–10 s to row-detail load
+          // for no real selectivity gain — the remaining scalar columns
+          // (timestamp, service, …) already identify the row in
+          // practice and `LIMIT 1` handles the rare collision the same
+          // way it does for JSON/Map/Array columns above.
           if (value.length > MAX_STRING_LENGTH) {
-            // CH: lower(hex(MD5(leftUTF8(?, 1000)))) — Trino equivalent.
-            // `substr(s, 1, 1000)` is char-based in Trino (matches JS's
-            // `String.prototype.substring(0, 1000)` for the unicode shapes
-            // we care about). The cast-to-varbinary is required by md5().
-            return SqlString.format(
-              `lower(to_hex(md5(cast(substr(?, 1, 1000) as varbinary))))=?`,
-              [
-                SqlString.raw(valueExpr),
-                MD5(value.substring(0, 1000)).toString(),
-              ],
-            );
+            return null;
           }
           return SqlString.format(`?=?`, [
             SqlString.raw(valueExpr), // don't escape expressions

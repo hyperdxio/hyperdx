@@ -96,6 +96,12 @@ export default function DBSqlRowTableWithSideBar({
     setContextRowId,
     setContextRowSource,
   ]);
+  // The main results-table row already contains every column for SELECTs
+  // that include a top-level `*`. Pass it through so the inline-expand
+  // panel can render instantly without a redundant `SELECT * WHERE rowId`
+  // round-trip.
+  const tableSelect =
+    typeof config.select === 'string' ? config.select : undefined;
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
@@ -106,10 +112,12 @@ export default function DBSqlRowTableWithSideBar({
           source={sourceData}
           rowId={r.id}
           aliasWith={r.aliasWith}
+          prefetchedRow={r}
+          tableSelect={tableSelect}
         />
       );
     },
-    [sourceData],
+    [sourceData, tableSelect],
   );
 
   return (
@@ -156,10 +164,14 @@ function RowOverviewPanelWrapper({
   source,
   rowId,
   aliasWith,
+  prefetchedRow,
+  tableSelect,
 }: {
   source: TSource;
   rowId: string;
   aliasWith?: WithClause[];
+  prefetchedRow?: Record<string, any>;
+  tableSelect?: string;
 }) {
   // The original implementation kept the active tab in `useLocalStorage`,
   // which broadcasts to every other instance via `customStorage` events.
@@ -214,11 +226,23 @@ function RowOverviewPanelWrapper({
               source={source}
               rowId={rowId}
               aliasWith={aliasWith}
+              prefetchedRow={prefetchedRow}
+              tableSelect={tableSelect}
+              // Inline expansion: skip the date header. The row's timestamp
+              // is already shown in the table cell directly above it, so
+              // the "May 8 5:29:24 PM · 4h ago" header line is just noise.
+              hideHeader
             />
           </div>
         )}
         {activeTab === InlineTab.ColumnValues && (
-          <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+          <RowDataPanel
+            source={source}
+            rowId={rowId}
+            aliasWith={aliasWith}
+            prefetchedRow={prefetchedRow}
+            tableSelect={tableSelect}
+          />
         )}
       </div>
     </div>

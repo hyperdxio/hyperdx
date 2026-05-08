@@ -117,7 +117,7 @@ import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useTableMetadata } from './hooks/useMetadata';
+import { useColumns, useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
   parseAsJsonEncoded,
@@ -168,6 +168,43 @@ const SearchConfigSchema = z.object({
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 const QUERY_KEY_PREFIX = 'search';
+
+/**
+ * Substitute Athena/Trino synthetic column refs (`_col<N>`) in filter
+ * conditions with the underlying SELECT expression.  Those names exist only
+ * in the result-set metadata; referencing them from a WHERE clause fails
+ * with COLUMN_NOT_FOUND.  Trino numbers `_col<N>` by result-set position,
+ * so for `SELECT *, expr1, expr2` the expressions are at positions
+ * `sourceColumnCount`, `sourceColumnCount + 1`, … among the non-`*`
+ * unaliased SELECT entries (in order of appearance).
+ */
+export function rewriteSyntheticColRefsInFilters(
+  filters: Filter[],
+  selectStr: string,
+  sourceColumnCount: number,
+): Filter[] {
+  if (!filters.length || !selectStr || sourceColumnCount <= 0) return filters;
+  const exprs = splitAndTrimWithBracket(selectStr);
+  const nonStarExprs = exprs.filter(
+    e => e.trim() !== '*' && !/\bAS\s+\S/i.test(e),
+  );
+  if (nonStarExprs.length === 0) return filters;
+  const resolve = (name: string): string | null => {
+    const m = /^_col(\d+)$/.exec(name);
+    if (!m) return null;
+    const i = Number(m[1]) - sourceColumnCount;
+    return i >= 0 && i < nonStarExprs.length ? nonStarExprs[i] : null;
+  };
+  let changed = false;
+  const out = filters.map(filter => {
+    if (filter.type !== 'sql') return filter;
+    const next = filter.condition.replace(/\b_col\d+\b/g, m => resolve(m) ?? m);
+    if (next === filter.condition) return filter;
+    changed = true;
+    return { ...filter, condition: next };
+  });
+  return changed ? out : filters;
+}
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
@@ -798,6 +835,12 @@ export function DBSearchPage() {
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
   });
+  // Source schema column count is needed to resolve `_col<N>` filter
+  // references (Trino numbers synthetic column names by result-set position,
+  // and `*` consumes one position per source column).
+  const { data: searchedSourceColumns } = useColumns(
+    tcFromSource(searchedSource),
+  );
   const chartSourceId = searchedConfig.source ?? '';
 
   // Berg / Task 9: a Berg Source either declares a `timestampColumn`
@@ -1090,9 +1133,33 @@ export function DBSearchPage() {
   );
 
   const filters = useWatch({ name: 'filters', control });
+  // Resolver: Athena/Trino synthetic column refs (`_col<N>`) → underlying
+  // SELECT expression. Used so filter state never holds a result-set
+  // synthetic name; URL/chip/facet labels then reflect the real expression.
+  const watchedSelect = useWatch({ name: 'select', control });
+  const sourceColumnCount = searchedSourceColumns?.length ?? 0;
+  const resolveSyntheticColRef = useCallback(
+    (key: string): string => {
+      const m = /^_col(\d+)$/.exec(key);
+      if (!m) return key;
+      const selectStr =
+        typeof watchedSelect === 'string'
+          ? watchedSelect
+          : (searchedConfig.select ?? '');
+      if (!selectStr || sourceColumnCount <= 0) return key;
+      const exprs = splitAndTrimWithBracket(selectStr);
+      const nonStarExprs = exprs.filter(
+        e => e.trim() !== '*' && !/\bAS\s+\S/i.test(e),
+      );
+      const i = Number(m[1]) - sourceColumnCount;
+      return i >= 0 && i < nonStarExprs.length ? nonStarExprs[i] : key;
+    },
+    [watchedSelect, searchedConfig.select, sourceColumnCount],
+  );
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
+    resolveKey: resolveSyntheticColRef,
   });
 
   const watchedSource = useWatch({
@@ -1164,7 +1231,11 @@ export function DBSearchPage() {
       where: searchedConfig.where ?? '',
       whereLanguage:
         searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      filters: searchedConfig.filters ?? [],
+      filters: rewriteSyntheticColRefsInFilters(
+        searchedConfig.filters ?? [],
+        searchedConfig.select ?? '',
+        searchedSourceColumns?.length ?? 0,
+      ),
       orderBy: searchedConfig.orderBy ?? '',
     }),
     [
@@ -1174,6 +1245,7 @@ export function DBSearchPage() {
       searchedConfig.select,
       searchedConfig.where,
       searchedConfig.whereLanguage,
+      searchedSourceColumns,
     ],
   );
 

@@ -142,6 +142,26 @@ function retrieveColumnValue(column: string, row: Row): any {
   return accessor(row, column);
 }
 
+/**
+ * Render a SELECT expression as a friendly column header.
+ *
+ * `json_extract_scalar(payload, '$.user._id')` → `payload.user._id`.
+ * Anything else is returned as-is so users still see the underlying SQL when
+ * we can't shorten it.
+ */
+function friendlyColumnNameFromExpr(expr: string): string {
+  const trimmed = expr.trim();
+  const m =
+    /^json_extract_scalar\s*\(\s*([^,]+?)\s*,\s*'\$\.?([^']*)'\s*\)$/i.exec(
+      trimmed,
+    );
+  if (!m) return trimmed;
+  const col = m[1].trim();
+  const path = m[2];
+  if (!path) return col;
+  return path.startsWith('[') ? `${col}${path}` : `${col}.${path}`;
+}
+
 function getResolvedColumnSize(
   column: string,
   opts: {
@@ -408,11 +428,14 @@ export const RawLogTable = memo(
           })
         : rows;
 
-      return returnedRows.map(r => {
+      return returnedRows.map((r, idx) => {
         const rowWhereResult = generateRowId(r);
         return {
           ...r,
           [INTERNAL_ROW_FIELDS.ID]: rowWhereResult.where,
+          // Per-rendered-row id so inline-expand state doesn't collide
+          // when multiple rows in the result share the same WHERE.
+          [INTERNAL_ROW_FIELDS.EXPANSION_ID]: `${rowWhereResult.where}#${idx}`,
           [INTERNAL_ROW_FIELDS.ALIAS_WITH]: rowWhereResult.aliasWith,
         };
       });
@@ -1088,7 +1111,9 @@ export const RawLogTable = memo(
                 {items.map(virtualRow => {
                   const row = _rows[virtualRow.index] as TableRow<any>;
                   const rowId = getRowId(row.original);
-                  const isExpanded = expandedRows[rowId] ?? false;
+                  const expansionId =
+                    row.original[INTERNAL_ROW_FIELDS.EXPANSION_ID] ?? rowId;
+                  const isExpanded = expandedRows[expansionId] ?? false;
 
                   return (
                     <React.Fragment key={virtualRow.key}>
@@ -1580,6 +1605,26 @@ function DBSqlRowTableComponent({
 
   const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
 
+  // Athena/Trino names unaliased SELECT expressions `_col0`, `_col1`, … in the
+  // result set. Map those synthetic names back to the original SELECT
+  // expressions (or a friendly form) so the table header shows
+  // `payload.user._id` instead of `_col4`. `*` and aliased expressions
+  // produce real names that don't need remapping.
+  const columnNameMap = useMemo(() => {
+    if (!contextDisplayedColumns) return undefined;
+    const synth = columns.filter(c => /^_col\d+$/.test(c));
+    if (synth.length === 0) return undefined;
+    const candidateExprs = contextDisplayedColumns.filter(
+      e => e.trim() !== '*' && !/\bAS\s+\S/i.test(e),
+    );
+    const map: Record<string, string> = {};
+    synth.forEach((name, i) => {
+      const expr = candidateExprs[i];
+      if (expr) map[name] = friendlyColumnNameFromExpr(expr);
+    });
+    return map;
+  }, [columns, contextDisplayedColumns]);
+
   // CH may rewrite column names in the result set (e.g. expression formatting),
   // so we cannot rely on string matching between CH column names and SELECT expressions.
   // Instead, use position-based mapping: columns[i] (CH name) corresponds to
@@ -1720,6 +1765,7 @@ function DBSqlRowTableComponent({
         isError={isError}
         error={error ?? undefined}
         columnTypeMap={columnMap}
+        columnNameMap={columnNameMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
         config={mergedConfigObj}

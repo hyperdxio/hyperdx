@@ -84,11 +84,31 @@ const LOAD_MORE_LOAD_LIMIT = 10000;
 /* The initial number of values per filter to render */
 const INITIAL_MAX_VALUES_DISPLAYED = 10;
 
+// Columns that are almost always row-unique blobs and useless as facets.
+// Including them in the keyValues query just burns time and on Athena can
+// overflow the result-aggregation buffer.
+const FACET_DENY_LIST = new Set([
+  'body',
+  'content',
+  'data',
+  'message',
+  'payload',
+  'raw',
+  'request',
+  'response',
+  'stacktrace',
+  'timestamp',
+  '_hdx_body',
+]);
+
 /* The maximum number of values per filter to render at once after loading more */
 const SHOW_MORE_MAX_VALUES_DISPLAYED = 50;
 
 // This function will clean json string attributes specifically. It will turn a string like
 // 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.version'.
+// Trino JSON extracts (`json_extract_scalar(payload, '$.user._id')`) get
+// rendered as their dotted path (`payload.user._id`) so chips/facets stay
+// readable when filtering on user-added JSON columns.
 export function cleanedFacetName(key: string): string {
   if (key.startsWith('toString')) {
     return key
@@ -98,6 +118,16 @@ export function cleanedFacetName(key: string): string {
         str.startsWith('`') && str.endsWith('`') ? str.slice(1, -1) : str,
       )
       .join('.');
+  }
+  const je =
+    /^json_extract_scalar\s*\(\s*([^,]+?)\s*,\s*'\$\.?([^']*)'\s*\)$/i.exec(
+      key.trim(),
+    );
+  if (je) {
+    const col = je[1].trim();
+    const path = je[2];
+    if (!path) return col;
+    return path.startsWith('[') ? `${col}${path}` : `${col}.${path}`;
   }
   return key;
 }
@@ -1177,10 +1207,13 @@ const DBSearchPageFiltersComponent = ({
       // enumeration; on Iceberg/S3-Tables sources column counts are
       // usually small enough that this is a non-issue.
       .map(({ path }) => path)
-      .filter(
-        path =>
-          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
-      );
+      // Skip columns that are very likely blob-shaped (multi-KB JSON dumps,
+      // request/response bodies, stack traces, …). Aggregating their
+      // distinct values produces row-cardinality output and on Athena
+      // routinely overflows the 2 GB Java byte-array limit
+      // (`GENERIC_INTERNAL_ERROR: arraycopy ... out of bounds`), which
+      // then retries 4× and blocks the row-detail UX behind it.
+      .filter(path => !FACET_DENY_LIST.has(path.toLowerCase()));
     return strings;
   }, [data, jsonColumns]);
 
@@ -1877,7 +1910,10 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
-function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
+function isFieldPrimary(
+  tableMetadata: TableMetadata | null | undefined,
+  key: string,
+) {
   return tableMetadata?.primary_key?.includes(key);
 }
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);

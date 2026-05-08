@@ -124,15 +124,19 @@ export const useExpandableRows = (
 const ExpandButton = memo(
   ({
     rowId,
+    expansionId,
     isExpanded,
     highlightedLineId,
     toggleRowExpansion,
   }: {
     rowId: string;
+    /** Per-rendered-row key for expansion state. Defaults to `rowId`. */
+    expansionId?: string;
     isExpanded: boolean;
     highlightedLineId?: string;
     toggleRowExpansion: (rowId: string) => void;
   }) => {
+    const toggleKey = expansionId ?? rowId;
     return (
       <span className="d-flex align-items-center justify-content-center">
         <button
@@ -144,7 +148,7 @@ const ExpandButton = memo(
           })}
           onClick={e => {
             e.stopPropagation();
-            toggleRowExpansion(rowId);
+            toggleRowExpansion(toggleKey);
           }}
           aria-expanded={isExpanded}
           aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
@@ -170,11 +174,16 @@ export const createExpandButtonColumn = (
   header: () => '',
   cell: (info: any) => {
     const rowId = info.getValue() as string;
-    const isExpanded = expandedRows[rowId] ?? false;
+    const expansionId =
+      (info.row.original?.[INTERNAL_ROW_FIELDS.EXPANSION_ID] as
+        | string
+        | undefined) ?? rowId;
+    const isExpanded = expandedRows[expansionId] ?? false;
 
     return (
       <ExpandButton
         rowId={rowId}
+        expansionId={expansionId}
         isExpanded={isExpanded}
         highlightedLineId={highlightedLineId}
         toggleRowExpansion={toggleRowExpansion}

@@ -400,9 +400,17 @@ export const parseQuery = (
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  resolveKey,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  /**
+   * Optional resolver applied to every filter key before it's stored. Used
+   * by the SQL search page to translate Athena/Trino synthetic column
+   * refs (`_col<N>`) into the underlying SELECT expression so they never
+   * leak into filter state, the URL, or the chip/facet UI.
+   */
+  resolveKey?: (key: string) => string;
 }) => {
   const parsedQuery = useMemo(() => {
     try {
@@ -415,13 +423,42 @@ export const useSearchPageFilterState = ({
 
   const [filters, setFilters] = useState<FilterState>({});
 
+  const resolveFilterStateKeys = useCallback(
+    (state: FilterState): FilterState => {
+      if (!resolveKey) return state;
+      let changed = false;
+      const next: FilterState = {};
+      for (const [k, v] of Object.entries(state)) {
+        const rk = resolveKey(k);
+        if (rk !== k) changed = true;
+        // Merge if two raw keys collapse onto the same resolved key.
+        const existing = next[rk];
+        if (!existing) {
+          next[rk] = v;
+        } else {
+          v.included.forEach(x => existing.included.add(x));
+          v.excluded.forEach(x => existing.excluded.add(x));
+          if (v.range) existing.range = v.range;
+        }
+      }
+      return changed ? next : state;
+    },
+    [resolveKey],
+  );
+
   useEffect(() => {
-    if (!areFiltersEqual(filters, parsedQuery.filters)) {
-      setFilters(parsedQuery.filters);
+    const resolved = resolveFilterStateKeys(parsedQuery.filters);
+    if (!areFiltersEqual(filters, resolved)) {
+      setFilters(resolved);
+      // If the URL came in with un-resolved keys (e.g. `_col4`), rewrite
+      // the URL with the resolved form so reloads don't re-introduce them.
+      if (resolved !== parsedQuery.filters) {
+        onFilterChange(filtersToQuery(resolved));
+      }
     }
     // only react to changes in parsed query
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedQuery.filters]);
+  }, [parsedQuery.filters, resolveFilterStateKeys]);
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
@@ -432,10 +469,11 @@ export const useSearchPageFilterState = ({
 
   const setFilterValue = useCallback(
     (
-      property: string,
+      rawProperty: string,
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
+      const property = resolveKey ? resolveKey(rawProperty) : rawProperty;
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
@@ -474,11 +512,12 @@ export const useSearchPageFilterState = ({
         return newFilters;
       });
     },
-    [updateFilterQuery],
+    [updateFilterQuery, resolveKey],
   );
 
   const setFilterRange = useCallback(
-    (property: string, range: { min: number; max: number }) => {
+    (rawProperty: string, range: { min: number; max: number }) => {
+      const property = resolveKey ? resolveKey(rawProperty) : rawProperty;
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
@@ -490,11 +529,12 @@ export const useSearchPageFilterState = ({
         return newFilters;
       });
     },
-    [updateFilterQuery],
+    [updateFilterQuery, resolveKey],
   );
 
   const clearFilter = useCallback(
-    (property: string) => {
+    (rawProperty: string) => {
+      const property = resolveKey ? resolveKey(rawProperty) : rawProperty;
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           delete draft[property];
@@ -503,7 +543,7 @@ export const useSearchPageFilterState = ({
         return newFilters;
       });
     },
-    [updateFilterQuery],
+    [updateFilterQuery, resolveKey],
   );
 
   const clearAllFilters = useCallback(() => {

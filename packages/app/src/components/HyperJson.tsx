@@ -19,6 +19,93 @@ import {
 
 import styles from './HyperJson.module.scss';
 
+/**
+ * Repair the two malformations Berg sees in `payload`-style log dumps that
+ * were stringified via Node's `util.inspect` rather than `JSON.stringify`:
+ *
+ *   1. Unquoted integer keys: `{1:"x"}`        -> `{"1":"x"}`
+ *   2. Truncation literal:    `"k":...,`       -> `"k":null,`
+ *
+ * Walks the input as a state machine so repairs only fire OUTSIDE of quoted
+ * strings — a substring like `"a,1:b"` inside a value is left untouched.
+ * Returns the original string when it doesn't need repair.
+ */
+function repairLooseJson(s: string): string {
+  let out = '';
+  let i = 0;
+  let inString = false;
+  while (i < s.length) {
+    const c = s[i];
+    if (inString) {
+      if (c === '\\') {
+        out += c + (s[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (c === '"') inString = false;
+      out += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out += c;
+      i++;
+      continue;
+    }
+    // Repair `:...` truncation when followed by a structural char.
+    if (c === ':') {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (
+        s[j] === '.' &&
+        s[j + 1] === '.' &&
+        s[j + 2] === '.' &&
+        /[,}\]]/.test(s[j + 3] ?? '')
+      ) {
+        out += ':null';
+        i = j + 3;
+        continue;
+      }
+    }
+    // Repair unquoted numeric keys: `{` or `,`, then digits, then `:`.
+    if (c === '{' || c === ',') {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      let k = j;
+      while (k < s.length && s[k] >= '0' && s[k] <= '9') k++;
+      if (k > j) {
+        let m = k;
+        while (m < s.length && /\s/.test(s[m])) m++;
+        if (s[m] === ':') {
+          out += c + s.slice(i + 1, j) + '"' + s.slice(j, k) + '"';
+          i = k;
+          continue;
+        }
+      }
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Try strict `JSON.parse`; on failure, attempt a one-shot repair pass and
+ * parse again. Returns `undefined` when both attempts fail.
+ */
+function tolerantJsonParse(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value);
+  } catch {
+    try {
+      return JSON.parse(repairLooseJson(value));
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 export type LineAction = {
   key: string;
   title?: string;
@@ -170,20 +257,23 @@ const Line = React.memo(
     // mounting it for potentially hundreds of lines
     const { ref, hovered } = useHover<HTMLDivElement>();
 
-    const isStringValueValidJson = React.useMemo(() => {
-      if (!isString(value)) return false;
-      try {
-        if (
+    // Parse once and reuse for both the "is JSON?" gate and the rendered tree.
+    // `tolerantJsonParse` falls back to a structural repair pass for the
+    // util.inspect-style dumps Berg sees in some payload columns.
+    const parsedJsonValue = React.useMemo(() => {
+      if (!isString(value)) return undefined;
+      if (
+        !(
           (value.startsWith('{') && value.endsWith('}')) ||
           (value.startsWith('[') && value.endsWith(']'))
-        ) {
-          const parsed = JSON.parse(value);
-          return !!parsed;
-        }
-      } catch {
-        return false;
+        )
+      ) {
+        return undefined;
       }
+      return tolerantJsonParse(value);
     }, [value]);
+
+    const isStringValueValidJson = parsedJsonValue !== undefined;
 
     const [isExpanded, setIsExpanded] = React.useState(
       normallyExpanded && !isStringValueValidJson,
@@ -207,15 +297,8 @@ const Line = React.memo(
     }, [isExpandable]);
 
     const expandedData = React.useMemo(() => {
-      if (isStringValueValidJson) {
-        try {
-          return JSON.parse(value);
-        } catch {
-          return null;
-        }
-      }
-      return value;
-    }, [isStringValueValidJson, value]);
+      return isStringValueValidJson ? parsedJsonValue : value;
+    }, [isStringValueValidJson, parsedJsonValue, value]);
 
     const nestedLevel = parentKeyPath.length;
     const keyPath = React.useMemo(

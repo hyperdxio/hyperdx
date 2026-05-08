@@ -191,14 +191,20 @@ export function useTableMetadata(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
-  return useQuery<TableMetadata | undefined>({
+  return useQuery<TableMetadata | null>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
-      return await metadata.getTableMetadata({
+      // Berg has no ClickHouse system.tables; on Athena the underlying call
+      // resolves to undefined. React Query 5 rejects undefined results
+      // ("Query data cannot be undefined"), retries the queryFn, and the
+      // resulting error churn re-renders consumers in a tight loop. Coerce
+      // to null so consumers see a stable "no metadata" value.
+      const result = await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
       });
+      return result ?? null;
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!databaseName && !!tableName && !!connectionId,
@@ -261,6 +267,12 @@ export function useMultipleGetKeyValues(
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
+    // The keyValues query is a best-effort facet-population scan; on
+    // Athena/Iceberg it can fail (e.g. byte-array overflow when a wide
+    // varchar like `payload` slips into the keys list). Retrying a 15+ s
+    // query four times serially blocks the row side panel from settling.
+    // Fail fast and let the caller render an empty facet section.
+    retry: false,
     ...options,
     enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });
