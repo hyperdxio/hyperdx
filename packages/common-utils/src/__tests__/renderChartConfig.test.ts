@@ -196,6 +196,317 @@ describe('renderChartConfig', () => {
     ).rejects.toThrow('multi select or string select on metrics not supported');
   });
 
+  it('should generate sql for a sum metric with aggFn=increase (Use Increase)', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 10 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    // Increase (Use Increase) sums Rate across sub-series sharing the same
+    // groupBy value (or all rows when no groupBy) to yield the per-bucket
+    // counter increase. The sum aggregation wraps its operand in a numeric
+    // cast (toFloat64OrDefault) so match that loosely.
+    expect(actual).toMatch(/sum\s*\([^)]*Rate[^)]*\)/);
+    // Rate is computed at the raw-row level in Source using lagInFrame,
+    // rather than diffing pre-bucketed values in Bucketed. This works even
+    // when a series only spans one bucket in the visible window.
+    expect(actual).toContain('lagInFrame');
+    // Counter resets / decreases are clamped to 0 (mirrors v1's NaN-on-negative).
+    expect(actual).toContain('greatest(Value - lagInFrame');
+    // Crucially, the Rate formula must NOT gate on IsMonotonic.
+    expect(actual).not.toMatch(/IF\(IsMonotonic\s*=\s*0,\s*Value/);
+    expect(actual).toMatchSnapshot();
+  });
+
+  it('should limit aggFn=increase + groupBy to the top 20 groups via a TopGroups CTE', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      groupBy: [
+        {
+          aggCondition: '',
+          valueExpression: 'ServiceName',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 100000 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+
+    // A "TopGroups" CTE should be emitted that picks the top N groups by
+    // max(sum(Rate) over buckets). The inner sum(Rate) matches the outer
+    // query's per-bucket aggregation, so a group with a spike in one bucket
+    // still qualifies for the top N.
+    expect(actual).toContain('TopGroups');
+    expect(actual).toMatch(/sum\(Rate\)\s+AS\s+`bucket_value`/);
+    expect(actual).toMatch(/ORDER\s+BY\s+max\(`bucket_value`\)\s+DESC/);
+    expect(actual).toContain('LIMIT 20');
+    // Rows where the groupBy value is NULL or empty must be excluded so they
+    // don't dominate the chart as a single '-' series.
+    expect(actual).toMatch(
+      /ServiceName\s+IS\s+NOT\s+NULL\s+AND\s+toString\(ServiceName\)\s*!=\s*''/,
+    );
+    // The outer query should restrict to the top groups via an IN subquery.
+    expect(actual).toMatch(
+      /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+TopGroups\)/,
+    );
+    // Outer query reads from Bucketed and sums Rate across sub-series.
+    expect(actual).toMatch(/FROM\s+Bucketed/);
+    expect(actual).toMatch(/sum\s*\([^)]*Rate[^)]*\)/);
+    expect(actual).toMatchSnapshot();
+  });
+
+  it('should render rank where as SQL even when whereLanguage is lucene (regression)', async () => {
+    // Regression: if the user's config has whereLanguage='lucene' and we set a
+    // raw SQL where clause (rank filter) internally, renderWhere must parse it
+    // as SQL. Otherwise the Lucene parser fails with "Can not search bare text
+    // without an implicit column set".
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: { databaseName: 'default', tableName: '' },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'lucene',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 100000 },
+    };
+
+    // Should not throw.
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toContain('TopGroups');
+  });
+
+  it('should handle aggFn=increase with multi-column groupBy', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      groupBy: [
+        { aggCondition: '', valueExpression: 'ServiceName' },
+        { aggCondition: '', valueExpression: "Attributes['env']" },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 100000 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    // Both groupBy expressions should be packed into a tuple() in the TopGroups
+    // CTE and outer WHERE.
+    expect(actual).toMatch(
+      /tuple\(\s*ServiceName\s*,\s*Attributes\[['"]env['"]\]\s*\)/,
+    );
+    expect(actual).toContain('TopGroups');
+    expect(actual).toContain('LIMIT 20');
+    // Each groupBy column is individually filtered against NULL/empty to
+    // prevent a single empty series from dominating the chart.
+    expect(actual).toMatch(
+      /ServiceName\s+IS\s+NOT\s+NULL\s+AND\s+toString\(ServiceName\)\s*!=\s*''/,
+    );
+    expect(actual).toMatch(
+      /Attributes\[['"]env['"]\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\[['"]env['"]\]\)\s*!=\s*''/,
+    );
+  });
+
+  it('should not emit a rank CTE when aggFn=increase has no groupBy', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 10 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).not.toContain('TopGroups');
+  });
+
+  it('should throw when aggFn=increase is used on a non-Sum metric', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'nodejs.event_loop.utilization',
+          metricType: MetricsDataType.Gauge,
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 10 },
+    };
+
+    await expect(
+      renderChartConfig(config, mockMetadata, querySettings),
+    ).rejects.toThrow(
+      "aggFn 'increase' is only supported for Sum (counter) metrics",
+    );
+  });
+
   describe('histogram metric queries', () => {
     describe('quantile', () => {
       it('should generate a query without grouping or time bucketing', async () => {

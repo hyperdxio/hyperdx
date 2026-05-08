@@ -76,6 +76,9 @@ function determineTableName(select: SelectSQLStatement): string {
 const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
+// Maximum number of distinct groups shown in a time chart when using 'increase' with a groupBy.
+const INCREASE_MAX_NUM_GROUPS = 20;
+
 export function isUsingGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): chartConfig is Omit<BuilderChartConfigWithDateRange, 'groupBy'> & {
@@ -121,9 +124,11 @@ export const setChartSelectsAlias = (
         ...s,
         alias:
           s.alias ||
-          (s.isDelta
-            ? `${s.aggFn}(delta(${s.metricName}))`
-            : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
+          (s.aggFn === 'increase'
+            ? `increase(${s.metricName})`
+            : s.isDelta
+              ? `${s.aggFn}(delta(${s.metricName}))`
+              : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
       })),
     };
   }
@@ -1219,6 +1224,14 @@ async function translateMetricChartConfig(
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+
+  // 'increase' is only valid for Sum metrics.
+  if (_select.aggFn === 'increase' && metricType !== MetricsDataType.Sum) {
+    throw new Error(
+      `aggFn 'increase' is only supported for Sum (counter) metrics (got metricType=${metricType})`,
+    );
+  }
+
   if (
     metricType === MetricsDataType.Gauge &&
     metricName &&
@@ -1318,8 +1331,6 @@ async function translateMetricChartConfig(
     metricTables[MetricsDataType.Sum]
   ) {
     const timeBucketCol = '__hdx_time_bucket2';
-    const valueHighCol = '`__hdx_value_high`';
-    const valueHighPrevCol = '`__hdx_value_high_prev`';
     const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
       timestampValueExpression:
@@ -1361,81 +1372,190 @@ async function translateMetricChartConfig(
      *
      * Note, IsMonotonic = 0, has Cumulative agg temporality
      */
-    return {
-      ...restChartConfig,
-      with: [
-        {
-          name: 'Source',
-          sql: chSql`
+    const sumWith: NonNullable<BuilderChartConfigWithOptDateRangeEx['with']> = [
+      {
+        // Source: per-raw-row counter delta (Rate) and cumulative value (Sum)
+        // for each (AttributesHash, TimeUnix) point. On the first row of each
+        // series partition, lagInFrame returns NULL; `Value - NULL` is NULL,
+        // and `greatest(NULL, 0)` resolves to 0 — so Rate is 0 (contributing
+        // nothing to the bucket sum) rather than leaking the cumulative value.
+        name: 'Source',
+        sql: chSql`
                 SELECT
                   *,
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                  IF(AggregationTemporality = 1,
-                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    IF(IsMonotonic = 0, 
-                      Value,
-                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                    )
+                  IF(
+                    AggregationTemporality = 1,
+                    Value, -- DELTA: Value is already the per-interval increase
+                    greatest(Value - lagInFrame(toNullable(Value), 1, NULL) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix), 0)
                   ) AS Rate,
-                  IF(AggregationTemporality = 1, Rate, Value) AS Sum
+                  IF(
+                    AggregationTemporality = 1,
+                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+                    Value
+                  ) AS Sum
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
                 WHERE ${where}`,
-        },
-        {
-          name: 'Bucketed',
-          sql: chSql`
+      },
+      {
+        // Bucketed: one row per (AttributesHash, bucket). The aggregation is
+        // wrapped in an inner subquery so ClickHouse exposes Rate/Sum as plain
+        // columns; without the wrapper, outer `sum(Rate)` would lexically
+        // expand to the rejected `sum(sum(Source.Rate))`.
+        name: 'Bucketed',
+        sql: chSql`
             SELECT
-              ${timeExpr},
+              \`${timeBucketCol}\`,
               AttributesHash,
-              last_value(Source.Rate) AS ${valueHighCol},
-              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
-              IF(IsMonotonic = 1, ${valueHighCol} - ${valueHighPrevCol}, ${valueHighCol}) AS Rate,
-              last_value(Source.Sum) AS Sum,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricName) AS MetricName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(Attributes) AS Attributes,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags,
-              any(AggregationTemporality) AS AggregationTemporality,
-              any(IsMonotonic) AS IsMonotonic
-            FROM Source
-            GROUP BY AttributesHash, \`${timeBucketCol}\`
-            ORDER BY AttributesHash, \`${timeBucketCol}\`
+              Rate,
+              Sum,
+              ResourceAttributes,
+              ResourceSchemaUrl,
+              ScopeName,
+              ScopeVersion,
+              ScopeAttributes,
+              ScopeDroppedAttrCount,
+              ScopeSchemaUrl,
+              ServiceName,
+              MetricName,
+              MetricDescription,
+              MetricUnit,
+              Attributes,
+              StartTimeUnix,
+              Flags,
+              AggregationTemporality,
+              IsMonotonic
+            FROM (
+              SELECT
+                ${timeExpr},
+                AttributesHash,
+                -- Per-bucket increase: sum of raw per-row deltas. NULL
+                -- Source.Rate (first row of each partition) is ignored by sum().
+                sum(Source.Rate) AS Rate,
+                -- Last cumulative reading in the bucket, used by the
+                -- no-aggFn last_value(Sum) outer projection.
+                last_value(Source.Sum) AS Sum,
+                any(ResourceAttributes) AS ResourceAttributes,
+                any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+                any(ScopeName) AS ScopeName,
+                any(ScopeVersion) AS ScopeVersion,
+                any(ScopeAttributes) AS ScopeAttributes,
+                any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+                any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+                any(ServiceName) AS ServiceName,
+                any(MetricName) AS MetricName,
+                any(MetricDescription) AS MetricDescription,
+                any(MetricUnit) AS MetricUnit,
+                any(Attributes) AS Attributes,
+                any(StartTimeUnix) AS StartTimeUnix,
+                any(Flags) AS Flags,
+                any(AggregationTemporality) AS AggregationTemporality,
+                any(IsMonotonic) AS IsMonotonic
+              FROM Source
+              GROUP BY AttributesHash, \`${timeBucketCol}\`
+              ORDER BY AttributesHash, \`${timeBucketCol}\`
+            )
           `,
-        },
-      ],
+      },
+    ];
+
+    // For aggFn='increase' + groupBy, restrict the outer query to the top N
+    // groups (mirrors v1's MAX_NUM_GROUPS). Ranking is done in a separate
+    // CTE rather than a window, since ClickHouse can't reference a
+    // window-aggregate inside another window's ORDER BY.
+    const shouldApplyIncreaseGroupLimit =
+      _select.aggFn === 'increase' && isUsingGroupBy(chartConfig);
+
+    let outerWhere: string = '';
+
+    if (shouldApplyIncreaseGroupLimit) {
+      // Render the user's groupBy against the Bucketed CTE so column
+      // references resolve to the CTE's projection.
+      const groupByForRank = await renderSelectList(
+        chartConfig.groupBy!,
+        {
+          ...chartConfig,
+          from: { databaseName: '', tableName: 'Bucketed' },
+          with: sumWith,
+        } as BuilderChartConfigWithOptDateRangeEx,
+        metadata,
+      );
+      const groupBySql = concatChSql(',', groupByForRank);
+
+      // Exclude rows where any groupBy column is NULL/empty so they don't
+      // collapse into a single dominating '-' series.
+      const groupByEmptyFilter = concatChSql(
+        ' AND ',
+        (Array.isArray(groupByForRank) ? groupByForRank : [groupByForRank]).map(
+          g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
+        ),
+      );
+
+      // Rank by max-per-bucket summed Rate so a group that spikes in one
+      // bucket still makes the top N. tuple() wraps multi-column groupBys
+      // into a single comparable column.
+      sumWith.push({
+        name: 'TopGroups',
+        sql: chSql`
+            SELECT \`group\`
+            FROM (
+              SELECT
+                tuple(${groupBySql}) AS \`group\`,
+                sum(Rate) AS \`bucket_value\`
+              FROM Bucketed
+              WHERE ${groupByEmptyFilter}
+              GROUP BY \`group\`, \`${timeBucketCol}\`
+            )
+            GROUP BY \`group\`
+            ORDER BY max(\`bucket_value\`) DESC, \`group\`
+            LIMIT ${{ Int32: INCREASE_MAX_NUM_GROUPS }}
+          `,
+      });
+
+      outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
+    }
+
+    return {
+      ...restChartConfig,
+      with: sumWith,
       select: [
-        // HDX-1543: If the chart config query asks for an aggregation, the use the computed rate value, otherwise
-        // use the underlying summed value. The alias field appears before the spread so user defined aliases will
-        // take precedent over our generic value.
-        _select.aggFn
+        // HDX-1543: aggFn => use computed rate; no aggFn => use raw cumulative.
+        // For 'increase', sum Rate across sub-series that share the user's
+        // groupBy (e.g. groupBy teamName while rows also vary by customerId).
+        _select.aggFn === 'increase'
           ? {
               alias: 'Value',
               ..._select,
+              aggFn: 'sum',
               valueExpression: 'Rate',
               aggCondition: '',
             }
-          : {
-              alias: 'Value',
-              ..._select,
-              valueExpression: 'last_value(Sum)',
-              aggCondition: '',
-            },
+          : _select.aggFn
+            ? {
+                alias: 'Value',
+                ..._select,
+                valueExpression: 'Rate',
+                aggCondition: '',
+              }
+            : {
+                alias: 'Value',
+                ..._select,
+                valueExpression: 'last_value(Sum)',
+                aggCondition: '',
+              },
       ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
       },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      // outerWhere is only set when restricting to top-N groups; otherwise
+      // cleared since the upstream CTE already applied the user's where.
+      // Force SQL parsing because outerWhere is raw SQL referencing
+      // TopGroups; the user's whereLanguage may be Lucene.
+      where: outerWhere,
+      whereLanguage: shouldApplyIncreaseGroupLimit
+        ? 'sql'
+        : restChartConfig.whereLanguage,
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (

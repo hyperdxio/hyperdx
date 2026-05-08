@@ -60,6 +60,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
+  { value: 'increase' as const, label: 'Increase', isAttributable: false },
   { value: 'none' as const, label: 'Custom' },
 ];
 

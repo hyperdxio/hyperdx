@@ -789,6 +789,151 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
+
+    it('new series appearing mid-window: v2 suppresses first-row spike that v1 leaks', async () => {
+      // Scenario: An existing series (customerA) has data from the start,
+      // and a new series (customerB) appears mid-window with a high
+      // cumulative counter value (e.g. 10000). In v1, the first row of
+      // customerB leaks the full cumulative value as a spike. In v2, the
+      // lagInFrame-based Rate yields 0 for the first row.
+
+      // Use a unique metric name to isolate from the beforeEach data.
+      const metricName = 'customer.events.total';
+
+      // customerA: present from the start, steady increase
+      const customerAPoints = [
+        { value: 0, timestamp: now - ms('1m') },
+        { value: 10, timestamp: now + ms('2m') },
+        { value: 20, timestamp: now + ms('7m') },
+        { value: 30, timestamp: now + ms('12m') },
+        { value: 40, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerA' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      // customerB: appears at +10m with a high cumulative value (10000),
+      // then increases to 10050 by +17m. The real per-bucket increase is
+      // only 50, but v1 would show 10000 in the bucket where it first
+      // appears.
+      const customerBPoints = [
+        { value: 10000, timestamp: now + ms('10m') },
+        { value: 10020, timestamp: now + ms('12m') },
+        { value: 10050, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerB' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      await bulkInsertMetricsSum([...customerAPoints, ...customerBPoints]);
+
+      // --- v2 query (current code) ---
+      const v2Query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: metricName,
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('20m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+      const v2Results = await queryData(v2Query);
+
+      // --- v1-style query (manually constructed with deltaSum + inter-bucket diff) ---
+      // This reproduces the original (pre-branch) Sum CTE logic to confirm
+      // the first-row spike behaviour when a new series appears mid-window.
+      // The inner subquery groups by (AttributesHash, bucket), then the outer
+      // select computes the inter-bucket diff via a window function.
+      const startMs = now;
+      const endMs = now + ms('20m');
+      const v1Sql = chSql`
+        WITH Source AS (
+          SELECT
+            *,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+            IF(AggregationTemporality = 1,
+              SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+              IF(IsMonotonic = 0,
+                Value,
+                deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+              )
+            ) AS Rate,
+            IF(AggregationTemporality = 1, Rate, Value) AS Sum
+          FROM ${{ Identifier: DEFAULT_DATABASE }}.${{ Identifier: DEFAULT_METRICS_TABLE.SUM }}
+          WHERE MetricName = ${{ String: metricName }}
+            AND TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startMs }}), INTERVAL 5 minute) - INTERVAL 5 minute
+            AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endMs }}), INTERVAL 5 minute) + INTERVAL 5 minute
+        ),
+        Bucketed AS (
+          SELECT
+            __hdx_time_bucket2,
+            AttributesHash,
+            -- Inter-bucket diff: for monotonic counters, subtract previous
+            -- bucket's high value. When __hdx_value_high_prev is NULL (first
+            -- bucket of a series), the subtraction yields NULL, which is
+            -- treated as a spike equal to the full cumulative value.
+            IF(IsMonotonic = 1, __hdx_value_high - __hdx_value_high_prev, __hdx_value_high) AS Rate
+          FROM (
+            SELECT
+              toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS __hdx_time_bucket2,
+              AttributesHash,
+              last_value(Source.Rate) AS __hdx_value_high,
+              any(__hdx_value_high) OVER(PARTITION BY AttributesHash ORDER BY __hdx_time_bucket2 ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS __hdx_value_high_prev,
+              any(IsMonotonic) AS IsMonotonic
+            FROM Source
+            GROUP BY AttributesHash, __hdx_time_bucket2
+            ORDER BY AttributesHash, __hdx_time_bucket2
+          )
+        )
+        SELECT
+          sum(Rate) AS Value,
+          toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 5 minute) AS __hdx_time_bucket
+        FROM Bucketed
+        WHERE __hdx_time_bucket2 >= fromUnixTimestamp64Milli(${{ Int64: startMs }})
+          AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(${{ Int64: endMs }})
+        GROUP BY __hdx_time_bucket
+        ORDER BY __hdx_time_bucket
+        SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, count_distinct_implementation = 'uniqCombined64'
+      `;
+      const v1Results = await queryData(v1Sql);
+
+      // v1 should have a spike in the bucket where customerB first appears
+      // (the +10m bucket), leaking the full cumulative value (10000).
+      const v1Values = v1Results.map((r: any) => Number(r.Value));
+      const v1MaxValue = Math.max(...v1Values);
+      expect(v1MaxValue).toBeGreaterThanOrEqual(10000);
+
+      // v2 should NOT have that spike — the max bucket value should be
+      // much smaller (just the real per-bucket increases across both series).
+      const v2Values = v2Results.map((r: any) => Number(r.Value));
+      const v2MaxValue = Math.max(...v2Values);
+      expect(v2MaxValue).toBeLessThan(100);
+
+      // Confirm v2 suppresses the spike that v1 shows
+      expect(v2MaxValue).toBeLessThan(v1MaxValue);
+    });
   });
 
   describe('Query Metrics - Histogram', () => {

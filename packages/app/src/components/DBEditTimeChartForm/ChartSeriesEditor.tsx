@@ -102,6 +102,18 @@ export function ChartSeriesEditor({
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
+  // 'increase' aggFn is only valid on Sum metrics. Reset it if the user
+  // switches to a different metric type or source kind so the backend does
+  // not error on a stale 'increase' selection.
+  useEffect(() => {
+    const isSumMetric =
+      tableSource?.kind === SourceKind.Metric &&
+      metricType === MetricsDataType.Sum;
+    if (!isSumMetric && aggFn === 'increase') {
+      setValue(`${namePrefix}aggFn`, 'sum');
+    }
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+
   const tableName =
     tableSource?.kind === SourceKind.Metric
       ? getMetricTableName(tableSource, metricType)
@@ -240,6 +252,9 @@ export function ChartSeriesEditor({
             defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
             hideCustom={tableSource?.kind === SourceKind.Metric}
+            metricType={
+              tableSource?.kind === SourceKind.Metric ? metricType : undefined
+            }
           />
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
