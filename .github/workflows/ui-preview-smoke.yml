@@ -64,7 +64,106 @@ jobs:
             core.setOutput('number', String(pr.number));
             core.setOutput('head_sha', pr.head.sha);
 
+      # Cheap pre-flight: parse the PR body for a UI test plan before we
+      # spend ~5 min waiting for Vercel + ~$1 of agent runtime. If the
+      # author didn't fill in `### How to test on Vercel preview`, we post
+      # a skip comment and exit immediately. Without this gate, no-plan
+      # PRs cost the same as full smoke runs.
+      - name: Check for UI test plan
+        id: plan
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/pr-body.md', 'utf8');
+
+            const headingMatch = body.match(
+              /^###\s+How to test on Vercel preview\s*$/im,
+            );
+            if (!headingMatch) {
+              core.setOutput('has_plan', 'false');
+              core.notice('No "### How to test on Vercel preview" section.');
+              return;
+            }
+
+            const start = headingMatch.index + headingMatch[0].length;
+            const remainder = body.slice(start);
+            const nextHeading = remainder.match(/^###\s/m);
+            const section = nextHeading
+              ? remainder.slice(0, nextHeading.index)
+              : remainder;
+
+            // Strip HTML comments — both the template explainer and any
+            // placeholder hints like "<!-- e.g. /chart -->" inline.
+            const cleaned = section.replace(/<!--[\s\S]*?-->/g, '');
+            const trimmed = cleaned.trim();
+
+            if (!trimmed) {
+              core.setOutput('has_plan', 'false');
+              core.notice('Section is empty after stripping comments.');
+              return;
+            }
+            if (/^(n\/?a\b|non[-\s]?ui|no[-\s]+ui)/i.test(trimmed)) {
+              core.setOutput('has_plan', 'false');
+              core.notice('Section is marked N/A.');
+              return;
+            }
+
+            const routesMatch = cleaned.match(
+              /\*\*Preview routes:\*\*\s*([^\n]*)/i,
+            );
+            const routes = routesMatch ? routesMatch[1].trim() : '';
+            if (!routes) {
+              core.setOutput('has_plan', 'false');
+              core.notice('"**Preview routes:**" line is empty.');
+              return;
+            }
+
+            const stepsMatch = cleaned.match(/\*\*Steps:\*\*([\s\S]*)/i);
+            const stepsBlock = stepsMatch ? stepsMatch[1] : '';
+            // Need at least one numbered list item with non-whitespace
+            // content after the "1. " marker.
+            const hasStep = /^\s*\d+\.\s+\S/m.test(stepsBlock);
+            if (!hasStep) {
+              core.setOutput('has_plan', 'false');
+              core.notice('No numbered **Steps:** with content.');
+              return;
+            }
+
+            core.setOutput('has_plan', 'true');
+            core.setOutput('routes', routes);
+            core.notice(`UI test plan found. Routes: ${routes}`);
+
+      # Run unconditionally — both the skip path and the full smoke path
+      # need it to keep the comment sticky across runs.
+      - name: Find existing smoke comment
+        id: find-comment
+        uses: peter-evans/find-comment@v4
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- ui-preview-smoke -->'
+          direction: last
+
+      # ─── Skip path ────────────────────────────────────────────────────
+      - name: Post skip comment
+        if: steps.plan.outputs.has_plan == 'false'
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          edit-mode: replace
+          body: |
+            <!-- ui-preview-smoke -->
+            ## UI Preview Smoke
+
+            Skipped: this PR has no `How to test on Vercel preview` plan.
+            Add `**Preview routes:**` and a numbered `**Steps:**` list to
+            enable automated smoke testing.
+
+      # ─── Full smoke path ──────────────────────────────────────────────
       - name: Wait for Vercel preview
+        if: steps.plan.outputs.has_plan == 'true'
         id: vercel
         uses: patrickedqvist/wait-for-vercel-preview@v1.3.1
         with:
@@ -73,11 +172,13 @@ jobs:
           check_interval: 10
 
       - name: Setup Node
+        if: steps.plan.outputs.has_plan == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install Playwright + Chromium
+        if: steps.plan.outputs.has_plan == 'true'
         run: |
           npm install -g playwright
           playwright install --with-deps chromium
@@ -87,6 +188,7 @@ jobs:
       # at the working-directory root, which the action picks up because it
       # auto-sets `enableAllProjectMcpServers: true` in Claude's settings.
       - name: Write MCP config (Playwright)
+        if: steps.plan.outputs.has_plan == 'true'
         run: |
           cat > .mcp.json <<'EOF'
           {
@@ -105,6 +207,7 @@ jobs:
           EOF
 
       - name: Run agent against preview
+        if: steps.plan.outputs.has_plan == 'true'
         id: agent
         uses: anthropics/claude-code-action@v1
         with:
@@ -118,6 +221,11 @@ jobs:
             Repo: ${{ github.repository }}
 
             Read the PR body with: cat /tmp/pr-body.md
+
+            The PR body is guaranteed to contain a
+            "### How to test on Vercel preview" section with a non-empty
+            `**Preview routes:**` line and at least one numbered step
+            (the workflow gates on this before invoking you).
 
             This preview is built in LOCAL_MODE with a pre-configured demo
             ClickHouse connection and otel_logs / otel_traces sources. No
@@ -139,35 +247,22 @@ jobs:
 
             Procedure:
 
-            1. Read /tmp/pr-body.md.
-            2. Find the section headed exactly
-               "### How to test on Vercel preview". Within it, parse:
-                 - "**Preview routes:**" line — comma-separated list of paths
-                   (e.g. "/chart, /dashboards/<id>"). Strip whitespace.
-                 - "**Steps:**" — a numbered list of imperative actions.
-            3. If the section is missing, empty, contains only the HTML
-               comment template placeholder, or is marked "N/A" or
-               "non-UI change", return summary:
-
-                 <!-- ui-preview-smoke -->
-                 ## UI Preview Smoke
-
-                 Skipped: this PR has no `How to test on Vercel preview`
-                 plan. Add `**Preview routes:**` and a numbered `**Steps:**`
-                 list to enable automated smoke testing.
-
-            4. Otherwise, for each Preview route in order:
+            1. Read /tmp/pr-body.md and parse the "### How to test on
+               Vercel preview" section:
+                 - "**Preview routes:**" line — comma-separated paths.
+                 - "**Steps:**" — numbered list of imperative actions.
+            2. For each Preview route in order:
                  a. Open `<Preview URL><route>` via the Playwright MCP
                     browser tools (mcp__playwright__*).
                  b. Execute the numbered steps verbatim, in order.
                  c. Treat any step beginning with "Verify", "Confirm",
                     "Assert", "Check", or "Ensure" as an assertion. If an
-                    assertion fails, record the failure and continue to the
-                    next route.
+                    assertion fails, record the failure and continue to
+                    the next route.
                  d. After each route capture: any console errors at level
                     "error", any 4xx/5xx network responses, any uncaught
                     exception dialogs.
-            5. Build the summary markdown with one section per route.
+            3. Build the summary markdown with one section per route.
                Use ✅ for routes that passed every assertion, ❌ for any
                route with a failed assertion, console error, or 5xx
                response. For each failure include the step text, what was
@@ -193,7 +288,9 @@ jobs:
       # output as `{"summary":"{\"summary\":\"<markdown>\"}"}`, which would
       # post raw JSON instead of markdown.
       - name: Extract summary from structured output
-        if: steps.agent.outputs.structured_output != ''
+        if:
+          steps.plan.outputs.has_plan == 'true' &&
+          steps.agent.outputs.structured_output != ''
         id: extract
         env:
           STRUCTURED_OUTPUT: ${{ steps.agent.outputs.structured_output }}
@@ -209,18 +306,10 @@ jobs:
             echo 'UI_SMOKE_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Find existing smoke comment
-        if: steps.extract.outputs.summary != ''
-        id: find-comment
-        uses: peter-evans/find-comment@v4
-        with:
-          issue-number: ${{ steps.pr.outputs.number }}
-          comment-author: github-actions[bot]
-          body-includes: '<!-- ui-preview-smoke -->'
-          direction: last
-
       - name: Post or update smoke comment
-        if: steps.extract.outputs.summary != ''
+        if:
+          steps.plan.outputs.has_plan == 'true' && steps.extract.outputs.summary
+          != ''
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
