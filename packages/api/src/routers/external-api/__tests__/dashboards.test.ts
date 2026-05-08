@@ -2512,6 +2512,56 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('does not silently downgrade a corrupted heatmap to line on GET', async () => {
+      // Seed a Dashboard directly via Mongo with a heatmap tile whose
+      // select[0] lacks a non-empty valueExpression. The current API
+      // reject path enforces the constraint on writes, but legacy or
+      // direct-DB-edit data can still produce this state. The GET
+      // converter must NOT fall through to the default 'line' tile
+      // (which would cause silent data loss on a GET -> mutate -> PUT
+      // round-trip), and must preserve `displayType: 'heatmap'` so the
+      // breakage surfaces on re-PUT instead of being overwritten.
+      const corruptedHeatmapDashboard = await new Dashboard({
+        name: 'Dashboard with corrupted heatmap',
+        team: team._id,
+        tiles: [
+          {
+            id: new ObjectId().toString(),
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'heatmap',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  // Editor-shape heatmap select item that omits
+                  // valueExpression, simulating legacy/corrupted data.
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              name: 'Bad Heatmap',
+            },
+          },
+        ],
+      }).save();
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${corruptedHeatmapDashboard._id}`,
+      ).expect(200);
+
+      expect(response.body.data.tiles).toHaveLength(1);
+      expect(response.body.data.tiles[0].config.displayType).toBe('heatmap');
+      expect(response.body.data.tiles[0].config.displayType).not.toBe('line');
+    });
+
     it('can round-trip all raw SQL chart config types', async () => {
       const connectionId = connection._id.toString();
       const sourceId = traceSource._id.toString();
@@ -3798,6 +3848,116 @@ describe('External API v2 Dashboards - new format', () => {
         .expect(200);
 
       expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
+    it('does not re-validate heatmap source-kind for unchanged heatmap tiles', async () => {
+      // Create a dashboard with a heatmap on a valid Trace source.
+      const heatmapTileId = new ObjectId().toString();
+      const otherTileId = new ObjectId().toString();
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Heatmap PUT scoping test',
+          tiles: [
+            {
+              id: heatmapTileId,
+              name: 'Latency Heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'heatmap',
+                sourceId: traceSource._id.toString(),
+                select: [
+                  {
+                    aggFn: 'heatmap',
+                    valueExpression: 'Duration',
+                  },
+                ],
+              },
+            },
+            {
+              id: otherTileId,
+              name: 'Other line tile',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: '' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      // The created tile id surfaces server-generated when not present
+      // in the existing dashboard, so capture the actual id from the
+      // response for the PUT echo.
+      const createdHeatmapTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Latency Heatmap',
+      );
+      const createdOtherTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Other line tile',
+      );
+
+      // Simulate the source's kind being changed to non-Trace AFTER
+      // the dashboard was originally accepted. The bypass writes to
+      // the raw collection because the discriminator-aware
+      // `updateSource` controller would Reject the kind change due to
+      // schema diffs. The behaviour we care about is that subsequent
+      // PUTs on the dashboard don't wedge on the now-incompatible
+      // source as long as the heatmap tile itself was not changed.
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      // PUT the dashboard back with the heatmap tile unchanged but a
+      // different non-heatmap tile edit. Should still succeed.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Heatmap PUT scoping test - renamed',
+          tiles: [
+            {
+              id: createdHeatmapTile.id,
+              name: 'Latency Heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'heatmap',
+                sourceId: traceSource._id.toString(),
+                select: [
+                  {
+                    aggFn: 'heatmap',
+                    valueExpression: 'Duration',
+                  },
+                ],
+              },
+            },
+            {
+              id: createdOtherTile.id,
+              name: 'Other line tile, edited',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: 'level:error' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
     });
   });
 

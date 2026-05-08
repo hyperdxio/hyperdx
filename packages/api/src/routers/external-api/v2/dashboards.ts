@@ -1,13 +1,10 @@
 import express from 'express';
 import { uniq } from 'lodash';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
-import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import logger from '@/utils/logger';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
@@ -16,6 +13,8 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  fetchSourcesForValidation,
+  filterChangedHeatmapTiles,
   getHeatmapTilesWithIncompatibleSources,
   getMissingConnections,
   getMissingSources,
@@ -23,15 +22,15 @@ import {
   isRawSqlExternalTileConfig,
   isSeriesTile,
   resolveSavedQueryLanguage,
+  SourceForValidation,
   updateDashboardBodySchema,
 } from './utils/dashboards';
 
-async function getSourceConnectionMismatches(
-  team: string | mongoose.Types.ObjectId,
+function getSourceConnectionMismatches(
+  sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
-): Promise<string[]> {
-  const existingSources = await getSources(team.toString());
-  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
+): string[] {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
 
   const sourcesWithInvalidConnections: string[] = [];
   for (const tile of tiles) {
@@ -1067,7 +1066,7 @@ async function getSourceConnectionMismatches(
  *         Input / request format when creating or updating tiles. The id field is
  *         optional: on create it is ignored (the server always assigns a new ID);
  *         on update, a matching id is used to identify the existing tile to
- *         preserve — tiles whose id does not match an existing tile are assigned
+ *         preserve. Tiles whose id does not match an existing tile are assigned
  *         a new generated ID.
  *       allOf:
  *         - $ref: '#/components/schemas/TileBase'
@@ -1683,17 +1682,24 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const [
-        missingSources,
-        missingConnections,
-        sourceConnectionMismatches,
-        heatmapNonTraceSources,
-      ] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
+      // Hoist source + connection fetches so the four downstream
+      // validators reuse the same query result instead of each
+      // re-running `getSources(team)` / `getConnectionsByTeam(team)`.
+      const [sources, missingConnections] = await Promise.all([
+        fetchSourcesForValidation(teamId),
         getMissingConnections(teamId, tiles),
-        getSourceConnectionMismatches(teamId, tiles),
-        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
       ]);
+
+      const missingSources = getMissingSources(sources, tiles, filters);
+      const sourceConnectionMismatches = getSourceConnectionMismatches(
+        sources,
+        tiles,
+      );
+      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+        sources,
+        tiles,
+      );
+
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1918,17 +1924,32 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const [
-        missingSources,
-        missingConnections,
-        sourceConnectionMismatches,
-        heatmapNonTraceSources,
-      ] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
-        getMissingConnections(teamId, tiles),
-        getSourceConnectionMismatches(teamId, tiles),
-        getHeatmapTilesWithIncompatibleSources(teamId, tiles),
-      ]);
+      // Hoist source + connection + existing-dashboard fetches so the
+      // downstream validators each reuse the same query result and so
+      // the heatmap source-kind check can scope itself to tiles whose
+      // sourceId/displayType actually changed in this request (a
+      // source whose `kind` was changed after the dashboard was
+      // originally accepted shouldn't wedge unrelated edits).
+      const [sources, missingConnections, existingDashboard] =
+        await Promise.all([
+          fetchSourcesForValidation(teamId),
+          getMissingConnections(teamId, tiles),
+          Dashboard.findOne(
+            { _id: dashboardId, team: teamId },
+            { tiles: 1, filters: 1 },
+          ).lean(),
+        ]);
+
+      const missingSources = getMissingSources(sources, tiles, filters);
+      const sourceConnectionMismatches = getSourceConnectionMismatches(
+        sources,
+        tiles,
+      );
+      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+        sources,
+        filterChangedHeatmapTiles(tiles, existingDashboard?.tiles ?? []),
+      );
+
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1958,10 +1979,6 @@ router.put(
         });
       }
 
-      const existingDashboard = await Dashboard.findOne(
-        { _id: dashboardId, team: teamId },
-        { tiles: 1, filters: 1 },
-      ).lean();
       const existingTileIds = new Set(
         (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
       );

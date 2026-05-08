@@ -11,6 +11,9 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  fetchSourcesForValidation,
+  filterChangedHeatmapTiles,
+  getHeatmapTilesWithIncompatibleSources,
   getMissingConnections,
   getMissingSources,
   resolveSavedQueryLanguage,
@@ -112,10 +115,14 @@ async function createDashboard({
   const { tiles, filters } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
+  // Hoist the source fetch so missing-source and heatmap-source-kind
+  // checks share a single DB round-trip, mirroring the REST POST path.
+  const [sources, missingConnections] = await Promise.all([
+    fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
   ]);
+
+  const missingSources = getMissingSources(sources, tilesWithId, filters);
   if (missingSources.length > 0) {
     return {
       isError: true,
@@ -134,6 +141,25 @@ async function createDashboard({
         {
           type: 'text' as const,
           text: `Could not find connection IDs: ${missingConnections.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  // Source-kind gate for heatmap tiles. Mirrors the REST POST path so
+  // an MCP-issued create cannot persist a heatmap that the REST PUT
+  // would reject with 400 on the next round-trip.
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    tilesWithId,
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
         },
       ],
     };
@@ -221,10 +247,21 @@ async function updateDashboard({
   const { tiles, filters } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
+  // Hoist sources, connections, and existing-dashboard fetches into a
+  // single Promise.all so the source list is shared across helpers and
+  // the heatmap source-kind check can scope itself to tiles whose
+  // sourceId/displayType actually changed in this request, matching
+  // the REST PUT path.
+  const [sources, missingConnections, existingDashboard] = await Promise.all([
+    fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
+    Dashboard.findOne(
+      { _id: dashboardId, team: teamId },
+      { tiles: 1, filters: 1 },
+    ).lean(),
   ]);
+
+  const missingSources = getMissingSources(sources, tilesWithId, filters);
   if (missingSources.length > 0) {
     return {
       isError: true,
@@ -248,15 +285,28 @@ async function updateDashboard({
     };
   }
 
-  const existingDashboard = await Dashboard.findOne(
-    { _id: dashboardId, team: teamId },
-    { tiles: 1, filters: 1 },
-  ).lean();
-
   if (!existingDashboard) {
     return {
       isError: true,
       content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+    };
+  }
+
+  // Source-kind gate, scoped to heatmap tiles whose source or
+  // displayType changed in this request. Mirrors the REST PUT path.
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    filterChangedHeatmapTiles(tilesWithId, existingDashboard.tiles ?? []),
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
+        },
+      ],
     };
   }
 

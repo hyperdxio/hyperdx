@@ -1,3 +1,7 @@
+// prose-lint: allow-file
+// MCP tool descriptions intentionally use the established en-dash
+// separator (e.g. "Source ID – call hyperdx_list_sources") for LLM
+// readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
   SearchConditionLanguageSchema,
@@ -237,6 +241,69 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+// Heatmap tiles use a dedicated select-item shape: aggFn is the literal
+// 'heatmap' (not part of AggregateFunctionSchema) and valueExpression is
+// required and non-empty. Mirrors externalDashboardHeatmapSelectItemSchema
+// in `packages/api/src/utils/zod.ts` so the MCP and REST surfaces stay in
+// lockstep.
+const mcpHeatmapSelectItemSchema = z.object({
+  aggFn: z.literal('heatmap').describe('Must be "heatmap" for heatmap tiles'),
+  valueExpression: z
+    .string()
+    .min(1)
+    .describe(
+      'Numeric column or expression to bucket. Required and must be non-empty. ' +
+        'Use "Duration" for trace latency heatmaps, or any other numeric column.',
+    ),
+  countExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Custom count expression (e.g. "count()"). Optional; defaults are applied by the renderer.',
+    ),
+  alias: z.string().optional().describe('Display label for this series'),
+  heatmapScaleType: z
+    .enum(['log', 'linear'])
+    .optional()
+    .describe('Color scale: "log" or "linear"'),
+});
+
+// Heatmap tiles are builder-only and currently restricted to Trace sources
+// (see HEATMAP_ALLOWED_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
+// The save path runs `getHeatmapTilesWithIncompatibleSources` after schema
+// validation to enforce that, mirroring the REST handler.
+const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('heatmap')
+      .describe('Heatmap chart, requires a Trace source'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Must be a Trace source today; use hyperdx_list_sources and ' +
+          'pick one whose kind is "trace".',
+      ),
+    select: z
+      .array(mcpHeatmapSelectItemSchema)
+      .length(1)
+      .describe('Exactly one heatmap series'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Row-level filter applied before bucketing. Example: "level:error"',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(
+        'Display formatting for bucket values. Example: { output: "time", factor: 0.000000001 } ' +
+          'to format nanosecond durations as human-readable time.',
+      ),
+  }),
+});
+
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
@@ -304,6 +371,7 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
@@ -323,5 +391,8 @@ export const mcpTilesParam = z
       '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"numberFormat": { "output": "time", "factor": 0.000000001 } } }\n' +
+      '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
+      '"select": [{ "aggFn": "heatmap", "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "time", "factor": 0.000000001 } } }',
   );
