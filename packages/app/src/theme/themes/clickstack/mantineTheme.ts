@@ -9,6 +9,7 @@ import {
   SegmentedControl,
   Select,
   Slider,
+  Switch,
   Tabs,
   Text,
   Tooltip,
@@ -318,6 +319,13 @@ const makeTheme = ({
         root: {
           '--radio-color': 'var(--click-global-color-accent-default)',
           '--radio-icon-color': 'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Switch: Switch.extend({
+      vars: () => ({
+        root: {
+          '--switch-color': 'var(--click-global-color-accent-default)',
         },
       }),
     }),
