@@ -12,6 +12,7 @@
   min-height: 0;
   position: relative;
   overflow: auto;
+  overscroll-behavior-x: contain;
   isolation: isolate;
 }
 

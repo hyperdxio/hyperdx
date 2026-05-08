@@ -18,17 +18,25 @@ export type TimelineXAxisHandle = {
 export function TimelineXAxis({
   maxVal,
   labelWidth,
-  height,
+  heightRef,
   scaleRef,
   ref,
 }: {
   maxVal: number;
   labelWidth: number;
-  height: number;
+  heightRef: RefObject<number>;
   scaleRef: RefObject<number>;
   ref: Ref<TimelineXAxisHandle>;
 }) {
   const ticksContainerRef = useRef<HTMLDivElement>(null);
+
+  // Mirrored synchronously during render so recompute (called imperatively
+  // from the parent's wheel/resize handlers) cannot read a stale maxVal in
+  // the gap between commit and the layout-effect tick. A useLayoutEffect
+  // mirror would have the same gap we are trying to close.
+  const maxValRef = useRef(maxVal);
+  // eslint-disable-next-line react-hooks/refs
+  maxValRef.current = maxVal;
 
   const recompute = useCallback(() => {
     const container = ticksContainerRef.current;
@@ -38,10 +46,12 @@ export function TimelineXAxis({
     }
 
     const scale = scaleRef.current ?? 1;
-    const scaledMaxVal = maxVal / scale;
+    const height = heightRef.current ?? 0;
+    const max = maxValRef.current;
+    const scaledMaxVal = max / scale;
     const interval = calculateInterval(scaledMaxVal);
-    const numTicks = Math.floor(maxVal / interval);
-    const percSpacing = (interval / maxVal) * 100;
+    const numTicks = Math.floor(max / interval);
+    const percSpacing = (interval / max) * 100;
 
     while (container.children.length > numTicks) {
       container.removeChild(container.lastChild!);
@@ -68,13 +78,15 @@ export function TimelineXAxis({
       tick.style.marginLeft = i === 0 ? '0' : `${percSpacing.toFixed(6)}%`;
       label.textContent = renderMs(i * interval);
     }
-  }, [maxVal, height, scaleRef]);
+  }, [maxValRef, heightRef, scaleRef]);
 
   useImperativeHandle(ref, () => ({ recompute }), [recompute]);
 
+  // Re-runs when maxVal changes so ticks are re-laid out for the new range.
+  // recompute itself reads maxValRef.current, which is updated during render.
   useLayoutEffect(() => {
     recompute();
-  }, [recompute]);
+  }, [maxVal, recompute]);
 
   return (
     <div className={styles.xAxis}>
