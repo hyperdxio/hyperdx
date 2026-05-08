@@ -786,7 +786,7 @@ export function DBTraceWaterfallChartContainer({
 
   const timelineRows = useMemo(
     () =>
-      visibleNodes.map((result, i) => {
+      visibleNodes.map(result => {
         const tookMs = (result.Duration || 0) * 1000;
         const startOffset = parseTimestampToMs(result.Timestamp);
         const start = startOffset - minOffset;
@@ -932,10 +932,6 @@ export function DBTraceWaterfallChartContainer({
               </div>
             </div>
           ),
-          style: {
-            // paddingTop: 1,
-            marginTop: i === 0 ? 32 : 0,
-          },
           isActive: isHighlighted,
           events: [
             {
@@ -1146,18 +1142,13 @@ export function DBTraceWaterfallChartContainer({
             maxHeight={heightPx}
             rowHeight={22}
             labelWidth={300}
-            onEventClick={(event: {
-              id: string;
-              type?: string;
-              aliasWith?: WithClause[];
-            }) => {
+            onEventClick={event => {
               onClick?.({
                 id: event.id,
                 type: event.type ?? '',
-                aliasWith: event.aliasWith ?? [],
+                aliasWith: [],
               });
             }}
-            cursors={[]}
             rows={timelineRows}
             initialScrollRowIndex={initialScrollRowIndex}
           />
