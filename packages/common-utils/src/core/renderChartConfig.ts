@@ -1379,6 +1379,13 @@ async function translateMetricChartConfig(
         // series partition, lagInFrame returns NULL; `Value - NULL` is NULL,
         // and `greatest(NULL, 0)` resolves to 0 — so Rate is 0 (contributing
         // nothing to the bucket sum) rather than leaking the cumulative value.
+        //
+        // Counter-reset handling: `greatest(..., 0)` clamps negative deltas
+        // (counter resets/decreases) to 0. This differs from the Prometheus
+        // convention where a reset is treated as `current_value` (assuming
+        // the counter restarted from 0). The clamping approach under-reports
+        // the increase in the bucket immediately after a reset, but avoids
+        // injecting the full post-reset value as a spike.
         name: 'Source',
         sql: chSql`
                 SELECT
@@ -1432,9 +1439,11 @@ async function translateMetricChartConfig(
                 -- Per-bucket increase: sum of raw per-row deltas. NULL
                 -- Source.Rate (first row of each partition) is ignored by sum().
                 sum(Source.Rate) AS Rate,
-                -- Last cumulative reading in the bucket, used by the
-                -- no-aggFn last_value(Sum) outer projection.
-                last_value(Source.Sum) AS Sum,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
                 any(ResourceAttributes) AS ResourceAttributes,
                 any(ResourceSchemaUrl) AS ResourceSchemaUrl,
                 any(ScopeName) AS ScopeName,
@@ -1512,6 +1521,15 @@ async function translateMetricChartConfig(
           `,
       });
 
+      // Safety: groupBySql is built from metric groupBy expressions which are
+      // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
+      // values leaked through — if they did, .sql would contain param placeholders
+      // but the string-based outer WHERE would lose the param bindings.
+      if (Object.keys(groupBySql.params).length > 0) {
+        throw new Error(
+          'increase + groupBy: unexpected parameterized groupBy expressions',
+        );
+      }
       outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
     }
 

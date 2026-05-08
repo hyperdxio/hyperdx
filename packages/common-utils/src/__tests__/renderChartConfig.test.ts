@@ -244,7 +244,9 @@ describe('renderChartConfig', () => {
     // rather than diffing pre-bucketed values in Bucketed. This works even
     // when a series only spans one bucket in the visible window.
     expect(actual).toContain('lagInFrame');
-    // Counter resets / decreases are clamped to 0 (mirrors v1's NaN-on-negative).
+    // Counter resets / decreases are clamped to 0. Note: this differs from the
+    // Prometheus convention (which treats a reset as current_value assuming restart
+    // from 0), but avoids injecting post-reset spikes.
     expect(actual).toContain('greatest(Value - lagInFrame');
     // Crucially, the Rate formula must NOT gate on IsMonotonic.
     expect(actual).not.toMatch(/IF\(IsMonotonic\s*=\s*0,\s*Value/);

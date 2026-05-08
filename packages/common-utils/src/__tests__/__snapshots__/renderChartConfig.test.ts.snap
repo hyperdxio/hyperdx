@@ -590,9 +590,11 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                 -- Per-bucket increase: sum of raw per-row deltas. NULL
                 -- Source.Rate (first row of each partition) is ignored by sum().
                 sum(Source.Rate) AS Rate,
-                -- Last cumulative reading in the bucket, used by the
-                -- no-aggFn last_value(Sum) outer projection.
-                last_value(Source.Sum) AS Sum,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
                 any(ResourceAttributes) AS ResourceAttributes,
                 any(ResourceSchemaUrl) AS ResourceSchemaUrl,
                 any(ScopeName) AS ScopeName,
@@ -827,9 +829,11 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
                 -- Per-bucket increase: sum of raw per-row deltas. NULL
                 -- Source.Rate (first row of each partition) is ignored by sum().
                 sum(Source.Rate) AS Rate,
-                -- Last cumulative reading in the bucket, used by the
-                -- no-aggFn last_value(Sum) outer projection.
-                last_value(Source.Sum) AS Sum,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
                 any(ResourceAttributes) AS ResourceAttributes,
                 any(ResourceSchemaUrl) AS ResourceSchemaUrl,
                 any(ScopeName) AS ScopeName,
@@ -900,9 +904,11 @@ exports[`renderChartConfig should generate sql for a sum metric with aggFn=incre
                 -- Per-bucket increase: sum of raw per-row deltas. NULL
                 -- Source.Rate (first row of each partition) is ignored by sum().
                 sum(Source.Rate) AS Rate,
-                -- Last cumulative reading in the bucket, used by the
-                -- no-aggFn last_value(Sum) outer projection.
-                last_value(Source.Sum) AS Sum,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
                 any(ResourceAttributes) AS ResourceAttributes,
                 any(ResourceSchemaUrl) AS ResourceSchemaUrl,
                 any(ScopeName) AS ScopeName,
@@ -973,9 +979,11 @@ exports[`renderChartConfig should limit aggFn=increase + groupBy to the top 20 g
                 -- Per-bucket increase: sum of raw per-row deltas. NULL
                 -- Source.Rate (first row of each partition) is ignored by sum().
                 sum(Source.Rate) AS Rate,
-                -- Last cumulative reading in the bucket, used by the
-                -- no-aggFn last_value(Sum) outer projection.
-                last_value(Source.Sum) AS Sum,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
                 any(ResourceAttributes) AS ResourceAttributes,
                 any(ResourceSchemaUrl) AS ResourceSchemaUrl,
                 any(ScopeName) AS ScopeName,
