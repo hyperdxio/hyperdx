@@ -113,7 +113,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
     await test.step('Restore original team name', async () => {
       await teamPage.changeTeamName(originalName!);
-      await expect(teamPage.page.getByText('Updated team name')).toBeVisible();
+      await expect(teamPage.teamNameValue).toHaveText(originalName!);
     });
   });
 
