@@ -950,6 +950,37 @@ describe('webhooks router', () => {
       });
     });
 
+    it('PUT - omitted headers are cleared when URL changes (not carried over)', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        headers: { Authorization: 'Bearer secret-token' },
+        queryParams: { apiKey: 'secret-key' },
+        team: team._id,
+      });
+
+      // PUT with a new URL but omit headers and queryParams entirely
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          name: MOCK_WEBHOOK.name,
+          service: MOCK_WEBHOOK.service,
+          url: 'https://new-host.example.com/webhook',
+          description: MOCK_WEBHOOK.description,
+          body: MOCK_WEBHOOK.body,
+          // headers and queryParams intentionally omitted
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe('https://new-host.example.com/webhook');
+      const plain = stored!.toJSON({ flattenMaps: true });
+      // Stored secrets must NOT have been carried over to the new URL
+      expect(plain.headers).toBeUndefined();
+      expect(plain.queryParams).toBeUndefined();
+    });
+
     it('PUT - clears headers while preserving queryParams', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 

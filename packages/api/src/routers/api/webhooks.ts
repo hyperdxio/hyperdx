@@ -259,11 +259,15 @@ router.put(
         });
       }
 
-      const resolvedHeaders = mergeRedactedMap(existingPlain.headers, headers);
-      const resolvedQueryParams = mergeRedactedMap(
-        existingPlain.queryParams,
-        queryParams,
-      );
+      // When the URL is changing, use submitted values as-is (no merge).
+      // An omitted field becomes undefined → $unset, so stored secrets
+      // are never silently carried over to a new destination.
+      const resolvedHeaders = urlChanged
+        ? headers
+        : mergeRedactedMap(existingPlain.headers, headers);
+      const resolvedQueryParams = urlChanged
+        ? queryParams
+        : mergeRedactedMap(existingPlain.queryParams, queryParams);
 
       // When URL is preserved via masked roundtrip, use the existing service
       // for the duplicate check to avoid an existence oracle across services.
