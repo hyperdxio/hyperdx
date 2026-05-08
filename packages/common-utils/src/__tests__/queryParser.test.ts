@@ -4,6 +4,7 @@ import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
   genEnglishExplanation,
+  parseKvItemsExpression,
   SearchQueryBuilder,
 } from '@/queryParser';
 
@@ -1645,4 +1646,161 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
       expect(actualEnglish).toBe(english);
     },
   );
+});
+
+describe('parseKvItemsExpression', () => {
+  it('parses standard KV items expression', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
+  });
+
+  it('parses expression without spaces', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k,v)->concat(k,'=',v),mapKeys(LogAttributes),mapValues(LogAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
+  });
+
+  it('parses expression with different variable names', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((key, val) -> concat(key, '=', val), mapKeys(ResourceAttributes), mapValues(ResourceAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
+  it('parses expression with custom separator', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, ':', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: ':' });
+  });
+
+  it('parses expression with multi-char separator', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, ' = ', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: ' = ' });
+  });
+
+  it('parses expression with empty separator', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, '', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: '' });
+  });
+
+  it('returns undefined for non-matching expressions', () => {
+    expect(parseKvItemsExpression('LogAttributes')).toBeUndefined();
+    expect(parseKvItemsExpression('mapKeys(LogAttributes)')).toBeUndefined();
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k)->concat(k,' = '),mapKeys(LogAttributes))",
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when mapKeys and mapValues reference different columns', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(OtherAttributes))",
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map(String, String)' };
+    } else if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+  metadata.getColumns = jest.fn().mockImplementation(async () => [
+    {
+      name: 'LogAttributes',
+      type: 'Map(String, String)',
+      default_type: '',
+      default_expression: '',
+    },
+    { name: 'Body', type: 'String', default_type: '', default_expression: '' },
+    {
+      name: 'LogAttributeItems',
+      type: 'Array(String)',
+      default_type: 'ALIAS',
+      default_expression:
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+    },
+  ]);
+  metadata.getSkipIndices = jest.fn().mockImplementation(async () => [
+    {
+      name: 'idx_log_attr_items',
+      type: 'text',
+      typeFull: 'text(tokenizer=array)',
+      expression: 'LogAttributeItems',
+      granularity: 1,
+    },
+  ]);
+  metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  it('uses has() for exact map equality when KV items index exists', async () => {
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+    );
+  });
+
+  it('uses NOT has() for negated exact map equality', async () => {
+    const builder = new SearchQueryBuilder(
+      '-LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((NOT has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+    );
+  });
+
+  it('does not use KV items for non-exact (substring) searches', async () => {
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:Failed',
+      serializer,
+    );
+    const sql = await builder.build();
+    // Should still use regular ILIKE with indexHint
+    expect(sql).toContain('ILIKE');
+    expect(sql).toContain('indexHint');
+  });
 });
