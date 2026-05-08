@@ -273,10 +273,25 @@ export const WebhookSchema = z.object({
   name: z.string(),
   service: z.nativeEnum(WebhookService),
   updatedAt: z.string(),
-  url: z.string().optional(),
+  url: z
+    .string()
+    .optional()
+    .describe(
+      'Internal API returns masked value (<origin>/****). PUT accepts the masked form to preserve the stored URL.',
+    ),
   description: z.string().optional(),
-  queryParams: z.record(z.string(), z.string()).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
+  queryParams: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
+  headers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
   body: z.string().optional(),
 });
 

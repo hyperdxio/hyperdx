@@ -611,7 +611,10 @@ describe('webhooks router', () => {
       expect(response.body.data[0].url).toBe('https://hooks.slack.com/****');
 
       // Verify original URL is NOT exposed
-      expect(response.body.data[0].url).not.toContain('services');
+      expect(response.body.data[0].url).not.toBe(MOCK_WEBHOOK.url);
+      expect(response.body.data[0].url).not.toContain(
+        'XXXXXXXXXXXXXXXXXXXXXXXX',
+      );
     });
 
     it('GET / - returns empty headers/queryParams unchanged', async () => {
@@ -914,7 +917,7 @@ describe('webhooks router', () => {
         team: team._id,
       });
 
-      await agent
+      const response = await agent
         .put(`/webhooks/${webhook._id}`)
         .send({
           ...MOCK_WEBHOOK,
@@ -922,6 +925,13 @@ describe('webhooks router', () => {
           queryParams: { apiKey: '****' },
         })
         .expect(400);
+
+      expect(response.body.message).toMatch(/Cannot preserve masked secrets/);
+
+      const stored = await Webhook.findById(webhook._id);
+      expect(stored!.url).toBe(MOCK_WEBHOOK.url);
+      const plain = stored!.toJSON({ flattenMaps: true });
+      expect(plain.queryParams).toEqual({ apiKey: 'secret-key' });
     });
 
     it('PUT - allows new URL with non-masked headers', async () => {
@@ -1101,6 +1111,8 @@ describe('webhooks router', () => {
         .expect(404);
 
       expect(response.body.message).toBe('Webhook not found');
+      expect(genericSpy).not.toHaveBeenCalled();
+      expect(slackSpy).not.toHaveBeenCalled();
     });
 
     it('returns 404 for cross-team webhookId', async () => {
@@ -1123,6 +1135,9 @@ describe('webhooks router', () => {
           webhookId: webhook._id.toString(),
         })
         .expect(404);
+
+      expect(genericSpy).not.toHaveBeenCalled();
+      expect(slackSpy).not.toHaveBeenCalled();
     });
 
     it('returns 400 for malformed webhookId', async () => {

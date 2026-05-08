@@ -13,6 +13,6 @@ The `PUT` handler merges redacted markers back to stored values so editing a
 webhook without re-entering secrets preserves the originals.  Changing the URL
 while preserving masked secrets is rejected to prevent exfiltration.
 
-**Breaking:** `GET /api/webhooks`, `POST /api/webhooks`, and
-`PUT /api/webhooks/:id` responses now return masked values for `url`,
-`headers`, and `queryParams` instead of plaintext secrets.
+`GET /api/webhooks`, `POST /api/webhooks`, and `PUT /api/webhooks/:id`
+responses now return masked values for `url`, `headers`, and `queryParams`
+instead of plaintext secrets.

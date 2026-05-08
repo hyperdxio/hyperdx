@@ -57,21 +57,24 @@ const sanitizeWebhook = (webhook: WebhookApiData): WebhookApiData => ({
 const isMaskedUrl = (url: string, existingUrl?: string): boolean =>
   !!existingUrl && url === maskUrl(existingUrl);
 
-type WebhookPlain = {
-  url?: string;
-  headers?: Record<string, string>;
-  queryParams?: Record<string, string>;
-  service?: string;
-};
+type WebhookPlain = Pick<
+  WebhookApiData,
+  'url' | 'headers' | 'queryParams' | 'service'
+>;
 
 const toWebhookPlain = (doc: mongoose.Document): WebhookPlain =>
   doc.toJSON({ flattenMaps: true }) as WebhookPlain;
+
+const serializeWebhook = (doc: mongoose.Document): WebhookApiData => {
+  const { team, __v, ...data } = doc.toJSON({ flattenMaps: true });
+  return data as WebhookApiData;
+};
 
 const mergeRedactedMap = (
   existing: Record<string, string> | undefined,
   incoming: Record<string, string> | undefined,
 ): Record<string, string> | undefined => {
-  if (incoming === undefined || incoming === null) return existing;
+  if (incoming == null) return existing;
   if (Object.keys(incoming).length === 0) return undefined;
 
   const result: Record<string, string> = {};
@@ -84,11 +87,20 @@ const mergeRedactedMap = (
       result[key] = value;
     }
   }
-  return Object.keys(result).length > 0 ? result : undefined;
+  // When result is empty because all incoming keys were orphaned redacted
+  // values (key sent as **** but doesn't exist in stored data), preserve
+  // existing entries rather than wiping via $unset. Only an explicit empty
+  // object ({}) — caught above — should clear everything.
+  return Object.keys(result).length > 0 ? result : existing;
 };
 
 const mapHasRedactedValues = (map?: Record<string, string>): boolean =>
   map != null && Object.values(map).some(v => v === REDACTED_VALUE);
+
+const emptyToUndefined = (
+  map?: Record<string, string>,
+): Record<string, string> | undefined =>
+  map && Object.keys(map).length > 0 ? map : undefined;
 
 router.get(
   '/',
@@ -112,9 +124,7 @@ router.get(
         { __v: 0, team: 0 },
       );
       res.json({
-        data: webhooks.map(w =>
-          sanitizeWebhook(w.toJSON({ flattenMaps: true }) as WebhookApiData),
-        ),
+        data: webhooks.map(w => sanitizeWebhook(serializeWebhook(w))),
       });
     } catch (err) {
       next(err);
@@ -183,9 +193,7 @@ router.post(
       });
       await webhook.save();
       res.json({
-        data: sanitizeWebhook(
-          webhook.toJSON({ flattenMaps: true }) as WebhookApiData,
-        ),
+        data: sanitizeWebhook(serializeWebhook(webhook)),
       });
     } catch (err) {
       next(err);
@@ -227,7 +235,6 @@ router.put(
         req.body;
       const { id } = req.params;
 
-      // Check if webhook exists and belongs to team
       const existingWebhook = await Webhook.findOne({
         _id: id,
         team: teamId,
@@ -262,21 +269,17 @@ router.put(
       // When the URL is changing, use submitted values as-is (no merge).
       // An omitted field becomes undefined → $unset, so stored secrets
       // are never silently carried over to a new destination.
+      // Normalize {} → undefined so both branches converge on $unset for empty maps.
       const resolvedHeaders = urlChanged
-        ? headers
+        ? emptyToUndefined(headers)
         : mergeRedactedMap(existingPlain.headers, headers);
       const resolvedQueryParams = urlChanged
-        ? queryParams
+        ? emptyToUndefined(queryParams)
         : mergeRedactedMap(existingPlain.queryParams, queryParams);
 
-      // When URL is preserved via masked roundtrip, use the existing service
-      // for the duplicate check to avoid an existence oracle across services.
-      const duplicateCheckService = urlChanged
-        ? service
-        : existingPlain.service;
       const duplicateWebhook = await Webhook.findOne({
         team: teamId,
-        service: duplicateCheckService,
+        service,
         url: resolvedUrl,
         _id: { $ne: id },
       });
@@ -286,7 +289,8 @@ router.put(
         });
       }
 
-      // Build update: use $unset for cleared map fields so Mongoose removes them
+      // $unset is required for Mongoose Map fields — $set with undefined
+      // does not remove a Map field from the document.
       const $set: Record<string, unknown> = {
         name,
         service,
@@ -312,22 +316,22 @@ router.put(
         updateOp.$unset = $unset;
       }
 
+      // Condition on stored URL so a concurrent PUT that changes the
+      // destination between read and write is detected (TOCTOU guard).
       const updatedWebhook = await Webhook.findOneAndUpdate(
-        { _id: id, team: teamId },
+        { _id: id, team: teamId, url: existingPlain.url },
         updateOp,
         { new: true, select: { __v: 0, team: 0 } },
       );
 
       if (!updatedWebhook) {
-        return res.status(404).json({
-          message: 'Webhook not found after update',
+        return res.status(409).json({
+          message: 'Webhook was modified concurrently. Please retry.',
         });
       }
 
       res.json({
-        data: sanitizeWebhook(
-          updatedWebhook.toJSON({ flattenMaps: true }) as WebhookApiData,
-        ),
+        data: sanitizeWebhook(serializeWebhook(updatedWebhook)),
       });
     } catch (err) {
       next(err);
@@ -375,11 +379,7 @@ router.post(
         .optional(),
     }),
   }),
-  async (
-    req,
-    res: express.Response<WebhookTestApiResponse | { message: string }>,
-    next,
-  ) => {
+  async (req, res: express.Response<WebhookTestApiResponse>, next) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {

@@ -277,6 +277,8 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  const headersText = useWatch({ control: form.control, name: 'headers' });
+  const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -342,14 +344,12 @@ export function WebhookForm({
           <label className=".mantine-TextInput-label" key="1">
             Webhook Headers (optional)
           </label>,
-          isEditing &&
-            webhook?.headers &&
-            Object.keys(webhook.headers).length > 0 && (
-              <Text key="1a" size="xs" c="dimmed" mt={-4}>
-                Header values are masked. Enter new values to update or remove
-                keys to delete them.
-              </Text>
-            ),
+          hasMaskedHeaders && (
+            <Text key="1a" size="xs" c="dimmed" mt={-4}>
+              Header values are masked. Enter new values to update or remove
+              keys to delete them.
+            </Text>
+          ),
           <div className="mb-2" key="2">
             <Controller
               name="headers"
