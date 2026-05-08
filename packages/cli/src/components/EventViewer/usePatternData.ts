@@ -167,6 +167,7 @@ export function usePatternData({
         startDate: startTime,
         endDate: endTime,
         trendBuckets: 24,
+        maxSamples: sampleRows.length,
         getBody: row => {
           const body = row[effectiveBodyColumn];
           return body != null ? flatten(String(body)) : '';
