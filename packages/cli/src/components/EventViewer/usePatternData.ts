@@ -5,12 +5,11 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-import {
-  TemplateMiner,
-  TemplateMinerConfig,
-} from '@hyperdx/common-utils/dist/drain';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  minePatterns,
+  type TrendBucket,
+} from '@hyperdx/common-utils/dist/drain';
 
 import type { SourceResponse, ProxyClickhouseClient } from '@/api/client';
 import {
@@ -26,53 +25,11 @@ import { flatten } from './utils';
 
 const SAMPLES = 10_000;
 
-// ---- Time bucketing utilities --------------------------------------
-
-/** Parse a granularity string like "5 minute" into seconds. */
-function granularityToSeconds(granularity: string): number {
-  const [num, unit] = granularity.split(' ');
-  const n = parseInt(num, 10);
-  switch (unit) {
-    case 'second':
-      return n;
-    case 'minute':
-      return n * 60;
-    case 'hour':
-      return n * 3600;
-    case 'day':
-      return n * 86400;
-    default:
-      return n * 60;
-  }
-}
-
-/** Round a timestamp down to the start of its granularity bucket. */
-function toStartOfBucket(ts: number, granularityMs: number): number {
-  return Math.floor(ts / granularityMs) * granularityMs;
-}
-
-/** Generate all bucket start timestamps between start and end. */
-function generateBuckets(
-  startMs: number,
-  endMs: number,
-  granularityMs: number,
-): number[] {
-  const buckets: number[] = [];
-  let current = toStartOfBucket(startMs, granularityMs);
-  while (current < endMs) {
-    buckets.push(current);
-    current += granularityMs;
-  }
-  return buckets;
-}
-
 // ---- Types ---------------------------------------------------------
 
-export interface TrendBucket {
-  ts: number;
-  count: number;
-}
+export type { TrendBucket };
 
+/** CLI-specific pattern group that preserves full EventRow samples and uses `count` for backward compat. */
 export interface PatternGroup {
   id: string;
   pattern: string;
@@ -204,100 +161,32 @@ export function usePatternData({
       const tsExpr = source.timestampValueExpression ?? 'TimestampTime';
       const tsColumn = resultKeys.find(k => k === tsExpr) ?? resultKeys[0];
 
-      // Compute granularity for trend buckets
-      const granularity = convertDateRangeToGranularityString(
-        [startTime, endTime],
-        24,
-      );
-      const granularityMs = granularityToSeconds(granularity) * 1000;
-      const allBuckets = generateBuckets(
-        startTime.getTime(),
-        endTime.getTime(),
-        granularityMs,
-      );
-
-      // Mine patterns
-      const config = new TemplateMinerConfig();
-      const miner = new TemplateMiner(config);
-
-      const clustered: Array<{
-        clusterId: number;
-        row: EventRow;
-        tsMs: number;
-      }> = [];
-      for (const row of sampleRows) {
-        const body = row[effectiveBodyColumn];
-        const text = body != null ? flatten(String(body)) : '';
-        const result = miner.addLogMessage(text);
-        const tsRaw = row[tsColumn];
-        const tsMs =
-          tsRaw != null
-            ? new Date(String(tsRaw)).getTime()
-            : startTime.getTime();
-        clustered.push({ clusterId: result.clusterId, row, tsMs });
-      }
-
-      // Group by cluster ID
-      const groups = new Map<
-        number,
-        {
-          rows: EventRow[];
-          template: string;
-          bucketCounts: Map<number, number>;
-        }
-      >();
-
-      for (const { clusterId, row, tsMs } of clustered) {
-        const bucket = toStartOfBucket(tsMs, granularityMs);
-        const existing = groups.get(clusterId);
-        if (existing) {
-          existing.rows.push(row);
-          existing.bucketCounts.set(
-            bucket,
-            (existing.bucketCounts.get(bucket) ?? 0) + 1,
-          );
-        } else {
+      // Mine patterns using the shared Drain pipeline
+      const { patterns: rawPatterns } = minePatterns(sampleRows, {
+        totalCount: total,
+        startDate: startTime,
+        endDate: endTime,
+        trendBuckets: 24,
+        getBody: row => {
           const body = row[effectiveBodyColumn];
-          const text = body != null ? flatten(String(body)) : '';
-          const match = miner.match(text, 'fallback');
-          const bucketCounts = new Map<number, number>();
-          bucketCounts.set(bucket, 1);
-          groups.set(clusterId, {
-            rows: [row],
-            template: match?.getTemplate() ?? text,
-            bucketCounts,
-          });
-        }
-      }
+          return body != null ? flatten(String(body)) : '';
+        },
+        getTimestamp: row => {
+          const tsRaw = row[tsColumn];
+          return tsRaw != null ? new Date(String(tsRaw)).getTime() : null;
+        },
+      });
 
-      // Compute sampleMultiplier
-      const sampleMultiplier =
-        total > 0 && sampleRows.length > 0 ? total / sampleRows.length : 1;
+      // Convert to CLI pattern shape (preserves full EventRow samples)
+      const result: PatternGroup[] = rawPatterns.map(p => ({
+        id: p.id,
+        pattern: p.pattern,
+        count: p.sampleCount,
+        estimatedCount: p.estimatedCount,
+        samples: p.samples as EventRow[],
+        trend: p.trend,
+      }));
 
-      // Convert to sorted array with estimated counts and trend data
-      const result: PatternGroup[] = [];
-      for (const [id, { rows, template, bucketCounts }] of groups) {
-        const trend: TrendBucket[] = allBuckets.map(bucketTs => ({
-          ts: bucketTs,
-          count: Math.round(
-            (bucketCounts.get(bucketTs) ?? 0) * sampleMultiplier,
-          ),
-        }));
-
-        result.push({
-          id: String(id),
-          pattern: template,
-          count: rows.length,
-          estimatedCount: Math.max(
-            Math.round(rows.length * sampleMultiplier),
-            1,
-          ),
-          samples: rows,
-          trend,
-        });
-      }
-
-      result.sort((a, b) => b.estimatedCount - a.estimatedCount);
       setPatterns(result);
     } catch (err: unknown) {
       setError(err instanceof Error ? err : new Error(String(err)));

@@ -4,6 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import * as config from '@/config';
 import {
   DEFAULT_DATABASE,
+  DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
@@ -241,6 +242,143 @@ describe('MCP Query Tool', () => {
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+    });
+  });
+
+  describe('event_patterns queries', () => {
+    let logSource: any;
+
+    beforeEach(async () => {
+      logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+        bodyExpression: 'Body',
+        severityTextExpression: 'SeverityText',
+      });
+    });
+
+    it('should execute an event_patterns query on a log source', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+      expect(output.result).toHaveProperty('patterns');
+      expect(output.result).toHaveProperty('totalCount');
+      expect(output.result).toHaveProperty('sampledRows');
+      expect(output.result).toHaveProperty('sampleMultiplier');
+      expect(output.result).toHaveProperty('bodyColumn', 'Body');
+      expect(output.result).toHaveProperty('timeRange');
+      expect(Array.isArray(output.result.patterns)).toBe(true);
+    });
+
+    it('should execute an event_patterns query on a trace source with explicit bodyExpression', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: traceSource._id.toString(),
+        bodyExpression: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+      expect(Array.isArray(output.result.patterns)).toBe(true);
+    });
+
+    it('should respect sampleSize parameter', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        sampleSize: 100,
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should respect where filter', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        where: "SeverityText = 'ERROR'",
+        whereLanguage: 'sql',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should accept custom bodyExpression', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        bodyExpression: 'SeverityText',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output.result).toHaveProperty('bodyColumn', 'SeverityText');
+    });
+
+    it('should require sourceId', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('sourceId is required');
+    });
+
+    it('should return error for non-existent source', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: '000000000000000000000000',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Source not found');
+    });
+
+    it('should include event_patterns in the schema displayType enum', async () => {
+      const { tools } = await client.listTools();
+      const queryTool = tools.find(t => t.name === 'hyperdx_query');
+      expect(queryTool).toBeDefined();
+
+      const schema = queryTool!.inputSchema;
+      const displayTypeSchema = (schema.properties as any)?.displayType;
+      expect(displayTypeSchema?.enum).toContain('event_patterns');
+
+      // Verify new fields are present
+      const props = Object.keys(schema.properties ?? {});
+      expect(props).toContain('sampleSize');
+      expect(props).toContain('bodyExpression');
     });
   });
 
