@@ -590,7 +590,9 @@ export function useChartNumberFormats(
 
   return useMemo(() => {
     // The chart-wide number format does not depend on meta, so that it can be
-    // resolved without querying.
+    // resolved without querying. Further, it prioritizes the config's numberFormat
+    // over series-specific formats, so that the user can specify the y-axis format
+    // for charts with multiple series-specific formats.
     const chartFormat =
       config.numberFormat ??
       (isBuilderChartConfig(config) && Array.isArray(config.select)

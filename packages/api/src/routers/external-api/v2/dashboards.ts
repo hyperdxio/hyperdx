@@ -7,7 +7,6 @@ import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import logger from '@/utils/logger';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
@@ -20,7 +19,6 @@ import {
   getMissingSources,
   isConfigTile,
   isRawSqlExternalTileConfig,
-  isSeriesTile,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from './utils/dashboards';
@@ -55,8 +53,8 @@ async function getSourceConnectionMismatches(
  *   schemas:
  *     NumberFormatOutput:
  *       type: string
- *       enum: [currency, percent, byte, time, number, data_rate, throughput]
- *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput).
+ *       enum: [currency, percent, byte, time, number, data_rate, throughput, duration]
+ *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput, duration).
  *     AggregationFunction:
  *       type: string
  *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]

@@ -46,9 +46,7 @@ export type SeriesTile = ExternalDashboardTileWithId & {
   series: Exclude<ExternalDashboardTileWithId['series'], undefined>;
 };
 
-export function isSeriesTile(
-  tile: ExternalDashboardTileWithId,
-): tile is SeriesTile {
+function isSeriesTile(tile: ExternalDashboardTileWithId): tile is SeriesTile {
   return 'series' in tile && tile.series !== undefined;
 }
 
