@@ -56,7 +56,7 @@ export type SelectionBounds = {
  * the URL-backed bounds as the source of truth and mirror them onto the
  * chart imperatively. fireHook=false avoids re-entering the setSelect hook.
  */
-function applySelectionToChart(
+export function applySelectionToChart(
   u: uPlot,
   bounds: SelectionBounds | null | undefined,
   scaleType: HeatmapScaleType,
@@ -1043,24 +1043,26 @@ function Heatmap({
     scaleTypeRef.current = scaleType;
   });
 
+  const { ref, width, height } = useElementSize();
+
   // Reapply the URL-backed selection whenever the bounds prop changes
   // (e.g. a fresh drag-select arrives via the round-trip through the
-  // parent's URL state, or the parent clears the filter). This complements
-  // the uPlot `ready` hook below: that handles initial chart creation
-  // (and any recreation), this handles bounds changes against an existing
-  // chart.
+  // parent's URL state, or the parent clears the filter), or when the
+  // container resizes (uPlot calls setSize, not a full recreate, so the
+  // pixel-space u.select would otherwise be stale). This complements the
+  // uPlot `ready` hook below: that handles initial chart creation (and
+  // any recreation), this handles bounds and size changes against an
+  // existing chart.
   useEffect(() => {
     if (uplotRef.current) {
       applySelectionToChart(uplotRef.current, selectionBounds, scaleType);
     }
-  }, [selectionBounds, scaleType]);
+  }, [selectionBounds, scaleType, width, height]);
 
   // Timestamp of the most recent drag-end. Guards the container's onClick
   // handler from clearing the selection when the synthetic click event
   // that fires on mouseup-after-drag arrives.
   const justDraggedAtRef = useRef(0);
-
-  const { ref, width, height } = useElementSize();
 
   // Stabilize on numberFormat content, not reference. Callers (e.g.
   // DBSearchHeatmapChart) build a fresh `numberFormat` object on every
@@ -1203,7 +1205,7 @@ function Heatmap({
       },
       plugins: [
         // legendAsTooltipPlugin()
-        // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
+
         highlightDataPlugin({
           proximity: 20,
           onPointHighlight: ({
