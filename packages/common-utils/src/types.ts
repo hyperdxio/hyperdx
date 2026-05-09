@@ -1086,6 +1086,7 @@ export const BaseSourceSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  disabled: z.boolean().optional(),
   querySettings: QuerySettingsSchema.optional(),
   timestampValueExpression: RequiredTimestampColumnSchema,
 });
@@ -1131,6 +1132,16 @@ export type MaterializedViewConfiguration = z.infer<
   typeof MaterializedViewConfigurationSchema
 >;
 
+export const MetadataMaterializedViewsSchema = z.object({
+  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
+  granularity: SQLIntervalSchema,
+});
+
+export type MetadataMaterializedViews = z.infer<
+  typeof MetadataMaterializedViewsSchema
+>;
+
 // Log source form schema
 export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
@@ -1149,7 +1160,6 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  uniqueRowIdExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
    * the source. Not a security boundary — bypassable by direct table SELECT.
@@ -1165,6 +1175,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 
@@ -1204,6 +1215,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 

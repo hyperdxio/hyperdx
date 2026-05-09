@@ -2,8 +2,6 @@
 import * as React from 'react';
 import { useImperativeHandle } from 'react';
 import { useRouter } from 'next/router';
-import { NextAdapter } from 'next-query-params';
-import { QueryParamProvider } from 'use-query-params';
 import { LocationMock } from '@jedmao/location';
 import { render } from '@testing-library/react';
 
@@ -37,9 +35,7 @@ function TestWrapper({
   React.useEffect(() => {
     setUserPreference({ isUTC });
   }, [setUserPreference, isUTC]);
-  return (
-    <QueryParamProvider adapter={NextAdapter}>{children}</QueryParamProvider>
-  );
+  return <>{children}</>;
 }
 
 const TestComponent = React.forwardRef(function Component(

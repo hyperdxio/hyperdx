@@ -25,6 +25,7 @@ import {
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
@@ -397,6 +398,7 @@ const Tile = forwardRef(
     const isSourceUnset =
       !!chart.config &&
       isBuilderSavedChartConfig(chart.config) &&
+      displayTypeRequiresSource(chart.config.displayType) &&
       !chart.config.source;
 
     useEffect(() => {

@@ -36,7 +36,7 @@ const TEST_FILE_PATTERNS = [
 ];
 
 // ── Thresholds (all line counts exclude test and trivial files) ───────────────
-const TIER2_MAX_LINES = 150;           // max prod lines eligible for Tier 2
+const TIER2_MAX_LINES = 250;           // max prod lines eligible for Tier 2
 const TIER4_ESCALATION_HUMAN = 1000;   // Tier 3 → 4 for human branches
 const TIER4_ESCALATION_AGENT = 400;    // Tier 3 → 4 for agent branches (stricter)
 
@@ -190,6 +190,9 @@ function buildTierComment(tier, signals) {
   }
   if (tier === 4 && prodLines > sizeThreshold && criticalFiles.length === 0) {
     triggers.push(`**Large diff**: ${prodLines} production lines changed (threshold: ${sizeThreshold})`);
+  }
+  if (tier === 3 && prodLines >= TIER2_MAX_LINES) {
+    triggers.push(`**Diff size**: ${prodLines} production lines changed (Tier 2 max: < ${TIER2_MAX_LINES})`);
   }
   if (isBotAuthor) triggers.push(`**Bot author**: \`${author}\``);
   if (allFilesTrivial && !isBotAuthor) triggers.push('**All files are docs / images / lock files**');

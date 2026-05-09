@@ -5,7 +5,7 @@ import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/type
 import { useQuery } from '@tanstack/react-query';
 
 import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
-import { useConfigWithPrimaryAndPartitionKey } from '@/components/DBRowTable';
+import { useConfigWithAdditionalSelect } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
@@ -134,7 +134,7 @@ function usePatterns({
   statusCodeExpression?: string;
   enabled?: boolean;
 }) {
-  const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
+  const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
     ...config,
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [

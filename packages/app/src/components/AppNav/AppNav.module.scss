@@ -449,6 +449,23 @@ $transition-slow: 0.2s ease;
   padding-bottom: $spacing-sm;
 }
 
+/* Feedback */
+
+.feedbackLabel {
+  @include text-truncate;
+
+  line-height: 1.2;
+}
+
+.feedbackHide {
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--color-text-sidenav-link-active);
+  }
+}
+
 /* Scrollbar Customization */
 
 .scrollbar {
