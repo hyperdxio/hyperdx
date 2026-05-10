@@ -2011,6 +2011,12 @@
             "maxLength": 1024,
             "example": "Service Overview"
           },
+          "description": {
+            "type": "string",
+            "description": "Optional description of the dashboard",
+            "maxLength": 40000,
+            "example": "Monitors key service health metrics including latency and error rates"
+          },
           "tiles": {
             "type": "array",
             "description": "List of tiles/charts in the dashboard",
@@ -2073,6 +2079,12 @@
             "description": "Dashboard name.",
             "example": "New Dashboard"
           },
+          "description": {
+            "type": "string",
+            "maxLength": 40000,
+            "description": "Optional description of the dashboard.",
+            "example": "Monitors key service health metrics"
+          },
           "tiles": {
             "type": "array",
             "description": "List of tiles/charts to include in the dashboard.",
@@ -2133,6 +2145,12 @@
             "maxLength": 1024,
             "description": "Dashboard name.",
             "example": "Updated Dashboard Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 40000,
+            "description": "Optional description of the dashboard.",
+            "example": "Updated description for this dashboard"
           },
           "tiles": {
             "type": "array",

@@ -122,7 +122,8 @@ export default function DashboardsListPage() {
       result = result.filter(
         d =>
           d.name.toLowerCase().includes(q) ||
-          d.tags.some(t => t.toLowerCase().includes(q)),
+          d.tags.some(t => t.toLowerCase().includes(q)) ||
+          d.description?.toLowerCase().includes(q),
       );
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -222,7 +223,10 @@ export default function DashboardsListPage() {
                   name={d.name}
                   href={`/dashboards/${d.id}`}
                   tags={d.tags}
-                  description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                  description={
+                    d.description ||
+                    `${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`
+                  }
                   onDelete={() => handleDelete(d.id)}
                   statusIcon={
                     <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
@@ -426,7 +430,10 @@ export default function DashboardsListPage() {
                       name={d.name}
                       href={`/dashboards/${d.id}`}
                       tags={d.tags}
-                      description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                      description={
+                        d.description ||
+                        `${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`
+                      }
                       onDelete={() => handleDelete(d.id)}
                       statusIcon={
                         <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />

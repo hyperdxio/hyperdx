@@ -31,6 +31,7 @@ export type Tile = {
 export type Dashboard = {
   id: string;
   name: string;
+  description?: string;
   tiles: Tile[];
   tags: string[];
   filters?: DashboardFilter[];

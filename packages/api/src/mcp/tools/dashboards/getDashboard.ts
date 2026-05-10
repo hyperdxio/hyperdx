@@ -41,6 +41,7 @@ export function registerGetDashboard(
         const output = dashboards.map(d => ({
           id: d._id.toString(),
           name: d.name,
+          ...(d.description ? { description: d.description } : {}),
           tags: d.tags,
           ...(frontendUrl ? { url: `${frontendUrl}/dashboards/${d._id}` } : {}),
         }));
