@@ -23,6 +23,7 @@ export default mongoose.model<IDashboard>(
         type: String,
         required: true,
       },
+      description: { type: String, required: false },
       tiles: { type: mongoose.Schema.Types.Mixed, required: true },
       team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
       tags: {

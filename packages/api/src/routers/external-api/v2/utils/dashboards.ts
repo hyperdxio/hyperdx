@@ -71,6 +71,7 @@ export function isConfigTile(
 export type ExternalDashboard = {
   id: string;
   name: string;
+  description?: string;
   tiles: ExternalDashboardTileWithId[];
   tags?: string[];
   filters?: ExternalDashboardFilterWithId[];
@@ -310,6 +311,7 @@ export function convertToExternalDashboard(
   return {
     id: dashboard._id.toString(),
     name: dashboard.name,
+    ...(dashboard.description ? { description: dashboard.description } : {}),
     tiles: dashboard.tiles
       .map(convertTileToExternalChart)
       .filter(t => t !== undefined),
@@ -576,6 +578,7 @@ export function resolveSavedQueryLanguage(params: {
 
 const dashboardBodyBaseShape = {
   name: z.string().max(1024),
+  description: z.string().max(40000).optional(),
   tiles: externalDashboardTileListSchema,
   tags: tagsSchema,
   savedQuery: z.string().nullable().optional(),

@@ -201,6 +201,7 @@ function FileSelection({
 
 const MappingForm = z.object({
   dashboardName: z.string().min(1),
+  dashboardDescription: z.string().max(40000).optional().default(''),
   tags: z.array(z.string()),
   sourceMappings: z.array(z.string()),
   connectionMappings: z.array(z.string()),
@@ -221,6 +222,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
       resolver: zodResolver(MappingForm),
       defaultValues: {
         dashboardName: input.name,
+        dashboardDescription: input.description ?? '',
         tags: input.tags ?? [],
         sourceMappings: input.tiles.map(() => ''),
         connectionMappings: input.tiles.map(() => ''),
@@ -397,6 +399,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
         tiles: zippedTiles,
         filters: zippedFilters,
         name: data.dashboardName,
+        description: data.dashboardDescription || undefined,
         tags: data.tags,
       });
       let _dashboardId = dashboardId;
@@ -437,6 +440,17 @@ function Mapping({ input }: { input: DashboardTemplate }) {
               label="Dashboard Name"
               {...field}
               error={formState.errors.dashboardName?.message}
+            />
+          )}
+        />
+        <Controller
+          name="dashboardDescription"
+          control={control}
+          render={({ field }) => (
+            <TextInput
+              label="Description"
+              placeholder="Optional description"
+              {...field}
             />
           )}
         />

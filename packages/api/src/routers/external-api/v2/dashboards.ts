@@ -1073,6 +1073,11 @@ async function getSourceConnectionMismatches(
  *           description: Dashboard name
  *           maxLength: 1024
  *           example: "Service Overview"
+ *         description:
+ *           type: string
+ *           description: Optional description of the dashboard
+ *           maxLength: 40000
+ *           example: "Monitors key service health metrics including latency and error rates"
  *         tiles:
  *           type: array
  *           description: List of tiles/charts in the dashboard
@@ -1119,6 +1124,11 @@ async function getSourceConnectionMismatches(
  *           maxLength: 1024
  *           description: Dashboard name.
  *           example: "New Dashboard"
+ *         description:
+ *           type: string
+ *           maxLength: 40000
+ *           description: Optional description of the dashboard.
+ *           example: "Monitors key service health metrics"
  *         tiles:
  *           type: array
  *           description: List of tiles/charts to include in the dashboard.
@@ -1165,6 +1175,11 @@ async function getSourceConnectionMismatches(
  *           maxLength: 1024
  *           description: Dashboard name.
  *           example: "Updated Dashboard Name"
+ *         description:
+ *           type: string
+ *           maxLength: 40000
+ *           description: Optional description of the dashboard.
+ *           example: "Updated description for this dashboard"
  *         tiles:
  *           type: array
  *           items:
@@ -1305,6 +1320,7 @@ router.get('/', async (req, res, next) => {
       {
         _id: 1,
         name: 1,
+        description: 1,
         tiles: 1,
         tags: 1,
         filters: 1,
@@ -1422,6 +1438,7 @@ router.get(
         {
           _id: 1,
           name: 1,
+          description: 1,
           tiles: 1,
           tags: 1,
           filters: 1,
@@ -1589,6 +1606,7 @@ router.post(
 
       const {
         name,
+        description,
         tiles,
         tags,
         filters,
@@ -1635,6 +1653,7 @@ router.post(
 
       const newDashboard = await new Dashboard({
         name,
+        ...(description !== undefined ? { description } : {}),
         tiles: internalTiles,
         tags: tags && uniq(tags),
         filters: filtersWithIds,
@@ -1812,6 +1831,7 @@ router.put(
 
       const {
         name,
+        description,
         tiles,
         tags,
         filters,
@@ -1869,6 +1889,9 @@ router.put(
         tiles: internalTiles,
         tags: tags && uniq(tags),
       };
+      if (description !== undefined) {
+        setPayload.description = description;
+      }
       if (filters !== undefined) {
         setPayload.filters = convertExternalFiltersToInternal(
           filters,

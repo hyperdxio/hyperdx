@@ -979,6 +979,7 @@ export function addDuplicateTileIdIssues(
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
+  description: z.string().max(40000).optional(),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
   filters: z.array(DashboardFilterSchema).optional(),

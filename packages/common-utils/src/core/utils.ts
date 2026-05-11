@@ -470,6 +470,7 @@ export function convertToDashboardTemplate(
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
+    ...(input.description ? { description: input.description } : {}),
     tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
   };
@@ -534,6 +535,7 @@ export function convertToDashboardDocument(
 ): DashboardWithoutId {
   const output: DashboardWithoutId = {
     name: input.name,
+    ...(input.description ? { description: input.description } : {}),
     tiles: [],
     tags: input.tags ?? [],
   };

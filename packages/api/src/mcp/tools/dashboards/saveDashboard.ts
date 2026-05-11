@@ -47,6 +47,11 @@ export function registerSaveDashboard(
             'Dashboard ID. Omit to create a new dashboard, provide to update an existing one.',
           ),
         name: z.string().describe('Dashboard name'),
+        description: z
+          .string()
+          .max(40000)
+          .optional()
+          .describe('Optional description of the dashboard'),
         tiles: mcpTilesParam,
         tags: z.array(z.string()).optional().describe('Dashboard tags'),
       }),
@@ -54,12 +59,19 @@ export function registerSaveDashboard(
     withToolTracing(
       'hyperdx_save_dashboard',
       context,
-      async ({ id: dashboardId, name, tiles: inputTiles, tags }) => {
+      async ({
+        id: dashboardId,
+        name,
+        description,
+        tiles: inputTiles,
+        tags,
+      }) => {
         if (!dashboardId) {
           return createDashboard({
             teamId,
             frontendUrl,
             name,
+            description,
             inputTiles,
             tags,
           });
@@ -69,6 +81,7 @@ export function registerSaveDashboard(
           frontendUrl,
           dashboardId,
           name,
+          description,
           inputTiles,
           tags,
         });
@@ -83,17 +96,20 @@ async function createDashboard({
   teamId,
   frontendUrl,
   name,
+  description,
   inputTiles,
   tags,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
   name: string;
+  description: string | undefined;
   inputTiles: unknown[];
   tags: string[] | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
+    description,
     tiles: inputTiles,
     tags,
   });
@@ -149,6 +165,9 @@ async function createDashboard({
 
   const newDashboard = await new Dashboard({
     name: parsed.data.name,
+    ...(parsed.data.description !== undefined
+      ? { description: parsed.data.description }
+      : {}),
     tiles: internalTiles,
     tags: tags && uniq(tags),
     filters: filtersWithIds,
@@ -184,6 +203,7 @@ async function updateDashboard({
   frontendUrl,
   dashboardId,
   name,
+  description,
   inputTiles,
   tags,
 }: {
@@ -191,6 +211,7 @@ async function updateDashboard({
   frontendUrl: string | undefined;
   dashboardId: string;
   name: string;
+  description: string | undefined;
   inputTiles: unknown[];
   tags: string[] | undefined;
 }) {
@@ -203,6 +224,7 @@ async function updateDashboard({
 
   const parsed = updateDashboardBodySchema.safeParse({
     name,
+    description,
     tiles: inputTiles,
     tags,
   });
@@ -277,6 +299,10 @@ async function updateDashboard({
     tiles: internalTiles,
     tags: tags && uniq(tags),
   };
+
+  if (description !== undefined) {
+    setPayload.description = description;
+  }
 
   if (filters !== undefined) {
     setPayload.filters = convertExternalFiltersToInternal(

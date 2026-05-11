@@ -64,9 +64,10 @@ import {
   Portal,
   Stack,
   Text,
+  Textarea,
   Tooltip,
 } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
+import { useHotkeys, useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
@@ -1172,6 +1173,95 @@ function DashboardContainerRow({
   );
 }
 
+function EditableDashboardDescription({
+  description,
+  onSave,
+}: {
+  description: string;
+  onSave: (description: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editedDescription, setEditedDescription] = useState(description);
+  const { hovered, ref } = useHover();
+
+  const cancelEditing = () => {
+    setEditedDescription(description);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <Box ps="md" pe="md" mt={4}>
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            onSave(editedDescription.trim());
+            setEditing(false);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              cancelEditing();
+            }
+          }}
+          onBlur={e => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              cancelEditing();
+            }
+          }}
+        >
+          <Textarea
+            value={editedDescription}
+            onChange={e => setEditedDescription(e.currentTarget.value)}
+            placeholder="Add a description..."
+            autoFocus
+            autosize
+            minRows={1}
+            maxRows={4}
+            size="sm"
+          />
+          <Group gap="xs" mt="xs">
+            <Button variant="primary" type="submit" size="xs">
+              Save
+            </Button>
+            <Button variant="secondary" size="xs" onClick={cancelEditing}>
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      ref={ref}
+      ps="md"
+      pe="md"
+      mt={2}
+      onClick={() => setEditing(true)}
+      className="cursor-pointer"
+      title="Click to edit description"
+    >
+      {description ? (
+        <Group gap={4} align="center">
+          <Text size="sm" c="dimmed" lineClamp={2}>
+            {description}
+          </Text>
+          {hovered && (
+            <IconPencil size={12} color="var(--mantine-color-dimmed)" />
+          )}
+        </Group>
+      ) : (
+        hovered && (
+          <Text size="sm" c="dimmed" fs="italic">
+            Add a description...
+          </Text>
+        )
+      )}
+    </Box>
+  );
+}
+
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
@@ -2079,18 +2169,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Group>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
-        <EditablePageName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
+        <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+          <EditablePageName
+            key={`${dashboardHash}`}
+            name={dashboard?.name ?? ''}
+            onSave={editedName => {
+              if (dashboard != null) {
+                setDashboard({
+                  ...dashboard,
+                  name: editedName,
+                });
+              }
+            }}
+          />
+          <EditableDashboardDescription
+            key={`desc-${dashboardHash}`}
+            description={dashboard?.description ?? ''}
+            onSave={desc => {
+              if (dashboard != null) {
+                setDashboard({
+                  ...dashboard,
+                  description: desc || undefined,
+                });
+              }
+            }}
+          />
+        </Stack>
         <Group gap="xs">
           {!isLocalDashboard && dashboard?.id && (
             <FavoriteButton
