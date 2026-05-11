@@ -1,4 +1,8 @@
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  validateDashboardContainersStructure,
+  validateDashboardTileContainerRefs,
+} from '@hyperdx/common-utils/dist/dashboardValidation';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
@@ -9,8 +13,6 @@ import {
   DisplayType,
   RawSqlSavedChartConfig,
   SavedChartConfig,
-  validateDashboardContainersStructure,
-  validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';

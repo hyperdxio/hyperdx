@@ -1,8 +1,9 @@
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
-  DisplayType,
-  validateDashboardContainersConsistency,
-} from '@hyperdx/common-utils/dist/types';
+  validateDashboardContainersStructure,
+  validateDashboardTileContainerRefs,
+} from '@hyperdx/common-utils/dist/dashboardValidation';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
@@ -91,12 +92,14 @@ describe('convertToInternalTileConfig', () => {
   });
 });
 
-describe('validateDashboardContainersConsistency', () => {
-  // Drives the helper through z.superRefine and inspects the resulting
-  // ZodError so we can assert path + message without standing up the full
-  // express + DB stack.
+describe('dashboard container validation helpers', () => {
+  // Drives the two helpers in sequence (mirroring production usage:
+  // schema-level structure check, then handler-level tile-ref check)
+  // through z.superRefine and inspects the resulting ZodError so we
+  // can assert path + message without standing up the full express +
+  // DB stack.
   function runHelper<T extends { containerId?: string; tabId?: string }>(
-    containers: Parameters<typeof validateDashboardContainersConsistency>[0],
+    containers: Parameters<typeof validateDashboardContainersStructure>[0],
     tiles: T[],
   ): z.ZodIssue[] {
     const schema = z
@@ -105,8 +108,17 @@ describe('validateDashboardContainersConsistency', () => {
         tiles: z.array(z.unknown()) as unknown as z.ZodTypeAny,
       })
       .superRefine((data, ctx) => {
-        validateDashboardContainersConsistency(
-          (data.containers ?? []) as typeof containers,
+        const { containerById, hasDuplicateContainerId } =
+          validateDashboardContainersStructure(
+            (data.containers ?? []) as typeof containers,
+            ctx,
+          );
+        // Skip tile-ref resolution when container ids weren't unique:
+        // the duplicate-id error is enough to flag, and tile-level
+        // errors against a last-write-wins map would just stack noise.
+        if (hasDuplicateContainerId) return;
+        validateDashboardTileContainerRefs(
+          containerById,
           (data.tiles ?? []) as T[],
           ctx,
         );
