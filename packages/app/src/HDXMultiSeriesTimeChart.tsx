@@ -367,8 +367,10 @@ export const MemoChart = memo(function MemoChart({
 
   const [isHovered, setIsHovered] = useState(false);
 
-  const ChartComponent =
-    displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
+  const ChartComponent = useMemo(
+    () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
+    [displayType],
+  );
 
   const lines = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
