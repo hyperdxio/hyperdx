@@ -51,6 +51,11 @@ function buildMapContains(mapField: string) {
   return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
 }
 
+/** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
+function normalizeChExpression(expr: string): string {
+  return expr.replace(/\s+/g, '').replace(/`/g, '');
+}
+
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
@@ -394,7 +399,7 @@ export abstract class SQLSerializer implements Serializer {
     found: boolean;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
-    kvItemsExpression?: KvItemsInfo & { mapKey: string };
+    kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
   }>;
 
   operator(op: lucene.Operator) {
@@ -451,17 +456,26 @@ export abstract class SQLSerializer implements Serializer {
     }
 
     // KV items index optimization: use has(KvItemsColumn, concat('key','<sep>','value'))
-    // instead of Map['key'] = 'value' when a text(tokenizer=array) index exists
+    // instead of Map['key'] = 'value' when a text(tokenizer=array) index exists.
+    // For empty-term equality we also match absent keys (Map subscript returns default ''),
+    // so we emit: has(arr, 'key<sep>') OR NOT mapContains(Map, 'key')
     if (kvItemsExpression && propertyType === JSDataType.String) {
-      return SqlString.format(
-        `(${isNegatedField ? 'NOT ' : ''}has(??, concat(?, ?, ?)))`,
-        [
-          kvItemsExpression.kvItemsColumn,
+      const hasExpr = SqlString.format(`has(??, concat(?, ?, ?))`, [
+        kvItemsExpression.kvItemsColumn,
+        kvItemsExpression.mapKey,
+        kvItemsExpression.separator,
+        term,
+      ]);
+      if (term === '') {
+        const notContains = SqlString.format(`NOT mapContains(??, ?)`, [
+          kvItemsExpression.mapColumn,
           kvItemsExpression.mapKey,
-          kvItemsExpression.separator,
-          term,
-        ],
-      );
+        ]);
+        return isNegatedField
+          ? `(NOT ${hasExpr} AND ${SqlString.format(`mapContains(??, ?)`, [kvItemsExpression.mapColumn, kvItemsExpression.mapKey])})`
+          : `(${hasExpr} OR ${notContains})`;
+      }
+      return `(${isNegatedField ? 'NOT ' : ''}${hasExpr})`;
     }
 
     const expressionPostfix =
@@ -718,7 +732,7 @@ type CustomSchemaSQLColumnExpression = {
   mapKeyIndexExpression?: string;
   arrayMapKeyExpression?: string;
   /** When a KV items index exists for a Map column, carries the info needed for the has() optimization */
-  kvItemsExpression?: KvItemsInfo & { mapKey: string };
+  kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
 };
 
 export type CustomSchemaConfig = {
@@ -829,8 +843,9 @@ export type KvItemsLookup = Map<string, KvItemsInfo>;
 /**
  * Tokenizes a ClickHouse expression into meaningful tokens (identifiers, parens,
  * commas, arrows, quoted strings, operators). Whitespace is skipped.
+ * Returns null if the expression contains unrecognized characters.
  */
-function tokenizeExpression(expr: string): string[] {
+function tokenizeExpression(expr: string): string[] | null {
   const tokens: string[] = [];
   let i = 0;
   while (i < expr.length) {
@@ -879,8 +894,8 @@ function tokenizeExpression(expr: string): string[] {
       tokens.push(ident);
       continue;
     }
-    // Unknown character — skip
-    i++;
+    // Unknown character — return null to signal unparseable expression
+    return null;
   }
   return tokens;
 }
@@ -896,6 +911,7 @@ export function parseKvItemsExpression(
   defaultExpression: string,
 ): { mapColumn: string; separator: string } | undefined {
   const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
 
   // Expected structure:
   // arrayMap ( ( k , v ) -> concat ( k , '<sep>' , v ) , mapKeys ( X ) , mapValues ( X ) )
@@ -1042,8 +1058,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         if (idx.type !== 'text') return false;
         const tokenizer = parseTokenizerFromTextIndex(idx);
         if (tokenizer?.type !== 'array') return false;
-        // Check if the index expression covers this column
-        return this.indexCoversColumn(idx.expression, candidate.name);
+        // Require exact match: has() won't benefit from a transformed index like lower(col)
+        return (
+          normalizeChExpression(idx.expression) ===
+          normalizeChExpression(candidate.name)
+        );
       });
 
       if (hasArrayTextIndex) {
@@ -1335,6 +1354,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             ? {
                 kvItemsExpression: {
                   kvItemsColumn: kvItemsInfo.kvItemsColumn,
+                  mapColumn: prefixMatch.name,
                   mapKey: fieldPostfix,
                   separator: kvItemsInfo.separator,
                 },
@@ -1465,12 +1485,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * Handles cases where index expression may have transformations like lower(Body) vs Body.
    */
   indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
-    // Normalize expressions for comparison
-    const normalize = (expr: string) =>
-      expr.replace(/\s+/g, '').replace(/`/g, '');
-
-    const normalizedIndex = normalize(indexExpression);
-    const normalizedSearch = normalize(searchColumn);
+    const normalizedIndex = normalizeChExpression(indexExpression);
+    const normalizedSearch = normalizeChExpression(searchColumn);
 
     // Direct match
     if (normalizedIndex === normalizedSearch) {

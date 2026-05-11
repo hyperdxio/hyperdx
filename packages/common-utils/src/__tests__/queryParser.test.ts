@@ -1707,6 +1707,19 @@ describe('parseKvItemsExpression', () => {
     ).toBeUndefined();
   });
 
+  it('returns undefined for expressions with unrecognized characters', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes)) + 1",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseKvItemsExpression(
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(Log@Attributes), mapValues(Log@Attributes))",
+      ),
+    ).toBeUndefined();
+  });
+
   it('returns undefined when mapKeys and mapValues reference different columns', () => {
     expect(
       parseKvItemsExpression(
@@ -1802,5 +1815,278 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     // Should still use regular ILIKE with indexHint
     expect(sql).toContain('ILIKE');
     expect(sql).toContain('indexHint');
+  });
+
+  it('preserves missing-key semantics for empty-string equality', async () => {
+    // Map['key'] = '' matches both explicit empty values AND absent keys,
+    // so we emit: has(arr, 'key=') OR NOT mapContains(Map, 'key')
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:""',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeItems`, concat('error.message', '=', '')) OR NOT mapContains(`LogAttributes`, 'error.message')))",
+    );
+  });
+
+  it('preserves missing-key semantics for negated empty-string equality', async () => {
+    const builder = new SearchQueryBuilder(
+      '-LogAttributes.error.message:""',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((NOT has(`LogAttributeItems`, concat('error.message', '=', '')) AND mapContains(`LogAttributes`, 'error.message')))",
+    );
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map(String, String)' };
+    } else if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+  metadata.getColumns = jest.fn().mockImplementation(async () => [
+    {
+      name: 'LogAttributes',
+      type: 'Map(String, String)',
+      default_type: '',
+      default_expression: '',
+    },
+    { name: 'Body', type: 'String', default_type: '', default_expression: '' },
+    {
+      name: 'LogAttributeItems',
+      type: 'Array(String)',
+      default_type: 'MATERIALIZED',
+      default_expression:
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+    },
+  ]);
+  metadata.getSkipIndices = jest.fn().mockImplementation(async () => [
+    {
+      name: 'idx_log_attr_items',
+      type: 'text',
+      typeFull: 'text(tokenizer=array)',
+      expression: 'LogAttributeItems',
+      granularity: 1,
+    },
+  ]);
+  metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  it('uses has() for MATERIALIZED KV items column', async () => {
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+    );
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  function buildSerializer(overrides: {
+    columns?: any[];
+    skipIndices?: any[];
+    getColumn?: (opts: { column: string }) => any;
+  }) {
+    const metadata = getMetadata(
+      new ClickhouseClient({ host: 'http://localhost:8123' }),
+    );
+    metadata.getColumn =
+      overrides.getColumn ??
+      jest.fn().mockImplementation(async ({ column }) => {
+        if (column === 'LogAttributes') {
+          return { name: 'LogAttributes', type: 'Map(String, String)' };
+        } else if (column === 'Body') {
+          return { name: 'Body', type: 'String' };
+        }
+        return undefined;
+      });
+    metadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockImplementation(async () => new Map());
+    metadata.getColumns = jest
+      .fn()
+      .mockImplementation(async () => overrides.columns ?? []);
+    metadata.getSkipIndices = jest
+      .fn()
+      .mockImplementation(async () => overrides.skipIndices ?? []);
+    metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+
+    return new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+  }
+
+  it('falls back to Map subscript when no KV items column exists', async () => {
+    const serializer = buildSerializer({
+      columns: [
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ],
+      skipIndices: [],
+    });
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"test"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toContain('LogAttributes');
+    expect(sql).toContain("= 'test'");
+    expect(sql).not.toContain('has(');
+  });
+
+  it('falls back when index has wrong tokenizer (not array)', async () => {
+    const serializer = buildSerializer({
+      columns: [
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        },
+      ],
+      skipIndices: [
+        {
+          name: 'idx_wrong_tokenizer',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'LogAttributeItems',
+          granularity: 1,
+        },
+      ],
+    });
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"test"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).not.toContain('has(');
+    expect(sql).toContain("= 'test'");
+  });
+
+  it('falls back when index covers a different column', async () => {
+    const serializer = buildSerializer({
+      columns: [
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        },
+      ],
+      skipIndices: [
+        {
+          name: 'idx_other',
+          type: 'text',
+          typeFull: 'text(tokenizer=array)',
+          expression: 'OtherColumn',
+          granularity: 1,
+        },
+      ],
+    });
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"test"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).not.toContain('has(');
+    expect(sql).toContain("= 'test'");
+  });
+
+  it('falls back for Map(String, Float64) value type', async () => {
+    const serializer = buildSerializer({
+      getColumn: jest.fn().mockImplementation(async ({ column }) => {
+        if (column === 'NumericAttributes') {
+          return { name: 'NumericAttributes', type: 'Map(String, Float64)' };
+        } else if (column === 'Body') {
+          return { name: 'Body', type: 'String' };
+        }
+        return undefined;
+      }),
+      columns: [
+        {
+          name: 'NumericAttributes',
+          type: 'Map(String, Float64)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'NumericAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(NumericAttributes), mapValues(NumericAttributes))",
+        },
+      ],
+      skipIndices: [
+        {
+          name: 'idx_numeric_items',
+          type: 'text',
+          typeFull: 'text(tokenizer=array)',
+          expression: 'NumericAttributeItems',
+          granularity: 1,
+        },
+      ],
+    });
+    const builder = new SearchQueryBuilder(
+      'NumericAttributes.count:"42"',
+      serializer,
+    );
+    const sql = await builder.build();
+    // Should use CAST for numeric comparison, not has()
+    expect(sql).not.toContain('has(');
+    expect(sql).toContain('CAST');
   });
 });
