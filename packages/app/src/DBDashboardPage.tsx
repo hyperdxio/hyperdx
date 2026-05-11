@@ -1271,9 +1271,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   // dashboard with new and invalid filters in the URL, the banner will not show up.
   const [shouldShowIgnoredFiltersBanner, setShouldShowIgnoredFiltersBanner] =
     useState<boolean>(false);
+  // dashboardReady will toggle when fetching dashboard due to a dashboard save -
+  // in this case we don't want to show the banner again.
+  const lastLoadedIdForBannerRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!dashboardReady) return;
+    if (!dashboardReady || lastLoadedIdForBannerRef.current === dashboard?.id)
+      return;
     setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    lastLoadedIdForBannerRef.current = dashboard?.id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id, dashboardReady]);
 
@@ -2323,23 +2328,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           Run
         </Button>
       </Flex>
-      {shouldShowIgnoredFiltersBanner && (
-        <Alert
-          mt="sm"
-          color="yellow"
-          icon={<IconAlertTriangle size={16} />}
-          title="Some filters could not be applied"
-          data-testid="ignored-url-filters-banner"
-          withCloseButton
-          closeButtonLabel="Dismiss"
-          onClose={() => setShouldShowIgnoredFiltersBanner(false)}
-        >
-          No dashboard filter(s) found for{' '}
-          {ignoredFilterExpressions.length === 1 ? 'expression' : 'expressions'}{' '}
-          in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with a
-          matching expression to apply these filters.
-        </Alert>
-      )}
+      {shouldShowIgnoredFiltersBanner &&
+        ignoredFilterExpressions.length > 0 && (
+          <Alert
+            mt="sm"
+            color="yellow"
+            icon={<IconAlertTriangle size={16} />}
+            title="Some filters could not be applied"
+            data-testid="ignored-url-filters-banner"
+            withCloseButton
+            closeButtonLabel="Dismiss"
+            onClose={() => setShouldShowIgnoredFiltersBanner(false)}
+          >
+            No dashboard filter(s) found for{' '}
+            {ignoredFilterExpressions.length === 1
+              ? 'expression'
+              : 'expressions'}{' '}
+            in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with
+            a matching expression to apply these filters.
+          </Alert>
+        )}
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}

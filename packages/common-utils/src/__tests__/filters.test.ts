@@ -117,5 +117,50 @@ describe('filters', () => {
         },
       ]);
     });
+
+    it('should escape backslashes in filter values', () => {
+      const filters = {
+        FilePath: {
+          included: new Set<string | boolean>(['C:\\path\\to\\file']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')",
+        },
+      ]);
+    });
+
+    it('should escape backslashes in excluded filter values', () => {
+      const filters = {
+        FilePath: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(['C:\\path\\to\\file']),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "FilePath NOT IN ('C:\\\\path\\\\to\\\\file')",
+        },
+      ]);
+    });
+
+    it('should escape backslashes before single quotes so quotes stay escaped', () => {
+      const filters = {
+        message: {
+          included: new Set<string | boolean>(["a\\'b"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        {
+          type: 'sql',
+          condition: "message IN ('a\\\\''b')",
+        },
+      ]);
+    });
   });
 });

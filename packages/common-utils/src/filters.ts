@@ -8,6 +8,10 @@ export type FilterState = {
   };
 };
 
+const escapeString = (s: string) => {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
+};
+
 export const filtersToQuery = (
   filters: FilterState,
   { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
@@ -27,9 +31,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v =>
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
-            )
+            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
             .join(', ')})`,
         });
       }
@@ -37,9 +39,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v =>
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
-            )
+            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
             .join(', ')})`,
         });
       }

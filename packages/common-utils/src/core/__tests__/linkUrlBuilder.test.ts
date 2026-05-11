@@ -235,9 +235,9 @@ describe('renderOnClickSearch', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('MyService')" },
-      ]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
     }
   });
 
@@ -269,9 +269,9 @@ describe('renderOnClickSearch', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('A', 'B')" },
-      ]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
     }
   });
 
@@ -303,7 +303,9 @@ describe('renderOnClickSearch', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
         { type: 'sql', condition: "ServiceName IN ('MyService')" },
         { type: 'sql', condition: "SeverityText IN ('error')" },
       ]);
@@ -333,8 +335,73 @@ describe('renderOnClickSearch', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('O''Malley')" },
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+    }
+  });
+
+  it('escapes backslashes in rendered filter values', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'FilePath',
+          template: '{{FilePath}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { FilePath: 'C:\\path\\to\\file' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+      ]);
+    }
+  });
+
+  it('URL-encodes rendered filter values', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: "SpanAttributes['url']",
+          template: '{{url}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { url: '/users%2F42' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+        },
       ]);
     }
   });
@@ -594,9 +661,9 @@ describe('renderOnClickDashboard', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('MyService')" },
-      ]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
     }
   });
 
@@ -628,9 +695,9 @@ describe('renderOnClickDashboard', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('A', 'B')" },
-      ]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
     }
   });
 
@@ -662,7 +729,9 @@ describe('renderOnClickDashboard', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
         { type: 'sql', condition: "ServiceName IN ('MyService')" },
         { type: 'sql', condition: "SeverityText IN ('error')" },
       ]);
@@ -692,8 +761,73 @@ describe('renderOnClickDashboard', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const params = new URLSearchParams(result.url.split('?')[1]);
-      expect(JSON.parse(params.get('filters') ?? '')).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('O''Malley')" },
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+    }
+  });
+
+  it('escapes backslashes in rendered filter values', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'FilePath',
+          template: '{{FilePath}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { FilePath: 'C:\\path\\to\\file' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+      ]);
+    }
+  });
+
+  it('URL-encodes rendered filter values', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: "SpanAttributes['url']",
+          template: '{{url}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { url: '/users%2F42' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+        },
       ]);
     }
   });

@@ -143,7 +143,10 @@ export function renderOnClickSearch({
   if (!filterRenderResult.ok) return filterRenderResult;
 
   if (filterRenderResult.filters.length > 0) {
-    params.set('filters', JSON.stringify(filterRenderResult.filters));
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
   }
 
   return { ok: true, url: `/search?${params.toString()}` };
@@ -226,7 +229,10 @@ export function renderOnClickDashboard({
   if (!filterRenderResult.ok) return filterRenderResult;
 
   if (filterRenderResult.filters.length > 0) {
-    params.set('filters', JSON.stringify(filterRenderResult.filters));
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
   }
 
   return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
