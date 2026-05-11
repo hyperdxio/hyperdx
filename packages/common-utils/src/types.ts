@@ -255,18 +255,43 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
-// Base webhook schema (matches backend IWebhook but with JSON-serialized types)
-// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
+/**
+ * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
+ * When making changes here, consider if they need to be made to the external
+ * API schema as well (packages/api/src/utils/zod.ts).
+ *
+ * NOTE: The internal API (`GET/POST/PUT /api/webhooks`) returns masked values:
+ *   - `url`         → `<origin>/****`  (path hidden, may embed tokens)
+ *   - `headers`     → keys preserved, every value replaced with `****`
+ *   - `queryParams` → keys preserved, every value replaced with `****`
+ * The external API v2 returns `url` in plaintext but omits `headers` and
+ * `queryParams` entirely via separate Zod schemas in `packages/api/src/utils/zod.ts`.
+ */
 export const WebhookSchema = z.object({
   _id: z.string(),
   createdAt: z.string(),
   name: z.string(),
   service: z.nativeEnum(WebhookService),
   updatedAt: z.string(),
-  url: z.string().optional(),
+  url: z
+    .string()
+    .optional()
+    .describe(
+      'Internal API returns masked value (<origin>/****). PUT accepts the masked form to preserve the stored URL.',
+    ),
   description: z.string().optional(),
-  queryParams: z.record(z.string(), z.string()).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
+  queryParams: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
+  headers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
   body: z.string().optional(),
 });
 
