@@ -11,7 +11,7 @@ import {
   getServer,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { Source } from '@/models/source';
+import { Source, type SourceDocument } from '@/models/source';
 
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -20,7 +20,7 @@ describe('MCP Query Tool', () => {
   const server = getServer();
   let team: any;
   let user: any;
-  let traceSource: any;
+  let traceSource: SourceDocument;
   let connection: any;
   let client: Client;
 
@@ -247,7 +247,7 @@ describe('MCP Query Tool', () => {
   });
 
   describe('event_patterns queries', () => {
-    let logSource: any;
+    let logSource: SourceDocument;
 
     beforeEach(async () => {
       logSource = await Source.create({

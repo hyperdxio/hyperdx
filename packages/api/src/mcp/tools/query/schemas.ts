@@ -205,12 +205,12 @@ export const hyperdxQuerySchema = z.object({
     ),
 
   // ── Event patterns fields ──
+  // TODO: explore whether we can safely increase the max beyond 25_000
   sampleSize: z
     .number()
     .min(1)
-    .max(100_000)
+    .max(25_000)
     .optional()
-    .default(10_000)
     .describe(
       'Number of random rows to sample for pattern mining ("event_patterns" only). ' +
         'Default: 10000. Higher values produce more accurate patterns but take longer.',
@@ -302,7 +302,7 @@ export function validateQueryInput(
 
   // Reject event_patterns-only fields on other display types
   if (displayType !== 'event_patterns') {
-    if (data.sampleSize != null && data.sampleSize !== 10_000) {
+    if (data.sampleSize != null) {
       return `sampleSize is only valid when displayType is "event_patterns"`;
     }
     if (data.bodyExpression != null) {

@@ -82,7 +82,29 @@ export async function runEventPatterns(
   }
 
   // ── Determine body column ──
-  const bodyColumn = options?.bodyExpression ?? resolveBodyExpression(source);
+  // Sanitize caller-supplied bodyExpression through the same
+  // splitAndTrimWithBracket check used for source-derived values, so a
+  // malicious value like "Body, sleepEachRow(60) AS pad" is rejected.
+  let bodyColumn: string | undefined;
+  if (options?.bodyExpression) {
+    const parts = splitAndTrimWithBracket(options.bodyExpression);
+    if (parts.length !== 1) {
+      return {
+        isError: true as const,
+        content: [
+          {
+            type: 'text' as const,
+            text:
+              'bodyExpression must be a single column expression. ' +
+              'Multiple expressions or sub-queries are not allowed.',
+          },
+        ],
+      };
+    }
+    bodyColumn = parts[0];
+  } else {
+    bodyColumn = resolveBodyExpression(source);
+  }
   if (!bodyColumn) {
     return {
       isError: true as const,
@@ -233,22 +255,36 @@ export async function runEventPatterns(
   });
 
   // ── Format response ──
-  // Convert trend timestamps to ISO strings and extract sample body texts
-  // for a more readable MCP response.
-  const patterns = rawPatterns.map(p => ({
-    id: p.id,
-    pattern: p.pattern,
-    estimatedCount: p.estimatedCount,
-    sampleCount: p.sampleCount,
-    trend: p.trend.map(t => ({
-      ts: new Date(t.ts).toISOString(),
-      count: t.count,
-    })),
-    samples: p.samples.map(row => {
-      const raw = row.__hdx_pattern_body;
-      return raw != null ? String(raw) : '';
-    }),
-  }));
+  // Convert trend timestamps to ISO strings, extract sample body texts,
+  // and build a whereSnippet per pattern so the agent can drill into
+  // matching events via a follow-up displayType:"search" query.
+  const patterns = rawPatterns.map(p => {
+    // Build a Lucene-compatible where clause from the pattern's literal
+    // (non-<*>) tokens. This lets agents chain: pattern → search.
+    const literalTokens = p.pattern
+      .split(/\s+/)
+      .filter(t => t !== '<*>' && t.length > 0);
+    const whereSnippet =
+      literalTokens.length > 0
+        ? `${bodyColumn}:"${literalTokens.join(' ')}"`
+        : '';
+
+    return {
+      id: p.id,
+      pattern: p.pattern,
+      estimatedCount: p.estimatedCount,
+      sampleCount: p.sampleCount,
+      whereSnippet,
+      trend: p.trend.map(t => ({
+        ts: new Date(t.ts).toISOString(),
+        count: t.count,
+      })),
+      samples: p.samples.map(row => {
+        const raw = row.__hdx_pattern_body;
+        return raw != null ? String(raw) : '';
+      }),
+    };
+  });
 
   const output = {
     patterns,
