@@ -90,8 +90,11 @@ describe('renderOnClickSearch', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName+%3D+MyService');
-      expect(result.url).toContain('whereLanguage=sql');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName = MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('sql');
     }
   });
 
@@ -111,8 +114,11 @@ describe('renderOnClickSearch', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName%3AMyService');
-      expect(result.url).toContain('whereLanguage=lucene');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName:MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('lucene');
     }
   });
 
@@ -189,6 +195,246 @@ describe('renderOnClickSearch', () => {
       expect(result.error).toBe(
         "Multiple sources named 'Duplicated' — source names must be unique to use them in a link",
       );
+  });
+
+  it('omits the filters param when no filter templates are provided', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: {},
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(params.has('filters')).toBe(false);
+    }
+  });
+
+  it('renders a single filter template as an IN clause', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{ServiceName}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { ServiceName: 'MyService' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
+    }
+  });
+
+  it('merges filter templates sharing an expression into one IN clause', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service1}}',
+        },
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service2}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { Service1: 'A', Service2: 'B' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
+    }
+  });
+
+  it('emits separate filters for distinct expressions', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service}}',
+        },
+        {
+          kind: 'expressionTemplate',
+          expression: 'SeverityText',
+          template: '{{Severity}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { Service: 'MyService', Severity: 'error' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('MyService')" },
+        { type: 'sql', condition: "SeverityText IN ('error')" },
+      ]);
+    }
+  });
+
+  it('escapes single quotes in rendered filter values', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{ServiceName}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { ServiceName: "O'Malley" },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+    }
+  });
+
+  it('escapes backslashes in rendered filter values', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'FilePath',
+          template: '{{FilePath}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { FilePath: 'C:\\path\\to\\file' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+      ]);
+    }
+  });
+
+  it('URL-encodes rendered filter values', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: "SpanAttributes['url']",
+          template: '{{url}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: { url: '/users%2F42' },
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+        },
+      ]);
+    }
+  });
+
+  it('errors when a filter template references a missing column', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{MissingColumn}}',
+        },
+      ],
+    };
+    const result = renderOnClickSearch({
+      onClick,
+      row: {},
+      sourceIds,
+      sourceIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Row has no column 'MissingColumn'");
   });
 });
 
@@ -276,8 +522,11 @@ describe('renderOnClickDashboard', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName+%3D+MyService');
-      expect(result.url).toContain('whereLanguage=sql');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName = MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('sql');
     }
   });
 
@@ -297,8 +546,11 @@ describe('renderOnClickDashboard', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName%3AMyService');
-      expect(result.url).toContain('whereLanguage=lucene');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName:MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('lucene');
     }
   });
 
@@ -375,6 +627,246 @@ describe('renderOnClickDashboard', () => {
       expect(result.error).toBe(
         "Multiple dashboards named 'Duplicated' — dashboard names must be unique to use them in a link",
       );
+  });
+
+  it('omits the filters param when no filter templates are provided', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: {},
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(params.has('filters')).toBe(false);
+    }
+  });
+
+  it('renders a single filter template as an IN clause', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{ServiceName}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { ServiceName: 'MyService' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
+    }
+  });
+
+  it('merges filter templates sharing an expression into one IN clause', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service1}}',
+        },
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service2}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { Service1: 'A', Service2: 'B' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
+    }
+  });
+
+  it('emits separate filters for distinct expressions', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{Service}}',
+        },
+        {
+          kind: 'expressionTemplate',
+          expression: 'SeverityText',
+          template: '{{Severity}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { Service: 'MyService', Severity: 'error' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('MyService')" },
+        { type: 'sql', condition: "SeverityText IN ('error')" },
+      ]);
+    }
+  });
+
+  it('escapes single quotes in rendered filter values', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{ServiceName}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { ServiceName: "O'Malley" },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+    }
+  });
+
+  it('escapes backslashes in rendered filter values', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'FilePath',
+          template: '{{FilePath}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { FilePath: 'C:\\path\\to\\file' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+      ]);
+    }
+  });
+
+  it('URL-encodes rendered filter values', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: "SpanAttributes['url']",
+          template: '{{url}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: { url: '/users%2F42' },
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(
+        JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+        },
+      ]);
+    }
+  });
+
+  it('errors when a filter template references a missing column', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+      filters: [
+        {
+          kind: 'expressionTemplate',
+          expression: 'ServiceName',
+          template: '{{MissingColumn}}',
+        },
+      ],
+    };
+    const result = renderOnClickDashboard({
+      onClick,
+      row: {},
+      dashboardIds,
+      dashboardIdsByName,
+      dateRange,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Row has no column 'MissingColumn'");
   });
 });
 

@@ -9,7 +9,12 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
-import { Metadata, SkipIndexMetadata, TableConnection } from '@/core/metadata';
+import {
+  Metadata,
+  parseKeyPath,
+  SkipIndexMetadata,
+  TableConnection,
+} from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
@@ -41,18 +46,9 @@ export function parse(query: string): lucene.AST {
 }
 
 function buildMapContains(mapField: string) {
-  const splitMapKey = (
-    field: string,
-  ): { map: string; key: string } | undefined => {
-    const bracketIndex = field.indexOf("['");
-    if (bracketIndex === -1) return undefined;
-    const map = field.slice(0, bracketIndex);
-    const key = field.slice(bracketIndex + 2, -2);
-    return { map, key };
-  };
-  const val = splitMapKey(mapField);
-  if (!val) return undefined;
-  return SqlString.format('mapContains(??, ?)', [val.map, val.key]);
+  const path = parseKeyPath(mapField);
+  if (path.length < 2) return undefined;
+  return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
 }
 
 const IMPLICIT_FIELD = '<implicit>';
