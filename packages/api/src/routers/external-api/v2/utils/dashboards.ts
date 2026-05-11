@@ -95,7 +95,6 @@ const DEFAULT_SELECT_ITEM: ExternalDashboardSelectItem = {
 const convertToExternalHeatmapSelectItem = (
   item: Exclude<BuilderSavedChartConfig['select'][number], string>,
 ): ExternalDashboardHeatmapSelectItem => ({
-  aggFn: 'heatmap',
   valueExpression: item.valueExpression,
   // Use `!== undefined` (not truthy) to match the deserializer in
   // convertToInternalTileConfig so empty-string round-trips do not
@@ -103,7 +102,6 @@ const convertToExternalHeatmapSelectItem = (
   ...(item.countExpression !== undefined
     ? { countExpression: item.countExpression }
     : {}),
-  ...(item.alias !== undefined ? { alias: item.alias } : {}),
   ...(item.heatmapScaleType !== undefined
     ? { heatmapScaleType: item.heatmapScaleType }
     : {}),
@@ -313,7 +311,6 @@ const convertToExternalTileChartConfig = (
           'Heatmap tile is missing select[0].valueExpression; emitting placeholder so callers do not silently downgrade to line',
         );
         const placeholderItem: ExternalDashboardHeatmapSelectItem = {
-          aggFn: 'heatmap',
           valueExpression: '',
         };
         return {
@@ -565,7 +562,6 @@ export function convertToInternalTileConfig(
               ...(item.countExpression !== undefined
                 ? { countExpression: item.countExpression }
                 : {}),
-              ...(item.alias !== undefined ? { alias: item.alias } : {}),
               ...(item.heatmapScaleType !== undefined
                 ? { heatmapScaleType: item.heatmapScaleType }
                 : {}),

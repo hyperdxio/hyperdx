@@ -2310,10 +2310,8 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId: traceSource._id.toString(),
           select: [
             {
-              aggFn: 'heatmap',
               valueExpression: 'Duration',
               countExpression: 'count()',
-              alias: 'Duration Heatmap',
               heatmapScaleType: 'log',
             },
           ],
@@ -2375,7 +2373,7 @@ describe('External API v2 Dashboards - new format', () => {
         config: {
           displayType: 'heatmap',
           sourceId: () => traceSource._id.toString(),
-          select: [{ aggFn: 'heatmap', valueExpression: '' }],
+          select: [{ valueExpression: '' }],
         },
       },
       {
@@ -2384,8 +2382,8 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'heatmap',
           sourceId: () => traceSource._id.toString(),
           select: [
-            { aggFn: 'heatmap', valueExpression: 'Duration' },
-            { aggFn: 'heatmap', valueExpression: 'OtherValue' },
+            { valueExpression: 'Duration' },
+            { valueExpression: 'OtherValue' },
           ],
         },
       },
@@ -2431,7 +2429,6 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId: metricSource._id.toString(),
           select: [
             {
-              aggFn: 'heatmap',
               valueExpression: 'Duration',
             },
           ],
@@ -2452,12 +2449,11 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     it('round-trips a heatmap tile with only required fields', async () => {
-      // Covers the minimal payload path: countExpression, alias,
-      // heatmapScaleType, where, whereLanguage, and numberFormat are all
-      // omitted on the request. Guards against a regression where the
-      // deserializer's `!== undefined` checks (v2/utils/dashboards.ts)
-      // drop optional fields silently or coerce defaults that don't
-      // survive the read-back.
+      // Covers the minimal payload path: countExpression, heatmapScaleType,
+      // where, whereLanguage, and numberFormat are all omitted on the
+      // request. Guards against a regression where the deserializer's
+      // `!== undefined` checks (v2/utils/dashboards.ts) drop optional fields
+      // silently or coerce defaults that don't survive the read-back.
       const heatmapMinimalRequest = {
         name: 'Minimal Heatmap',
         x: 0,
@@ -2469,7 +2465,6 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId: traceSource._id.toString(),
           select: [
             {
-              aggFn: 'heatmap',
               valueExpression: 'Duration',
             },
           ],
@@ -2490,7 +2485,6 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId: traceSource._id.toString(),
           select: [
             {
-              aggFn: 'heatmap',
               valueExpression: 'Duration',
             },
           ],
@@ -3388,10 +3382,8 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId: traceSource._id.toString(),
           select: [
             {
-              aggFn: 'heatmap',
               valueExpression: 'Duration',
               countExpression: 'count()',
-              alias: 'Duration Heatmap',
               heatmapScaleType: 'linear',
             },
           ],
@@ -3870,7 +3862,6 @@ describe('External API v2 Dashboards - new format', () => {
                 sourceId: traceSource._id.toString(),
                 select: [
                   {
-                    aggFn: 'heatmap',
                     valueExpression: 'Duration',
                   },
                 ],
@@ -3935,7 +3926,6 @@ describe('External API v2 Dashboards - new format', () => {
                 sourceId: traceSource._id.toString(),
                 select: [
                   {
-                    aggFn: 'heatmap',
                     valueExpression: 'Duration',
                   },
                 ],

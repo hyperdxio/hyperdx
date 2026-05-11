@@ -571,7 +571,7 @@ Examples:
   { aggFn: "quantile", valueExpression: "Duration", level: 0.95 }
   { aggFn: "count_distinct", valueExpression: "ResourceAttributes['service.name']" }
   { aggFn: "sum", valueExpression: "Duration", where: "StatusCode:STATUS_CODE_ERROR" }
-  { aggFn: "heatmap", valueExpression: "Duration" }  // heatmap tile only
+  { valueExpression: "Duration" }  // heatmap tile only (no aggFn; chart-level displayType is the discriminator)
 
 == COLUMN NAMING ==
 
@@ -681,9 +681,11 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   line    — 1-20 select items. Optional groupBy splits into series.
   stacked_bar — 1-20 select items. Optional groupBy splits into stacks.
   table   — 1-20 select items. Optional groupBy defines row groups.
-  heatmap — Exactly 1 select item with aggFn "heatmap" and a non-empty
-            valueExpression. Trace sources only (no Log/Metric/Session).
-            No groupBy. Optional where filter applied before bucketing.
+  heatmap — Exactly 1 select item with a non-empty valueExpression. No
+            aggFn or alias on the select item (the chart-level
+            displayType: "heatmap" is the discriminator). Trace sources
+            only (no Log/Metric/Session). No groupBy. Optional where
+            filter applied before bucketing.
   search  — No select items (select is a column list string). where is the filter.
   markdown — No select items. Set markdown field with content.
 
@@ -739,8 +741,8 @@ to plot the first as a ratio of the second. Useful for error rates:
    is "trace" from hyperdx_list_sources.
 
 10. Heatmap tile with empty or missing valueExpression
-    Wrong:   select: [{ aggFn: "heatmap" }]
-    Wrong:   select: [{ aggFn: "heatmap", valueExpression: "" }]
-    Correct: select: [{ aggFn: "heatmap", valueExpression: "Duration" }]
+    Wrong:   select: [{}]
+    Wrong:   select: [{ valueExpression: "" }]
+    Correct: select: [{ valueExpression: "Duration" }]
     Heatmap requires a non-empty numeric column or expression to bucket.`;
 }

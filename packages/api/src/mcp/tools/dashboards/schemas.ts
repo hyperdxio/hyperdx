@@ -241,13 +241,14 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-// Heatmap tiles use a dedicated select-item shape: aggFn is the literal
-// 'heatmap' (not part of AggregateFunctionSchema) and valueExpression is
-// required and non-empty. Mirrors externalDashboardHeatmapSelectItemSchema
-// in `packages/api/src/utils/zod.ts` so the MCP and REST surfaces stay in
+// Heatmap tiles use a dedicated select-item shape: heatmap aggregation is
+// fixed internally, the chart-level discriminator is
+// `displayType: 'heatmap'`, and `HeatmapSeriesEditor` does not render an
+// alias input. valueExpression is required and non-empty. Mirrors
+// externalDashboardHeatmapSelectItemSchema in
+// `packages/api/src/utils/zod.ts` so the MCP and REST surfaces stay in
 // lockstep.
 const mcpHeatmapSelectItemSchema = z.object({
-  aggFn: z.literal('heatmap').describe('Must be "heatmap" for heatmap tiles'),
   valueExpression: z
     .string()
     .min(1)
@@ -261,7 +262,6 @@ const mcpHeatmapSelectItemSchema = z.object({
     .describe(
       'Custom count expression (e.g. "count()"). Optional; defaults are applied by the renderer.',
     ),
-  alias: z.string().optional().describe('Display label for this series'),
   heatmapScaleType: z
     .enum(['log', 'linear'])
     .optional()
@@ -393,6 +393,6 @@ export const mcpTilesParam = z
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "time", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
-      '"select": [{ "aggFn": "heatmap", "valueExpression": "Duration" }], ' +
+      '"select": [{ "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "time", "factor": 0.000000001 } } }',
   );

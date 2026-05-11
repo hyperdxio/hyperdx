@@ -441,7 +441,6 @@ describe('MCP Dashboard Tools', () => {
               sourceId,
               select: [
                 {
-                  aggFn: 'heatmap',
                   valueExpression: 'Duration',
                 },
               ],
@@ -455,7 +454,6 @@ describe('MCP Dashboard Tools', () => {
       expect(output.tiles).toHaveLength(1);
       expect(output.tiles[0].config.displayType).toBe('heatmap');
       expect(output.tiles[0].config.select[0]).toMatchObject({
-        aggFn: 'heatmap',
         valueExpression: 'Duration',
       });
     });
@@ -470,7 +468,7 @@ describe('MCP Dashboard Tools', () => {
             config: {
               displayType: 'heatmap',
               sourceId,
-              select: [{ aggFn: 'heatmap', valueExpression: '' }],
+              select: [{ valueExpression: '' }],
             },
           },
         ],
@@ -504,7 +502,7 @@ describe('MCP Dashboard Tools', () => {
             config: {
               displayType: 'heatmap',
               sourceId: logSource._id.toString(),
-              select: [{ aggFn: 'heatmap', valueExpression: 'Duration' }],
+              select: [{ valueExpression: 'Duration' }],
             },
           },
         ],

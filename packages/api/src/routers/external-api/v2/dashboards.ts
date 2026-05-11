@@ -663,20 +663,18 @@ function getSourceConnectionMismatches(
  *     HeatmapSelectItem:
  *       type: object
  *       required:
- *         - aggFn
  *         - valueExpression
  *       description: >
- *         Single select item for a heatmap tile. The aggFn must be the literal
- *         "heatmap"; the value being bucketed is provided in valueExpression
- *         and the count contributing to each bucket in countExpression. The
- *         heatmap-specific fields (countExpression, heatmapScaleType) are
- *         persisted on the select item, not the chart config.
+ *         Single select item for a heatmap tile. The value being bucketed is
+ *         provided in valueExpression and the count contributing to each
+ *         bucket in countExpression. The heatmap-specific fields
+ *         (countExpression, heatmapScaleType) are persisted on the select
+ *         item, not the chart config. The chart-level discriminator is the
+ *         HeatmapChartConfig's `displayType: "heatmap"`; no aggregation
+ *         function or alias is exposed on this select item because the
+ *         heatmap aggregation function is fixed internally and the
+ *         HeatmapSeriesEditor does not render an alias input.
  *       properties:
- *         aggFn:
- *           type: string
- *           enum: [heatmap]
- *           description: Aggregation marker. Must be "heatmap" for heatmap tiles.
- *           example: "heatmap"
  *         valueExpression:
  *           type: string
  *           minLength: 1
@@ -690,11 +688,6 @@ function getSourceConnectionMismatches(
  *             SQL expression for the count contributing to each bucket. Defaults
  *             to "count()" in the editor when omitted.
  *           example: "count()"
- *         alias:
- *           type: string
- *           maxLength: 10000
- *           description: Display alias for the select item.
- *           example: "Request Duration"
  *         heatmapScaleType:
  *           type: string
  *           enum: [log, linear]
