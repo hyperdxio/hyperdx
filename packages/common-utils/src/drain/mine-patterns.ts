@@ -6,6 +6,16 @@ import {
 import { TemplateMinerConfig } from './config';
 import { TemplateMiner } from './template-miner';
 
+// ─── Body normalization ──────────────────────────────────────────────────────
+
+/** Collapse newlines and runs of whitespace into single spaces. */
+export function flattenBody(s: string): string {
+  return s
+    .replace(/\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface TrendBucket {
@@ -47,8 +57,8 @@ export interface MinePatternOptions<TRow extends Record<string, unknown>> {
   /** Max number of sample rows to keep per pattern. Default: 5. */
   maxSamples?: number;
   /**
-   * Extract the body text from a row. The returned string is what gets
-   * fed into the Drain algorithm.
+   * Extract the body text from a row. The returned string is normalized
+   * (newlines collapsed, whitespace trimmed) before being fed to Drain.
    */
   getBody: (row: TRow) => string;
   /**
@@ -109,7 +119,7 @@ export function minePatterns<TRow extends Record<string, unknown>>(
     tsMs: number;
   }> = [];
   for (const row of rows) {
-    const bodyText = getBody(row);
+    const bodyText = flattenBody(getBody(row));
     const result = miner.addLogMessage(bodyText);
     const tsMs = getTimestamp(row) ?? startDate.getTime();
     clustered.push({ clusterId: result.clusterId, row, tsMs });
@@ -137,7 +147,7 @@ export function minePatterns<TRow extends Record<string, unknown>>(
         (existing.bucketCounts.get(bucket) ?? 0) + 1,
       );
     } else {
-      const bodyText = getBody(row);
+      const bodyText = flattenBody(getBody(row));
       const match = miner.match(bodyText, 'fallback');
       const bucketCounts = new Map<number, number>();
       bucketCounts.set(bucket, 1);

@@ -10,7 +10,7 @@ export type {
   PatternGroup,
   TrendBucket,
 } from './mine-patterns';
-export { minePatterns } from './mine-patterns';
+export { flattenBody, minePatterns } from './mine-patterns';
 export { Node } from './node';
 export type { AddLogMessageResult, ExtractedParameter } from './template-miner';
 export { TemplateMiner } from './template-miner';

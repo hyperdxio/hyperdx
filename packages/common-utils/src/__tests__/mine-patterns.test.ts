@@ -1,4 +1,4 @@
-import { minePatterns } from '../drain/mine-patterns';
+import { flattenBody, minePatterns } from '../drain/mine-patterns';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -345,6 +345,48 @@ describe('minePatterns', () => {
       // TypeScript should infer samples as MyRow[]
       const sample = result.patterns[0].samples[0];
       expect(sample.extra).toBe(42);
+    });
+  });
+
+  describe('body normalization (flattenBody)', () => {
+    it('should collapse newlines into spaces', () => {
+      expect(flattenBody('line1\nline2\nline3')).toBe('line1 line2 line3');
+    });
+
+    it('should collapse runs of whitespace into single spaces', () => {
+      expect(flattenBody('hello    world')).toBe('hello world');
+    });
+
+    it('should trim leading and trailing whitespace', () => {
+      expect(flattenBody('  hello  ')).toBe('hello');
+    });
+
+    it('should handle combined newlines and whitespace', () => {
+      expect(flattenBody('  line1\n  line2\n\n  line3  ')).toBe(
+        'line1 line2 line3',
+      );
+    });
+
+    it('should return empty string for whitespace-only input', () => {
+      expect(flattenBody('   \n\n  ')).toBe('');
+    });
+
+    it('should group multiline bodies into the same pattern', () => {
+      const rows = [
+        makeRow('error occurred\n  at line 1\n  at line 2'),
+        makeRow('error occurred\n  at line 5\n  at line 10'),
+      ];
+
+      const result = minePatterns(rows, {
+        totalCount: 2,
+        startDate: baseDate,
+        endDate,
+        ...defaultCallbacks,
+      });
+
+      // Both multiline messages should cluster together
+      expect(result.patterns).toHaveLength(1);
+      expect(result.patterns[0].sampleCount).toBe(2);
     });
   });
 });

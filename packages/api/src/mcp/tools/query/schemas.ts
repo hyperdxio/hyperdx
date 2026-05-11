@@ -300,5 +300,15 @@ export function validateQueryInput(
     }
   }
 
+  // Reject event_patterns-only fields on other display types
+  if (displayType !== 'event_patterns') {
+    if (data.sampleSize != null && data.sampleSize !== 10_000) {
+      return `sampleSize is only valid when displayType is "event_patterns"`;
+    }
+    if (data.bodyExpression != null) {
+      return `bodyExpression is only valid when displayType is "event_patterns"`;
+    }
+  }
+
   return null;
 }

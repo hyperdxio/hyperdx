@@ -14,16 +14,18 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 
 // ─── Source helpers ──────────────────────────────────────────────────────────
 
-/**
- * Resolve the body column expression for pattern mining from a source.
- * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
- */
-function resolveBodyExpression(source: {
+interface SourceBodyFields {
   kind: string;
   spanNameExpression?: string;
   bodyExpression?: string;
   implicitColumnExpression?: string;
-}): string | undefined {
+}
+
+/**
+ * Resolve the body column expression for pattern mining from a source.
+ * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
+ */
+function resolveBodyExpression(source: SourceBodyFields): string | undefined {
   let expression: string | undefined;
   if (source.kind === SourceKind.Trace) {
     expression = source.spanNameExpression;
@@ -80,11 +82,7 @@ export async function runEventPatterns(
   }
 
   // ── Determine body column ──
-  const bodyColumn =
-    options?.bodyExpression ??
-    resolveBodyExpression(
-      source as Parameters<typeof resolveBodyExpression>[0],
-    );
+  const bodyColumn = options?.bodyExpression ?? resolveBodyExpression(source);
   if (!bodyColumn) {
     return {
       isError: true as const,

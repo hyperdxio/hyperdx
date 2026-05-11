@@ -19,7 +19,6 @@ import {
 import { getEventBody } from '@/shared/source';
 
 import type { EventRow } from './types';
-import { flatten } from './utils';
 
 // ---- Constants -----------------------------------------------------
 
@@ -170,7 +169,7 @@ export function usePatternData({
         maxSamples: sampleRows.length,
         getBody: row => {
           const body = row[effectiveBodyColumn];
-          return body != null ? flatten(String(body)) : '';
+          return body != null ? String(body) : '';
         },
         getTimestamp: row => {
           const tsRaw = row[tsColumn];
