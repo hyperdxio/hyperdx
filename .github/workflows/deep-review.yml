@@ -85,17 +85,64 @@ jobs:
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
 
-      # Make the PR base SHA reachable in the local git object graph so the
-      # skill's `base:<sha>` argument works for `git diff`. For fork PRs the
-      # base lives in a different repo than `origin`.
-      - name: Fetch PR base SHA
+      # Make the PR base SHA reachable AND fetch enough history that
+      # `git merge-base HEAD <base_sha>` succeeds. The ce-code-review skill
+      # has a silent fallback (BASE=$BASE_ARG) when merge-base returns
+      # nothing, which produces a two-dot-equivalent diff that includes
+      # commits that landed on the base branch after the PR branched. A
+      # shallow base fetch was the root cause of that fallback firing in
+      # practice -- a `--depth=50` fetch starves merge-base on the base
+      # side whenever the PR branch is more than ~50 commits behind main.
+      # Fetch the full base ref instead, then assert the merge-base exists.
+      # For fork PRs the base lives in a different repo than `origin`.
+      - name: Fetch PR base and confirm merge-base
         run: |
           set -e
           BASE_REPO_URL="https://github.com/${{ steps.pr.outputs.base_repo }}.git"
           BASE_SHA="${{ steps.pr.outputs.base_sha }}"
+          BASE_REF="${{ steps.pr.outputs.base_ref }}"
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            git fetch --no-tags --depth=50 "$BASE_REPO_URL" "$BASE_SHA" || \
-              git fetch --no-tags --depth=50 "$BASE_REPO_URL" "${{ steps.pr.outputs.base_ref }}"
+            git fetch --no-tags "$BASE_REPO_URL" "$BASE_REF" || \
+              git fetch --no-tags "$BASE_REPO_URL" "$BASE_SHA"
+          fi
+          MB=$(git merge-base HEAD "$BASE_SHA" 2>/dev/null || true)
+          if [ -z "$MB" ]; then
+            # Deepen once before giving up. Covers the rare case where the
+            # initial fetch came in shallow (server-side limits, partial
+            # refs).
+            git fetch --no-tags --deepen=1000 "$BASE_REPO_URL" "$BASE_REF" || true
+            MB=$(git merge-base HEAD "$BASE_SHA" 2>/dev/null || true)
+          fi
+          if [ -z "$MB" ]; then
+            echo "::error::No merge-base between PR head and $BASE_SHA after deep fetch. Refusing to review -- the diff scope would silently fall back to base-tip and post findings about files outside the PR."
+            exit 1
+          fi
+          echo "Merge-base: $MB"
+
+      # Defense in depth: even with a correct merge-base, confirm the
+      # locally-computed file list matches the PR's actual file list from
+      # the GitHub API. If they diverge we are about to review the wrong
+      # diff -- fail loud instead of posting findings about files outside
+      # the PR.
+      - name: Verify diff file list matches PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          MB=$(git merge-base HEAD "${{ steps.pr.outputs.base_sha }}")
+          LOCAL=$(git diff --name-only "$MB" | sort -u)
+          REMOTE=$(gh pr view "${{ steps.pr.outputs.number }}" \
+            --repo "${{ github.repository }}" \
+            --json files --jq '.files[].path' | sort -u)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "::error::Local diff file list does not match the PR's file list. The review base is likely wrong."
+            echo "--- local (from merge-base $MB) ---"
+            echo "$LOCAL"
+            echo "--- remote (from gh pr view) ---"
+            echo "$REMOTE"
+            echo "--- diff ---"
+            diff <(echo "$LOCAL") <(echo "$REMOTE") || true
+            exit 1
           fi
 
       # Pre-clone the plugin marketplace at a pinned tag and pass it to the
