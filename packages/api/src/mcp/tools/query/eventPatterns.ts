@@ -82,21 +82,23 @@ export async function runEventPatterns(
   }
 
   // ── Determine body column ──
-  // Sanitize caller-supplied bodyExpression through the same
-  // splitAndTrimWithBracket check used for source-derived values, so a
-  // malicious value like "Body, sleepEachRow(60) AS pad" is rejected.
+  // Sanitize caller-supplied bodyExpression: must be a single column reference
+  // matching the documented format (e.g. "Body", "SpanAttributes['http.url']").
+  // The allowlist rejects injection attempts like "Body) OR (1=1".
+  const BODY_EXPR_PATTERN = /^[A-Za-z_][\w.]*(\['.+?'\])?$/;
   let bodyColumn: string | undefined;
   if (options?.bodyExpression) {
     const parts = splitAndTrimWithBracket(options.bodyExpression);
-    if (parts.length !== 1) {
+    if (parts.length !== 1 || !BODY_EXPR_PATTERN.test(parts[0])) {
       return {
         isError: true as const,
         content: [
           {
             type: 'text' as const,
             text:
-              'bodyExpression must be a single column expression. ' +
-              'Multiple expressions or sub-queries are not allowed.',
+              'bodyExpression must be a single column expression ' +
+              '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
+              'Multiple expressions, function calls, or sub-queries are not allowed.',
           },
         ],
       };
@@ -239,20 +241,35 @@ export async function runEventPatterns(
   }
 
   // ── Mine patterns using the shared Drain pipeline ──
-  const { patterns: rawPatterns, sampleMultiplier } = minePatterns(sampleRows, {
-    totalCount,
-    startDate,
-    endDate,
-    maxSamples: 5,
-    getBody: row => {
-      const raw = row.__hdx_pattern_body;
-      return raw != null ? String(raw) : '';
-    },
-    getTimestamp: row => {
-      const tsRaw = row.__hdx_pattern_ts;
-      return tsRaw != null ? new Date(String(tsRaw)).getTime() : null;
-    },
-  });
+  let rawPatterns: ReturnType<typeof minePatterns>['patterns'];
+  let sampleMultiplier: number;
+  try {
+    ({ patterns: rawPatterns, sampleMultiplier } = minePatterns(sampleRows, {
+      totalCount,
+      startDate,
+      endDate,
+      maxSamples: 5,
+      getBody: row => {
+        const raw = row.__hdx_pattern_body;
+        return raw != null ? String(raw) : '';
+      },
+      getTimestamp: row => {
+        const tsRaw = row.__hdx_pattern_ts;
+        return tsRaw != null ? new Date(String(tsRaw)).getTime() : null;
+      },
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Pattern mining failed: ${message}`,
+        },
+      ],
+    };
+  }
 
   // ── Format response ──
   // Convert trend timestamps to ISO strings, extract sample body texts,
@@ -261,9 +278,11 @@ export async function runEventPatterns(
   const patterns = rawPatterns.map(p => {
     // Build a Lucene-compatible where clause from the pattern's literal
     // (non-<*>) tokens. This lets agents chain: pattern → search.
+    // Escape Lucene special chars so tokens like `"hello"` don't break the query.
     const literalTokens = p.pattern
       .split(/\s+/)
-      .filter(t => t !== '<*>' && t.length > 0);
+      .filter(t => t !== '<*>' && t.length > 0)
+      .map(t => t.replace(/[\\+"]/g, '\\$&'));
     const whereSnippet =
       literalTokens.length > 0
         ? `${bodyColumn}:"${literalTokens.join(' ')}"`
