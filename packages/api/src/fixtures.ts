@@ -229,8 +229,9 @@ export const getLoggedInAgent = async (server: MockServer) => {
     throw Error('team or user not found');
   }
 
-  // login app
-  await agent.post('/login/password').send(MOCK_USER).expect(302);
+  // login app — 303 See Other so the browser follows the redirect with GET
+  // (see redirectToDashboard in middleware/auth.ts).
+  await agent.post('/login/password').send(MOCK_USER).expect(303);
 
   return {
     agent,

@@ -367,8 +367,10 @@ export const MemoChart = memo(function MemoChart({
 
   const [isHovered, setIsHovered] = useState(false);
 
-  const ChartComponent =
-    displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
+  const ChartComponent = useMemo(
+    () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
+    [displayType],
+  );
 
   const lines = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
@@ -473,7 +475,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const tickFormatter = useCallback(
-    (value: number, index: number) => {
+    (value: number) => {
       return numberFormat
         ? formatNumber(value, {
             ...numberFormat,
@@ -540,7 +542,7 @@ export const MemoChart = memo(function MemoChart({
         syncId="hdx"
         syncMethod="value"
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={e => {
+        onMouseLeave={() => {
           setIsHovered(false);
 
           setHighlightStart(undefined);

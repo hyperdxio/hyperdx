@@ -2,7 +2,7 @@
  * DashboardsListPage - Page object for the dashboards listing page
  * Encapsulates interactions with dashboard browsing, search, filtering, and management
  */
-import { expect, Locator, Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 
 export class DashboardsListPage {
   readonly page: Page;

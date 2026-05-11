@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
@@ -160,7 +161,7 @@ export function ConnectionForm({
     };
 
     if (isNew) {
-      const { id, ...connection } = normalizedData;
+      const connection = omit(normalizedData, ['id']);
       createConnection.mutate(
         { connection },
         {

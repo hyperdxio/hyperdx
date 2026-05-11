@@ -37,7 +37,7 @@ export function getPropertyStatistics(data: Record<string, any>[]) {
   const commonProperties = new Set<string>();
 
   flattened.forEach(item => {
-    Object.entries(item).forEach(([key, value]) => {
+    Object.entries(item).forEach(([key]) => {
       const count = propertyOccurences.get(key) || 0;
       propertyOccurences.set(key, count + 1);
 

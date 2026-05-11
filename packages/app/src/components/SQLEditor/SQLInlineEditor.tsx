@@ -62,6 +62,7 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  dateRange?: [Date, Date];
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -86,12 +87,15 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  dateRange,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
     ? [tableConnection]
     : tableConnections;
-  const { data: fields } = useMultipleAllFields(_tableConnections ?? []);
+  const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
+    dateRange,
+  });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
@@ -165,7 +169,7 @@ export default function SQLInlineEditor({
       });
 
       const queryHistoryList = autocompletion({
-        compareCompletions: (a: any, b: any) => {
+        compareCompletions: () => {
           return 0;
         }, // don't sort the history search
         override: [createHistoryList],

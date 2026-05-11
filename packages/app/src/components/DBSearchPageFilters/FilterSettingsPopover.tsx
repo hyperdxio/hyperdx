@@ -88,7 +88,7 @@ export function FilterSettingsPanel({
           }
         />
         <Checkbox
-          label="Show Applied Filter Counts"
+          label="Show Filter Counts"
           labelPosition="left"
           size="xs"
           styles={{ labelWrapper: { width: '100%' } }}

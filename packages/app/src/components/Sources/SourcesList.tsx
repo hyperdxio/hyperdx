@@ -3,6 +3,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -156,10 +157,23 @@ export function SourcesList({
         {sources?.map((s, index) => (
           <React.Fragment key={s.id}>
             <Flex justify="space-between" align="center">
-              <div>
-                <Text size={textSize} fw={500}>
-                  {s.name}
-                </Text>
+              <div
+                style={{
+                  flex: 1,
+                  opacity: s.disabled ? 0.5 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+              >
+                <Group gap="xs" align="center">
+                  <Text size={textSize} fw={500}>
+                    {s.name}
+                  </Text>
+                  {s.disabled && (
+                    <Badge size="xs" variant="light" color="gray">
+                      Disabled
+                    </Badge>
+                  )}
+                </Group>
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
                     {capitalizeFirstLetter(s.kind)}

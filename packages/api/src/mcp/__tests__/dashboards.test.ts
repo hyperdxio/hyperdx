@@ -351,6 +351,8 @@ describe('MCP Dashboard Tools', () => {
               displayType: 'table',
               sourceId,
               select: [{ aggFn: 'count' }],
+              groupBy: 'SpanName',
+              groupByColumnsOnLeft: true,
             },
           },
           {
@@ -392,6 +394,12 @@ describe('MCP Dashboard Tools', () => {
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(5);
+
+      const tableTile = output.tiles.find(
+        (t: { name: string }) => t.name === 'Table',
+      );
+      expect(tableTile).toBeDefined();
+      expect(tableTile.config.groupByColumnsOnLeft).toBe(true);
     });
 
     it('should create a dashboard with a raw SQL tile', async () => {

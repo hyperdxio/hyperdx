@@ -180,7 +180,7 @@ const Line = React.memo(
           const parsed = JSON.parse(value);
           return !!parsed;
         }
-      } catch (e) {
+      } catch {
         return false;
       }
     }, [value]);
@@ -210,7 +210,7 @@ const Line = React.memo(
       if (isStringValueValidJson) {
         try {
           return JSON.parse(value);
-        } catch (e) {
+        } catch {
           return null;
         }
       }

@@ -1,5 +1,8 @@
 import { defineConfig } from 'tsup';
 import module from 'node:module';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
 
 export default defineConfig({
   splitting: false,
@@ -17,6 +20,9 @@ export default defineConfig({
     ...module.builtinModules.map(m => `node:${m}`),
     'react-devtools-core',
   ],
+  env: {
+    npm_package_version: pkg.version,
+  },
   // Inject createRequire shim so CJS deps (signal-exit, etc.) can use
   // require() for Node.js built-ins inside the ESM bundle.
   banner: {

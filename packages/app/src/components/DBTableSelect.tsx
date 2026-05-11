@@ -83,11 +83,7 @@ export function DBTableSelectControlled({
   size?: string;
   connectionId: string | undefined;
 } & UseControllerProps<any>) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+  const { field } = useController(props);
 
   return (
     <DBTableSelect

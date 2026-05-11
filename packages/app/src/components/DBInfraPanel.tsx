@@ -212,11 +212,9 @@ const InfraSubpanelGroup = ({
 
 export default ({
   rowData,
-  rowId,
   source,
 }: {
   rowData?: Record<string, any>;
-  rowId: string | undefined | null;
   source: TSource;
 }) => {
   const [editModalOpened, { open: openEditModal, close: closeEditModal }] =

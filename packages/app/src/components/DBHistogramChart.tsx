@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -18,7 +19,6 @@ import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { omit } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
@@ -191,7 +191,6 @@ const HDXHistogramChartTooltip = (props: any) => {
 
 export default function DBHistogramChart({
   config,
-  onSettled,
   queryKeyPrefix,
   enabled,
   title,
@@ -200,7 +199,6 @@ export default function DBHistogramChart({
   showMVOptimizationIndicator = true,
 }: {
   config: BuilderChartConfigWithDateRange;
-  onSettled?: () => void;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;

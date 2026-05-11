@@ -85,6 +85,10 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
       ref: 'Connection',
     },
     name: String,
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
     from: {
       databaseName: String,
       tableName: String,
@@ -133,7 +137,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
-    uniqueRowIdExpression: String,
+    /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,
@@ -143,6 +147,14 @@ export const LogSource = Source.discriminator<ILogSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),
@@ -183,6 +195,14 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),

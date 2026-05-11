@@ -1,5 +1,4 @@
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 

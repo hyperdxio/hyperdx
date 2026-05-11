@@ -6,8 +6,7 @@ import AuthLoadingBlocker from '@/AuthLoadingBlocker';
 import { IS_LOCAL_MODE } from '@/config';
 
 export default function LandingPage() {
-  const { data: installation, isLoading: installationIsLoading } =
-    api.useInstallation();
+  const { data: installation } = api.useInstallation();
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
   const router = useRouter();
 

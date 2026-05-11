@@ -210,7 +210,7 @@ export function RowDataPanel({
   aliasWith?: WithClause[];
   'data-testid'?: string;
 }) {
-  const { data, isLoading, isError } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith });
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };

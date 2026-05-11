@@ -1,5 +1,5 @@
-import { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { UseQueryResult } from '@tanstack/react-query';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useGetValuesDistribution } from '@/hooks/useMetadata';

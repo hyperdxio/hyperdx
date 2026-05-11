@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Meta } from '@storybook/nextjs';
 
 import { TimePicker } from '@/components/TimePicker';
 
@@ -8,8 +8,6 @@ const meta = {
 } satisfies Meta<typeof TimePicker>;
 
 export default meta;
-
-type Story = StoryObj<typeof meta>;
 
 export const Default = () => {
   const [value, setValue] = React.useState('Past 15m');

@@ -165,7 +165,7 @@ export class FilterComponent {
         await searchInput.waitFor({ state: 'visible', timeout: 1000 });
         // Search input is visible, return this filter name
         return filterName;
-      } catch (e) {
+      } catch {
         // Search input not visible, collapse and try next
         await filter.click();
       }

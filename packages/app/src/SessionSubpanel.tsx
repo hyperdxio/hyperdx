@@ -2,14 +2,12 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
   pickSampleWeightExpressionProps,
-  SearchCondition,
   SearchConditionLanguage,
   TSessionSource,
   TTraceSource,
@@ -236,35 +234,22 @@ export default function SessionSubpanel({
   traceSource,
   sessionSource,
   session,
-  onPropertyAddClick,
-  generateChartUrl,
-  generateSearchUrl,
   setDrawerOpen,
   rumSessionId,
   start,
   end,
   initialTs,
-  where,
   whereLanguage = 'lucene',
   onLanguageChange,
 }: {
   traceSource: TTraceSource;
   sessionSource: TSessionSource;
   session: { serviceName: string };
-  generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
-  generateChartUrl?: (config: {
-    aggFn: string;
-    field: string;
-    groupBy: string[];
-  }) => string;
-
-  onPropertyAddClick?: (name: string, value: string) => void;
   setDrawerOpen: (open: boolean) => void;
   rumSessionId: string;
   start: Date;
   end: Date;
   initialTs?: number;
-  where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
 }) {

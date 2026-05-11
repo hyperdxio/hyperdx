@@ -2,9 +2,7 @@
   "version": "0.1.0",
   "name": "Python Runtime Metrics",
   "description": "CPU utilization, memory usage, GC collections, and thread count for Python applications with the OTel Runtime Metrics instrumentation",
-  "tags": [
-    "OTel Runtime Metrics"
-  ],
+  "tags": ["OTel Runtime Metrics"],
   "tiles": [
     {
       "id": "b028c5",

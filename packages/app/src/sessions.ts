@@ -338,7 +338,7 @@ export function useRRWebEventStream(
   const [hasNextPage, setHasNextPage] = useState<boolean>(true);
 
   const lastAbortController = useRef<AbortController | null>(null);
-  const [fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
+  const [_fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });

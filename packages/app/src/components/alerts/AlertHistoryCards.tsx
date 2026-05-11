@@ -8,7 +8,6 @@ import {
   AlertState,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Code,
   Group,
   Modal,

@@ -1,6 +1,4 @@
-import { StacktraceFrame } from './types';
-
-export const useSourceMappedFrame = (frame: StacktraceFrame) => {
+export const useSourceMappedFrame = () => {
   return {
     isLoading: false,
     error: null,

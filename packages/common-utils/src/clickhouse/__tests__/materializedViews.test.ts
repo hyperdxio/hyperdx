@@ -287,6 +287,112 @@ describe('materializedViews', () => {
       expect(result.errors).toBeUndefined();
     });
 
+    it('should normalize a quantiles AggregateFunction to quantileMerge', async () => {
+      const quantilesMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantiles(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should normalize a quantilesTDigest AggregateFunction to quantileTDigestMerge', async () => {
+      const quantilesTDigestMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantilesTDigest(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesTDigestMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileTDigestMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
     it('should convert a histogram AggregateFunction select', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {

@@ -1,3 +1,4 @@
+import { sanitizeUrl } from '@braintree/sanitize-url';
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
@@ -9,6 +10,62 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
+
+/**
+ * Validates and sanitizes a URL path to prevent injection attacks.
+ * - Recursively decodes to catch double/triple encoding of ? and &
+ * - Rejects paths with encoded query string characters in pathname
+ * - Prevents protocol-based attacks (javascript:, data:, etc.)
+ * - Prevents host injection via protocol-relative URLs
+ *
+ * @param basePath - The path to validate (may include query string)
+ * @returns Sanitized path with pathname and query string
+ * @throws Error if path contains malicious patterns
+ */
+const validateAndSanitizePath = (basePath: string): string => {
+  // Extract pathname portion (before any literal ?) for encoding attack check
+  // Must be done BEFORE sanitizeUrl because it decodes percent-encoded chars
+  const firstQuestionMark = basePath.indexOf('?');
+  const rawPathname =
+    firstQuestionMark >= 0 ? basePath.slice(0, firstQuestionMark) : basePath;
+
+  // Recursively decode pathname to prevent double-encoding attacks
+  // (e.g., %253F -> %3F -> ?, %2526 -> %26 -> &)
+  let decodedPathname = rawPathname;
+  let prevDecoded = '';
+  const maxIterations = 10; // Prevent infinite loops
+  let iterations = 0;
+  while (decodedPathname !== prevDecoded && iterations < maxIterations) {
+    prevDecoded = decodedPathname;
+    try {
+      decodedPathname = decodeURIComponent(decodedPathname);
+    } catch {
+      throw new Error('Invalid pathname: malformed URL encoding');
+    }
+    iterations++;
+  }
+
+  // Validate fully-decoded pathname doesn't contain query string characters
+  if (decodedPathname.includes('?') || decodedPathname.includes('&')) {
+    throw new Error('Invalid pathname: contains query string characters');
+  }
+
+  // Sanitize URL to prevent protocol-based attacks (javascript:, data:, etc.)
+  const sanitizedPath = sanitizeUrl(basePath);
+  if (sanitizedPath === 'about:blank') {
+    throw new Error('Invalid pathname: potentially malicious URL');
+  }
+
+  // Use URL parsing to properly separate pathname from query params
+  const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+
+  // Prevent host injection via protocol-relative URLs (e.g., //evil.com)
+  if (parsedUrl.hostname !== 'localhost') {
+    throw new Error('Invalid pathname: host injection attempt');
+  }
+
+  return `${parsedUrl.pathname}${parsedUrl.search}`;
+};
 
 const router = express.Router();
 
@@ -102,7 +159,7 @@ const getConnection: RequestHandler =
       };
       next();
     } catch (e) {
-      console.error('Error fetching connection info:', e);
+      console.error('Error setting up proxy hdx connection', e);
       next(e);
     }
   };
@@ -116,8 +173,12 @@ const proxyMiddleware: RequestHandler =
       return _req.method === 'GET' || _req.method === 'POST';
     },
     pathRewrite: function (path, req) {
-      // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
-      const qparams = new URLSearchParams(req.query);
+      const sanitizedPath = validateAndSanitizePath(
+        path.replace(/^\/clickhouse-proxy/, ''),
+      );
+
+      const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+      const { searchParams, pathname } = parsedUrl;
 
       // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
       const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;
@@ -125,14 +186,13 @@ const proxyMiddleware: RequestHandler =
         const userEmail = req.user?.email;
         if (userEmail) {
           const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
-          qparams.set(userSettingKey, userEmail);
+          searchParams.set(userSettingKey, userEmail);
         } else {
           logger.debug('hyperdxSettingPrefix set, no session user found');
         }
       }
 
-      const newPath = req.path.replace('^/clickhouse-proxy', '');
-      return `/${newPath}?${qparams.toString()}`;
+      return `${pathname}?${searchParams.toString()}`;
     },
     router: _req => {
       if (!_req._hdx_connection?.host) {
@@ -141,7 +201,7 @@ const proxyMiddleware: RequestHandler =
       return _req._hdx_connection.host;
     },
     on: {
-      proxyReq: (proxyReq, _req) => {
+      proxyReq: (proxyReq, _req, res) => {
         // set user-agent to the hyperdx version identifier
         proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
 
@@ -156,9 +216,27 @@ const proxyMiddleware: RequestHandler =
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
 
-        if (_req.method === 'POST') {
+        if (_req.method !== 'POST') {
+          console.error(`Unsupported method ${_req.method}`);
+          return res.sendStatus(405);
+        }
+
+        let body = _req.body;
+        if (_req.headers['content-type'] === 'application/json') {
+          try {
+            body = JSON.stringify(body);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+
+        try {
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
-          proxyReq.write(_req.body);
+          proxyReq.write(body);
+        } catch (e) {
+          console.error(
+            `clickhouseProxy error writing body, body is type ${typeof body}`,
+          );
         }
       },
       proxyRes: (proxyRes, _req, res) => {

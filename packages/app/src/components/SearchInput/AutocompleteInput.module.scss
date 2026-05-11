@@ -12,6 +12,7 @@
 
   textarea {
     border: none !important;
+    word-break: break-all;
   }
 
   textarea::placeholder {

@@ -52,7 +52,7 @@ export default function InstallInstructionModal({
   show: boolean;
   onHide: () => void;
 }) {
-  const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const { data: team } = api.useTeam();
 
   return (
     <Modal

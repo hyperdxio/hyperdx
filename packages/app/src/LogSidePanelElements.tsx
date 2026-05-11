@@ -1,8 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { format } from 'date-fns';
 import { JSONTree } from 'react-json-tree';
 import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
 import {
@@ -124,7 +123,7 @@ const StacktraceRow = ({
 
   const frame = row.original;
 
-  const { isLoading, enrichedFrame } = useSourceMappedFrame(frame);
+  const { isLoading, enrichedFrame } = useSourceMappedFrame();
 
   const augmentedFrame = enrichedFrame ?? frame;
   const hasContext = !!augmentedFrame.context_line;
@@ -444,7 +443,7 @@ export const NetworkBody = ({
         const parsed = JSON.parse(body);
         return parsed;
       }
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [body]);

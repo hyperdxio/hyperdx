@@ -153,7 +153,7 @@ export default [
       '@typescript-eslint/no-unsafe-type-assertion': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',

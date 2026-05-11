@@ -64,7 +64,6 @@ type ChartSeriesEditorProps = {
 export function ChartSeriesEditor({
   control,
   databaseName,
-  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -247,7 +246,6 @@ export function ChartSeriesEditor({
           <div style={{ minWidth: 220 }}>
             <MetricNameSelect
               metricName={metricName}
-              dateRange={dateRange}
               metricType={metricType}
               setMetricName={value => {
                 setValue(`${namePrefix}metricName`, value);

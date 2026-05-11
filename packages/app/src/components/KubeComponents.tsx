@@ -126,7 +126,7 @@ const renderKubeEvent = (source: TLogSource) => (event: KubeEvent) => {
     )}&source=${source.id}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
       new Date(event.timestamp).getTime() + 1
     }`;
-  } catch (_) {
+  } catch {
     // ignore
   }
 

@@ -14,7 +14,7 @@ test.describe('Temporary Dashboard', { tag: ['@dashboard'] }, () => {
   test(
     'should navigate from listing page to temporary dashboard',
     { tag: '@full-stack' },
-    async ({ page }) => {
+    async () => {
       await dashboardsListPage.goto();
 
       await test.step('Click New Dashboard and select Temporary Dashboard', async () => {

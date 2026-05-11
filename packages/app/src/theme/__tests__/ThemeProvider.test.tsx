@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 
 import { DEFAULT_THEME, themes } from '../index';
 import {

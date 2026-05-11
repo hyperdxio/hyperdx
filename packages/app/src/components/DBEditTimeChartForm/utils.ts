@@ -90,6 +90,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'pie';
     case DisplayType.Number:
       return 'number';
+    case DisplayType.Heatmap:
+      return 'heatmap';
     default:
       return 'time';
   }
@@ -100,6 +102,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'time',
   'number',
   'pie',
+  'heatmap',
 ]);
 
 export function computeDbTimeChartConfig(
@@ -219,7 +222,11 @@ export function buildChartConfigForExplanations({
 
   // Apply the transformations that child components will apply,
   // so that the MV optimization explanation and generated SQL preview
-  // are accurate.
+  // are accurate.  Heatmap is special-cased: it actually runs as two
+  // sequential queries (bounds + bucketed counts) that depend on each
+  // other at runtime, so the SQL preview transforms `config` itself into
+  // both queries on render and the MV indicator is suppressed for this
+  // tab.  Returning `config` unchanged is intentional.
   if (activeTab === 'time') {
     return convertToTimeChartConfig(config);
   } else if (activeTab === 'number') {
@@ -228,6 +235,8 @@ export function buildChartConfigForExplanations({
     return convertToTableChartConfig(config);
   } else if (activeTab === 'pie') {
     return convertToPieChartConfig(config);
+  } else if (activeTab === 'heatmap') {
+    return config;
   }
 
   return config;

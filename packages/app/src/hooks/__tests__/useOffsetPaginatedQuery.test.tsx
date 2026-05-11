@@ -60,7 +60,6 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
 
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
-import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 

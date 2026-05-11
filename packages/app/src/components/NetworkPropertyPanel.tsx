@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
-import Link from 'next/link';
 import { pickBy } from 'lodash';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { JSONTree } from 'react-json-tree';
-import { Accordion, Box, Button, CopyButton, TableData } from '@mantine/core';
+import { Button } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTerminal } from '@tabler/icons-react';
 
@@ -56,7 +55,7 @@ const parseHeaders = (
       if (typeof _value === 'string') {
         value = JSON.parse(_value);
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
 
@@ -78,31 +77,6 @@ const parseHeaders = (
 
     return keyVal;
   });
-};
-
-const generateCurl = ({
-  method,
-  headers,
-  url,
-  body,
-}: {
-  method?: string;
-  headers: Array<{ name: string; value: string }>;
-  url?: string;
-  body?: string;
-}) => {
-  if (!url || !method) return '';
-
-  let curl = `curl -X ${method} '${url}'`;
-  headers.forEach(({ name, value }) => {
-    curl += `\n  -H '${name}: ${value}'`;
-  });
-
-  if (body) {
-    curl += `\n  -d '${body}'`;
-  }
-
-  return curl;
 };
 
 const NetworkBody = ({
@@ -140,7 +114,7 @@ const NetworkBody = ({
         const parsed = JSON.parse(body);
         return parsed;
       }
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [body]);

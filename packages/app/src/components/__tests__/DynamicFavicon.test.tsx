@@ -7,9 +7,6 @@
  * - Correct favicon paths based on theme
  */
 
-import React from 'react';
-import { render } from '@testing-library/react';
-
 import {
   DEFAULT_THEME_COLOR,
   HEX_COLOR_PATTERN,

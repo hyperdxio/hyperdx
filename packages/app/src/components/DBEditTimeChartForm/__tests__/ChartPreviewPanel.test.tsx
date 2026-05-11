@@ -32,6 +32,18 @@ jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
   default: () => <div data-testid="db-sql-row-table">SQL Row Table</div>,
 }));
 
+jest.mock('@/components/DBHeatmapChart', () => ({
+  __esModule: true,
+  default: () => <div data-testid="db-heatmap-chart">Heatmap Chart</div>,
+  toHeatmapChartConfig: (config: unknown) => ({
+    heatmapConfig: config,
+    scaleType: 'log' as const,
+  }),
+  buildHeatmapBoundsConfig: ({ config }: { config: unknown }) => config,
+  buildHeatmapBucketConfig: ({ config }: { config: unknown }) => config,
+  HEATMAP_N_BUCKETS: 80,
+}));
+
 jest.mock('@/source', () => ({
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
 }));
@@ -195,6 +207,20 @@ describe('ChartPreviewPanel', () => {
       expect(
         screen.queryByText('Sample Matched Events'),
       ).not.toBeInTheDocument();
+    });
+
+    it('should label the bounds and heatmap queries when on the heatmap tab', () => {
+      renderPanel({
+        queriedConfig: baseBuilderConfig,
+        chartConfigForExplanations: baseBuilderConfig,
+        showGeneratedSql: true,
+        activeTab: 'heatmap',
+      });
+
+      // Both query labels render — heatmap actually runs two sequential
+      // queries (bounds first, then bucketed counts).
+      expect(screen.getByText(/Bounds query/i)).toBeInTheDocument();
+      expect(screen.getByText(/Heatmap query/i)).toBeInTheDocument();
     });
   });
 });

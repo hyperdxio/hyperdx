@@ -9,6 +9,7 @@ import {
   SegmentedControl,
   Select,
   Slider,
+  Switch,
   Tabs,
   Text,
   Tooltip,
@@ -285,7 +286,7 @@ const makeTheme = ({
       },
     }),
     SegmentedControl: SegmentedControl.extend({
-      styles: (_theme, props) => ({
+      styles: () => ({
         root: {
           background: 'var(--color-bg-field)',
         },
@@ -320,6 +321,18 @@ const makeTheme = ({
           '--radio-icon-color': 'var(--click-global-color-background-default)',
         },
       }),
+    }),
+    Switch: Switch.extend({
+      vars: () => ({
+        root: {
+          '--switch-color': 'var(--click-global-color-accent-default)',
+        },
+      }),
+      // Note: checked-state track-label color and thumb background are
+      // overridden globally in `clickstack/_tokens.scss` via an
+      // attribute selector on the checkbox input, because Mantine
+      // forces those values via a `:checked +` sibling selector that
+      // can't be reached from this Mantine vars/styles API.
     }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {

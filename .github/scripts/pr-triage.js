@@ -1,6 +1,6 @@
 'use strict';
 
-// Entry point for actions/github-script@v7 via script-path.
+// Entry point for actions/github-script via script-path.
 // Pure classification logic lives in pr-triage-classify.js so it can be
 // unit-tested without GitHub API machinery.
 
@@ -11,7 +11,7 @@ const {
 
 module.exports = async ({ github, context }) => {
   const owner = context.repo.owner;
-  const repo  = context.repo.repo;
+  const repo = context.repo.repo;
 
   // ── Determine which PRs to process ──────────────────────────────────────
   let prNumbers;
@@ -82,8 +82,8 @@ module.exports = async ({ github, context }) => {
     }
 
     const signals = computeSignals(pr, filesRes);
-    const tier    = determineTier(signals);
-    const body    = buildTierComment(tier, signals);
+    const tier = determineTier(signals);
+    const body = buildTierComment(tier, signals);
 
     // Apply the tier label (remove any stale tier label first)
     for (const label of currentLabels) {
