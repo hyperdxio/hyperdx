@@ -105,7 +105,7 @@ export default function SearchTotalCountChart({
   );
 
   return (
-    <Text size="xs" lh="normal">
+    <Text data-testid="search-total-count" size="xs" lh="normal">
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
