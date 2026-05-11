@@ -670,6 +670,13 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+export const OnClickFilterTemplateSchema = z.object({
+  kind: z.literal('expressionTemplate'),
+  expression: z.string().min(1, 'Expression is required'),
+  template: z.string().min(1, 'Template is required'),
+});
+export type OnClickFilterTemplate = z.infer<typeof OnClickFilterTemplateSchema>;
+
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: z.string().min(1) }),
   z.object({ mode: z.literal('template'), template: z.string().min(1) }),
@@ -681,6 +688,7 @@ const OnClickSearchSchema = z.object({
   target: OnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).optional(),
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
@@ -689,6 +697,7 @@ export const OnClickDashboardSchema = z.object({
   target: OnClickTargetSchema,
   whereTemplate: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).optional(),
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
@@ -1170,6 +1179,16 @@ export type MaterializedViewConfiguration = z.infer<
   typeof MaterializedViewConfigurationSchema
 >;
 
+export const MetadataMaterializedViewsSchema = z.object({
+  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
+  granularity: SQLIntervalSchema,
+});
+
+export type MetadataMaterializedViews = z.infer<
+  typeof MetadataMaterializedViewsSchema
+>;
+
 // Log source form schema
 export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
@@ -1203,6 +1222,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 
@@ -1242,6 +1262,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 

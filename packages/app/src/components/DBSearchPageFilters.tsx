@@ -4,6 +4,7 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
@@ -60,7 +61,6 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
-  type FilterState,
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
   usePinnedFilters,
@@ -1126,19 +1126,26 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
-  const { data, isLoading, error } = useAllFields({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
+  const { data: source } = useSource({ id: sourceId });
+  const sourceTableConnection = tcFromSource(source);
+  const { data, isLoading, error } = useAllFields(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+      metadataMVs: sourceTableConnection.metadataMVs,
+    },
+    {
+      dateRange: chartConfig.dateRange,
+    },
+  );
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
 
-  const { data: source } = useSource({ id: sourceId });
-  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+  const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
   useEffect(() => {
     if (error) {
