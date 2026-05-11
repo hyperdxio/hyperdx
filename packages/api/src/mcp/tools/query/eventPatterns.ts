@@ -153,26 +153,42 @@ export async function runEventPatterns(
   } satisfies ChartConfigWithDateRange;
 
   // Fire both queries in parallel
-  const [sampleResult, countResult] = await Promise.all([
-    clickhouseClient.queryChartConfig({
-      config: sampleConfig,
-      metadata,
-      querySettings: source.querySettings,
-    }),
-    clickhouseClient.queryChartConfig({
-      config: countConfig,
-      metadata,
-      querySettings: source.querySettings,
-    }),
-  ]);
+  let sampleResult: Awaited<
+    ReturnType<typeof clickhouseClient.queryChartConfig>
+  >;
+  let countResult: Awaited<
+    ReturnType<typeof clickhouseClient.queryChartConfig>
+  >;
+  try {
+    [sampleResult, countResult] = await Promise.all([
+      clickhouseClient.queryChartConfig({
+        config: sampleConfig,
+        metadata,
+        querySettings: source.querySettings,
+        opts: { clickhouse_settings: { max_execution_time: 30 } },
+      }),
+      clickhouseClient.queryChartConfig({
+        config: countConfig,
+        metadata,
+        querySettings: source.querySettings,
+        opts: { clickhouse_settings: { max_execution_time: 30 } },
+      }),
+    ]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text: `ClickHouse query failed: ${message}`,
+        },
+      ],
+    };
+  }
 
-  const sampleRows = (
-    sampleResult as { data: Array<Record<string, string | number>> }
-  ).data;
-  const totalCount = Number(
-    (countResult as { data: Array<Record<string, string | number>> }).data?.[0]
-      ?.total ?? 0,
-  );
+  const sampleRows = sampleResult.data;
+  const totalCount = Number(countResult.data?.[0]?.total ?? 0);
 
   if (!sampleRows || sampleRows.length === 0) {
     return {

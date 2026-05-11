@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bulkInsertLogs,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
@@ -379,6 +380,88 @@ describe('MCP Query Tool', () => {
       const props = Object.keys(schema.properties ?? {});
       expect(props).toContain('sampleSize');
       expect(props).toContain('bodyExpression');
+    });
+
+    describe('with seeded data', () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        // Seed several distinct log templates so Drain produces multiple patterns
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+
+        // Template A: "User <name> logged in from <ip>" — 20 rows
+        for (let i = 0; i < 20; i++) {
+          logs.push({
+            Body: `User user_${i} logged in from 10.0.0.${i % 256}`,
+            ServiceName: 'auth-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + i * 1000),
+          });
+        }
+
+        // Template B: "Payment processed for order <id>" — 10 rows
+        for (let i = 0; i < 10; i++) {
+          logs.push({
+            Body: `Payment processed for order ${1000 + i}`,
+            ServiceName: 'payment-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + (20 + i) * 1000),
+          });
+        }
+
+        // Template C: unique single message
+        logs.push({
+          Body: 'System startup complete, all services healthy',
+          ServiceName: 'system',
+          SeverityText: 'INFO',
+          Timestamp: new Date(fiveMinAgo.getTime() + 31000),
+        });
+
+        await bulkInsertLogs(logs);
+      });
+
+      it('should mine patterns from seeded data and return non-empty results', async () => {
+        const result = await callTool(client, 'hyperdx_query', {
+          displayType: 'event_patterns',
+          sourceId: logSource._id.toString(),
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        const { patterns, totalCount, sampledRows } = output.result;
+
+        // Should have found data
+        expect(totalCount).toBeGreaterThanOrEqual(31);
+        expect(sampledRows).toBeGreaterThanOrEqual(31);
+
+        // Should have mined at least one pattern
+        expect(patterns.length).toBeGreaterThanOrEqual(1);
+
+        // The most common pattern should contain <*> placeholders
+        const topPattern = patterns[0];
+        expect(topPattern.pattern).toContain('<*>');
+
+        // Patterns should be sorted by estimatedCount descending (monotonic)
+        for (let i = 1; i < patterns.length; i++) {
+          expect(patterns[i - 1].estimatedCount).toBeGreaterThanOrEqual(
+            patterns[i].estimatedCount,
+          );
+        }
+
+        // Each pattern should have trend data with at least some non-zero buckets
+        for (const p of patterns) {
+          expect(p.trend.length).toBeGreaterThan(0);
+        }
+
+        // At least one pattern should have a non-zero trend bucket count
+        const hasNonZeroTrend = patterns.some((p: any) =>
+          p.trend.some((t: any) => t.count > 0),
+        );
+        expect(hasNonZeroTrend).toBe(true);
+      });
     });
   });
 

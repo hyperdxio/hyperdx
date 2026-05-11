@@ -1,46 +1,10 @@
-import { convertDateRangeToGranularityString } from '../core/utils';
+import {
+  convertDateRangeToGranularityString,
+  timeBucketByGranularity,
+  toStartOfInterval,
+} from '../core/utils';
 import { TemplateMinerConfig } from './config';
 import { TemplateMiner } from './template-miner';
-
-// ─── Time bucketing utilities ────────────────────────────────────────────────
-
-/** Parse a granularity string like "5 minute" into milliseconds. */
-function granularityToMs(granularity: string): number {
-  const [num, unit] = granularity.split(' ');
-  const n = parseInt(num, 10);
-  switch (unit) {
-    case 'second':
-      return n * 1_000;
-    case 'minute':
-      return n * 60_000;
-    case 'hour':
-      return n * 3_600_000;
-    case 'day':
-      return n * 86_400_000;
-    default:
-      return n * 60_000;
-  }
-}
-
-/** Round a timestamp down to the start of its granularity bucket. */
-function toStartOfBucket(tsMs: number, granularityMs: number): number {
-  return Math.floor(tsMs / granularityMs) * granularityMs;
-}
-
-/** Generate all bucket start timestamps between start and end. */
-function generateBuckets(
-  startMs: number,
-  endMs: number,
-  granularityMs: number,
-): number[] {
-  const buckets: number[] = [];
-  let current = toStartOfBucket(startMs, granularityMs);
-  while (current < endMs) {
-    buckets.push(current);
-    current += granularityMs;
-  }
-  return buckets;
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +35,7 @@ export interface MinePatternResult<TRow = Record<string, unknown>> {
   sampleMultiplier: number;
 }
 
-export interface MinePatternOptions {
+export interface MinePatternOptions<TRow extends Record<string, unknown>> {
   /** Total event count for the full (unsampled) time range. Used to compute sampleMultiplier. */
   totalCount: number;
   /** Start of the query time range. */
@@ -86,12 +50,12 @@ export interface MinePatternOptions {
    * Extract the body text from a row. The returned string is what gets
    * fed into the Drain algorithm.
    */
-  getBody: (row: Record<string, unknown>) => string;
+  getBody: (row: TRow) => string;
   /**
    * Extract the timestamp (as epoch ms) from a row.
    * Falls back to startDate if the extractor returns null/undefined.
    */
-  getTimestamp: (row: Record<string, unknown>) => number | null | undefined;
+  getTimestamp: (row: TRow) => number | null | undefined;
 }
 
 // ─── Core mining function ────────────────────────────────────────────────────
@@ -106,7 +70,7 @@ export interface MinePatternOptions {
  */
 export function minePatterns<TRow extends Record<string, unknown>>(
   rows: TRow[],
-  options: MinePatternOptions,
+  options: MinePatternOptions<TRow>,
 ): MinePatternResult<TRow> {
   const {
     totalCount,
@@ -126,17 +90,17 @@ export function minePatterns<TRow extends Record<string, unknown>>(
   const drainConfig = new TemplateMinerConfig();
   const miner = new TemplateMiner(drainConfig);
 
-  // ── Compute time buckets ──
+  // ── Compute time buckets using shared helpers ──
   const granularity = convertDateRangeToGranularityString(
     [startDate, endDate],
     trendBuckets,
   );
-  const granularityMs = granularityToMs(granularity);
-  const allBuckets = generateBuckets(
-    startDate.getTime(),
-    endDate.getTime(),
-    granularityMs,
+  const allBucketDates = timeBucketByGranularity(
+    startDate,
+    endDate,
+    granularity,
   );
+  const allBuckets = allBucketDates.map(d => d.getTime());
 
   // ── Process each row through Drain ──
   const clustered: Array<{
@@ -162,7 +126,7 @@ export function minePatterns<TRow extends Record<string, unknown>>(
   >();
 
   for (const { clusterId, row, tsMs } of clustered) {
-    const bucket = toStartOfBucket(tsMs, granularityMs);
+    const bucket = toStartOfInterval(new Date(tsMs), granularity).getTime();
     const existing = groups.get(clusterId);
     if (existing) {
       if (existing.samples.length < maxSamples) {

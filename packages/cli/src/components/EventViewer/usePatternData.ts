@@ -184,7 +184,7 @@ export function usePatternData({
         pattern: p.pattern,
         count: p.sampleCount,
         estimatedCount: p.estimatedCount,
-        samples: p.samples as EventRow[],
+        samples: p.samples,
         trend: p.trend,
       }));
 
