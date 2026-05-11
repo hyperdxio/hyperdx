@@ -81,7 +81,7 @@ test.describe(
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('whereLanguage')).toBe('sql');
         expect(url.searchParams.get('isLive')).toBe('false');
-        expect(url.searchParams.get('where')).toBe(
+        expect(decodeURIComponent(url.searchParams.get('where') ?? '')).toBe(
           `ServiceName = '${serviceName}'`,
         );
         const from = Number(url.searchParams.get('from'));
@@ -280,7 +280,7 @@ test.describe(
         );
         const url = new URL(page.url());
         expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
-        expect(url.searchParams.get('where')).toBe(
+        expect(decodeURIComponent(url.searchParams.get('where') ?? '')).toBe(
           `ServiceName = '${serviceName}'`,
         );
         expect(url.searchParams.get('whereLanguage')).toBe('sql');
@@ -423,7 +423,7 @@ test.describe(
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('whereLanguage')).toBe('sql');
         expect(url.searchParams.get('isLive')).toBe('false');
-        expect(url.searchParams.get('where')).toBe(
+        expect(decodeURIComponent(url.searchParams.get('where') ?? '')).toBe(
           `ServiceName = '${serviceName}'`,
         );
       });
@@ -493,7 +493,7 @@ test.describe(
         );
         const url = new URL(page.url());
         expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
-        expect(url.searchParams.get('where')).toBe(
+        expect(decodeURIComponent(url.searchParams.get('where') ?? '')).toBe(
           `ServiceName = '${serviceName}'`,
         );
         expect(url.searchParams.get('whereLanguage')).toBe('sql');

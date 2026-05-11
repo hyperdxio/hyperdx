@@ -132,7 +132,7 @@ export function renderOnClickSearch({
 
   const params = new URLSearchParams({
     source: sourceId,
-    where,
+    where: encodeURIComponent(where),
     whereLanguage: onClick.whereLanguage ?? 'lucene',
     isLive: 'false',
     from: String(dateRange[0].getTime()),
@@ -219,7 +219,7 @@ export function renderOnClickDashboard({
   }
 
   const params = new URLSearchParams({
-    where,
+    where: encodeURIComponent(where),
     whereLanguage: onClick.whereLanguage ?? 'lucene',
     from: String(dateRange[0].getTime()),
     to: String(dateRange[1].getTime()),

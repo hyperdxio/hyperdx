@@ -90,8 +90,11 @@ describe('renderOnClickSearch', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName+%3D+MyService');
-      expect(result.url).toContain('whereLanguage=sql');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName = MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('sql');
     }
   });
 
@@ -111,8 +114,11 @@ describe('renderOnClickSearch', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName%3AMyService');
-      expect(result.url).toContain('whereLanguage=lucene');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName:MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('lucene');
     }
   });
 
@@ -516,8 +522,11 @@ describe('renderOnClickDashboard', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName+%3D+MyService');
-      expect(result.url).toContain('whereLanguage=sql');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName = MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('sql');
     }
   });
 
@@ -537,8 +546,11 @@ describe('renderOnClickDashboard', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.url).toContain('where=ServiceName%3AMyService');
-      expect(result.url).toContain('whereLanguage=lucene');
+      const params = new URLSearchParams(result.url.split('?')[1]);
+      expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+        'ServiceName:MyService',
+      );
+      expect(params.get('whereLanguage')).toBe('lucene');
     }
   });
 
