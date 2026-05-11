@@ -155,7 +155,7 @@ const hasNumericUnit = (output: string) =>
 
 export const NumberFormatForm: React.FC<{
   control: Control<Pick<ChartConfigDisplaySettings, 'numberFormat'>>;
-  setValue: UseFormSetValue<ChartConfigDisplaySettings>;
+  setValue: UseFormSetValue<Pick<ChartConfigDisplaySettings, 'numberFormat'>>;
   disclaimer?: React.ReactNode;
 }> = ({ control, setValue, disclaimer }) => {
   const format =

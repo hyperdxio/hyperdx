@@ -103,6 +103,8 @@ describe('queryChartConfig Integration Tests', () => {
     await client.close();
   });
 
+  // This property is required by useChartNumberFormats, which uses position in `meta` to match
+  // value columns with the chart config's series.
   it('places all value columns first in the joined meta when splitting metric selects', async () => {
     const metricTables = {
       gauge: TABLE_NAME,
