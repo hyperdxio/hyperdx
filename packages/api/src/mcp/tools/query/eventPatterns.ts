@@ -37,6 +37,10 @@ function resolveBodyExpression(source: SourceBodyFields): string | undefined {
   return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
+/** Reject bodyExpression values containing SQL-unsafe characters. */
+// eslint-disable-next-line no-useless-escape
+const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+
 // ─── Event pattern mining ────────────────────────────────────────────────────
 
 export async function runEventPatterns(
@@ -85,11 +89,10 @@ export async function runEventPatterns(
   // Sanitize caller-supplied bodyExpression: must be a single column reference
   // matching the documented format (e.g. "Body", "SpanAttributes['http.url']").
   // The allowlist rejects injection attempts like "Body) OR (1=1".
-  const BODY_EXPR_PATTERN = /^[A-Za-z_][\w.]*(\['.+?'\])?$/;
   let bodyColumn: string | undefined;
   if (options?.bodyExpression) {
     const parts = splitAndTrimWithBracket(options.bodyExpression);
-    if (parts.length !== 1 || !BODY_EXPR_PATTERN.test(parts[0])) {
+    if (parts.length !== 1 || !SAFE_BODY_EXPR_CHARS.test(parts[0])) {
       return {
         isError: true as const,
         content: [
@@ -278,11 +281,11 @@ export async function runEventPatterns(
   const patterns = rawPatterns.map(p => {
     // Build a Lucene-compatible where clause from the pattern's literal
     // (non-<*>) tokens. This lets agents chain: pattern → search.
-    // Escape Lucene special chars so tokens like `"hello"` don't break the query.
+    // Escape \ and " (the phrase-query metachars) in each token.
     const literalTokens = p.pattern
       .split(/\s+/)
       .filter(t => t !== '<*>' && t.length > 0)
-      .map(t => t.replace(/[\\+"]/g, '\\$&'));
+      .map(t => t.replace(/[\\"]/g, '\\$&'));
     const whereSnippet =
       literalTokens.length > 0
         ? `${bodyColumn}:"${literalTokens.join(' ')}"`

@@ -116,13 +116,14 @@ export function minePatterns<TRow extends Record<string, unknown>>(
   const clustered: Array<{
     clusterId: number;
     row: TRow;
+    bodyText: string;
     tsMs: number;
   }> = [];
   for (const row of rows) {
     const bodyText = flattenBody(getBody(row));
     const result = miner.addLogMessage(bodyText);
     const tsMs = getTimestamp(row) ?? startDate.getTime();
-    clustered.push({ clusterId: result.clusterId, row, tsMs });
+    clustered.push({ clusterId: result.clusterId, row, bodyText, tsMs });
   }
 
   // ── Group by cluster ID ──
@@ -135,7 +136,7 @@ export function minePatterns<TRow extends Record<string, unknown>>(
     }
   >();
 
-  for (const { clusterId, row, tsMs } of clustered) {
+  for (const { clusterId, row, bodyText, tsMs } of clustered) {
     const bucket = toStartOfInterval(new Date(tsMs), granularity).getTime();
     const existing = groups.get(clusterId);
     if (existing) {
@@ -147,7 +148,6 @@ export function minePatterns<TRow extends Record<string, unknown>>(
         (existing.bucketCounts.get(bucket) ?? 0) + 1,
       );
     } else {
-      const bodyText = flattenBody(getBody(row));
       const match = miner.match(bodyText, 'fallback');
       const bucketCounts = new Map<number, number>();
       bucketCounts.set(bucket, 1);
