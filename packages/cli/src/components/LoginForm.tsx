@@ -8,12 +8,15 @@ import ErrorDisplay from '@/components/ErrorDisplay';
 interface LoginFormProps {
   /** Default app URL (autofilled, editable by the user). */
   defaultAppUrl: string;
-  /** Called with the (possibly changed) appUrl, email, and password. */
+  /**
+   * Called with the (possibly changed) appUrl, email, and password.
+   * Returns `null` on success or a human-readable error string on failure.
+   */
   onLogin: (
     appUrl: string,
     email: string,
     password: string,
-  ) => Promise<boolean>;
+  ) => Promise<string | null>;
   /** Optional message shown above the form (e.g. "Session expired"). */
   message?: string;
 }
@@ -59,10 +62,10 @@ export default function LoginForm({
     if (!password) return;
     setLoading(true);
     setError(null);
-    const ok = await onLogin(appUrl.trim(), email, password);
+    const loginError = await onLogin(appUrl.trim(), email, password);
     setLoading(false);
-    if (!ok) {
-      setError('Login failed. Check your credentials and server URL.');
+    if (loginError) {
+      setError(loginError);
       setField('email');
       setEmail('');
       setPassword('');

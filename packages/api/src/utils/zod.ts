@@ -2,6 +2,8 @@ import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
   AlertThresholdType,
+  DASHBOARD_CONTAINER_ID_MAX,
+  DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -420,6 +422,11 @@ export const externalDashboardTileSchema = z
       })
       .optional(),
     config: externalDashboardTileConfigSchema.optional(),
+    // Bounds match the internal `DashboardContainerSchema` cap (see
+    // `DASHBOARD_CONTAINER_ID_MAX` in common-utils/src/types.ts) so a
+    // valid container id from the editor always fits.
+    containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+    tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {
@@ -471,6 +478,11 @@ export type ExternalDashboardTileWithId = z.infer<
 
 export const externalDashboardTileListSchema = z
   .array(externalDashboardTileSchemaWithOptionalId)
+  // Cap the per-dashboard tile fan-out so an external-API caller can't push
+  // a payload tens of MB into Mongo in one request. The 500 limit sits well
+  // above any real dashboard; the dashboard editor's add-tile affordance
+  // is one-at-a-time.
+  .max(DASHBOARD_MAX_TILES)
   .superRefine((tiles, ctx) =>
     addDuplicateTileIdIssues(tiles, ctx, {
       messageSuffix: '. Omit the ID to generate a unique one.',

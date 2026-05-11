@@ -21,6 +21,7 @@ import {
   DisplayType,
   QuerySettings,
   RawSqlChartConfig,
+  SavedChartConfig,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -466,12 +467,36 @@ export function convertToDashboardTemplate(
   input: Dashboard,
   sources: TSource[],
   connections: Connection[] = [],
+  dashboards: Pick<Dashboard, 'id' | 'name'>[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
     name: input.name,
     tags: input.tags.length > 0 ? input.tags : undefined,
     tiles: [],
+  };
+
+  // Replace onClick.target.id (a raw source or dashboard ID) with the
+  // corresponding name so the exported template is portable across instances.
+  // Template-mode targets are already name-based and left untouched. If the
+  // referenced source/dashboard no longer exists, drop the onClick entirely —
+  // OnClickTargetSchema requires id.min(1), so we can't emit an empty string.
+  const convertOnClickTargetIdToName = (config: SavedChartConfig) => {
+    const onClick = config.onClick;
+    if (!onClick || onClick.target.mode !== 'id') return;
+    const targetId = onClick.target.id;
+    const name =
+      onClick.type === 'search'
+        ? sources.find(source => source.id === targetId)?.name
+        : dashboards.find(dashboard => dashboard.id === targetId)?.name;
+    if (name == null || name === '') {
+      delete config.onClick;
+      return;
+    }
+    config.onClick = {
+      ...onClick,
+      target: { mode: 'id' as const, id: name },
+    };
   };
 
   const convertToTileTemplate = (
@@ -497,6 +522,7 @@ export function convertToDashboardTemplate(
           sources.find(source => source.id === tileConfig.source)?.name ?? '';
       }
     }
+    convertOnClickTargetIdToName(tileConfig);
     return tile;
   };
 
