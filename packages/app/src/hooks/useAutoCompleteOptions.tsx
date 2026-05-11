@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Field,
+  parseKeyPath,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -8,11 +9,128 @@ import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/type
 import { NOW } from '@/config';
 import {
   deduplicate2dArray,
-  useJsonColumns,
+  useGetKeyValues,
   useMultipleAllFields,
-  useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
-import { mergePath, toArray } from '@/utils';
+import { mergePath, toArray, useDebounce } from '@/utils';
+
+export type TokenInfo = {
+  /** The full token at the cursor position */
+  token: string;
+  /** Index of the token in the tokens array */
+  index: number;
+  /** All tokens from splitting the input on whitespace */
+  tokens: string[];
+};
+
+const IDENT_RE = /[A-Za-z0-9_.]/;
+
+function findMatchingQuote(value: string, startIdx: number): number {
+  let i = startIdx + 1;
+  while (i < value.length) {
+    const ch = value[i];
+    if (ch === '\\' && i + 1 < value.length) {
+      i += 2;
+      continue;
+    }
+    if (ch === '"') return i;
+    if (ch === ' ' || ch === '\t' || ch === '\n') {
+      let k = i;
+      while (
+        k < value.length &&
+        (value[k] === ' ' || value[k] === '\t' || value[k] === '\n')
+      )
+        k++;
+      const identStart = k;
+      while (k < value.length && IDENT_RE.test(value[k])) k++;
+      if (k > identStart && k < value.length && value[k] === ':') {
+        return -1;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+export function tokenizeAtCursor(value: string, cursorPos: number): TokenInfo {
+  const tokens: string[] = [];
+  // Start offsets of each token in the original string
+  const starts: number[] = [];
+
+  let current = '';
+  let currentStart = -1;
+  let inQuotes = false;
+  let escaped = false;
+
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+
+    if (escaped) {
+      // Always include the escaped character verbatim (along with its backslash)
+      current += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\' && inQuotes) {
+      current += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (inQuotes) {
+        // Closing an already-opened quoted region.
+        if (currentStart === -1) currentStart = i;
+        current += ch;
+        inQuotes = false;
+        continue;
+      }
+      // Only enter a quoted region if there's a matching close ahead.
+      if (findMatchingQuote(value, i) !== -1) {
+        if (currentStart === -1) currentStart = i;
+        current += ch;
+        inQuotes = true;
+        continue;
+      }
+      // Stray/unclosed quote — treat as a literal character.
+      if (currentStart === -1) currentStart = i;
+      current += ch;
+      continue;
+    }
+
+    if (!inQuotes && ch === ' ') {
+      // Boundary: flush current token (even if empty, to mirror prior `split(' ')`
+      // semantics where consecutive spaces produce empty tokens).
+      tokens.push(current);
+      starts.push(currentStart === -1 ? i : currentStart);
+      current = '';
+      currentStart = -1;
+      continue;
+    }
+
+    if (currentStart === -1) currentStart = i;
+    current += ch;
+  }
+  // Flush trailing token
+  tokens.push(current);
+  starts.push(currentStart === -1 ? value.length : currentStart);
+
+  // Locate token containing the cursor. The cursor sits *between* characters,
+  // so a token covers [start, start+len]; we pick the last token whose range
+  // contains cursorPos.
+  let idx = tokens.length - 1;
+  for (let i = 0; i < tokens.length; i++) {
+    const start = starts[i];
+    const end = start + tokens[i].length;
+    if (cursorPos <= end) {
+      idx = i;
+      break;
+    }
+  }
+
+  return { token: tokens[idx] ?? '', index: idx, tokens };
+}
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -22,23 +140,32 @@ export interface ILanguageFormatter {
 
 export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
-  value: string,
+  _value: string,
   {
     tableConnection,
     additionalSuggestions,
+    dateRange,
+    inputRef,
   }: {
     tableConnection?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
+    dateRange?: [Date, Date];
+    inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   },
 ) {
-  // Fetch and gather all field options
-  const { data: fields } = useMultipleAllFields(
-    tableConnection
-      ? Array.isArray(tableConnection)
-        ? tableConnection
-        : [tableConnection]
-      : [],
+  const value = useDebounce(_value, 300);
+  const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
+
+  const effectiveDateRange: [Date, Date] = useMemo(
+    () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
+    [dateRange],
   );
+
+  // Fetch fields, using rollup for map key discovery when available
+  const { data: fields } = useMultipleAllFields(tcs, {
+    dateRange: effectiveDateRange,
+  });
+
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 
@@ -63,121 +190,89 @@ export function useAutoCompleteOptions(
     return { fieldCompleteOptions, fieldCompleteMap };
   }, [formatter, fields, additionalSuggestions]);
 
-  // searchField is used for the purpose of checking if a key is valid and key values should be fetched
-  // TODO: Come back and refactor how this works - it's not great and wouldn't catch a person copy-pasting some text
-  const [searchField, setSearchField] = useState<Field | null>(null);
-  // check if any search field matches
-  useEffect(() => {
-    const v = fieldCompleteMap.get(value);
-    if (v) {
-      setSearchField(v);
-    }
-  }, [fieldCompleteMap, value]);
-  // clear search field if no key matches anymore
-  useEffect(() => {
-    if (!searchField) return;
-    if (!value.startsWith(formatter.formatFieldValue(searchField))) {
-      setSearchField(null);
-    }
-  }, [searchField, setSearchField, value, formatter]);
-  const tcForJson = Array.isArray(tableConnection)
-    ? tableConnection.length > 0
-      ? tableConnection[0]
-      : undefined
-    : tableConnection;
-  const { data: jsonColumns } = useJsonColumns(
-    tcForJson ?? {
-      tableName: '',
-      databaseName: '',
-      connectionId: '',
-    },
+  // Tokenize input at cursor position
+  const tokenInfo = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs
+    const cursorPos = inputRef?.current?.selectionStart ?? value.length;
+    // eslint-disable-next-line react-hooks/refs
+    return tokenizeAtCursor(value, cursorPos);
+  }, [value, inputRef]);
+
+  // Extract the field name portion of the token (strip colon and value)
+  const fieldNameAtCursor = useMemo(() => {
+    const colonIdx = tokenInfo.token.indexOf(':');
+    return colonIdx >= 0 ? tokenInfo.token.slice(0, colonIdx) : tokenInfo.token;
+  }, [tokenInfo.token]);
+
+  // Derive the active search field from the token at cursor
+  const searchField = useMemo(
+    () => fieldCompleteMap.get(fieldNameAtCursor) ?? null,
+    [fieldCompleteMap, fieldNameAtCursor],
   );
-  const searchKeys = useMemo(
+
+  // Build chart config and keys for fetching values from rollup tables
+  const chartConfig = useMemo<BuilderChartConfigWithDateRange | undefined>(
     () =>
-      searchField && jsonColumns
-        ? [mergePath(searchField.path, jsonColumns)]
-        : [],
-    [searchField, jsonColumns],
+      tcs.length > 0
+        ? {
+            connection: tcs[0].connectionId,
+            from: {
+              databaseName: tcs[0].databaseName,
+              tableName: tcs[0].tableName,
+            },
+            timestampValueExpression: '',
+            select: '',
+            where: '',
+            dateRange: effectiveDateRange,
+          }
+        : undefined,
+    [tcs, effectiveDateRange],
   );
 
-  // hooks to get key values
-  const chartConfigs: BuilderChartConfigWithDateRange[] = toArray(
-    tableConnection,
-  ).map(({ databaseName, tableName, connectionId }) => ({
-    connection: connectionId,
-    from: {
-      databaseName,
-      tableName,
-    },
-    timestampValueExpression: '',
-    select: '',
-    where: '',
-    // TODO: Pull in date for query as arg
-    // just assuming 1/2 day is okay to query over right now
-    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
-  }));
+  const searchKeys = useMemo(
+    () => (searchField ? [mergePath(searchField.path)] : []),
+    [searchField],
+  );
 
-  const { data: keyVals } = useMultipleGetKeyValues({
-    chartConfigs,
+  const metadataMVs = tcs[0]?.metadataMVs;
+  const mode = metadataMVs ? 'all' : 'exact';
+
+  const { data: keyValues, isFetching: isLoadingValues } = useGetKeyValues({
+    mode,
+    chartConfig,
     keys: searchKeys,
+    metadataMVs,
   });
 
+  // Build key-value pair suggestions
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {
-    if (!keyVals || !searchField) return fieldCompleteOptions;
-    const output = // TODO: Fix this hacky type assertion caused by bug in HDX-1548
-      (
-        keyVals as unknown as {
-          key: string;
-          value: (string | { [key: string]: string })[];
-        }[]
-      ).flatMap(kv => {
-        return kv.value.flatMap(v => {
-          if (typeof v === 'string') {
-            const value = formatter.formatKeyValPair(
-              formatter.formatFieldValue(searchField),
-              v,
-            );
-            return [
-              {
-                value,
-                label: value,
-              },
-            ];
-          } else if (typeof v === 'object') {
-            // TODO: Fix type issues mentioned in HDX-1548
-            const output: {
-              value: string;
-              label: string;
-            }[] = [];
-            for (const [key, val] of Object.entries(v)) {
-              if (typeof key !== 'string' || typeof val !== 'string') {
-                console.error('unknown type for autocomplete object ', v);
-                return [];
-              }
-              const field = structuredClone(searchField);
-              field.path.push(key);
-              const value = formatter.formatKeyValPair(
-                formatter.formatFieldValue(field),
-                val,
-              );
-              output.push({
-                value,
-                label: value,
-              });
-            }
-            return output;
-          } else {
-            return [];
-          }
-        });
-      });
-    return output;
-  }, [fieldCompleteOptions, keyVals, searchField, formatter]);
+    if (!keyValues || keyValues.length === 0) return [];
 
-  // combine all autocomplete options
-  return useMemo(() => {
+    return keyValues.flatMap(kv => {
+      const fieldName = parseKeyPath(kv.key).join('.');
+      return kv.value.flatMap((v: string | Record<string, string>) => {
+        if (typeof v === 'object' && v !== null) {
+          // Map columns can return objects like { 'service.name': 'frontend' }
+          return Object.entries(v).map(([subKey, subVal]) => {
+            const formatted = formatter.formatKeyValPair(
+              `${fieldName}.${subKey}`,
+              subVal,
+            );
+            return { value: formatted, label: formatted };
+          });
+        }
+        const formatted = formatter.formatKeyValPair(fieldName, v);
+        return { value: formatted, label: formatted };
+      });
+    });
+  }, [keyValues, formatter]);
+
+  // Combine all autocomplete options
+  const options = useMemo(() => {
     return deduplicate2dArray([fieldCompleteOptions, keyValCompleteOptions]);
   }, [fieldCompleteOptions, keyValCompleteOptions]);
+
+  return { options, isLoadingValues, tokenInfo };
 }
