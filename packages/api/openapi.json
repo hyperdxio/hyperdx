@@ -1863,12 +1863,14 @@
           },
           "collapsible": {
             "type": "boolean",
-            "description": "Whether the user can collapse the group. Defaults to true.",
+            "description": "Whether the user can collapse the group.",
+            "default": true,
             "example": true
           },
           "bordered": {
             "type": "boolean",
-            "description": "Whether to show a visual border around the group. Defaults to true.",
+            "description": "Whether to show a visual border around the group.",
+            "default": true,
             "example": true
           },
           "tabs": {
