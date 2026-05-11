@@ -286,7 +286,7 @@ function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
   };
 }
 
-export type HeatmapChartConfig = {
+type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
   select: [
     {
