@@ -560,7 +560,7 @@ test.describe(
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         const filtersRaw = url.searchParams.get('filters');
         expect(filtersRaw).not.toBeNull();
-        const filters = JSON.parse(filtersRaw!);
+        const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
             type: 'sql',
@@ -646,7 +646,7 @@ test.describe(
         expect(url.pathname).toBe(`/dashboards/${targetDashboardId}`);
         const filtersRaw = url.searchParams.get('filters');
         expect(filtersRaw).not.toBeNull();
-        const filters = JSON.parse(filtersRaw!);
+        const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
             type: 'sql',
