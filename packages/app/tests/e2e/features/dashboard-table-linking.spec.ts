@@ -739,6 +739,17 @@ test.describe(
         await dashboardPage.dismissIgnoredUrlFiltersBanner();
         await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
       });
+
+      await test.step('Save the target dashboard and verify the banner stays hidden', async () => {
+        // Renaming the dashboard PATCHes it and causes React Query to refetch,
+        // toggling isFetchingDashboard true→false. The lastLoadedIdForBannerRef
+        // invariant must prevent the dismissed banner from reappearing.
+        await dashboardPage.renameDashboard(
+          targetDashboardName,
+          `${targetDashboardName} Renamed`,
+        );
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
+      });
     });
   },
 );

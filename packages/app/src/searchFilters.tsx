@@ -51,20 +51,27 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
     return trimmed.toLowerCase() === 'true';
   }
 
-  // Remove surrounding quotes and un-escape '' → '
+  // Remove surrounding quotes and reverse the escape sequences produced by
+  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
+  // that the following '' → ' pass doesn't mistake content for an escape.
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).replace(/''/g, "'");
+    return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
   }
   return trimmed;
 };
 
 // Returns true when the single-quote at position `i` is a real string delimiter
 // rather than an escape sequence.  Handles both ClickHouse/SQL '' escaping and
-// backslash \' escaping.
+// backslash \' escaping.  An odd number of preceding backslashes means the
+// quote is escaped via \'; an even number (including zero) means the
+// backslashes are themselves escaped (\\) and the quote is a real boundary.
 function isQuoteBoundary(s: string, i: number): boolean {
   if (s[i] !== "'") return false;
-  if (i > 0 && s[i - 1] === '\\') return false;
-  return true;
+  let backslashes = 0;
+  for (let j = i - 1; j >= 0 && s[j] === '\\'; j--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 0;
 }
 
 // If we're inside a quoted string and hit a quote, check whether the next

@@ -590,6 +590,44 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('round-trips values containing backslashes (Windows paths)', () => {
+      const originalFilters = {
+        FilePath: {
+          included: new Set<string | boolean>(['C:\\path\\file']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        FilePath: {
+          included: new Set(['C:\\path\\file']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips values containing both backslashes and single quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>(["O\\'Malley"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set(["O\\'Malley"]),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('useSearchPageFilterState', () => {

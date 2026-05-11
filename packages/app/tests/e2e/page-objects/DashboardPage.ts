@@ -211,6 +211,31 @@ export class DashboardPage {
   }
 
   /**
+   * Rename a dashboard from a known current name to a new name. Use when the
+   * heading is no longer the "My Dashboard" default (e.g. already renamed
+   * earlier in the same test).
+   */
+  async renameDashboard(currentName: string, newName: string) {
+    const currentHeading = this.page.getByRole('heading', {
+      name: currentName,
+      level: 3,
+    });
+    await currentHeading.waitFor({ state: 'visible', timeout: 10000 });
+
+    await currentHeading.dblclick();
+
+    const nameInput = this.page.locator('input[placeholder="Name"]');
+    await nameInput.fill(newName);
+    await this.page.keyboard.press('Enter');
+
+    const updatedHeading = this.page.getByRole('heading', {
+      name: newName,
+      level: 3,
+    });
+    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  /**
    * Add a new tile to the dashboard
    */
   async addTile() {
