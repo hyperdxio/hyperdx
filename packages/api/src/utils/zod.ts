@@ -168,7 +168,10 @@ export const externalQuantileLevelSchema = z.union([
 
 const externalOnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: objectIdSchema }),
-  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+  z.object({
+    mode: z.literal('template'),
+    template: z.string().min(1).max(10000),
+  }),
 ]);
 
 const externalOnClickSearchSchema = OnClickSearchSchema.extend({
