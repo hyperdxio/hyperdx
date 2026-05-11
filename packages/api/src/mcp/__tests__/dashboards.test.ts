@@ -423,6 +423,86 @@ describe('MCP Dashboard Tools', () => {
       const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(1);
     });
+
+    it.each([
+      { output: 'duration', factor: 1e-9 },
+      { output: 'data_rate' },
+      { output: 'throughput' },
+    ] as const)(
+      'should round-trip numberFormat output "$output" through save and get',
+      async numberFormat => {
+        const sourceId = traceSource._id.toString();
+
+        const saveResult = await callTool(client, 'hyperdx_save_dashboard', {
+          name: `NumberFormat ${numberFormat.output}`,
+          tiles: [
+            {
+              name: 'Number Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+                numberFormat,
+              },
+            },
+            {
+              name: 'Line Tile',
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: [
+                  { aggFn: 'count' },
+                  {
+                    aggFn: 'avg',
+                    valueExpression: 'Duration',
+                    numberFormat,
+                  },
+                ],
+              },
+            },
+          ],
+        });
+
+        expect(saveResult.isError).toBeFalsy();
+        const saved = JSON.parse(getFirstText(saveResult));
+
+        const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+          id: saved.id,
+        });
+        expect(getResult.isError).toBeFalsy();
+        const fetched = JSON.parse(getFirstText(getResult));
+
+        const numberTile = fetched.tiles.find(
+          (t: { name: string }) => t.name === 'Number Tile',
+        );
+        expect(numberTile.config.numberFormat).toEqual(numberFormat);
+
+        const lineTile = fetched.tiles.find(
+          (t: { name: string }) => t.name === 'Line Tile',
+        );
+        expect(lineTile.config.select[1].numberFormat).toEqual(numberFormat);
+      },
+    );
+
+    it('should reject numberFormat with an unknown output value', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Bad NumberFormat',
+        tiles: [
+          {
+            name: 'Number Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              numberFormat: { output: 'not_a_real_output' },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe('hyperdx_delete_dashboard', () => {
