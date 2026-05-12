@@ -976,8 +976,8 @@ const EditTileModal = ({
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
-  const confirm = useConfirm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const saveRef = useRef<(() => void) | undefined>(undefined);
 
   useEffect(() => {
     if (chart != null) {
@@ -987,23 +987,19 @@ const EditTileModal = ({
 
   const handleClose = useCallback(() => {
     if (isSaving) return;
-    if (hasUnsavedChanges) {
-      confirm(
-        'You have unsaved changes. Discard them and close the editor?',
-        'Discard',
-      ).then(ok => {
-        if (ok) {
-          // Reset dirty state before closing so any re-invocation of
-          // handleClose (e.g. from Mantine focus management after the
-          // confirm modal closes) doesn't re-show the confirm dialog.
-          setHasUnsavedChanges(false);
-          onClose();
-        }
+    if (hasUnsavedChanges && saveRef.current) {
+      // Auto-save unsaved changes instead of prompting the user to discard them.
+      saveRef.current();
+      notifications.show({
+        color: 'green',
+        title: 'Tile changes saved',
+        message: 'Your edits were automatically saved.',
+        autoClose: 3000,
       });
-    } else {
-      onClose();
     }
-  }, [confirm, isSaving, hasUnsavedChanges, onClose]);
+    setHasUnsavedChanges(false);
+    onClose();
+  }, [isSaving, hasUnsavedChanges, onClose]);
 
   return (
     <Modal
@@ -1030,6 +1026,7 @@ const EditTileModal = ({
             }}
             onClose={handleClose}
             onDirtyChange={setHasUnsavedChanges}
+            saveRef={saveRef}
             isDashboardForm
             autoRun
           />
