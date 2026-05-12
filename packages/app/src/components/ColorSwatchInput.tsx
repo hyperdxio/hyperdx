@@ -42,7 +42,7 @@ const TOKEN_LABELS: Record<ChartPaletteToken, string> = {
   'chart-error': 'Error',
 };
 
-export type ColorSwatchInputProps = {
+type ColorSwatchInputProps = {
   /** Currently selected palette token, if any. */
   value?: ChartPaletteToken;
   /** Called with the new token, or `undefined` when the user clears the picker. */

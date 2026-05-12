@@ -716,27 +716,6 @@ export const getColorProps = (index: number, level: string): string => {
   return colorOverride ?? getColorFromCSSVariable(index);
 };
 
-/**
- * Resolves the chart color to use for a series. User-picked palette
- * token wins; otherwise falls back to the existing index-based
- * assignment with log-level override (`getColorProps`).
- *
- * Behavior is unchanged for series with no user-set color: callers can
- * substitute `getColorProps(index, level)` with
- * `resolveChartColor(undefined, index, level)` without any visible
- * difference.
- */
-export const resolveChartColor = (
-  token: ChartPaletteToken | undefined,
-  fallbackIndex: number,
-  level: string = '',
-): string => {
-  if (token) {
-    return getColorFromCSSToken(token);
-  }
-  return getColorProps(fallbackIndex, level);
-};
-
 export const truncateMiddle = (str: string, maxLen = 10) => {
   const coercedStr = `${str}`;
   if (coercedStr.length <= maxLen) {
