@@ -11,7 +11,9 @@ import {
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
+import { buildQueryGuidePrompt } from '../prompts/dashboards/content';
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -423,6 +425,554 @@ describe('MCP Dashboard Tools', () => {
       const output = JSON.parse(getFirstText(result));
       expect(output.tiles).toHaveLength(1);
     });
+
+    it('should create a dashboard with a heatmap tile on a Trace source', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap Dashboard',
+        tiles: [
+          {
+            name: 'Latency Heatmap',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'heatmap',
+              sourceId,
+              select: [
+                {
+                  valueExpression: 'Duration',
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles).toHaveLength(1);
+      expect(output.tiles[0].config.displayType).toBe('heatmap');
+      expect(output.tiles[0].config.select[0]).toMatchObject({
+        valueExpression: 'Duration',
+      });
+    });
+
+    it('should reject heatmap tile with empty valueExpression at the schema layer', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Bad Heatmap',
+        tiles: [
+          {
+            name: 'Heatmap',
+            config: {
+              displayType: 'heatmap',
+              sourceId,
+              select: [{ valueExpression: '' }],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it.each([
+      { output: 'duration', factor: 1e-9 },
+      { output: 'data_rate' },
+      { output: 'throughput' },
+    ] as const)(
+      'should round-trip numberFormat output "$output" through save and get',
+      async numberFormat => {
+        const sourceId = traceSource._id.toString();
+
+        const saveResult = await callTool(client, 'hyperdx_save_dashboard', {
+          name: `NumberFormat ${numberFormat.output}`,
+          tiles: [
+            {
+              name: 'Number Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+                numberFormat,
+              },
+            },
+            {
+              name: 'Line Tile',
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: [
+                  { aggFn: 'count' },
+                  {
+                    aggFn: 'avg',
+                    valueExpression: 'Duration',
+                    numberFormat,
+                  },
+                ],
+              },
+            },
+          ],
+        });
+
+        expect(saveResult.isError).toBeFalsy();
+        const saved = JSON.parse(getFirstText(saveResult));
+
+        const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+          id: saved.id,
+        });
+        expect(getResult.isError).toBeFalsy();
+        const fetched = JSON.parse(getFirstText(getResult));
+
+        const numberTile = fetched.tiles.find(
+          (t: { name: string }) => t.name === 'Number Tile',
+        );
+        expect(numberTile.config.numberFormat).toEqual(numberFormat);
+
+        const lineTile = fetched.tiles.find(
+          (t: { name: string }) => t.name === 'Line Tile',
+        );
+        expect(lineTile.config.select[1].numberFormat).toEqual(numberFormat);
+      },
+    );
+
+    it('should reject numberFormat with an unknown output value', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Bad NumberFormat',
+        tiles: [
+          {
+            name: 'Number Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              numberFormat: { output: 'not_a_real_output' },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should reject heatmap tile on a non-Trace source', async () => {
+      // Create a Log source so the heatmap source-kind gate has
+      // something to reject. The schema accepts the tile shape (the
+      // sourceId is valid), so this exercises the runtime check that
+      // the REST POST path also runs.
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap on Log Source',
+        tiles: [
+          {
+            name: 'Heatmap',
+            config: {
+              displayType: 'heatmap',
+              sourceId: logSource._id.toString(),
+              select: [{ valueExpression: 'Duration' }],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('Trace source');
+      expect(text).toContain(logSource._id.toString());
+    });
+  });
+
+  describe('hyperdx_save_dashboard - containers and tabs', () => {
+    // Mirrors the v2 external-API "Containers and tabs" describe block so
+    // the MCP path enforces the same 5 cross-field rules: container id
+    // unique, tab id unique within a container, tile.containerId
+    // resolves, tile.tabId resolves to a tab on that container, and
+    // tile.tabId requires tile.containerId.
+    const buildTile = (
+      sourceId: string,
+      overrides: Record<string, unknown>,
+    ) => ({
+      name: 'Tile',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, where: '' }],
+      },
+      ...overrides,
+    });
+
+    it('should round-trip containers, tabs, and tile containerId/tabId on create and update', async () => {
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          collapsible: true,
+          bordered: true,
+          tabs: [
+            { id: 'errors', title: 'Errors' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+        {
+          id: 'overview',
+          title: 'Overview',
+          collapsed: true,
+        },
+      ];
+
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Containers MCP Round-Trip',
+        tiles: [
+          buildTile(sourceId, {
+            name: 'In Group, Tab A',
+            containerId: 'service-health',
+            tabId: 'errors',
+          }),
+          buildTile(sourceId, {
+            name: 'In Group, Tab B',
+            containerId: 'service-health',
+            tabId: 'latency',
+          }),
+          // Tile inside a tabbed container without a tabId — renders in
+          // the container shell rather than under a tab. Guards that the
+          // schema does not accidentally require tabId for every tile in
+          // a tabbed container.
+          buildTile(sourceId, {
+            name: 'In Tabbed Group, No Tab',
+            containerId: 'service-health',
+          }),
+          buildTile(sourceId, {
+            name: 'In Plain Group',
+            containerId: 'overview',
+          }),
+          buildTile(sourceId, { name: 'Ungrouped' }),
+        ],
+        tags: ['containers-mcp'],
+        containers,
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.containers).toEqual(containers);
+
+      // Typed as ExternalDashboardTileWithId so a typo on .containerId
+      // would fail typecheck instead of silently asserting undefined.
+      const createdTilesByName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          created.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
+      expect(createdTilesByName['In Group, Tab A']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+      expect(createdTilesByName['In Group, Tab B']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'latency',
+      });
+      expect(createdTilesByName['In Tabbed Group, No Tab']).toMatchObject({
+        containerId: 'service-health',
+      });
+      expect(
+        createdTilesByName['In Tabbed Group, No Tab'].tabId,
+      ).toBeUndefined();
+      expect(createdTilesByName['In Plain Group']).toMatchObject({
+        containerId: 'overview',
+      });
+      expect(createdTilesByName['In Plain Group'].tabId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.containerId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.tabId).toBeUndefined();
+
+      // Verify a fresh GET via the get tool also returns the structure.
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.containers).toEqual(containers);
+
+      // Update: rename a tab, drop the second container, re-home tiles.
+      const updatedContainers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: true,
+          tabs: [
+            { id: 'errors', title: 'Error Rate' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+      ];
+      const reHomedUngrouped = {
+        ...createdTilesByName.Ungrouped,
+        containerId: 'service-health',
+        tabId: 'errors',
+      };
+      const droppedContainerTile = {
+        ...createdTilesByName['In Plain Group'],
+        containerId: undefined,
+        tabId: undefined,
+      };
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Containers MCP Round-Trip',
+        tiles: [
+          createdTilesByName['In Group, Tab A'],
+          createdTilesByName['In Group, Tab B'],
+          createdTilesByName['In Tabbed Group, No Tab'],
+          droppedContainerTile,
+          reHomedUngrouped,
+        ],
+        tags: ['containers-mcp'],
+        containers: updatedContainers,
+      });
+
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toEqual(updatedContainers);
+      const updatedTilesByName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          updated.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
+      expect(updatedTilesByName['In Plain Group'].containerId).toBeUndefined();
+      expect(updatedTilesByName.Ungrouped).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+      expect(updatedTilesByName['In Tabbed Group, No Tab'].containerId).toBe(
+        'service-health',
+      );
+      expect(
+        updatedTilesByName['In Tabbed Group, No Tab'].tabId,
+      ).toBeUndefined();
+    });
+
+    it('should reject duplicate container ids', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Duplicate Container Ids',
+        tiles: [buildTile(sourceId, {})],
+        containers: [
+          { id: 'dupe', title: 'A', collapsed: false },
+          { id: 'dupe', title: 'B', collapsed: false },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Container IDs must be unique');
+    });
+
+    it('should reject duplicate tab ids within a container', async () => {
+      // Structural rules (duplicate container ids, duplicate tab ids) fire
+      // through the body schema, which is reported as a stringified issue
+      // array. Cross-tile-ref rules (covered below) fire through
+      // collectTileContainerRefIssues and produce plain prose.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Duplicate Tab Ids',
+        tiles: [buildTile(sourceId, {})],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [
+              { id: 'errors', title: 'Errors' },
+              { id: 'errors', title: 'Errors Two' },
+            ],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Duplicate tab id');
+      expect(getFirstText(result)).toContain('errors');
+      expect(getFirstText(result)).toContain('service-health');
+    });
+
+    it('should reject a tile that supplies tabId without containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Tab Without Container',
+        tiles: [buildTile(sourceId, { tabId: 'errors' })],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [{ id: 'errors', title: 'Errors' }],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain(
+        'tabId requires containerId to be set',
+      );
+    });
+
+    it('should reject a tile that references an unknown containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Unknown Container',
+        tiles: [buildTile(sourceId, { containerId: 'does-not-exist' })],
+        containers: [{ id: 'real', title: 'Real', collapsed: false }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain(
+        'unknown containerId "does-not-exist"',
+      );
+    });
+
+    it('should reject a tile that references an unknown tabId within a container', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Unknown Tab',
+        tiles: [
+          buildTile(sourceId, {
+            containerId: 'service-health',
+            tabId: 'ghost',
+          }),
+        ],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [{ id: 'errors', title: 'Errors' }],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('unknown tabId "ghost"');
+    });
+
+    it('should preserve existing containers on update when body omits the field', async () => {
+      // Exercises the `effectiveContainers = parsedContainers ?? existingDashboard.containers ?? []`
+      // fallback in the MCP update handler. Without it, a PUT that
+      // updates only `tiles` would reject because the tile's
+      // containerId reference would resolve against an empty array.
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          tabs: [{ id: 'errors', title: 'Errors' }],
+        },
+      ];
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'PUT-without-containers fallback',
+        tiles: [
+          buildTile(sourceId, {
+            name: 'In Group',
+            containerId: 'service-health',
+            tabId: 'errors',
+          }),
+        ],
+        containers,
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'PUT-without-containers fallback',
+        tiles: created.tiles,
+        // containers intentionally omitted
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toEqual(containers);
+      expect(updated.tiles[0]).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+    });
+
+    it('should wipe persisted containers when update body sets containers: []', async () => {
+      // Mirror the v2 behavior: an explicit empty array clears the
+      // persisted containers, and the response normalizes [] back to
+      // absent on read.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Wipe containers',
+        tiles: [buildTile(sourceId, { name: 'Tile' })],
+        containers: [{ id: 'overview', title: 'Overview', collapsed: false }],
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.containers).toHaveLength(1);
+
+      const wipedTile = {
+        ...created.tiles[0],
+        containerId: undefined,
+        tabId: undefined,
+      };
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Wipe containers',
+        tiles: [wipedTile],
+        containers: [],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toBeUndefined();
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.containers).toBeUndefined();
+    });
+
+    // Bounds mirror DASHBOARD_CONTAINER_ID_MAX (256) on the tile-level
+    // containerId / tabId. 256 chars must accept; 257 must reject.
+    // 257 trips the inputSchema's `.max(256)` and surfaces back as the
+    // MCP SDK's "Input validation error" envelope.
+    it('should accept a 256-char tile.containerId and reject 257', async () => {
+      const sourceId = traceSource._id.toString();
+      const idAtMax = 'c'.repeat(256);
+      const okResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: '256-char containerId',
+        tiles: [buildTile(sourceId, { containerId: idAtMax })],
+        containers: [{ id: idAtMax, title: 'Max', collapsed: false }],
+      });
+      expect(okResult.isError).toBeFalsy();
+
+      const idTooLong = 'c'.repeat(257);
+      const tooLongResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: '257-char containerId',
+        tiles: [buildTile(sourceId, { containerId: idTooLong })],
+        containers: [{ id: idTooLong, title: 'Too long', collapsed: false }],
+      });
+      expect(tooLongResult.isError).toBe(true);
+      expect(getFirstText(tooLongResult)).toContain(
+        'String must contain at most 256 character(s)',
+      );
+      expect(getFirstText(tooLongResult)).toContain('containerId');
+    });
   });
 
   describe('hyperdx_delete_dashboard', () => {
@@ -548,6 +1098,30 @@ describe('MCP Dashboard Tools', () => {
       // Should succeed (may have empty results since no data inserted)
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+    });
+  });
+
+  describe('buildQueryGuidePrompt', () => {
+    it('documents heatmap in tile-type, constraints, mistakes, and aggFn sections', () => {
+      const prompt = buildQueryGuidePrompt();
+      // Ensure each section the bot called out has a heatmap entry so
+      // the LLM cannot skip the constraints when producing a heatmap
+      // tile through hyperdx_save_dashboard.
+      const sections = [
+        '== AGGREGATION FUNCTIONS (aggFn) ==',
+        '== PER-TILE TYPE CONSTRAINTS ==',
+        '== COMMON MISTAKES ==',
+      ];
+      for (const heading of sections) {
+        const idx = prompt.indexOf(heading);
+        expect(idx).toBeGreaterThan(-1);
+        // Each section's body extends until the next == heading or the
+        // end of the string. Checking for the substring "heatmap" in
+        // that slice is enough to assert the heatmap entry exists.
+        const next = prompt.indexOf('\n== ', idx + heading.length);
+        const body = prompt.slice(idx, next === -1 ? prompt.length : next);
+        expect(body.toLowerCase()).toContain('heatmap');
+      }
     });
   });
 });

@@ -1,5 +1,10 @@
 // ─── Prompt content builders ──────────────────────────────────────────────────
 // Each function returns a plain string that is injected as a prompt message.
+//
+// prose-lint: allow-file
+// This file is an LLM-facing prompt template that uses em-dash separators
+// (e.g. "line — Time-series trends") as a structural bullet convention.
+// Reformatting all separators is out of scope for this change.
 
 export function buildCreateDashboardPrompt(
   sourceSummary: string,
@@ -32,6 +37,8 @@ Use BUILDER tiles (with sourceId) for most cases:
   number      — Single KPI metric (total requests, current error rate, p99 latency)
   table       — Ranked lists (top endpoints by latency, error counts by service)
   pie         — Proportional breakdowns (traffic share by service, errors by type)
+  heatmap     — Distribution of a numeric value over time (latency buckets, request size buckets)
+                Trace sources only. Requires non-empty valueExpression.
   search      — Browse raw log/event rows (error logs, recent traces)
   markdown    — Dashboard notes, section headers, or documentation
 
@@ -167,7 +174,9 @@ returned for each source to discover the real values used in your data.
 - Not validating with hyperdx_query_tile after saving — tiles can silently fail
 - Number and Pie tiles accept exactly 1 select item — not multiple
 - Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99
-- Assuming StatusCode or SeverityText values — always inspect the source first`;
+- Assuming StatusCode or SeverityText values — always inspect the source first
+- Heatmap tile on a non-Trace source — heatmap is restricted to Trace sources today
+- Heatmap tile with empty valueExpression — required, e.g. "Duration"`;
 }
 
 export function buildDashboardExamplesPrompt(
@@ -553,6 +562,8 @@ export function buildQueryGuidePrompt(): string {
   quantile       — Percentile value. Requires valueExpression AND level (0.5, 0.9, 0.95, or 0.99).
   last_value     — Most recent value of a column. Requires valueExpression.
   none           — Pass a raw expression unchanged. Requires valueExpression.
+  heatmap        — Heatmap-only literal. Requires non-empty valueExpression.
+                   Used exclusively in heatmap tiles' select array.
 
 Examples:
   { aggFn: "count" }
@@ -560,6 +571,7 @@ Examples:
   { aggFn: "quantile", valueExpression: "Duration", level: 0.95 }
   { aggFn: "count_distinct", valueExpression: "ResourceAttributes['service.name']" }
   { aggFn: "sum", valueExpression: "Duration", where: "StatusCode:STATUS_CODE_ERROR" }
+  { valueExpression: "Duration" }  // heatmap tile only (no aggFn; chart-level displayType is the discriminator)
 
 == COLUMN NAMING ==
 
@@ -669,6 +681,11 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   line    — 1-20 select items. Optional groupBy splits into series.
   stacked_bar — 1-20 select items. Optional groupBy splits into stacks.
   table   — 1-20 select items. Optional groupBy defines row groups.
+  heatmap — Exactly 1 select item with a non-empty valueExpression. No
+            aggFn or alias on the select item (the chart-level
+            displayType: "heatmap" is the discriminator). Trace sources
+            only (no Log/Metric/Session). No groupBy. Optional where
+            filter applied before bucketing.
   search  — No select items (select is a column list string). where is the filter.
   markdown — No select items. Set markdown field with content.
 
@@ -681,6 +698,73 @@ to plot the first as a ratio of the second. Useful for error rates:
     { aggFn: "count", alias: "Total" }
   ],
   asRatio: true
+
+== CONTAINERS AND TABS ==
+
+Optional dashboard organization layer. Group related tiles visually with
+optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers"
+array; reference containers from tiles via "containerId" (and "tabId" when
+the container has tabs).
+
+Container shape:
+  { id, title, collapsed, collapsible?, bordered?, tabs? }
+
+  id, title    : required, non-empty strings.
+  collapsed    : required boolean. Starts collapsed when true.
+  collapsible  : optional boolean. Defaults to true. When false the group
+                 header has no toggle.
+  bordered     : optional boolean. Defaults to true.
+  tabs         : optional array of { id, title }. Zero or one tab renders
+                 as a plain group header; two or more render as a tab bar.
+
+Tile fields (on the same tile shape used in tiles[]):
+  containerId  : optional. Must match an id in containers[].
+  tabId        : optional. Must match a tab id on that container. Requires
+                 containerId. A tile with containerId set but no tabId
+                 renders in the container shell (above any tab bar).
+
+Rules enforced by the API:
+  - Container ids must be unique on a dashboard.
+  - Tab ids must be unique within a container.
+  - A tile's containerId must reference a real container in the array.
+  - A tile's tabId must reference a real tab on that container.
+  - A tile's tabId requires containerId to be set.
+
+Example:
+  hyperdx_save_dashboard({
+    name: "Service Overview",
+    containers: [
+      {
+        id: "service-health",
+        title: "Service Health",
+        collapsed: false,
+        tabs: [
+          { id: "errors", title: "Errors" },
+          { id: "latency", title: "Latency" }
+        ]
+      },
+      { id: "overview", title: "Overview", collapsed: true }
+    ],
+    tiles: [
+      { name: "Error Rate", containerId: "service-health", tabId: "errors",
+        config: { displayType: "line", sourceId: "<id>", select: [{ aggFn: "count" }] } },
+      { name: "Throughput", containerId: "overview",
+        config: { displayType: "line", sourceId: "<id>", select: [{ aggFn: "count" }] } },
+      { name: "Latest Logs",
+        config: { displayType: "search", sourceId: "<id>" } }
+    ]
+  })
+
+Validation categories on bad inputs:
+  - tile.containerId references a missing container id
+  - tile.tabId references a missing tab id on that container
+  - tile.tabId set without tile.containerId
+  - duplicate container.id within the dashboard
+  - duplicate tab.id within a single container
+
+The server returns a descriptive error string identifying the failing path
+(tiles[i].containerId, tiles[i].tabId, containers[i].id, or
+containers[i].tabs[j].id). Read the path to know which input to fix.
 
 == COMMON MISTAKES ==
 
@@ -715,5 +799,17 @@ to plot the first as a ratio of the second. Useful for error rates:
 8. Assuming StatusCode or SeverityText values
    Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
    Always call hyperdx_list_sources and inspect real keyValues from the source
-   before writing filters that depend on these columns.`;
+   before writing filters that depend on these columns.
+
+9. Heatmap tile on a non-Trace source
+   Wrong:   { displayType: "heatmap", sourceId: "<log-source-id>", select: [...] }
+   Correct: { displayType: "heatmap", sourceId: "<trace-source-id>", select: [...] }
+   Heatmap is currently restricted to Trace sources. Pick a source whose kind
+   is "trace" from hyperdx_list_sources.
+
+10. Heatmap tile with empty or missing valueExpression
+    Wrong:   select: [{}]
+    Wrong:   select: [{ valueExpression: "" }]
+    Correct: select: [{ valueExpression: "Duration" }]
+    Heatmap requires a non-empty numeric column or expression to bucket.`;
 }

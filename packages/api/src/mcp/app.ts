@@ -12,7 +12,7 @@ const app = createMcpExpressApp();
 
 const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 100,
+  max: 600, // 10 req/s
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: rateLimiterKeyGenerator,
