@@ -2174,6 +2174,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '95th Percentile Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
             {
               aggFn: 'quantile',
@@ -2182,6 +2186,11 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '99th Percentile Duration',
               where: 'env:production',
               whereLanguage: 'lucene',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+                mantissa: 3,
+              },
             },
           ],
         },
@@ -2236,6 +2245,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: 'Median Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
             {
               aggFn: 'quantile',
@@ -2276,6 +2289,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '50th Percentile Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
           ],
           numberFormat: {
@@ -3009,6 +3026,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '95th Percentile Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
             {
               aggFn: 'quantile',
@@ -3017,6 +3038,11 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '99th Percentile Duration',
               where: 'env:production',
               whereLanguage: 'lucene',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+                mantissa: 3,
+              },
             },
           ],
         },
@@ -3073,6 +3099,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: 'Median Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
             {
               aggFn: 'quantile',
@@ -3114,6 +3144,10 @@ describe('External API v2 Dashboards - new format', () => {
               alias: '50th Percentile Duration',
               where: "env = 'production'",
               whereLanguage: 'sql',
+              numberFormat: {
+                output: 'duration',
+                factor: 1e-9,
+              },
             },
           ],
           numberFormat: {

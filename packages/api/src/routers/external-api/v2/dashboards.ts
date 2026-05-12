@@ -7,7 +7,6 @@ import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import logger from '@/utils/logger';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
@@ -21,7 +20,6 @@ import {
   getMissingSources,
   isConfigTile,
   isRawSqlExternalTileConfig,
-  isSeriesTile,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from './utils/dashboards';
@@ -73,8 +71,8 @@ async function getSourceConnectionMismatches(
  *   schemas:
  *     NumberFormatOutput:
  *       type: string
- *       enum: [currency, percent, byte, time, number, data_rate, throughput]
- *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput).
+ *       enum: [currency, percent, byte, time, number, data_rate, throughput, duration]
+ *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput, duration).
  *     AggregationFunction:
  *       type: string
  *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
@@ -462,6 +460,11 @@ async function getSourceConnectionMismatches(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *           example: "delta"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options. When set, takes precedence
+ *             over the chart-level numberFormat for this select item only.
  *
  *     LineBuilderChartConfig:
  *       type: object
