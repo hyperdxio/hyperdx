@@ -673,6 +673,160 @@ describe('MCP Dashboard Tools', () => {
       expect(text).toContain('Trace source');
       expect(text).toContain(logSource._id.toString());
     });
+
+    // Exercises the update-side source-kind gate via filterChangedHeatmapTiles
+    // (displayType changed to heatmap on an existing tile).
+    it('should reject update that changes a tile to heatmap on a non-Trace source', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+
+      const created = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Line on Log Source',
+        tiles: [
+          {
+            name: 'Line',
+            config: {
+              displayType: 'line',
+              sourceId: logSource._id.toString(),
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      });
+      expect(created.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(created));
+
+      const update = await callTool(client, 'hyperdx_save_dashboard', {
+        id: saved.id,
+        name: 'Line on Log Source',
+        tiles: [
+          {
+            ...saved.tiles[0],
+            config: {
+              ...saved.tiles[0].config,
+              displayType: 'heatmap',
+              select: [{ valueExpression: 'Duration' }],
+            },
+          },
+        ],
+      });
+      expect(update.isError).toBe(true);
+      const text = getFirstText(update);
+      expect(text).toContain('Trace source');
+      expect(text).toContain(logSource._id.toString());
+    });
+
+    // Exercises the update-side source-kind gate via filterChangedHeatmapTiles
+    // (sourceId changed on an existing heatmap tile).
+    it('should reject update that changes a heatmap tile source to a non-Trace source', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+
+      const created = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap re-pointed at Log',
+        tiles: [
+          {
+            name: 'Heatmap',
+            config: {
+              displayType: 'heatmap',
+              sourceId: traceSource._id.toString(),
+              select: [{ valueExpression: 'Duration' }],
+            },
+          },
+        ],
+      });
+      expect(created.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(created));
+
+      const update = await callTool(client, 'hyperdx_save_dashboard', {
+        id: saved.id,
+        name: 'Heatmap re-pointed at Log',
+        tiles: [
+          {
+            ...saved.tiles[0],
+            config: {
+              ...saved.tiles[0].config,
+              sourceId: logSource._id.toString(),
+            },
+          },
+        ],
+      });
+      expect(update.isError).toBe(true);
+      const text = getFirstText(update);
+      expect(text).toContain('Trace source');
+      expect(text).toContain(logSource._id.toString());
+    });
+
+    // Asserts each tile's config survives the serializer/deserializer cycle
+    // independently when mixed with other displayTypes on the same dashboard.
+    it('should round-trip a heatmap alongside line and number tiles in one dashboard', async () => {
+      const sourceId = traceSource._id.toString();
+
+      const heatmapConfig = {
+        displayType: 'heatmap' as const,
+        sourceId,
+        select: [
+          { valueExpression: 'Duration', heatmapScaleType: 'log' as const },
+        ],
+      };
+      const lineConfig = {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const }],
+        groupBy: "SpanAttributes['service.name']",
+      };
+      const numberConfig = {
+        displayType: 'number' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const }],
+        numberFormat: { output: 'number' as const, average: true },
+      };
+
+      const save = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Mixed Tile Round-Trip',
+        tiles: [
+          { name: 'Heatmap Tile', config: heatmapConfig },
+          { name: 'Line Tile', config: lineConfig },
+          { name: 'Number Tile', config: numberConfig },
+        ],
+      });
+      expect(save.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(save));
+      expect(saved.tiles).toHaveLength(3);
+
+      const byName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          saved.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
+      expect(byName['Heatmap Tile'].config).toMatchObject(heatmapConfig);
+      expect(byName['Line Tile'].config).toMatchObject(lineConfig);
+      expect(byName['Number Tile'].config).toMatchObject(numberConfig);
+
+      const fetched = JSON.parse(
+        getFirstText(
+          await callTool(client, 'hyperdx_get_dashboard', { id: saved.id }),
+        ),
+      );
+      const fetchedByName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          fetched.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
+      expect(fetchedByName['Heatmap Tile'].config).toMatchObject(heatmapConfig);
+      expect(fetchedByName['Line Tile'].config).toMatchObject(lineConfig);
+      expect(fetchedByName['Number Tile'].config).toMatchObject(numberConfig);
+    });
   });
 
   describe('hyperdx_save_dashboard - containers and tabs', () => {
