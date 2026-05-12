@@ -1,10 +1,7 @@
-// ─── Prompt content builders ──────────────────────────────────────────────────
-// Each function returns a plain string that is injected as a prompt message.
-//
-// prose-lint: allow-file
-// This file is an LLM-facing prompt template that uses em-dash separators
-// (e.g. "line — Time-series trends") as a structural bullet convention.
-// Reformatting all separators is out of scope for this change.
+// Prompt content builders. Each function returns a plain string that is
+// injected as a prompt message. This file is voice-clean (no em-dashes,
+// no AI hallmarks) so the prose-lint hook treats it like any other
+// reviewer-facing artifact.
 
 export function buildCreateDashboardPrompt(
   sourceSummary: string,
@@ -24,10 +21,11 @@ IMPORTANT: Call hyperdx_list_sources first to get the full column schema and att
 
 == WORKFLOW ==
 
-1. Call hyperdx_list_sources — get source IDs, column schemas, and attribute keys
-2. Design tiles — pick tile types that match the monitoring goal
-3. Call hyperdx_save_dashboard — create the dashboard with all tiles
-4. Call hyperdx_query_tile on each tile — validate queries return data
+1. Call hyperdx_list_sources to discover source IDs, column schemas, and attribute keys.
+2. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
+3. Design the dashboard by following the design checklist below.
+4. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
+5. Call hyperdx_query_tile on each tile to confirm queries return data.
 
 == UPDATING AN EXISTING DASHBOARD ==
 
@@ -55,264 +53,70 @@ Recommended pattern:
 == TILE TYPE GUIDE ==
 
 Use BUILDER tiles (with sourceId) for most cases:
-  line        — Time-series trends (error rate, request volume, latency over time)
-  stacked_bar — Compare categories over time (requests by service, errors by status code)
-  number      — Single KPI metric (total requests, current error rate, p99 latency)
-  table       — Ranked lists (top endpoints by latency, error counts by service).
-                Tables can wire row-click navigation via config.onClick to the
-                /search page or another dashboard — see "ROW-CLICK LINKING" below.
-  pie         — Proportional breakdowns (traffic share by service, errors by type)
-  heatmap     — Distribution of a numeric value over time (latency buckets, request size buckets)
-                Trace sources only. Requires non-empty valueExpression.
-  search      — Browse raw log/event rows (error logs, recent traces)
-  markdown    — Dashboard notes, section headers, or documentation
+  line         Time-series trends (error rate, request volume, latency over time).
+  stacked_bar  Compare categories over time (requests by service, errors by status code).
+  number       Single KPI metric (total requests, current error rate, p99 latency).
+  table        Ranked lists (top endpoints by latency, error counts by service).
+  pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
+  heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
+  search       Browse raw log/event rows (error logs, recent traces).
+  markdown     Dashboard notes, section headers, or documentation.
 
-Use RAW SQL tiles (with connectionId) only for advanced queries:
-  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie)
-  Use when you need JOINs, sub-queries, CTEs, or queries the builder cannot express
+Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
+  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie).
+  Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
 
 == COLUMN NAMING ==
 
-- Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName
+- Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName, SpanKind.
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may use different names.
   Always call hyperdx_list_sources to get the real column names and keyColumns for each source.
-- Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']
-  NEVER use dot notation for Map columns (SpanAttributes.http.method) — always use brackets.
-- JSON-type columns use dot notation: JsonColumn.key.subkey
-  Check the jsType returned by hyperdx_list_sources to determine whether a column is Map or JSON.
-- Call hyperdx_list_sources to discover the exact column names, types, and attribute keys
+- Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name'].
+  NEVER use dot notation for Map columns. Always use brackets.
+- JSON-type columns use dot notation: JsonColumn.key.subkey.
+  Check the jsType returned by hyperdx_list_sources to decide which a column is.
 
-== LAYOUT GRID ==
+== DESIGN CHECKLIST ==
 
-The dashboard grid is 24 columns wide. Tiles are positioned with (x, y, w, h):
-  - Number tiles: w=6, h=4 — fit 4 across in a row
-  - Line/Bar charts: w=12, h=4 — fit 2 side-by-side
-  - Tables: w=24, h=6 — full width
-  - Search tiles: w=24, h=6 — full width
-  - Markdown: w=24, h=2 — full width section header
+Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the renderer; ignoring one is a runtime error you will then need to fix.
 
-Recommended layout pattern (top to bottom):
-  Row 0: KPI number tiles across the top (y=0)
-  Row 1: Time-series charts (y=4)
-  Row 2: Tables or search tiles (y=8)
+1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
-== FILTER SYNTAX (Lucene) ==
+2. ALIAS EVERY AGGREGATION. Set alias on each select item ("Requests", "Errors", "P95 Duration"). Without alias, table headers read like raw expressions.
 
-Simple match:       level:error
-AND:                service.name:api AND http.status_code:>=500
-OR:                 level:error OR level:fatal
-Wildcards:          service.name:front*
-Negation:           NOT level:debug
-Exists:             _exists_:http.route
-Range:              Duration:>1000000000
-Phrase:             Body:"connection refused"
-Grouped:            (level:error OR level:fatal) AND service.name:api
+3. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
 
-== COMPLETE EXAMPLE ==
+4. RED COLUMNS FOR SERVICE / ENDPOINT TABLES. Request rate (count), Error rate (count with where: "StatusCode:STATUS_CODE_ERROR"), Duration (quantile P95 on the Duration column). Three columns, all aliased.
 
-Here is a full dashboard creation call with properly structured tiles:
+5. PER-SERIES NUMBER FORMAT FOR DURATIONS. Put numberFormat on each select item that needs special rendering. Example: { output: "duration", factor: 0.000000001 } on a Duration percentile. NEVER set chart-level numberFormat for tables that mix counts and durations; the count columns will render as 0:00:00.
 
-hyperdx_save_dashboard({
-  name: "Service Overview",
-  tags: ["overview"],
-  tiles: [
-    {
-      name: "Total Requests",
-      x: 0, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count" }]
-      }
-    },
-    {
-      name: "Error Count",
-      x: 6, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR" }]
-      }
-    },
-    {
-      name: "P95 Latency (ms)",
-      x: 12, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "quantile", valueExpression: "Duration", level: 0.95 }]
-      }
-    },
-    {
-      name: "Request Rate by Service",
-      x: 0, y: 4, w: 12, h: 4,
-      config: {
-        displayType: "line",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count" }],
-        groupBy: "ResourceAttributes['service.name']"
-      }
-    },
-    {
-      name: "Error Rate Over Time",
-      x: 12, y: 4, w: 12, h: 4,
-      config: {
-        displayType: "line",
-        sourceId: "${traceSourceId}",
-        select: [
-          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", alias: "Errors" },
-          { aggFn: "count", alias: "Total" }
-        ],
-        asRatio: true
-      }
-    },
-    {
-      name: "Top Endpoints by Request Count",
-      x: 0, y: 8, w: 24, h: 6,
-      config: {
-        displayType: "table",
-        sourceId: "${traceSourceId}",
-        groupBy: "SpanName",
-        select: [
-          { aggFn: "count", alias: "Requests" },
-          { aggFn: "avg", valueExpression: "Duration", alias: "Avg Duration" },
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.95, alias: "P95 Duration" }
-        ]
-      }
-    }
-  ]
-})
+6. LINE CHARTS CAN PASS UP TO 20 SELECT ITEMS. Plot related metrics together (p50, p95, p99 on one chart). Each series can carry its own numberFormat.
 
-== ROW-CLICK LINKING (table tiles) ==
+7. HEATMAPS FOR DISTRIBUTIONS. Trace duration buckets, payload size buckets. Trace sources only. Set numberFormat: { output: "duration", factor: 0.000000001 } on the chart config so the y-axis reads in human time.
 
-Table tiles support an optional config.onClick that turns each row into a
-drill-down link to the /search page or another dashboard. Use this when
-the dashboard answers "which thing?" and the user needs the next step —
-"what's actually happening in that thing?" — to be one click away.
+8. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
 
-Two destination types:
-  type: "search"    — opens /search for a log or trace source. Source
-                      kind must be "log" or "trace"; metric/session
-                      sources are rejected.
-  type: "dashboard" — opens another HyperDX dashboard.
+9. METRIC TILES TAKE EXACTLY ONE SELECT ITEM. Each metric is a separate query. To show multiple metrics side by side, create one tile per metric.
 
-Two ways to address the destination:
-  target.mode: "id"       — pin a concrete source/dashboard by its ID.
-                            Prefer this when the target is known up-front;
-                            it survives renames.
-  target.mode: "template" — render a Handlebars-style template against the
-                            clicked row, then resolve by NAME on the
-                            destination team. Example template "Service Details: {{ServiceName}}"
-                            reads the row's ServiceName column and looks up a
-                            source/dashboard with that name.
+10. GROUP RELATED TILES INTO CONTAINERS. A container holds tiles that share a theme (Overview / Performance / Errors). Set containers: [{ id, title, collapsed }] at the top level and reference container ids from each tile via containerId. Use tabs when the same container needs to show different views of the same data; the tab bar appears when a container has two or more tabs.
 
-Templating, applied at click time:
-  whereTemplate   — raw filter expression placed in the destination's
-                    \`where\` query param. Uses Lucene or SQL syntax matching
-                    \`whereLanguage\`. Example: "ServiceName = '{{service.name}}'".
-  filters         — array of { kind: "expressionTemplate", expression,
-                    template }. Each becomes an IN clause on the destination
-                    (\`expression IN ('rendered-value')\`); filters that share
-                    an expression are merged into one IN clause. Prefer
-                    filters over whereTemplate for simple row-driven
-                    equality — the destination dashboard auto-populates its
-                    own dropdown filters from these values.
+== ADAPT, DO NOT COPY ==
 
-Field rules:
-  - onClick is supported on builder table tiles AND raw-SQL tiles with
-    displayType: "table". Other displayTypes ignore the field.
-  - whereLanguage is optional but should be set to "sql" or "lucene" to match
-    the content of the whereTemplate, when one is set.
-  - Template values are pulled from the clicked row's columns. The column
-    name in {{...}} must match a column produced by the table query.
-  - For type="dashboard": each \`filters[i].expression\` MUST match a
-    top-level DashboardFilter declared on the target dashboard. Otherwise
-    the value is silently dropped at click time and the destination opens
-    unfiltered. Call hyperdx_get_dashboard on the target first to inspect
-    its declared \`filters[]\` list. If the expression isn't declared,
-    either add it to the target dashboard's \`filters\` array OR use
-    \`whereTemplate\` instead (which doesn't require a declared filter).
-
-Example — drill from a per-service error count into the matching trace
-search, scoping the search to that service:
-  {
-    "name": "Errors by Service",
-    "config": {
-      "displayType": "table",
-      "sourceId": "<trace-source-id>",
-      "groupBy": "ResourceAttributes['service.name']",
-      "select": [
-        { "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }
-      ],
-      "onClick": {
-        "type": "search",
-        "target": { "mode": "id", "id": "<trace-source-id>" },
-        "whereLanguage": "sql",
-        "filters": [
-          {
-            "kind": "expressionTemplate",
-            "expression": "ServiceName",
-            "template": "{{ResourceAttributes['service.name']}}"
-          }
-        ]
-      }
-    }
-  }
-
-Example — drill from a service overview row into a per-service dashboard.
-For the filter to actually land, the TARGET dashboard must declare a
-matching DashboardFilter (same \`expression\`). Pass them on the target
-dashboard's hyperdx_save_dashboard call as a top-level \`filters\` array.
-
-  Source dashboard (the one with the table tile + onClick):
-    "onClick": {
-      "type": "dashboard",
-      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
-      "whereLanguage": "sql",
-      "filters": [
-        {
-          "kind": "expressionTemplate",
-          "expression": "ServiceName",
-          "template": "{{ResourceAttributes['service.name']}}"
-        }
-      ]
-    }
-
-  Target dashboard (must declare ServiceName as a top-level filter):
-    hyperdx_save_dashboard({
-      id: "<service-detail-dashboard-id>",
-      name: "Service Detail",
-      tiles: [/* ... */],
-      filters: [
-        {
-          type: "QUERY_EXPRESSION",
-          name: "Service",
-          expression: "ServiceName",
-          sourceId: "<trace-source-id>",
-          whereLanguage: "sql"
-        }
-      ]
-    })
-
-== STATUS CODE & SEVERITY VALUES ==
-
-IMPORTANT: The exact values for StatusCode and SeverityText vary by deployment.
-Do NOT assume values like "STATUS_CODE_ERROR", "Ok", "error", or "fatal".
-Always call hyperdx_list_sources first and inspect the keyValues / mapAttributeKeys
-returned for each source to discover the real values used in your data.
+The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with hyperdx_list_sources before reusing literals.
 
 == COMMON MISTAKES TO AVOID ==
 
-- Using valueExpression with aggFn "count" — count does not take a valueExpression
-- Forgetting valueExpression for non-count aggFns — avg, sum, min, max, quantile all require it
-- Using dot notation for Map-type attributes — always use SpanAttributes['key'] bracket syntax for Map columns
-- Not calling hyperdx_list_sources first — you need real source IDs, not placeholders
-- Not validating with hyperdx_query_tile after saving — tiles can silently fail
-- Number and Pie tiles accept exactly 1 select item — not multiple
-- Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99
-- Assuming StatusCode or SeverityText values — always inspect the source first
-- Heatmap tile on a non-Trace source — heatmap is restricted to Trace sources today
-- Heatmap tile with empty valueExpression — required, e.g. "Duration"`;
+- Using valueExpression with aggFn "count" (count takes no valueExpression).
+- Forgetting valueExpression for non-count aggFns (avg, sum, min, max, quantile all require it).
+- Using dot notation for Map-type attributes (always use SpanAttributes['key'] bracket syntax).
+- Skipping hyperdx_list_sources (you need real source IDs and real column names).
+- Skipping hyperdx_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
+- Setting chart-level numberFormat on a table that mixes counts and durations (counts render as 0:00:00).
+- Multiple select items on number / pie / heatmap / metric tiles (each takes exactly one).
+- Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
+- Assuming StatusCode or SeverityText values (always inspect real values from hyperdx_list_sources).
+- Heatmap on a non-Trace source (heatmap is Trace-only today).
+- Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).`;
 }
 
 export function buildDashboardExamplesPrompt(
@@ -323,275 +127,426 @@ export function buildDashboardExamplesPrompt(
 ): string {
   const examples: Record<string, string> = {};
 
-  examples['service_overview'] = `
-== SERVICE HEALTH OVERVIEW ==
+  examples['service_inventory'] = `
+== SERVICE INVENTORY ==
 
-A high-level view of service health with KPIs, trends, and endpoint details.
+When to use: the user wants a multi-service overview, one row per service, with RED columns (Requests / Errors / P95 Duration) and trends underneath. Swap "ServiceName" for any other dimension (operation.name, tenant_id, region) to inventory by that dimension instead.
+
+Why this shape: the table answers "how is each thing doing right now". The Trends container answers "what changed over time". Tabs keep the trends section compact (only the active view renders).
 
 {
-  name: "Service Health Overview",
-  tags: ["overview", "service"],
+  name: "Service Inventory",
+  containers: [
+    {
+      id: "trends",
+      title: "Trends",
+      collapsed: false,
+      tabs: [
+        { id: "throughput", title: "Throughput" },
+        { id: "latency",    title: "Latency"    },
+        { id: "errors",     title: "Errors"     }
+      ]
+    }
+  ],
   tiles: [
     {
-      name: "Total Requests",
-      x: 0, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count" }]
-      }
-    },
-    {
-      name: "Error Count",
-      x: 6, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR" }]
-      }
-    },
-    {
-      name: "Avg Latency",
-      x: 12, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "avg", valueExpression: "Duration" }]
-      }
-    },
-    {
-      name: "P99 Latency",
-      x: 18, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "quantile", valueExpression: "Duration", level: 0.99 }]
-      }
-    },
-    {
-      name: "Request Volume Over Time",
-      x: 0, y: 4, w: 12, h: 4,
-      config: {
-        displayType: "line",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "count" }],
-        groupBy: "ResourceAttributes['service.name']"
-      }
-    },
-    {
-      name: "Error Rate Over Time",
-      x: 12, y: 4, w: 12, h: 4,
-      config: {
-        displayType: "line",
-        sourceId: "${traceSourceId}",
-        select: [
-          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", alias: "Errors" },
-          { aggFn: "count", alias: "Total" }
-        ],
-        asRatio: true
-      }
-    },
-    {
-      name: "Top Endpoints",
-      x: 0, y: 8, w: 24, h: 6,
+      name: "Services",
+      x: 0, y: 0, w: 24, h: 10,
       config: {
         displayType: "table",
         sourceId: "${traceSourceId}",
-        groupBy: "SpanName",
         select: [
           { aggFn: "count", alias: "Requests" },
-          { aggFn: "avg", valueExpression: "Duration", alias: "Avg Duration" },
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.95, alias: "P95" },
-          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", alias: "Errors" }
-        ]
-      }
-    }
-  ]
-}`;
-
-  examples['error_tracking'] = `
-== ERROR TRACKING ==
-
-Focus on errors: volume, distribution, and raw error logs.
-
-{
-  name: "Error Tracking",
-  tags: ["errors"],
-  tiles: [
-    {
-      name: "Total Errors",
-      x: 0, y: 0, w: 8, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${logSourceId}",
-        select: [{ aggFn: "count", where: "SeverityText:error OR SeverityText:fatal" }]
+          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" },
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95 Duration",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
+        ],
+        groupBy: "ServiceName",
+        orderBy: "Requests DESC",
+        groupByColumnsOnLeft: true
       }
     },
     {
-      name: "Errors Over Time by Service",
-      x: 0, y: 4, w: 12, h: 4,
+      name: "Requests over time by service",
+      containerId: "trends", tabId: "throughput",
+      x: 0, y: 10, w: 24, h: 8,
       config: {
-        displayType: "line",
-        sourceId: "${logSourceId}",
-        select: [{ aggFn: "count", where: "SeverityText:error OR SeverityText:fatal" }],
-        groupBy: "ResourceAttributes['service.name']"
-      }
-    },
-    {
-      name: "Error Breakdown by Service",
-      x: 12, y: 4, w: 12, h: 4,
-      config: {
-        displayType: "pie",
-        sourceId: "${logSourceId}",
-        select: [{ aggFn: "count", where: "SeverityText:error OR SeverityText:fatal" }],
-        groupBy: "ResourceAttributes['service.name']"
-      }
-    },
-    {
-      name: "Error Logs",
-      x: 0, y: 8, w: 24, h: 6,
-      config: {
-        displayType: "search",
-        sourceId: "${logSourceId}",
-        where: "SeverityText:error OR SeverityText:fatal"
-      }
-    }
-  ]
-}`;
-
-  examples['latency'] = `
-== LATENCY MONITORING ==
-
-Track response times with percentile breakdowns and slow endpoint identification.
-
-{
-  name: "Latency Monitoring",
-  tags: ["latency", "performance"],
-  tiles: [
-    {
-      name: "P50 Latency",
-      x: 0, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
+        displayType: "stacked_bar",
         sourceId: "${traceSourceId}",
-        select: [{ aggFn: "quantile", valueExpression: "Duration", level: 0.5 }]
+        select: [ { aggFn: "count", alias: "Requests" } ],
+        groupBy: "ServiceName"
       }
     },
     {
-      name: "P95 Latency",
-      x: 6, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "quantile", valueExpression: "Duration", level: 0.95 }]
-      }
-    },
-    {
-      name: "P99 Latency",
-      x: 12, y: 0, w: 6, h: 4,
-      config: {
-        displayType: "number",
-        sourceId: "${traceSourceId}",
-        select: [{ aggFn: "quantile", valueExpression: "Duration", level: 0.99 }]
-      }
-    },
-    {
-      name: "Latency Percentiles Over Time",
-      x: 0, y: 4, w: 24, h: 4,
+      name: "P95 Duration over time by service",
+      containerId: "trends", tabId: "latency",
+      x: 0, y: 10, w: 24, h: 8,
       config: {
         displayType: "line",
         sourceId: "${traceSourceId}",
         select: [
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.5, alias: "P50" },
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.95, alias: "P95" },
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.99, alias: "P99" }
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
+        ],
+        groupBy: "ServiceName"
+      }
+    },
+    {
+      name: "Errors over time by service",
+      containerId: "trends", tabId: "errors",
+      x: 0, y: 10, w: 24, h: 8,
+      config: {
+        displayType: "stacked_bar",
+        sourceId: "${traceSourceId}",
+        select: [
+          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" }
+        ],
+        groupBy: "ServiceName"
+      }
+    }
+  ]
+}`;
+
+  examples['service_detail'] = `
+== SERVICE DETAIL ==
+
+When to use: the user wants a focused per-service view (one service at a time, picked via a dropdown). Drop-in replacement: any per-dimension dashboard (per-endpoint, per-tenant, per-region) follows the same shape, just swap the filter expression.
+
+Why this shape: a dashboard-level filter on ServiceName re-scopes every tile globally; tiles do NOT hardcode the service into their where clause. Four containers separate concerns: Overview (KPIs), Performance (latency line + heatmap), Endpoints (per-SpanName RED breakdown), Errors (top error messages + recent error spans). Errors container starts expanded so the user sees error context immediately when investigating.
+
+{
+  name: "Service Detail",
+  filters: [
+    {
+      type: "QUERY_EXPRESSION",
+      name: "Service",
+      expression: "ServiceName",
+      sourceId: "${traceSourceId}"
+    }
+  ],
+  containers: [
+    { id: "overview",    title: "Overview",                  collapsed: false },
+    { id: "performance", title: "Performance",               collapsed: false },
+    { id: "endpoints",   title: "Endpoints (per span name)", collapsed: false },
+    { id: "errors",      title: "Errors",                    collapsed: false }
+  ],
+  tiles: [
+    {
+      name: "Requests", containerId: "overview",
+      x: 0, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", alias: "Requests" } ]
+      }
+    },
+    {
+      name: "Errors", containerId: "overview",
+      x: 8, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" } ]
+      }
+    },
+    {
+      name: "P95 Duration", containerId: "overview",
+      x: 16, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
         ]
       }
     },
     {
-      name: "Latency by Service",
-      x: 0, y: 8, w: 12, h: 4,
+      name: "Latency Percentiles", containerId: "performance",
+      x: 0, y: 4, w: 12, h: 6,
       config: {
-        displayType: "stacked_bar",
+        displayType: "line",
         sourceId: "${traceSourceId}",
-        select: [{ aggFn: "avg", valueExpression: "Duration" }],
-        groupBy: "ResourceAttributes['service.name']"
+        select: [
+          { aggFn: "quantile", level: 0.5,  valueExpression: "Duration", alias: "P50", numberFormat: { output: "duration", factor: 0.000000001 } },
+          { aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95", numberFormat: { output: "duration", factor: 0.000000001 } },
+          { aggFn: "quantile", level: 0.99, valueExpression: "Duration", alias: "P99", numberFormat: { output: "duration", factor: 0.000000001 } }
+        ]
       }
     },
     {
-      name: "Slowest Endpoints",
-      x: 12, y: 8, w: 12, h: 6,
+      name: "Duration Distribution", containerId: "performance",
+      x: 12, y: 4, w: 12, h: 6,
+      config: {
+        displayType: "heatmap",
+        sourceId: "${traceSourceId}",
+        select: [ { valueExpression: "Duration", heatmapScaleType: "log" } ],
+        where: "", whereLanguage: "lucene",
+        numberFormat: { output: "duration", factor: 0.000000001 }
+      }
+    },
+    {
+      name: "Endpoints", containerId: "endpoints",
+      x: 0, y: 10, w: 24, h: 8,
       config: {
         displayType: "table",
         sourceId: "${traceSourceId}",
+        select: [
+          { aggFn: "count", alias: "Requests" },
+          { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" },
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95 Duration",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
+        ],
         groupBy: "SpanName",
-        select: [
-          { aggFn: "quantile", valueExpression: "Duration", level: 0.95, alias: "P95 Duration" },
-          { aggFn: "avg", valueExpression: "Duration", alias: "Avg Duration" },
-          { aggFn: "count", alias: "Request Count" }
-        ]
+        orderBy: "Requests DESC",
+        groupByColumnsOnLeft: true
+      }
+    },
+    {
+      name: "Errors Over Time", containerId: "errors",
+      x: 0, y: 18, w: 12, h: 6,
+      config: {
+        displayType: "stacked_bar",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" } ],
+        groupBy: "SpanName"
+      }
+    },
+    {
+      name: "Top Error Messages", containerId: "errors",
+      x: 12, y: 18, w: 12, h: 6,
+      config: {
+        displayType: "table",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", alias: "Count" } ],
+        groupBy: "StatusMessage",
+        having: "StatusMessage != ''",
+        orderBy: "Count DESC",
+        groupByColumnsOnLeft: true
+      }
+    },
+    {
+      name: "Recent Error Spans", containerId: "errors",
+      x: 0, y: 24, w: 24, h: 6,
+      config: {
+        displayType: "search",
+        sourceId: "${traceSourceId}",
+        select: "Timestamp, ServiceName, SpanName, StatusMessage, SpanAttributes['http.status_code'] AS HttpStatus, Duration",
+        where: "StatusCode:STATUS_CODE_ERROR AND StatusMessage:*",
+        whereLanguage: "lucene"
       }
     }
   ]
 }`;
 
-  examples['log_analysis'] = `
-== LOG ANALYSIS ==
+  examples['log_analytics'] = `
+== LOG ANALYTICS ==
 
-Analyze log volume, severity distribution, and browse log events.
+When to use: the user is investigating logs, not traces. Trace columns (Duration, SpanName, StatusCode) do NOT apply on a log source. Logs use SeverityText, Body, ServiceName, LogAttributes.
+
+Why this shape: KPIs across the top with severity filters, severity and service breakdown in the middle (stacked_bar + pie + ranked table), recent errors as a search tile at the bottom for drill-down. A dashboard-level filter on ServiceName lets the user narrow to one service.
 
 {
-  name: "Log Analysis",
-  tags: ["logs"],
+  name: "Log Analytics",
+  filters: [
+    {
+      type: "QUERY_EXPRESSION",
+      name: "Service",
+      expression: "ServiceName",
+      sourceId: "${logSourceId}"
+    }
+  ],
+  containers: [
+    { id: "kpis",      title: "Volume",         collapsed: false },
+    { id: "breakdown", title: "Breakdown",      collapsed: false },
+    { id: "recent",    title: "Recent activity", collapsed: false }
+  ],
   tiles: [
     {
-      name: "Total Log Events",
+      name: "Total logs", containerId: "kpis",
       x: 0, y: 0, w: 8, h: 4,
       config: {
         displayType: "number",
         sourceId: "${logSourceId}",
-        select: [{ aggFn: "count" }]
+        select: [ { aggFn: "count", alias: "Total" } ]
       }
     },
     {
-      name: "Log Volume by Severity",
-      x: 0, y: 4, w: 12, h: 4,
+      name: "Errors", containerId: "kpis",
+      x: 8, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${logSourceId}",
+        select: [ { aggFn: "count", where: "SeverityText:error", whereLanguage: "lucene", alias: "Errors" } ]
+      }
+    },
+    {
+      name: "Warnings", containerId: "kpis",
+      x: 16, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${logSourceId}",
+        select: [ { aggFn: "count", where: "SeverityText:warn", whereLanguage: "lucene", alias: "Warnings" } ]
+      }
+    },
+    {
+      name: "Volume by severity", containerId: "breakdown",
+      x: 0, y: 4, w: 12, h: 6,
       config: {
         displayType: "stacked_bar",
         sourceId: "${logSourceId}",
-        select: [{ aggFn: "count" }],
+        select: [ { aggFn: "count", alias: "Events" } ],
         groupBy: "SeverityText"
       }
     },
     {
-      name: "Severity Breakdown",
-      x: 12, y: 4, w: 12, h: 4,
+      name: "Volume by service", containerId: "breakdown",
+      x: 12, y: 4, w: 12, h: 6,
       config: {
         displayType: "pie",
         sourceId: "${logSourceId}",
-        select: [{ aggFn: "count" }],
-        groupBy: "SeverityText"
+        select: [ { aggFn: "count", alias: "Events" } ],
+        groupBy: "ServiceName"
       }
     },
     {
-      name: "Top Services by Log Volume",
-      x: 0, y: 8, w: 12, h: 6,
+      name: "Top services by error count", containerId: "breakdown",
+      x: 0, y: 10, w: 24, h: 8,
       config: {
         displayType: "table",
         sourceId: "${logSourceId}",
-        groupBy: "ResourceAttributes['service.name']",
         select: [
-          { aggFn: "count", alias: "Log Count" },
-          { aggFn: "count", where: "SeverityText:error OR SeverityText:fatal", alias: "Error Count" }
+          { aggFn: "count", alias: "Total logs" },
+          { aggFn: "count", where: "SeverityText:error", whereLanguage: "lucene", alias: "Errors" },
+          { aggFn: "count", where: "SeverityText:warn",  whereLanguage: "lucene", alias: "Warnings" }
+        ],
+        groupBy: "ServiceName",
+        orderBy: "Errors DESC",
+        groupByColumnsOnLeft: true
+      }
+    },
+    {
+      name: "Recent errors", containerId: "recent",
+      x: 0, y: 18, w: 24, h: 8,
+      config: {
+        displayType: "search",
+        sourceId: "${logSourceId}",
+        select: "Timestamp, ServiceName, SeverityText, Body",
+        where: "SeverityText:error",
+        whereLanguage: "lucene"
+      }
+    }
+  ]
+}`;
+
+  examples['backend_dependencies'] = `
+== BACKEND DEPENDENCIES ==
+
+When to use: the user wants to see what a backend service calls OUT to (downstream databases, HTTP clients, queues). Filters the trace source by SpanKind to "Client" so every tile reports on outbound spans only.
+
+Why this shape: the per-series where on each aggregation is the right place to scope by SpanKind, because the user may still want to compare the service's own server-side metrics on a different dashboard. The Top downstream operations table is the inventory of dependencies; the trends section shows volume and latency over time.
+
+{
+  name: "Backend Dependencies",
+  filters: [
+    {
+      type: "QUERY_EXPRESSION",
+      name: "Service",
+      expression: "ServiceName",
+      sourceId: "${traceSourceId}"
+    }
+  ],
+  containers: [
+    { id: "kpis",       title: "Outbound traffic",          collapsed: false },
+    { id: "operations", title: "Top downstream operations", collapsed: false },
+    { id: "trends",     title: "Trends",                    collapsed: false }
+  ],
+  tiles: [
+    {
+      name: "Outbound calls", containerId: "kpis",
+      x: 0, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", where: "SpanKind:Client", whereLanguage: "lucene", alias: "Client spans" } ]
+      }
+    },
+    {
+      name: "Client errors", containerId: "kpis",
+      x: 8, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", where: "SpanKind:Client AND StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" } ]
+      }
+    },
+    {
+      name: "P95 client duration", containerId: "kpis",
+      x: 16, y: 0, w: 8, h: 4,
+      config: {
+        displayType: "number",
+        sourceId: "${traceSourceId}",
+        select: [
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration",
+            where: "SpanKind:Client", whereLanguage: "lucene", alias: "P95",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
         ]
       }
     },
     {
-      name: "Recent Logs",
-      x: 12, y: 8, w: 12, h: 6,
+      name: "RED by downstream operation", containerId: "operations",
+      x: 0, y: 4, w: 24, h: 10,
       config: {
-        displayType: "search",
-        sourceId: "${logSourceId}"
+        displayType: "table",
+        sourceId: "${traceSourceId}",
+        select: [
+          { aggFn: "count", where: "SpanKind:Client", whereLanguage: "lucene", alias: "Calls" },
+          { aggFn: "count", where: "SpanKind:Client AND StatusCode:STATUS_CODE_ERROR", whereLanguage: "lucene", alias: "Errors" },
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration",
+            where: "SpanKind:Client", whereLanguage: "lucene", alias: "P95 Duration",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
+        ],
+        groupBy: "SpanName",
+        orderBy: "Calls DESC",
+        groupByColumnsOnLeft: true
+      }
+    },
+    {
+      name: "Outbound call volume over time", containerId: "trends",
+      x: 0, y: 14, w: 12, h: 6,
+      config: {
+        displayType: "stacked_bar",
+        sourceId: "${traceSourceId}",
+        select: [ { aggFn: "count", where: "SpanKind:Client", whereLanguage: "lucene", alias: "Calls" } ],
+        groupBy: "SpanName"
+      }
+    },
+    {
+      name: "Client P95 latency over time", containerId: "trends",
+      x: 12, y: 14, w: 12, h: 6,
+      config: {
+        displayType: "line",
+        sourceId: "${traceSourceId}",
+        select: [
+          {
+            aggFn: "quantile", level: 0.95, valueExpression: "Duration",
+            where: "SpanKind:Client", whereLanguage: "lucene", alias: "P95",
+            numberFormat: { output: "duration", factor: 0.000000001 }
+          }
+        ],
+        groupBy: "SpanName"
       }
     }
   ]
@@ -673,14 +628,12 @@ copy the right ID and discover which filters are available.
 }`;
 
   examples['infrastructure_sql'] = `
-== INFRASTRUCTURE MONITORING (Raw SQL) ==
+== INFRASTRUCTURE (Raw SQL) ==
 
-Advanced dashboard using raw SQL tiles for custom ClickHouse queries.
-Use this pattern when you need JOINs, CTEs, or queries the builder cannot express.
+When to use: the user wants metric-like infrastructure visibility (request rate, ingestion volume, table sizes) but the builder tile types do not express the exact aggregation. Raw SQL tiles take connectionId (not sourceId) and a sqlTemplate with HyperDX macros.
 
 {
   name: "Infrastructure (SQL)",
-  tags: ["infrastructure", "sql"],
   tiles: [
     {
       name: "Log Ingestion Rate Over Time",
@@ -717,43 +670,48 @@ Use this pattern when you need JOINs, CTEs, or queries the builder cannot expres
 
 SQL TEMPLATE REFERENCE:
   Macros (expanded before execution):
-    $__timeFilter(col)        — col >= <start> AND col <= <end> (DateTime)
-    $__timeFilter_ms(col)     — same with DateTime64 millisecond precision
-    $__dateFilter(col)        — same with Date precision
-    $__timeInterval(col)      — time bucket: toStartOfInterval(toDateTime(col), INTERVAL ...)
-    $__timeInterval_ms(col)   — same with millisecond precision
-    $__fromTime / $__toTime   — start/end as DateTime values
-    $__fromTime_ms / $__toTime_ms — start/end as DateTime64 values
-    $__interval_s             — raw interval in seconds
-    $__filters                — dashboard filter conditions (resolves to 1=1 when none)
+    $__timeFilter(col)         col >= <start> AND col <= <end> (DateTime)
+    $__timeFilter_ms(col)      same with DateTime64 millisecond precision
+    $__dateFilter(col)         same with Date precision
+    $__timeInterval(col)       time bucket: toStartOfInterval(toDateTime(col), INTERVAL ...)
+    $__timeInterval_ms(col)    same with millisecond precision
+    $__fromTime / $__toTime    start/end as DateTime values
+    $__fromTime_ms / $__toTime_ms  start/end as DateTime64 values
+    $__interval_s              raw interval in seconds
+    $__filters                 dashboard filter conditions (resolves to 1=1 when none)
 
   Query parameters:
-    {startDateMilliseconds:Int64} — start of date range in milliseconds
-    {endDateMilliseconds:Int64}   — end of date range in milliseconds
-    {intervalSeconds:Int64}       — time bucket size in seconds
-    {intervalMilliseconds:Int64}  — time bucket size in milliseconds
+    {startDateMilliseconds:Int64}  start of date range in milliseconds
+    {endDateMilliseconds:Int64}    end of date range in milliseconds
+    {intervalSeconds:Int64}        time bucket size in seconds
+    {intervalMilliseconds:Int64}   time bucket size in milliseconds
 
   Available parameters by displayType:
-    line / stacked_bar — startDate, endDate, interval (all available)
-    table / number / pie — startDate, endDate only (no interval)`;
+    line / stacked_bar        startDate, endDate, interval (all available)
+    table / number / pie      startDate, endDate only (no interval)`;
+
+  const preface =
+    'Concrete dashboard examples for common observability patterns. ' +
+    'These are PATTERNS to adapt, not literal templates. Adapt the structure ' +
+    "(table shape, container layout, filter expression) to the user's request; " +
+    'always verify column names and status literals via hyperdx_list_sources before reusing them.\n' +
+    'Replace ${sourceId} / ${connectionId} placeholders with real IDs from hyperdx_list_sources.\n\n';
 
   if (pattern) {
     const key = pattern.toLowerCase().replace(/[\s-]+/g, '_');
     const matched = Object.entries(examples).find(([k]) => k === key);
     if (matched) {
-      return `Dashboard example for pattern: ${pattern}\n\nReplace sourceId/connectionId values with real IDs from hyperdx_list_sources.\nNOTE: Column names below (Duration, StatusCode, SpanName, etc.) are defaults for the standard schema. Call hyperdx_list_sources to get the actual column names for your sources.\n${matched[1]}`;
+      return `${preface}Dashboard example for pattern: ${pattern}\n${matched[1]}`;
     }
     return (
       `No example found for pattern "${pattern}". Available patterns: ${Object.keys(examples).join(', ')}\n\n` +
-      `Showing all examples below.\n\n` +
+      preface +
       Object.values(examples).join('\n')
     );
   }
 
   return (
-    `Complete dashboard examples for common observability patterns.\n` +
-    `Replace sourceId/connectionId values with real IDs from hyperdx_list_sources.\n` +
-    `NOTE: Column names below (Duration, StatusCode, SpanName, etc.) are defaults for the standard schema. Call hyperdx_list_sources to get the actual column names for your sources.\n\n` +
+    preface +
     `Available patterns: ${Object.keys(examples).join(', ')}\n` +
     Object.values(examples).join('\n')
   );
@@ -764,17 +722,16 @@ export function buildQueryGuidePrompt(): string {
 
 == AGGREGATION FUNCTIONS (aggFn) ==
 
-  count          — Count matching rows. Does NOT take a valueExpression.
-  sum            — Sum of a numeric column. Requires valueExpression.
-  avg            — Average of a numeric column. Requires valueExpression.
-  min            — Minimum value. Requires valueExpression.
-  max            — Maximum value. Requires valueExpression.
-  count_distinct — Count of unique values. Requires valueExpression.
-  quantile       — Percentile value. Requires valueExpression AND level (0.5, 0.9, 0.95, or 0.99).
-  last_value     — Most recent value of a column. Requires valueExpression.
-  none           — Pass a raw expression unchanged. Requires valueExpression.
-  heatmap        — Heatmap-only literal. Requires non-empty valueExpression.
-                   Used exclusively in heatmap tiles' select array.
+  count          Count matching rows. Does NOT take a valueExpression.
+  sum            Sum of a numeric column. Requires valueExpression.
+  avg            Average of a numeric column. Requires valueExpression.
+  min            Minimum value. Requires valueExpression.
+  max            Maximum value. Requires valueExpression.
+  count_distinct Count of unique values. Requires valueExpression.
+  quantile       Percentile value. Requires valueExpression AND level (0.5, 0.9, 0.95, or 0.99).
+  last_value     Most recent value of a column. Requires valueExpression.
+  none           Pass a raw expression unchanged. Requires valueExpression.
+  heatmap        Heatmap-only literal. Requires non-empty valueExpression. Used exclusively in heatmap tiles.
 
 Examples:
   { aggFn: "count" }
@@ -786,14 +743,14 @@ Examples:
 
 == COLUMN NAMING ==
 
-Top-level columns (PascalCase defaults — use directly in valueExpression and groupBy):
-  Duration, StatusCode, SpanName, ServiceName, Body, SeverityText,
-  Timestamp, TraceId, SpanId, SpanKind, ParentSpanId
-  NOTE: These are the defaults for the standard HyperDX schema. Custom sources may
+Top-level columns (PascalCase defaults, use directly in valueExpression and groupBy):
+  Duration, StatusCode, SpanName, ServiceName, SpanKind, Body, SeverityText,
+  Timestamp, TraceId, SpanId, ParentSpanId
+  NOTE: These are defaults for the standard HyperDX schema. Custom sources may
   use different column names. Always verify with hyperdx_list_sources, which returns
   the real column names and keyColumns expressions for each source.
 
-Map-type columns (bracket syntax — access keys via ['key']):
+Map-type columns (bracket syntax, access keys via ['key']):
   SpanAttributes['http.method']
   SpanAttributes['http.route']
   SpanAttributes['http.status_code']
@@ -804,9 +761,9 @@ IMPORTANT: Always use bracket syntax for Map-type columns. Never use dot notatio
   Correct:   SpanAttributes['http.method']
   Incorrect: SpanAttributes.http.method
 
-JSON-type columns (dot notation — access nested keys via dot path):
+JSON-type columns (dot notation, access nested keys via dot path):
   JsonColumn.key.subkey
-  NOTE: Check the jsType field returned by hyperdx_list_sources to determine
+  NOTE: Check the jsType field returned by hyperdx_list_sources to decide
   whether a column is Map (use brackets) or JSON (use dots).
 
 == LUCENE FILTER SYNTAX ==
@@ -825,7 +782,7 @@ Used in the "where" field of select items and search tiles.
   Grouped:            (level:error OR level:fatal) AND service.name:api
 
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
-This is different from valueExpression/groupBy which requires bracket syntax (SpanAttributes['http.method']).
+This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
 == SQL FILTER SYNTAX ==
 
@@ -843,16 +800,16 @@ Alternative to Lucene. Set whereLanguage: "sql" when using SQL syntax.
 For configType: "sql" tiles, write ClickHouse SQL with template macros:
 
   MACROS (expanded before execution):
-    $__timeFilter(col)         — col >= <start> AND col <= <end>
-    $__timeFilter_ms(col)      — same with DateTime64 millisecond precision
-    $__dateFilter(col)         — same with Date precision
-    $__dateTimeFilter(d, t)    — filters on both Date and DateTime columns
-    $__timeInterval(col)       — time bucket expression for GROUP BY
-    $__timeInterval_ms(col)    — same with millisecond precision
-    $__fromTime / $__toTime    — start/end as DateTime values
-    $__fromTime_ms / $__toTime_ms — start/end as DateTime64 values
-    $__interval_s              — raw interval in seconds (for arithmetic)
-    $__filters                 — dashboard filter conditions (1=1 when none)
+    $__timeFilter(col)         col >= <start> AND col <= <end>
+    $__timeFilter_ms(col)      same with DateTime64 millisecond precision
+    $__dateFilter(col)         same with Date precision
+    $__dateTimeFilter(d, t)    filters on both Date and DateTime columns
+    $__timeInterval(col)       time bucket expression for GROUP BY
+    $__timeInterval_ms(col)    same with millisecond precision
+    $__fromTime / $__toTime    start/end as DateTime values
+    $__fromTime_ms / $__toTime_ms  start/end as DateTime64 values
+    $__interval_s              raw interval in seconds (for arithmetic)
+    $__filters                 dashboard filter conditions (1=1 when none)
 
   QUERY PARAMETERS (ClickHouse parameterized syntax):
     {startDateMilliseconds:Int64}
@@ -883,26 +840,41 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
     ORDER BY request_count DESC
     LIMIT 50
 
-  IMPORTANT: Always include a LIMIT clause in table/number/pie SQL queries.
+  IMPORTANT: Always include a LIMIT clause in table / number / pie SQL queries.
 
 == PER-TILE TYPE CONSTRAINTS ==
 
-  number  — Exactly 1 select item. No groupBy.
-  pie     — Exactly 1 select item. groupBy defines the slices.
-  line    — 1-20 select items. Optional groupBy splits into series.
-  stacked_bar — 1-20 select items. Optional groupBy splits into stacks.
-  table   — 1-20 select items. Optional groupBy defines row groups.
-  heatmap — Exactly 1 select item with a non-empty valueExpression. No
-            aggFn or alias on the select item (the chart-level
-            displayType: "heatmap" is the discriminator). Trace sources
-            only (no Log/Metric/Session). No groupBy. Optional where
-            filter applied before bucketing.
-  search  — No select items (select is a column list string). where is the filter.
-  markdown — No select items. Set markdown field with content.
+  number       Exactly 1 select item. No groupBy.
+  pie          Exactly 1 select item. groupBy defines the slices. Keep slice count under 8.
+  line         1 to 20 select items. Optional groupBy splits into series. Each select item may carry its own numberFormat.
+  stacked_bar  1 to 20 select items. Optional groupBy splits into stacks.
+  table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
+  heatmap      Exactly 1 select item with a non-empty valueExpression. No aggFn or alias on the select item (the chart-level displayType: "heatmap" is the discriminator). Trace sources only (no Log/Metric/Session). No groupBy. Optional where filter applied before bucketing.
+  search       No select items (select is a column list string). where is the filter.
+  markdown     No select items. Set markdown field with content.
+
+  METRIC TILES (any of the above with metric source): exactly 1 select item with metricName + metricType (gauge / sum / histogram). To show multiple metrics side by side, create one tile per metric.
+
+== NUMBER FORMAT ==
+
+numberFormat controls how a value renders. Two places to set it:
+
+  Per-series (on each select item): { output: "...", factor: ... } on a single select. Other series in the same tile keep their default rendering. USE THIS for tables and line charts that mix count and duration columns.
+
+  Chart-level (on tile config): same shape on the tile config root. Applies to every value in the tile. USE THIS for number, heatmap, and tiles where every series shares a unit.
+
+Common outputs:
+  duration   Auto-formats elapsed time as "1.2s" / "200ms". Use factor: 0.000000001 for nanosecond Duration columns.
+  byte       Auto-formats as KB / MB / GB.
+  percent    Multiplies by 100 and appends %.
+  number     Plain number. Set thousandSeparated: true for "1,234,567" and average: true for "1.2m" abbreviation.
+  currency   Prepends currencySymbol.
+  data_rate  Bytes per second.
+  throughput Count per second.
 
 == asRatio ==
 
-Set asRatio: true on line/stacked_bar/table tiles with exactly 2 select items
+Set asRatio: true on line / stacked_bar / table tiles with exactly 2 select items
 to plot the first as a ratio of the second. Useful for error rates:
   select: [
     { aggFn: "count", where: "StatusCode:STATUS_CODE_ERROR", alias: "Errors" },
@@ -910,156 +882,44 @@ to plot the first as a ratio of the second. Useful for error rates:
   ],
   asRatio: true
 
-== TABLE TILE LINKING (config.onClick) ==
+== DASHBOARD FILTERS ==
 
-Table tiles can wire up row-click navigation via config.onClick. Builder
-table tiles (displayType: "table") and raw-SQL tiles (configType: "sql",
-displayType: "table") both accept this; other tile types ignore it.
+Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header that scopes every tile against the same source. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
 
-Destination types:
-  { type: "search",    target, whereLanguage, whereTemplate?, filters? }
-    Opens the /search page for a log or trace source. Metric and session
-    sources are rejected by the server (the /search page does not render
-    those kinds).
-  { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
-    Opens another HyperDX dashboard owned by the same team.
+Filter shape:
+  { type, name, expression, sourceId, where?, whereLanguage? }
 
-Target shape — how the destination is identified:
-  target: { mode: "id", id: "<object-id>" }
-    Pins a specific source (for type=search) or dashboard
-    (for type=dashboard) by its ID. Prefer this when the target is known.
-    Find source IDs with hyperdx_list_sources; find dashboard IDs with
-    hyperdx_get_dashboard (no id arg returns the list of all dashboards).
-  target: { mode: "template", template: "<handlebars>" }
-    Renders the template against the clicked row's columns, then resolves
-    the result by NAME on the destination team. Example template
-    "{{Service}}" reads the row's Service value and looks up a
-    source/dashboard with that name. Use this when the destination depends
-    on which row was clicked.
+  type             "QUERY_EXPRESSION" (the only currently supported type).
+  name             Human label shown in the filter dropdown (e.g. "Service").
+  expression       Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
+  sourceId         Which source the expression resolves against. Tiles on a different source are NOT scoped by the filter.
+  where            Optional pre-filter that narrows the set of distinct values offered in the dropdown.
+  whereLanguage    "lucene" or "sql". Defaults to "lucene".
 
-Templating values come from the clicked row's columns. The column name in
-{{...}} must match a column produced by the table query (group-by columns
-and aliases both work).
+Example:
+  filters: [
+    { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<trace-source-id>" }
+  ]
 
-  whereTemplate — Handlebars-style template. The rendered string is placed
-                  in the destination's \`where\` query param. Uses Lucene or
-                  SQL syntax matching \`whereLanguage\`. Example:
-                  "ServiceName = '{{service.name}}'".
-
-  filters       — array of { kind: "expressionTemplate", expression,
-                  template }. Each filter renders to an IN clause on the
-                  destination (\`expression IN ('rendered-value')\`). When
-                  multiple filters share an expression they are merged
-                  into one IN clause.
-                  For type="dashboard" targets: the destination only
-                  applies these when it declares a top-level
-                  DashboardFilter with the SAME \`expression\` — otherwise
-                  the value is dropped at click time and the
-                  destination opens unfiltered. Call hyperdx_get_dashboard
-                  on the target first to confirm its \`filters[].expression\`
-                  list, and either add a matching DashboardFilter (via the
-                  hyperdx_save_dashboard \`filters\` param on the target)
-                  or fall back to whereTemplate. For type="search" targets: 
-                  no declaration required; filters always apply.
-
-whereLanguage is optional, but set it to "sql" or "lucene" so the
-destination knows how to parse whereTemplate / filter values when a
-template is rendered.
-
-Example — search drill-down with a row-driven filter:
-  {
-    "displayType": "table",
-    "sourceId": "<trace-source-id>",
-    "groupBy": "ResourceAttributes['service.name']",
-    "select": [{ "aggFn": "count" }],
-    "onClick": {
-      "type": "search",
-      "target": { "mode": "id", "id": "<trace-source-id>" },
-      "whereLanguage": "sql",
-      "filters": [
-        {
-          "kind": "expressionTemplate",
-          "expression": "ServiceName",
-          "template": "{{ResourceAttributes['service.name']}}"
-        }
-      ]
-    }
-  }
-
-Example — dashboard drill-down with multiple row-driven filters. Both
-\`expression\` values (ServiceName, Environment) must be declared on the
-target dashboard's top-level \`filters\` for the values to apply.
-  Source tile onClick:
-    "onClick": {
-      "type": "dashboard",
-      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
-      "whereLanguage": "sql",
-      "filters": [
-        {
-          "kind": "expressionTemplate",
-          "expression": "ServiceName",
-          "template": "{{ResourceAttributes['service.name']}}"
-        },
-        {
-          "kind": "expressionTemplate",
-          "expression": "Environment",
-          "template": "{{ResourceAttributes['deployment.environment']}}"
-        }
-      ]
-    }
-  Target dashboard's top-level \`filters\` (passed to
-  hyperdx_save_dashboard when creating/updating it):
-    filters: [
-      { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName",
-        sourceId: "<trace-source-id>", whereLanguage: "sql" },
-      { type: "QUERY_EXPRESSION", name: "Environment", expression: "Environment",
-        sourceId: "<trace-source-id>", whereLanguage: "sql" }
-    ]
-
-Example — destination chosen by the clicked row (rare; prefer mode="id"):
-  "onClick": {
-    "type": "dashboard",
-    "target": { "mode": "template", "template": "{{TargetDashboardName}}" },
-    "whereLanguage": "lucene"
-  }
-
-Validation categories the server enforces:
-  - target.id (mode="id") must be a valid ObjectId.
-  - For type="search", target.id must reference an existing source whose
-    kind is "log" or "trace" — metric/session sources are rejected with:
-    "The following onClick search source IDs are not log or trace sources: ..."
-  - For type="dashboard", target.id must reference an existing dashboard
-    owned by the same team; missing dashboards are rejected with:
-    "Could not find the following onClick dashboard IDs: ..."
-  - For type="dashboard" with \`filters\`, each filter's \`expression\` must
-    match a top-level DashboardFilter declared on the target dashboard.
-    Otherwise the save is rejected with:
-    "onClick filter expressions are not declared on the target dashboard
-    and would be silently dropped at click time: ..."
+When a value is picked in the dropdown, the renderer combines it with each tile's existing where clause via AND. Tiles do NOT need to reference the filter name; the source match alone is enough.
 
 == CONTAINERS AND TABS ==
 
-Optional dashboard organization layer. Group related tiles visually with
-optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers"
-array; reference containers from tiles via "containerId" (and "tabId" when
-the container has tabs).
+Optional dashboard organization layer. Group related tiles visually with optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers" array; reference containers from tiles via "containerId" (and "tabId" when the container has tabs).
 
 Container shape:
   { id, title, collapsed, collapsible?, bordered?, tabs? }
 
-  id, title    : required, non-empty strings.
-  collapsed    : required boolean. Starts collapsed when true.
-  collapsible  : optional boolean. Defaults to true. When false the group
-                 header has no toggle.
-  bordered     : optional boolean. Defaults to true.
-  tabs         : optional array of { id, title }. Zero or one tab renders
-                 as a plain group header; two or more render as a tab bar.
+  id            Required, non-empty.
+  title         Required, non-empty. Shown as the group header.
+  collapsed     Required boolean. Starts collapsed when true.
+  collapsible   Optional boolean. Defaults to true. When false the group header has no toggle.
+  bordered      Optional boolean. Defaults to true.
+  tabs          Optional array of { id, title }. Zero or one tab renders as a plain group header; two or more render as a tab bar.
 
 Tile fields (on the same tile shape used in tiles[]):
-  containerId  : optional. Must match an id in containers[].
-  tabId        : optional. Must match a tab id on that container. Requires
-                 containerId. A tile with containerId set but no tabId
-                 renders in the container shell (above any tab bar).
+  containerId   Optional. Must match an id in containers[].
+  tabId         Optional. Must match a tab id on that container. Requires containerId. A tile with containerId set but no tabId renders in the container shell (above any tab bar).
 
 Rules enforced by the API:
   - Container ids must be unique on a dashboard.
@@ -1077,7 +937,7 @@ Example:
         title: "Service Health",
         collapsed: false,
         tabs: [
-          { id: "errors", title: "Errors" },
+          { id: "errors",  title: "Errors"  },
           { id: "latency", title: "Latency" }
         ]
       },
@@ -1093,7 +953,7 @@ Example:
     ]
   })
 
-Validation categories on bad inputs:
+Validation errors on bad inputs:
   - tile.containerId references a missing container id
   - tile.tabId references a missing tab id on that container
   - tile.tabId set without tile.containerId
@@ -1144,39 +1004,49 @@ Example: find top patterns for production services over the last 4 hours:
    Wrong:   { aggFn: "avg" }
    Correct: { aggFn: "avg", valueExpression: "Duration" }
 
-3. Using dot notation for Map-type attributes in valueExpression/groupBy
+3. Using dot notation for Map-type attributes in valueExpression or groupBy
    Wrong:   groupBy: "SpanAttributes.http.method"
    Correct: groupBy: "SpanAttributes['http.method']"
    NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
 
-4. Multiple select items on number/pie tiles (dashboard tiles)
+4. Multiple select items on number / pie / heatmap / metric tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
    Correct: displayType: "number", select: [{ aggFn: "count" }]
-   Note: hyperdx_table auto-upgrades shape:"number" to "table" when select has >1 item.
+   Same constraint applies to metric source tiles: one tile per metric.
+   Note: hyperdx_table (the query tool) auto-upgrades shape:"number" to "table" when select has >1 item; dashboard tiles do not.
 
 5. Missing level for quantile
    Wrong:   { aggFn: "quantile", valueExpression: "Duration" }
    Correct: { aggFn: "quantile", valueExpression: "Duration", level: 0.95 }
 
-6. Forgetting to validate tiles after saving
+6. Chart-level numberFormat on a table that mixes counts and durations
+   Wrong:   table with select: [count, count, quantile(Duration)] and chart-level numberFormat: { output: "duration", ... }
+   Correct: put numberFormat on the quantile(Duration) select item only.
+   The chart-level form applies to every value, so count columns render as "0:00:00" / "0s".
+
+7. Hardcoding a focus dimension into every tile's where clause
+   Wrong:   five tiles, each with where: "ServiceName:checkout"
+   Correct: filters: [{ type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<id>" }]
+   The dashboard filter applies globally; tiles do not need the literal.
+
+8. Forgetting to validate tiles after saving
    Always call hyperdx_query_tile after hyperdx_save_dashboard to verify each tile returns data.
 
-7. Using sourceId with SQL tiles or connectionId with builder tiles
+9. Using sourceId with SQL tiles or connectionId with builder tiles
    Builder tiles (line, table, etc.) use sourceId.
    SQL tiles (configType: "sql") use connectionId.
 
-8. Assuming StatusCode or SeverityText values
-   Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
-   Always call hyperdx_list_sources and inspect real keyValues from the source
-   before writing filters that depend on these columns.
+10. Assuming StatusCode or SeverityText values
+    Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
+    Always call hyperdx_list_sources and inspect real keyValues from the source
+    before writing filters that depend on these columns.
 
-9. Heatmap tile on a non-Trace source
-   Wrong:   { displayType: "heatmap", sourceId: "<log-source-id>", select: [...] }
-   Correct: { displayType: "heatmap", sourceId: "<trace-source-id>", select: [...] }
-   Heatmap is currently restricted to Trace sources. Pick a source whose kind
-   is "trace" from hyperdx_list_sources.
+11. Heatmap tile on a non-Trace source
+    Wrong:   { displayType: "heatmap", sourceId: "<log-source-id>", select: [...] }
+    Correct: { displayType: "heatmap", sourceId: "<trace-source-id>", select: [...] }
+    Heatmap is currently restricted to Trace sources. Pick a source whose kind is "trace" from hyperdx_list_sources.
 
-10. Heatmap tile with empty or missing valueExpression
+12. Heatmap tile with empty or missing valueExpression
     Wrong:   select: [{}]
     Wrong:   select: [{ valueExpression: "" }]
     Correct: select: [{ valueExpression: "Duration" }]

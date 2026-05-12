@@ -25,6 +25,7 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import type {
   ExternalDashboardFilter,
+  ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
 } from '@/utils/zod';
 
@@ -72,7 +73,7 @@ export function registerSaveDashboard(
         tiles: inputTiles,
         tags,
         containers,
-        filters,
+        filters: inputFilters,
       }) => {
         if (!dashboardId) {
           return createDashboard({
@@ -82,7 +83,7 @@ export function registerSaveDashboard(
             inputTiles,
             tags,
             containers,
-            inputFilters: filters,
+            inputFilters,
           });
         }
         return updateDashboard({
@@ -93,7 +94,7 @@ export function registerSaveDashboard(
           inputTiles,
           tags,
           containers,
-          inputFilters: filters,
+          inputFilters,
         });
       },
     ),
@@ -117,7 +118,9 @@ async function createDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters: ExternalDashboardFilter[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -301,7 +304,9 @@ async function updateDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters: ExternalDashboardFilter[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
