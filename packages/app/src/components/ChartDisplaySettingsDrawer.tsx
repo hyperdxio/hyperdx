@@ -6,6 +6,7 @@ import {
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -13,6 +14,7 @@ import {
   Drawer,
   Group,
   Stack,
+  Text,
 } from '@mantine/core';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
@@ -43,6 +45,7 @@ interface ChartDisplaySettingsDrawerProps {
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
+  isPerSeriesNumberFormatAllowed?: boolean;
 }
 
 function applyDefaultSettings(
@@ -71,6 +74,7 @@ export default function ChartDisplaySettingsDrawer({
   onChange,
   onClose,
   previousDateRange,
+  isPerSeriesNumberFormatAllowed = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -169,7 +173,19 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        <NumberFormatForm control={control} setValue={setValue} />
+        <NumberFormatForm
+          control={control}
+          setValue={setValue}
+          disclaimer={
+            isPerSeriesNumberFormatAllowed ? (
+              <Alert variant="outline" color="yellow" p="xs">
+                <Text size="xs" m={0}>
+                  Format may be overridden on individual series.
+                </Text>
+              </Alert>
+            ) : undefined
+          }
+        />
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>

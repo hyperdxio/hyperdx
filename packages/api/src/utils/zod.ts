@@ -7,6 +7,8 @@ import {
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
+  OnClickDashboardSchema,
+  OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
@@ -21,14 +23,6 @@ import { AlertSource } from '@/models/alert';
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
 });
-
-const sourceTableSchema = z.union([
-  z.literal('logs'),
-  z.literal('rrweb'),
-  z.literal('metrics'),
-]);
-
-type SourceTable = z.infer<typeof sourceTableSchema>;
 
 // ================================
 // Charts & Dashboards (old format)
@@ -170,6 +164,31 @@ export const externalQuantileLevelSchema = z.union([
   z.literal(0.99),
 ]);
 
+// -----------------------------------------------------
+// OnClick (link-out) schemas for table chart tiles
+// -----------------------------------------------------
+
+const externalOnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: objectIdSchema }),
+  z.object({
+    mode: z.literal('template'),
+    template: z.string().min(1).max(10000),
+  }),
+]);
+
+const externalOnClickSearchSchema = OnClickSearchSchema.extend({
+  target: externalOnClickTargetSchema,
+});
+
+const externalOnClickDashboardSchema = OnClickDashboardSchema.extend({
+  target: externalOnClickTargetSchema,
+});
+
+const externalOnClickSchema = z.discriminatedUnion('type', [
+  externalOnClickSearchSchema,
+  externalOnClickDashboardSchema,
+]);
+
 const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
@@ -179,6 +198,7 @@ const externalDashboardSelectItemSchema = z
     level: externalQuantileLevelSchema.optional(),
     where: z.string().max(10000).optional().default(''),
     whereLanguage: whereLanguageSchema.optional(),
+    numberFormat: NumberFormatSchema.optional(),
 
     // For metrics only
     metricType: z.nativeEnum(MetricsDataType).optional(),
@@ -266,11 +286,13 @@ const externalDashboardTableChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
   groupByColumnsOnLeft: z.boolean().optional(),
+  onClick: externalOnClickSchema.optional(),
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('table'),
+    onClick: externalOnClickSchema.optional(),
   });
 
 const externalDashboardNumberRawSqlChartConfigSchema =
