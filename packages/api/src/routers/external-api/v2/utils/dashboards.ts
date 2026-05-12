@@ -109,7 +109,13 @@ const convertToExternalSelectItem = (
       : undefined;
   const level = parsedLevel?.success ? parsedLevel.data : undefined;
   return {
-    ...pick(item, ['valueExpression', 'alias', 'metricType', 'metricName']),
+    ...pick(item, [
+      'valueExpression',
+      'alias',
+      'metricType',
+      'metricName',
+      'numberFormat',
+    ]),
     aggFn,
     where: item.aggCondition ?? '',
     whereLanguage: item.aggConditionLanguage ?? 'lucene',
@@ -417,7 +423,14 @@ const convertToInternalSelectItem = (
   item: ExternalDashboardSelectItem,
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
-    ...pick(item, ['alias', 'metricType', 'metricName', 'aggFn', 'level']),
+    ...pick(item, [
+      'alias',
+      'metricType',
+      'metricName',
+      'aggFn',
+      'level',
+      'numberFormat',
+    ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
     isDelta: item.periodAggFn === 'delta',
