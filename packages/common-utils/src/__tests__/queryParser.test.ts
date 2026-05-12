@@ -1652,7 +1652,7 @@ describe('parseKvItemsExpression', () => {
   it('parses standard KV items expression', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
       ),
     ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
   });
@@ -1660,15 +1660,15 @@ describe('parseKvItemsExpression', () => {
   it('parses expression without spaces', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k,v)->concat(k,'=',v),mapKeys(LogAttributes),mapValues(LogAttributes))",
+        "arrayMap((arr)->concat(arr.1,'=',arr.2),LogAttributes::Array(Tuple(String,String)))",
       ),
     ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
   });
 
-  it('parses expression with different variable names', () => {
+  it('parses with different lambda variable name', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((key, val) -> concat(key, '=', val), mapKeys(ResourceAttributes), mapValues(ResourceAttributes))",
+        "arrayMap((x) -> concat(x.1, '=', x.2), ResourceAttributes::Array(Tuple(String, String)))",
       ),
     ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
   });
@@ -1676,7 +1676,7 @@ describe('parseKvItemsExpression', () => {
   it('parses expression with custom separator', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, ':', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, ':', arr.2), LogAttributes::Array(Tuple(String, String)))",
       ),
     ).toEqual({ mapColumn: 'LogAttributes', separator: ':' });
   });
@@ -1684,7 +1684,7 @@ describe('parseKvItemsExpression', () => {
   it('parses expression with multi-char separator', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, ' = ', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, ' = ', arr.2), LogAttributes::Array(Tuple(String, String)))",
       ),
     ).toEqual({ mapColumn: 'LogAttributes', separator: ' = ' });
   });
@@ -1692,7 +1692,7 @@ describe('parseKvItemsExpression', () => {
   it('parses expression with empty separator', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, '', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, '', arr.2), LogAttributes::Array(Tuple(String, String)))",
       ),
     ).toEqual({ mapColumn: 'LogAttributes', separator: '' });
   });
@@ -1700,9 +1700,12 @@ describe('parseKvItemsExpression', () => {
   it('returns undefined for non-matching expressions', () => {
     expect(parseKvItemsExpression('LogAttributes')).toBeUndefined();
     expect(parseKvItemsExpression('mapKeys(LogAttributes)')).toBeUndefined();
+  });
+
+  it('returns undefined for mapKeys/mapValues form', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k)->concat(k,' = '),mapKeys(LogAttributes))",
+        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
       ),
     ).toBeUndefined();
   });
@@ -1710,20 +1713,7 @@ describe('parseKvItemsExpression', () => {
   it('returns undefined for expressions with unrecognized characters', () => {
     expect(
       parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes)) + 1",
-      ),
-    ).toBeUndefined();
-    expect(
-      parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(Log@Attributes), mapValues(Log@Attributes))",
-      ),
-    ).toBeUndefined();
-  });
-
-  it('returns undefined when mapKeys and mapValues reference different columns', () => {
-    expect(
-      parseKvItemsExpression(
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(OtherAttributes))",
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), Log@Attributes::Array(Tuple(String, String)))",
       ),
     ).toBeUndefined();
   });
@@ -1762,7 +1752,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
       type: 'Array(String)',
       default_type: 'ALIAS',
       default_expression:
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
     },
   ]);
   metadata.getSkipIndices = jest.fn().mockImplementation(async () => [
@@ -1874,7 +1864,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
       type: 'Array(String)',
       default_type: 'MATERIALIZED',
       default_expression:
-        "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
     },
   ]);
   metadata.getSkipIndices = jest.fn().mockImplementation(async () => [
@@ -1987,7 +1977,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
           type: 'Array(String)',
           default_type: 'ALIAS',
           default_expression:
-            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
         },
       ],
       skipIndices: [
@@ -2023,7 +2013,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
           type: 'Array(String)',
           default_type: 'ALIAS',
           default_expression:
-            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(LogAttributes), mapValues(LogAttributes))",
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
         },
       ],
       skipIndices: [
@@ -2067,7 +2057,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
           type: 'Array(String)',
           default_type: 'ALIAS',
           default_expression:
-            "arrayMap((k, v) -> concat(k, '=', v), mapKeys(NumericAttributes), mapValues(NumericAttributes))",
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), NumericAttributes::Array(Tuple(String, String)))",
         },
       ],
       skipIndices: [

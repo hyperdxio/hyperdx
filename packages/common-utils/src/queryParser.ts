@@ -860,8 +860,14 @@ function tokenizeExpression(expr: string): string[] | null {
       i += 2;
       continue;
     }
+    // Cast operator ::
+    if (expr[i] === ':' && expr[i + 1] === ':') {
+      tokens.push('::');
+      i += 2;
+      continue;
+    }
     // Single-char tokens
-    if ('(),'.includes(expr[i])) {
+    if ('(),.'.includes(expr[i])) {
       tokens.push(expr[i]);
       i++;
       continue;
@@ -903,8 +909,9 @@ function tokenizeExpression(expr: string): string[] | null {
 /**
  * Parses a KV items column's default_expression to extract the source map column name
  * and the constant separator string used in the concat.
- * Matches patterns like: arrayMap((k, v) -> concat(k, '=', v), mapKeys(X), mapValues(X))
- * The middle argument to concat must be a quoted constant string (single or double quotes).
+ * Matches the tuple-cast form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), X::Array(Tuple(String, String)))
+ * The middle argument to concat must be a quoted constant string.
  * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
  */
 export function parseKvItemsExpression(
@@ -913,9 +920,8 @@ export function parseKvItemsExpression(
   const tokens = tokenizeExpression(defaultExpression);
   if (!tokens) return undefined;
 
-  // Expected structure:
-  // arrayMap ( ( k , v ) -> concat ( k , '<sep>' , v ) , mapKeys ( X ) , mapValues ( X ) )
-  // 0        1 2 3 4 5 6 7  8     9 10 11 12    13 14 15 16     17 18 19 20       21 22 23 24
+  // Expected structure (tuple-cast form):
+  // arrayMap ( ( arr ) -> concat ( arr . 1 , '=' , arr . 2 ) , X :: Array ( Tuple ( String , String ) ) )
   let pos = 0;
   const expect = (expected: string): boolean => {
     if (pos >= tokens.length || tokens[pos] !== expected) return false;
@@ -925,38 +931,50 @@ export function parseKvItemsExpression(
   const read = (): string | undefined => tokens[pos++];
 
   if (!expect('arrayMap') || !expect('(') || !expect('(')) return undefined;
-  const keyVar = read(); // lambda param 1
-  if (!keyVar || !expect(',')) return undefined;
-  const valVar = read(); // lambda param 2
-  if (!valVar || !expect(')') || !expect('->')) return undefined;
+  const lambdaVar = read(); // single lambda param
+  if (!lambdaVar || !expect(')') || !expect('->')) return undefined;
 
+  // concat(lambdaVar.1, '<sep>', lambdaVar.2)
   if (!expect('concat') || !expect('(')) return undefined;
-  const concatArg1 = read();
-  if (concatArg1 !== keyVar || !expect(',')) return undefined;
+  if (!expect(lambdaVar) || !expect('.') || !expect('1') || !expect(','))
+    return undefined;
 
   // The separator must be a quoted string token (normalized to '<content>')
   const sepToken = read();
   if (!sepToken || !sepToken.startsWith("'") || !expect(',')) return undefined;
   const separator = sepToken.slice(1, -1); // strip quote wrapper
 
-  const concatArg3 = read();
-  if (concatArg3 !== valVar || !expect(')') || !expect(',')) return undefined;
+  if (
+    !expect(lambdaVar) ||
+    !expect('.') ||
+    !expect('2') ||
+    !expect(')') ||
+    !expect(',')
+  )
+    return undefined;
 
-  if (!expect('mapKeys') || !expect('(')) return undefined;
-  const mapKeysCol = read();
-  if (!mapKeysCol || !expect(')') || !expect(',')) return undefined;
-
-  if (!expect('mapValues') || !expect('(')) return undefined;
-  const mapValuesCol = read();
-  if (!mapValuesCol || !expect(')') || !expect(')')) return undefined;
-
-  // mapKeys and mapValues must reference the same column
-  if (mapKeysCol !== mapValuesCol) return undefined;
+  // X::Array(Tuple(String, String))
+  const mapColumn = read();
+  if (!mapColumn) return undefined;
+  if (
+    !expect('::') ||
+    !expect('Array') ||
+    !expect('(') ||
+    !expect('Tuple') ||
+    !expect('(') ||
+    !expect('String') ||
+    !expect(',') ||
+    !expect('String') ||
+    !expect(')') ||
+    !expect(')') ||
+    !expect(')')
+  )
+    return undefined;
 
   // Must have consumed all tokens
   if (pos !== tokens.length) return undefined;
 
-  return { mapColumn: mapKeysCol, separator };
+  return { mapColumn, separator };
 }
 
 // To add another known KV items parsing strategy, simply define another function with the same signature and add the strategy to this array
