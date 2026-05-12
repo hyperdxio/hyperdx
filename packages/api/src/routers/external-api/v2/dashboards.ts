@@ -17,11 +17,12 @@ import {
   fetchSourcesForValidation,
   filterChangedHeatmapTiles,
   getHeatmapTilesWithIncompatibleSources,
+  getInvalidOnClickSearchSources,
   getMissingConnections,
+  getMissingOnClickDashboards,
   getMissingSources,
   isConfigTile,
   isRawSqlExternalTileConfig,
-  isSeriesTile,
   resolveSavedQueryLanguage,
   SourceForValidation,
   updateDashboardBodySchema,
@@ -73,8 +74,8 @@ function getSourceConnectionMismatches(
  *   schemas:
  *     NumberFormatOutput:
  *       type: string
- *       enum: [currency, percent, byte, time, number, data_rate, throughput]
- *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput).
+ *       enum: [currency, percent, byte, time, number, data_rate, throughput, duration]
+ *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput, duration).
  *     AggregationFunction:
  *       type: string
  *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
@@ -462,6 +463,11 @@ function getSourceConnectionMismatches(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *           example: "delta"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options. When set, takes precedence
+ *             over the chart-level numberFormat for this select item only.
  *
  *     LineBuilderChartConfig:
  *       type: object
@@ -616,6 +622,9 @@ function getSourceConnectionMismatches(
  *             in the table. Defaults to false (Group By columns on the right).
  *           default: false
  *           example: false
+ *         onClick:
+ *           $ref: '#/components/schemas/OnClick'
+ *           description: Optional link-out configuration applied when a user clicks a row.
  *
  *     NumberBuilderChartConfig:
  *       type: object
@@ -895,6 +904,9 @@ function getSourceConnectionMismatches(
  *               enum: [table]
  *               description: Display as a table chart.
  *               example: "table"
+ *             onClick:
+ *               $ref: '#/components/schemas/OnClick'
+ *               description: Optional link-out configuration applied when a user clicks a row.
  *
  *     NumberRawSqlChartConfig:
  *       description: Raw SQL configuration for a single big-number chart.
@@ -949,6 +961,136 @@ function getSourceConnectionMismatches(
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     OnClickFilterTemplate:
+ *       type: object
+ *       description: >
+ *         A templated filter applied to the link-out destination. The rendered
+ *         template value is combined with the expression as `expression IN (...)`
+ *         on the destination search or dashboard. Multiple templates sharing the
+ *         same expression are merged into a single IN clause.
+ *       required: [kind, expression, template]
+ *       properties:
+ *         kind:
+ *           type: string
+ *           enum: [expressionTemplate]
+ *           description: Filter template kind. Currently only "expressionTemplate" is supported.
+ *           example: "expressionTemplate"
+ *         expression:
+ *           type: string
+ *           minLength: 1
+ *           description: The column/expression to filter the destination by (e.g. "ServiceName").
+ *           example: "ServiceName"
+ *         template:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Value template rendered against the clicked row; supports row column
+ *             variables in `{{column}}` form (e.g. `{{ServiceName}}`).
+ *           example: "{{ServiceName}}"
+ *
+ *     OnClickTarget:
+ *       description: >
+ *         Identifies the source (for type=search) or dashboard (for type=dashboard)
+ *         to link out to. Set mode to "id" to resolve a concrete ID, or
+ *         "template" to resolve by rendered name at click time.
+ *       oneOf:
+ *         - type: object
+ *           required: [mode, id]
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: [id]
+ *               description: Target is a single dashboard or log/trace source
+ *               example: "id"
+ *             id:
+ *               type: string
+ *               description: ID of the target source (for search) or dashboard (for dashboard).
+ *               example: "65f5e4a3b9e77c001a567890"
+ *         - type: object
+ *           required: [mode, template]
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: [template]
+ *               description: Target is matched by name against the template.
+ *               example: "template"
+ *             template:
+ *               type: string
+ *               minLength: 1
+ *               description: >
+ *                 Name template rendered against the clicked row; supports
+ *                 `{{column}}` variables.
+ *               example: "{{ServiceName}}"
+ *       discriminator:
+ *         propertyName: mode
+ *
+ *     OnClickSearch:
+ *       type: object
+ *       required: [type, target]
+ *       description: Link-out that navigates to the HyperDX search view.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [search]
+ *           description: OnClick variant discriminator. Must be "search" for search link-outs.
+ *           example: "search"
+ *         target:
+ *           $ref: '#/components/schemas/OnClickTarget'
+ *           description: The source to navigate to.
+ *         whereTemplate:
+ *           type: string
+ *           description: Optional WHERE clause template applied to the destination search.
+ *           example: "ServiceName = '{{ServiceName}}'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Language of the rendered whereTemplate.
+ *         filters:
+ *           type: array
+ *           description: Optional dashboard filter templates rendered against the clicked row.
+ *           items:
+ *             $ref: '#/components/schemas/OnClickFilterTemplate'
+ *
+ *     OnClickDashboard:
+ *       type: object
+ *       required: [type, target]
+ *       description: Link-out that navigates to a HyperDX dashboard.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [dashboard]
+ *           description: OnClick variant discriminator. Must be "dashboard" for dashboard link-outs.
+ *           example: "dashboard"
+ *         target:
+ *           $ref: '#/components/schemas/OnClickTarget'
+ *           description: The dashboard to navigate to.
+ *         whereTemplate:
+ *           type: string
+ *           description: Optional WHERE clause template applied to the destination dashboard.
+ *           example: "ServiceName = '{{ServiceName}}'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Language of the rendered whereTemplate.
+ *         filters:
+ *           type: array
+ *           description: Optional dashboard filter templates rendered against the clicked row.
+ *           items:
+ *             $ref: '#/components/schemas/OnClickFilterTemplate'
+ *
+ *     OnClick:
+ *       description: >
+ *         Link-out configuration applied when a user clicks a row of a table tile.
+ *         Only table tiles (builder or raw SQL) currently support onClick. When
+ *         target.mode is "id", the referenced source (type=search) or dashboard
+ *         (type=dashboard) must already exist for the team.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/OnClickSearch'
+ *         - $ref: '#/components/schemas/OnClickDashboard'
+ *       discriminator:
+ *         propertyName: type
+ *         mapping:
+ *           search: '#/components/schemas/OnClickSearch'
+ *           dashboard: '#/components/schemas/OnClickDashboard'
  *
  *     TableChartConfig:
  *       description: >
@@ -1783,12 +1925,23 @@ router.post(
         });
       }
 
-      // Hoist source + connection fetches so the four downstream
-      // validators reuse the same query result instead of each
-      // re-running `getSources(team)` / `getConnectionsByTeam(team)`.
-      const [sources, missingConnections] = await Promise.all([
+      // Hoist the source fetch so the source-derived validators
+      // (missing sources, source/connection mismatch, heatmap source
+      // kind) reuse one query result instead of each re-running
+      // `getSources(team)`. onClick helpers stay separate because
+      // they own their own dashboard lookup as well as a sources
+      // lookup; firing them inside the same Promise.all keeps the
+      // request latency unchanged.
+      const [
+        sources,
+        missingConnections,
+        missingOnClickDashboards,
+        invalidOnClickSearchSources,
+      ] = await Promise.all([
         fetchSourcesForValidation(teamId),
         getMissingConnections(teamId, tiles),
+        getMissingOnClickDashboards(teamId, tiles),
+        getInvalidOnClickSearchSources(teamId, tiles),
       ]);
 
       const missingSources = getMissingSources(sources, tiles, filters);
@@ -1825,6 +1978,20 @@ router.post(
       if (heatmapNonTraceSources.length > 0) {
         return res.status(400).json({
           message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingOnClickDashboards.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (invalidOnClickSearchSources.length > 0) {
+        return res.status(400).json({
+          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
             ', ',
           )}`,
         });
@@ -2034,21 +2201,31 @@ router.put(
         containers,
       } = req.body ?? {};
 
-      // Hoist source + connection + existing-dashboard fetches so the
-      // downstream validators each reuse the same query result and so
-      // the heatmap source-kind check can scope itself to tiles whose
+      // Hoist the source fetch and the existing-dashboard read so the
+      // source-derived validators reuse one query result and the
+      // heatmap source-kind check can scope itself to tiles whose
       // sourceId/displayType actually changed in this request (a
       // source whose `kind` was changed after the dashboard was
-      // originally accepted shouldn't wedge unrelated edits).
-      const [sources, missingConnections, existingDashboard] =
-        await Promise.all([
-          fetchSourcesForValidation(teamId),
-          getMissingConnections(teamId, tiles),
-          Dashboard.findOne(
-            { _id: dashboardId, team: teamId },
-            { tiles: 1, filters: 1, containers: 1 },
-          ).lean(),
-        ]);
+      // originally accepted shouldn't wedge unrelated edits). onClick
+      // helpers stay separate because they own their own dashboard
+      // lookup as well as a sources lookup; firing them inside the
+      // same Promise.all keeps the request latency unchanged.
+      const [
+        sources,
+        missingConnections,
+        missingOnClickDashboards,
+        invalidOnClickSearchSources,
+        existingDashboard,
+      ] = await Promise.all([
+        fetchSourcesForValidation(teamId),
+        getMissingConnections(teamId, tiles),
+        getMissingOnClickDashboards(teamId, tiles),
+        getInvalidOnClickSearchSources(teamId, tiles),
+        Dashboard.findOne(
+          { _id: dashboardId, team: teamId },
+          { tiles: 1, filters: 1, containers: 1 },
+        ).lean(),
+      ]);
 
       const missingSources = getMissingSources(sources, tiles, filters);
       const sourceConnectionMismatches = getSourceConnectionMismatches(
@@ -2084,6 +2261,20 @@ router.put(
       if (heatmapNonTraceSources.length > 0) {
         return res.status(400).json({
           message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingOnClickDashboards.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (invalidOnClickSearchSources.length > 0) {
+        return res.status(400).json({
+          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
             ', ',
           )}`,
         });

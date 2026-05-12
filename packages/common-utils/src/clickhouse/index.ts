@@ -667,8 +667,17 @@ export abstract class BaseClickhouseClient {
     else if (isBuilderChartConfig(config) && resultSets.length > 1) {
       const metaSet = new Map<string, { name: string; type: string }>();
       const tsBucketMap = new Map<string, Record<string, string | number>>();
+      // Seed metaSet with each split's value column in resultSet order, so the
+      // joined meta is [value0, value1, ..., non-value columns]. This matches the
+      // order of config.select that useChartNumberFormats indexes into.
       for (const resultSet of resultSets) {
-        // set up the meta data
+        const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
+        if (valueColumn && !metaSet.has(valueColumn.name)) {
+          metaSet.set(valueColumn.name, valueColumn);
+        }
+      }
+      // Add other (non-value) columns to metaSet
+      for (const resultSet of resultSets) {
         if (Array.isArray(resultSet.meta)) {
           for (const meta of resultSet.meta) {
             const key = meta.name;
