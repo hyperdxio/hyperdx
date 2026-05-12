@@ -5,12 +5,13 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
   cleanupDashboardAlerts,
+  collectTileContainerRefIssues,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
@@ -24,6 +25,23 @@ import {
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from './utils/dashboards';
+
+/**
+ * Projection used by the GET-list and GET-by-id Dashboard endpoints, kept in
+ * one place so adding a new field doesn't need touching both call sites.
+ * Mirrors the shape consumed by `convertToExternalDashboard`.
+ */
+const EXTERNAL_DASHBOARD_PROJECTION = {
+  _id: 1,
+  name: 1,
+  tiles: 1,
+  tags: 1,
+  filters: 1,
+  savedQuery: 1,
+  savedQueryLanguage: 1,
+  savedFilterValues: 1,
+  containers: 1,
+} as const;
 
 async function getSourceConnectionMismatches(
   team: string | mongoose.Types.ObjectId,
@@ -1058,6 +1076,67 @@ async function getSourceConnectionMismatches(
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
+ *     DashboardContainerTab:
+ *       type: object
+ *       description: A single tab inside a dashboard container. Tiles join a tab via tabId.
+ *       required:
+ *         - id
+ *         - title
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Unique identifier for the tab within its container.
+ *           example: "errors"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Display title for the tab.
+ *           example: "Errors"
+ *
+ *     DashboardContainer:
+ *       type: object
+ *       description: A grouping container for tiles on a dashboard. Tiles join a container via containerId.
+ *       required:
+ *         - id
+ *         - title
+ *         - collapsed
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Unique identifier for the container within the dashboard.
+ *           example: "service-health"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Display title for the container.
+ *           example: "Service Health"
+ *         collapsed:
+ *           type: boolean
+ *           description: Persisted default collapse state. Per-viewer state lives in the URL.
+ *           example: false
+ *         collapsible:
+ *           type: boolean
+ *           description: Whether the user can collapse the group.
+ *           default: true
+ *           example: true
+ *         bordered:
+ *           type: boolean
+ *           description: Whether to show a visual border around the group.
+ *           default: true
+ *           example: true
+ *         tabs:
+ *           type: array
+ *           description: Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.
+ *           maxItems: 20
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainerTab'
+ *
  *     TileBase:
  *       type: object
  *       description: Common fields shared by tile input and output
@@ -1097,6 +1176,18 @@ async function getSourceConnectionMismatches(
  *         config:
  *           $ref: '#/components/schemas/TileConfig'
  *           description: Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated "series" and "asRatio" fields.
+ *         containerId:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.
+ *           example: "service-health"
+ *         tabId:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
+ *           example: "errors"
  *
  *     TileOutput:
  *       description: Response format for dashboard tiles
@@ -1243,6 +1334,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values restored when loading the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     CreateDashboardRequest:
  *       type: object
@@ -1258,6 +1355,7 @@ async function getSourceConnectionMismatches(
  *         tiles:
  *           type: array
  *           description: List of tiles/charts to include in the dashboard.
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *         tags:
@@ -1289,6 +1387,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     UpdateDashboardRequest:
  *       type: object
@@ -1303,6 +1407,7 @@ async function getSourceConnectionMismatches(
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
@@ -1335,6 +1440,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     DashboardResponse:
  *       allOf:
@@ -1438,16 +1549,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      {
-        _id: 1,
-        name: 1,
-        tiles: 1,
-        tags: 1,
-        filters: 1,
-        savedQuery: 1,
-        savedQueryLanguage: 1,
-        savedFilterValues: 1,
-      },
+      EXTERNAL_DASHBOARD_PROJECTION,
     ).sort({ name: -1 });
 
     res.json({
@@ -1555,16 +1657,7 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        {
-          _id: 1,
-          name: 1,
-          tiles: 1,
-          tags: 1,
-          filters: 1,
-          savedQuery: 1,
-          savedQueryLanguage: 1,
-          savedFilterValues: 1,
-        },
+        EXTERNAL_DASHBOARD_PROJECTION,
       );
 
       if (dashboard == null) {
@@ -1731,7 +1824,22 @@ router.post(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body;
+
+      // Tile-level container/tab ref resolution: container structure
+      // (duplicate ids, tab uniqueness) was checked by the body schema;
+      // tile-resolution runs here against the request body's containers
+      // (POST has no existing dashboard to fall back to).
+      const tileRefIssues = collectTileContainerRefIssues(
+        containers ?? [],
+        tiles,
+      );
+      if (tileRefIssues.length > 0) {
+        return res.status(400).json({
+          message: tileRefIssues.join('; '),
+        });
+      }
 
       const [
         missingSources,
@@ -1746,6 +1854,7 @@ router.post(
         getMissingOnClickDashboards(teamId, tiles),
         getInvalidOnClickSearchSources(teamId, tiles),
       ]);
+
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1799,6 +1908,7 @@ router.post(
         savedQueryLanguage: normalizedSavedQueryLanguage,
         savedFilterValues,
         team: teamId,
+        ...(containers !== undefined ? { containers } : {}),
       }).save();
 
       res.json({
@@ -1815,7 +1925,14 @@ router.post(
  * /api/v2/dashboards/{id}:
  *   put:
  *     summary: Update Dashboard
- *     description: Updates an existing dashboard
+ *     description: |
+ *       Updates an existing dashboard.
+ *
+ *       **Concurrency:** This endpoint does not support optimistic
+ *       concurrency control. Concurrent PUT requests for the same
+ *       dashboard may silently overwrite each other, which can leave
+ *       orphan tile-to-container references on layout-shape edits.
+ *       Clients should serialize edits to a given dashboard.
  *     operationId: updateDashboard
  *     tags: [Dashboards]
  *     parameters:
@@ -1975,6 +2092,7 @@ router.put(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body ?? {};
 
       const [
@@ -2026,9 +2144,17 @@ router.put(
         });
       }
 
+      // PUT performs a read-modify-write on the dashboard doc with no
+      // optimistic-concurrency check (no `If-Match` / `updatedAt`
+      // guard). Concurrent PUTs may silently overwrite each other,
+      // which can leave orphan tile->container refs on layout-shape
+      // edits. The endpoint contract is at-most-one-writer; the
+      // OpenAPI description above documents this. Adding ETag-style
+      // concurrency would be a breaking change to the request shape
+      // and is tracked separately.
       const existingDashboard = await Dashboard.findOne(
         { _id: dashboardId, team: teamId },
-        { tiles: 1, filters: 1 },
+        { tiles: 1, filters: 1, containers: 1 },
       ).lean();
       const existingTileIds = new Set(
         (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
@@ -2037,12 +2163,35 @@ router.put(
         (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
       );
 
+      // Tile-level container/tab ref resolution: container structure
+      // was checked by the body schema; tile-resolution runs here
+      // against the effective container set so an omitted `containers`
+      // body field (which preserves the existing array on write) is
+      // resolved against the doc's existing containers rather than an
+      // empty fallback. Without this, a PUT that updates only `tiles`
+      // and leaves a tile pointing at a real preserved container
+      // would be rejected with "Tile references unknown containerId".
+      const effectiveContainers =
+        containers ?? existingDashboard?.containers ?? [];
+      const tileRefIssues = collectTileContainerRefIssues(
+        effectiveContainers,
+        tiles,
+      );
+      if (tileRefIssues.length > 0) {
+        return res.status(400).json({
+          message: tileRefIssues.join('; '),
+        });
+      }
+
       const internalTiles = convertExternalTilesToInternal(
         tiles,
         existingTileIds,
       );
 
-      const setPayload: Record<string, unknown> = {
+      // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+      // that misnamed or wrong-shape fields fail at compile time. The
+      // legacy `Record<string, unknown>` accepted anything.
+      const setPayload: Partial<IDashboard> = {
         name,
         tiles: internalTiles,
         tags: tags && uniq(tags),
@@ -2065,6 +2214,9 @@ router.put(
       }
       if (savedFilterValues !== undefined) {
         setPayload.savedFilterValues = savedFilterValues;
+      }
+      if (containers !== undefined) {
+        setPayload.containers = containers;
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(
