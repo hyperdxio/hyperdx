@@ -145,6 +145,9 @@ export const AggregateFunctionSchema = z.enum([
   'sum',
   'any',
   'none',
+  // 'increase' is only valid for Sum (counter) metrics. It returns the
+  // per-bucket increase of the counter, accounting for counter resets.
+  'increase',
 ]);
 export const InternalAggregateFunctionSchema = z.enum([
   ...AggregateFunctionSchema.options,
