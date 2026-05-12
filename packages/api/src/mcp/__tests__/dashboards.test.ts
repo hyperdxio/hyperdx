@@ -459,6 +459,122 @@ describe('MCP Dashboard Tools', () => {
       });
     });
 
+    // Brandon flagged on #2199 that the schema unit tests only assert that
+    // zod accepts the shape; what matters is that an agent-issued
+    // hyperdx_save_dashboard call actually persists a heatmap with every
+    // MCP-specific field. This test drives the full save -> get -> update
+    // -> get round-trip with heatmapScaleType, countExpression,
+    // numberFormat, where, and whereLanguage all set, then mutates them on
+    // PUT and re-reads to confirm the new values stick.
+    it('should round-trip a fully-specified heatmap tile through save, get, and update', async () => {
+      const sourceId = traceSource._id.toString();
+
+      const saveResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap Full Round-Trip',
+        tiles: [
+          {
+            name: 'Latency Heatmap',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'heatmap',
+              sourceId,
+              select: [
+                {
+                  valueExpression: 'Duration',
+                  countExpression: 'count()',
+                  heatmapScaleType: 'log',
+                },
+              ],
+              where: 'level:error',
+              whereLanguage: 'lucene',
+              numberFormat: { output: 'duration', factor: 1e-9 },
+            },
+          },
+        ],
+      });
+      expect(saveResult.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(saveResult));
+      expect(saved.tiles).toHaveLength(1);
+      expect(saved.tiles[0].config).toMatchObject({
+        displayType: 'heatmap',
+        sourceId,
+        where: 'level:error',
+        whereLanguage: 'lucene',
+        numberFormat: { output: 'duration', factor: 1e-9 },
+      });
+      expect(saved.tiles[0].config.select[0]).toMatchObject({
+        valueExpression: 'Duration',
+        countExpression: 'count()',
+        heatmapScaleType: 'log',
+      });
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: saved.id,
+      });
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config).toMatchObject({
+        displayType: 'heatmap',
+        where: 'level:error',
+        whereLanguage: 'lucene',
+        numberFormat: { output: 'duration', factor: 1e-9 },
+      });
+      expect(fetched.tiles[0].config.select[0]).toMatchObject({
+        valueExpression: 'Duration',
+        countExpression: 'count()',
+        heatmapScaleType: 'log',
+      });
+
+      // Update path: swap the scale, drop the count expression, change the
+      // value expression, and tighten the filter. Tile id carries forward
+      // so the update lands on the same tile rather than creating a new
+      // one.
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: saved.id,
+        name: 'Heatmap Full Round-Trip',
+        tiles: [
+          {
+            ...fetched.tiles[0],
+            config: {
+              ...fetched.tiles[0].config,
+              select: [
+                {
+                  valueExpression: "SpanAttributes['http.duration']",
+                  heatmapScaleType: 'linear',
+                },
+              ],
+              where: 'level:error AND service:checkout',
+            },
+          },
+        ],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.tiles[0].config.select[0]).toEqual({
+        valueExpression: "SpanAttributes['http.duration']",
+        heatmapScaleType: 'linear',
+      });
+      expect(updated.tiles[0].config.where).toBe(
+        'level:error AND service:checkout',
+      );
+
+      const getAfterUpdate = await callTool(client, 'hyperdx_get_dashboard', {
+        id: saved.id,
+      });
+      expect(getAfterUpdate.isError).toBeFalsy();
+      const refetched = JSON.parse(getFirstText(getAfterUpdate));
+      expect(refetched.tiles[0].config.select[0]).toEqual({
+        valueExpression: "SpanAttributes['http.duration']",
+        heatmapScaleType: 'linear',
+      });
+      expect(refetched.tiles[0].config.where).toBe(
+        'level:error AND service:checkout',
+      );
+    });
+
     it('should reject heatmap tile with empty valueExpression at the schema layer', async () => {
       const sourceId = traceSource._id.toString();
       const result = await callTool(client, 'hyperdx_save_dashboard', {
@@ -653,7 +769,7 @@ describe('MCP Dashboard Tools', () => {
             containerId: 'service-health',
             tabId: 'latency',
           }),
-          // Tile inside a tabbed container without a tabId — renders in
+          // Tile inside a tabbed container without a tabId renders in
           // the container shell rather than under a tab. Guards that the
           // schema does not accidentally require tabId for every tile in
           // a tabbed container.
