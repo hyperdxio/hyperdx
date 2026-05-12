@@ -425,6 +425,254 @@ describe('MCP Dashboard Tools', () => {
     });
   });
 
+  describe('hyperdx_save_dashboard - containers and tabs', () => {
+    // Mirrors the v2 external-API "Containers and tabs" describe block so
+    // the MCP path enforces the same 5 cross-field rules: container id
+    // unique, tab id unique within a container, tile.containerId
+    // resolves, tile.tabId resolves to a tab on that container, and
+    // tile.tabId requires tile.containerId.
+    const buildTile = (
+      sourceId: string,
+      overrides: Record<string, unknown>,
+    ) => ({
+      name: 'Tile',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, where: '' }],
+      },
+      ...overrides,
+    });
+
+    it('should round-trip containers, tabs, and tile containerId/tabId on create and update', async () => {
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          collapsible: true,
+          bordered: true,
+          tabs: [
+            { id: 'errors', title: 'Errors' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+        {
+          id: 'overview',
+          title: 'Overview',
+          collapsed: true,
+        },
+      ];
+
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Containers MCP Round-Trip',
+        tiles: [
+          buildTile(sourceId, {
+            name: 'In Group, Tab A',
+            containerId: 'service-health',
+            tabId: 'errors',
+          }),
+          buildTile(sourceId, {
+            name: 'In Group, Tab B',
+            containerId: 'service-health',
+            tabId: 'latency',
+          }),
+          buildTile(sourceId, {
+            name: 'In Plain Group',
+            containerId: 'overview',
+          }),
+          buildTile(sourceId, { name: 'Ungrouped' }),
+        ],
+        tags: ['containers-mcp'],
+        containers,
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.containers).toEqual(containers);
+
+      const createdTilesByName: Record<string, any> = Object.fromEntries(
+        created.tiles.map((t: { name: string }) => [t.name, t]),
+      );
+      expect(createdTilesByName['In Group, Tab A']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+      expect(createdTilesByName['In Group, Tab B']).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'latency',
+      });
+      expect(createdTilesByName['In Plain Group']).toMatchObject({
+        containerId: 'overview',
+      });
+      expect(createdTilesByName['In Plain Group'].tabId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.containerId).toBeUndefined();
+      expect(createdTilesByName.Ungrouped.tabId).toBeUndefined();
+
+      // Verify a fresh GET via the get tool also returns the structure.
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.containers).toEqual(containers);
+
+      // Update: rename a tab, drop the second container, re-home tiles.
+      const updatedContainers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: true,
+          tabs: [
+            { id: 'errors', title: 'Error Rate' },
+            { id: 'latency', title: 'Latency' },
+          ],
+        },
+      ];
+      const reHomedUngrouped = {
+        ...createdTilesByName.Ungrouped,
+        containerId: 'service-health',
+        tabId: 'errors',
+      };
+      const droppedContainerTile = {
+        ...createdTilesByName['In Plain Group'],
+        containerId: undefined,
+        tabId: undefined,
+      };
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Containers MCP Round-Trip',
+        tiles: [
+          createdTilesByName['In Group, Tab A'],
+          createdTilesByName['In Group, Tab B'],
+          droppedContainerTile,
+          reHomedUngrouped,
+        ],
+        tags: ['containers-mcp'],
+        containers: updatedContainers,
+      });
+
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toEqual(updatedContainers);
+      const updatedTilesByName: Record<string, any> = Object.fromEntries(
+        updated.tiles.map((t: { name: string }) => [t.name, t]),
+      );
+      expect(updatedTilesByName['In Plain Group'].containerId).toBeUndefined();
+      expect(updatedTilesByName.Ungrouped).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+    });
+
+    it('should reject duplicate container ids', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Duplicate Container Ids',
+        tiles: [buildTile(sourceId, {})],
+        containers: [
+          { id: 'dupe', title: 'A', collapsed: false },
+          { id: 'dupe', title: 'B', collapsed: false },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Container IDs must be unique');
+    });
+
+    it('should reject duplicate tab ids within a container', async () => {
+      // Structural rules (duplicate container ids, duplicate tab ids) fire
+      // through the body schema, which is reported as a stringified issue
+      // array. Cross-tile-ref rules (covered below) fire through
+      // collectTileContainerRefIssues and produce plain prose.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Duplicate Tab Ids',
+        tiles: [buildTile(sourceId, {})],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [
+              { id: 'errors', title: 'Errors' },
+              { id: 'errors', title: 'Errors Two' },
+            ],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Duplicate tab id');
+      expect(getFirstText(result)).toContain('errors');
+      expect(getFirstText(result)).toContain('service-health');
+    });
+
+    it('should reject a tile that supplies tabId without containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Tab Without Container',
+        tiles: [buildTile(sourceId, { tabId: 'errors' })],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [{ id: 'errors', title: 'Errors' }],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain(
+        'tabId requires containerId to be set',
+      );
+    });
+
+    it('should reject a tile that references an unknown containerId', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Unknown Container',
+        tiles: [buildTile(sourceId, { containerId: 'does-not-exist' })],
+        containers: [{ id: 'real', title: 'Real', collapsed: false }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain(
+        'unknown containerId "does-not-exist"',
+      );
+    });
+
+    it('should reject a tile that references an unknown tabId within a container', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Unknown Tab',
+        tiles: [
+          buildTile(sourceId, {
+            containerId: 'service-health',
+            tabId: 'ghost',
+          }),
+        ],
+        containers: [
+          {
+            id: 'service-health',
+            title: 'Service Health',
+            collapsed: false,
+            tabs: [{ id: 'errors', title: 'Errors' }],
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('unknown tabId "ghost"');
+    });
+  });
+
   describe('hyperdx_delete_dashboard', () => {
     it('should delete an existing dashboard', async () => {
       const dashboard = await new Dashboard({

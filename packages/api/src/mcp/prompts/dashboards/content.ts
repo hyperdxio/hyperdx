@@ -682,6 +682,69 @@ to plot the first as a ratio of the second. Useful for error rates:
   ],
   asRatio: true
 
+== CONTAINERS AND TABS ==
+
+Optional dashboard organization layer. Group related tiles visually with
+optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers"
+array; reference containers from tiles via "containerId" (and "tabId" when
+the container has tabs).
+
+Container shape:
+  { id, title, collapsed, collapsible?, bordered?, tabs? }
+
+  id, title    : required, non-empty strings.
+  collapsed    : required boolean. Starts collapsed when true.
+  collapsible  : optional boolean. Defaults to true. When false the group
+                 header has no toggle.
+  bordered     : optional boolean. Defaults to true.
+  tabs         : optional array of { id, title }. Zero or one tab renders
+                 as a plain group header; two or more render as a tab bar.
+
+Tile fields (on the same tile shape used in tiles[]):
+  containerId  : optional. Must match an id in containers[].
+  tabId        : optional. Must match a tab id on that container. Requires
+                 containerId. A tile with containerId set but no tabId
+                 renders in the container shell (above any tab bar).
+
+Rules enforced by the API:
+  - Container ids must be unique on a dashboard.
+  - Tab ids must be unique within a container.
+  - A tile's containerId must reference a real container in the array.
+  - A tile's tabId must reference a real tab on that container.
+  - A tile's tabId requires containerId to be set.
+
+Example:
+  hyperdx_save_dashboard({
+    name: "Service Overview",
+    containers: [
+      {
+        id: "service-health",
+        title: "Service Health",
+        collapsed: false,
+        tabs: [
+          { id: "errors", title: "Errors" },
+          { id: "latency", title: "Latency" }
+        ]
+      },
+      { id: "overview", title: "Overview", collapsed: true }
+    ],
+    tiles: [
+      { name: "Error Rate", containerId: "service-health", tabId: "errors",
+        config: { displayType: "line", sourceId: "<id>", select: [{ aggFn: "count" }] } },
+      { name: "Throughput", containerId: "overview",
+        config: { displayType: "line", sourceId: "<id>", select: [{ aggFn: "count" }] } },
+      { name: "Latest Logs",
+        config: { displayType: "search", sourceId: "<id>" } }
+    ]
+  })
+
+Rejection messages on bad inputs (verbatim):
+  Tile references unknown containerId "X"           : tile.containerId not in array
+  Tile references unknown tabId "X" in container "Y": tile.tabId not on the container
+  tabId requires containerId to be set              : tile has tabId but no containerId
+  Container IDs must be unique: "X"                 : duplicate container.id
+  Duplicate tab id "X" in container "Y"             : duplicate tab.id inside a container
+
 == COMMON MISTAKES ==
 
 1. Using valueExpression with aggFn "count"
