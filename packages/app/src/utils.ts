@@ -409,6 +409,56 @@ export const COLORS = [
 ];
 
 /**
+ * The set of palette tokens a user can pick for chart series colors,
+ * number-tile colors, reference lines, and threshold rules.
+ *
+ * Tokens map to CSS variables in `packages/app/src/theme/themes/<theme>/_tokens.scss`:
+ *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}
+ *
+ * Storing tokens (not hex) lets user choices reflow correctly across
+ * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ */
+export const CHART_PALETTE_TOKENS = [
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+  'chart-6',
+  'chart-7',
+  'chart-8',
+  'chart-9',
+  'chart-10',
+  'chart-success',
+  'chart-warning',
+  'chart-error',
+] as const;
+
+export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
+
+/** Categorical tokens (chart-1 .. chart-10). */
+export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  0,
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Semantic tokens (success / warning / error). */
+export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Type guard for runtime validation of an unknown token string. */
+export function isChartPaletteToken(
+  value: unknown,
+): value is ChartPaletteToken {
+  return (
+    typeof value === 'string' &&
+    (CHART_PALETTE_TOKENS as readonly string[]).includes(value)
+  );
+}
+
+/**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
  * Note: classList.contains() is O(1) and fast - no caching needed.
@@ -463,6 +513,55 @@ function getColorFromCSSVariable(index: number): string {
 
   // Fallback to default colors
   return COLORS[index % colorArrayLength];
+}
+
+/**
+ * Reads a chart color from a palette token by resolving the matching
+ * CSS variable (`--color-chart-<token-without-prefix>` for categorical
+ * tokens, `--color-chart-{success|warning|error}` for semantic tokens).
+ *
+ * Falls back to the appropriate slot in `COLORS` (categorical) or the
+ * HyperDX semantic palette (success / warning / error) when running
+ * server-side or when `getComputedStyle` fails.
+ *
+ * @example
+ *   getColorFromCSSToken('chart-1')        // brand green
+ *   getColorFromCSSToken('chart-warning')  // theme-aware warning
+ */
+export function getColorFromCSSToken(token: ChartPaletteToken): string {
+  const cssVarName = `--color-${token}`;
+
+  if (typeof window === 'undefined') {
+    return paletteTokenSSRFallback(token);
+  }
+
+  try {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  return paletteTokenSSRFallback(token);
+}
+
+function paletteTokenSSRFallback(token: ChartPaletteToken): string {
+  switch (token) {
+    case 'chart-success':
+      return CHART_PALETTE.green;
+    case 'chart-warning':
+      return CHART_PALETTE.orange;
+    case 'chart-error':
+      return CHART_PALETTE.red;
+    default: {
+      // Categorical token: chart-N where N is 1..10
+      const index = Number(token.slice('chart-'.length)) - 1;
+      return COLORS[index] ?? COLORS[0];
+    }
+  }
 }
 
 export function hashCode(str: string) {
@@ -615,6 +714,27 @@ export const getColorProps = (index: number, level: string): string => {
 
   // Use CSS variable for theme-aware colors, fallback to hardcoded array
   return colorOverride ?? getColorFromCSSVariable(index);
+};
+
+/**
+ * Resolves the chart color to use for a series. User-picked palette
+ * token wins; otherwise falls back to the existing index-based
+ * assignment with log-level override (`getColorProps`).
+ *
+ * Behavior is unchanged for series with no user-set color: callers can
+ * substitute `getColorProps(index, level)` with
+ * `resolveChartColor(undefined, index, level)` without any visible
+ * difference.
+ */
+export const resolveChartColor = (
+  token: ChartPaletteToken | undefined,
+  fallbackIndex: number,
+  level: string = '',
+): string => {
+  if (token) {
+    return getColorFromCSSToken(token);
+  }
+  return getColorProps(fallbackIndex, level);
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
