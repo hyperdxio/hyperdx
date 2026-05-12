@@ -110,7 +110,7 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
     loginAppUrl: string,
     email: string,
     password: string,
-  ) => {
+  ): Promise<string | null> => {
     // Recreate client if the user changed the URL
     let activeClient = client;
     if (loginAppUrl !== currentAppUrl) {
@@ -119,12 +119,12 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
       setCurrentAppUrl(loginAppUrl);
     }
 
-    const ok = await activeClient.login(email, password);
-    if (ok) {
+    const loginError = await activeClient.login(email, password);
+    if (!loginError) {
       setSessionExpired(false);
       await loadData(activeClient);
     }
-    return ok;
+    return loginError;
   };
 
   const handleSourceSelect = (source: SourceResponse) => {
