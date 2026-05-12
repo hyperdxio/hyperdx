@@ -459,15 +459,37 @@ describe('MCP Dashboard Tools', () => {
       });
     });
 
-    // Brandon flagged on #2199 that the schema unit tests only assert that
-    // zod accepts the shape; what matters is that an agent-issued
-    // hyperdx_save_dashboard call actually persists a heatmap with every
-    // MCP-specific field. This test drives the full save -> get -> update
-    // -> get round-trip with heatmapScaleType, countExpression,
-    // numberFormat, where, and whereLanguage all set, then mutates them on
-    // PUT and re-reads to confirm the new values stick.
-    it('should round-trip a fully-specified heatmap tile through save, get, and update', async () => {
+    it('should round-trip every MCP-specific heatmap field through save, get, update, and re-get', async () => {
       const sourceId = traceSource._id.toString();
+
+      const createConfig = {
+        displayType: 'heatmap' as const,
+        sourceId,
+        select: [
+          {
+            valueExpression: 'Duration',
+            countExpression: 'count()',
+            heatmapScaleType: 'log' as const,
+          },
+        ],
+        where: 'level:error',
+        whereLanguage: 'lucene' as const,
+        numberFormat: { output: 'duration' as const, factor: 1e-9 },
+      };
+      // Mutate select + where on update; numberFormat, whereLanguage,
+      // and sourceId carry forward via the spread. Re-asserting against
+      // updatedConfig catches a regression where PUT silently drops any
+      // carried-forward field.
+      const updatedConfig = {
+        ...createConfig,
+        select: [
+          {
+            valueExpression: "SpanAttributes['http.duration']",
+            heatmapScaleType: 'linear' as const,
+          },
+        ],
+        where: 'level:error AND service:checkout',
+      };
 
       const saveResult = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Heatmap Full Round-Trip',
@@ -478,101 +500,42 @@ describe('MCP Dashboard Tools', () => {
             y: 0,
             w: 12,
             h: 4,
-            config: {
-              displayType: 'heatmap',
-              sourceId,
-              select: [
-                {
-                  valueExpression: 'Duration',
-                  countExpression: 'count()',
-                  heatmapScaleType: 'log',
-                },
-              ],
-              where: 'level:error',
-              whereLanguage: 'lucene',
-              numberFormat: { output: 'duration', factor: 1e-9 },
-            },
+            config: createConfig,
           },
         ],
       });
       expect(saveResult.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(saveResult));
       expect(saved.tiles).toHaveLength(1);
-      expect(saved.tiles[0].config).toMatchObject({
-        displayType: 'heatmap',
-        sourceId,
-        where: 'level:error',
-        whereLanguage: 'lucene',
-        numberFormat: { output: 'duration', factor: 1e-9 },
-      });
-      expect(saved.tiles[0].config.select[0]).toMatchObject({
-        valueExpression: 'Duration',
-        countExpression: 'count()',
-        heatmapScaleType: 'log',
-      });
+      expect(saved.tiles[0].config).toMatchObject(createConfig);
 
       const getResult = await callTool(client, 'hyperdx_get_dashboard', {
         id: saved.id,
       });
       expect(getResult.isError).toBeFalsy();
       const fetched = JSON.parse(getFirstText(getResult));
-      expect(fetched.tiles[0].config).toMatchObject({
-        displayType: 'heatmap',
-        where: 'level:error',
-        whereLanguage: 'lucene',
-        numberFormat: { output: 'duration', factor: 1e-9 },
-      });
-      expect(fetched.tiles[0].config.select[0]).toMatchObject({
-        valueExpression: 'Duration',
-        countExpression: 'count()',
-        heatmapScaleType: 'log',
-      });
+      expect(fetched.tiles[0].config).toMatchObject(createConfig);
 
-      // Update path: swap the scale, drop the count expression, change the
-      // value expression, and tighten the filter. Tile id carries forward
-      // so the update lands on the same tile rather than creating a new
-      // one.
       const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
         id: saved.id,
         name: 'Heatmap Full Round-Trip',
         tiles: [
           {
             ...fetched.tiles[0],
-            config: {
-              ...fetched.tiles[0].config,
-              select: [
-                {
-                  valueExpression: "SpanAttributes['http.duration']",
-                  heatmapScaleType: 'linear',
-                },
-              ],
-              where: 'level:error AND service:checkout',
-            },
+            config: { ...fetched.tiles[0].config, ...updatedConfig },
           },
         ],
       });
       expect(updateResult.isError).toBeFalsy();
       const updated = JSON.parse(getFirstText(updateResult));
-      expect(updated.tiles[0].config.select[0]).toEqual({
-        valueExpression: "SpanAttributes['http.duration']",
-        heatmapScaleType: 'linear',
-      });
-      expect(updated.tiles[0].config.where).toBe(
-        'level:error AND service:checkout',
-      );
+      expect(updated.tiles[0].config).toMatchObject(updatedConfig);
 
       const getAfterUpdate = await callTool(client, 'hyperdx_get_dashboard', {
         id: saved.id,
       });
       expect(getAfterUpdate.isError).toBeFalsy();
       const refetched = JSON.parse(getFirstText(getAfterUpdate));
-      expect(refetched.tiles[0].config.select[0]).toEqual({
-        valueExpression: "SpanAttributes['http.duration']",
-        heatmapScaleType: 'linear',
-      });
-      expect(refetched.tiles[0].config.where).toBe(
-        'level:error AND service:checkout',
-      );
+      expect(refetched.tiles[0].config).toMatchObject(updatedConfig);
     });
 
     it('should reject heatmap tile with empty valueExpression at the schema layer', async () => {
