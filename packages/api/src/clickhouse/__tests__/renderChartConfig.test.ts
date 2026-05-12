@@ -789,6 +789,89 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
+
+    it('new series appearing mid-window: v2 suppresses first-row spike', async () => {
+      // Scenario: An existing series (customerA) has data from the start,
+      // and a new series (customerB) appears mid-window with a high
+      // cumulative counter value (e.g. 10000). A naive inter-bucket diff
+      // approach would leak the full cumulative value as a spike on the
+      // first bucket of customerB. The v2 lagInFrame-based Rate yields 0
+      // for the first row of each series, preventing the spike.
+
+      // Use a unique metric name to isolate from the beforeEach data.
+      const metricName = 'customer.events.total';
+
+      // customerA: present from the start, steady increase
+      const customerAPoints = [
+        { value: 0, timestamp: now - ms('1m') },
+        { value: 10, timestamp: now + ms('2m') },
+        { value: 20, timestamp: now + ms('7m') },
+        { value: 30, timestamp: now + ms('12m') },
+        { value: 40, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerA' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      // customerB: appears at +10m with a high cumulative value (10000),
+      // then increases to 10050 by +17m. The real per-bucket increase is
+      // only 50. A naive approach would show 10000 in the bucket where it
+      // first appears.
+      const customerBPoints = [
+        { value: 10000, timestamp: now + ms('10m') },
+        { value: 10020, timestamp: now + ms('12m') },
+        { value: 10050, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerB' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      await bulkInsertMetricsSum([...customerAPoints, ...customerBPoints]);
+
+      // --- v2 query (current code with lagInFrame) ---
+      const v2Query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: metricName,
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('20m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+      const v2Results = await queryData(v2Query);
+
+      // v2 should NOT have a spike — the max bucket value should be much
+      // smaller than customerB's initial cumulative value (10000). The real
+      // per-bucket increases across both series are at most ~50.
+      const v2Values = v2Results.map((r: any) => Number(r.Value));
+      const v2MaxValue = Math.max(...v2Values);
+      expect(v2MaxValue).toBeLessThan(100);
+
+      // Verify we actually got data back (not an empty result set).
+      expect(v2Results.length).toBeGreaterThan(0);
+    });
   });
 
   describe('Query Metrics - Histogram', () => {
