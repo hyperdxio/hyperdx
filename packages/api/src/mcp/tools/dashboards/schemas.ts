@@ -1,5 +1,8 @@
 import {
   AggregateFunctionSchema,
+  DASHBOARD_CONTAINER_ID_MAX,
+  DASHBOARD_MAX_CONTAINERS,
+  DashboardContainerSchema,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -156,6 +159,26 @@ const mcpTileLayoutSchema = z.object({
     .max(36)
     .optional()
     .describe('Tile ID (auto-generated if omitted)'),
+  containerId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      'Container this tile belongs to. Must reference the id of a container in the ' +
+        'dashboard-level containers array. Omit to render the tile in the ungrouped area.',
+    ),
+  tabId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      'Tab within the container this tile belongs to. Requires containerId to be set ' +
+        "and must match a tab id on that container. Omit to render in the container's shell " +
+        '(useful when the container has zero or one tabs, or when a tile should appear above ' +
+        'the tab bar).',
+    ),
 });
 
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
@@ -346,4 +369,29 @@ export const mcpTilesParam = z
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
+  );
+
+export const mcpContainersParam = z
+  .array(DashboardContainerSchema)
+  .max(DASHBOARD_MAX_CONTAINERS)
+  .describe(
+    'Optional dashboard organization layer. Each container groups one or more tiles ' +
+      'visually and may carry a tab bar. Tiles join a container by setting tile.containerId; ' +
+      'tiles further select a tab by setting tile.tabId.\n\n' +
+      'Rules:\n' +
+      '- Container ids must be unique on the dashboard.\n' +
+      '- Tab ids must be unique within a container.\n' +
+      '- A tile.containerId must reference a container id in this array.\n' +
+      '- A tile.tabId must reference a tab id on the same container.\n' +
+      '- tile.tabId requires tile.containerId.\n\n' +
+      'Container shape: { id, title, collapsed, collapsible?, bordered?, tabs? }. ' +
+      '`collapsed` is required. `collapsible` and `bordered` are optional and ' +
+      'persisted absent when omitted; the renderer treats absence as true. ' +
+      'Two or more tabs render as a tab bar; zero or one tab renders as a plain group header.\n\n' +
+      'Example:\n' +
+      '[\n' +
+      '  { "id": "service-health", "title": "Service Health", "collapsed": false,\n' +
+      '    "tabs": [ { "id": "errors", "title": "Errors" }, { "id": "latency", "title": "Latency" } ] },\n' +
+      '  { "id": "overview", "title": "Overview", "collapsed": true }\n' +
+      ']',
   );
