@@ -45,6 +45,84 @@ export const MetricTableSchema = z
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 
+export enum NumericUnit {
+  // Data
+  BytesIEC = 'bytes_iec',
+  BytesSI = 'bytes_si',
+  BitsIEC = 'bits_iec',
+  BitsSI = 'bits_si',
+  Kibibytes = 'kibibytes',
+  Kilobytes = 'kilobytes',
+  Mebibytes = 'mebibytes',
+  Megabytes = 'megabytes',
+  Gibibytes = 'gibibytes',
+  Gigabytes = 'gigabytes',
+  Tebibytes = 'tebibytes',
+  Terabytes = 'terabytes',
+  Pebibytes = 'pebibytes',
+  Petabytes = 'petabytes',
+  // Data Rate
+  PacketsSec = 'packets_sec',
+  BytesSecIEC = 'bytes_sec_iec',
+  BytesSecSI = 'bytes_sec_si',
+  BitsSecIEC = 'bits_sec_iec',
+  BitsSecSI = 'bits_sec_si',
+  KibibytesSec = 'kibibytes_sec',
+  KibibitsSec = 'kibibits_sec',
+  KilobytesSec = 'kilobytes_sec',
+  KilobitsSec = 'kilobits_sec',
+  MebibytesSec = 'mebibytes_sec',
+  MebibitsSec = 'mebibits_sec',
+  MegabytesSec = 'megabytes_sec',
+  MegabitsSec = 'megabits_sec',
+  GibibytesSec = 'gibibytes_sec',
+  GibibitsSec = 'gibibits_sec',
+  GigabytesSec = 'gigabytes_sec',
+  GigabitsSec = 'gigabits_sec',
+  TebibytesSec = 'tebibytes_sec',
+  TebibitsSec = 'tebibits_sec',
+  TerabytesSec = 'terabytes_sec',
+  TerabitsSec = 'terabits_sec',
+  PebibytesSec = 'pebibytes_sec',
+  PebibitsSec = 'pebibits_sec',
+  PetabytesSec = 'petabytes_sec',
+  PetabitsSec = 'petabits_sec',
+  // Throughput
+  Cps = 'cps',
+  Ops = 'ops',
+  Rps = 'rps',
+  ReadsSec = 'reads_sec',
+  Wps = 'wps',
+  Iops = 'iops',
+  Cpm = 'cpm',
+  Opm = 'opm',
+  RpmReads = 'rpm_reads',
+  Wpm = 'wpm',
+}
+
+export const NumberFormatSchema = z.object({
+  output: z.enum([
+    'currency',
+    'percent',
+    'byte', // legacy, treated as data/bytes_iec
+    'time',
+    'duration',
+    'number',
+    'data_rate',
+    'throughput',
+  ]),
+  numericUnit: z.nativeEnum(NumericUnit).optional(),
+  mantissa: z.number().int().optional(),
+  thousandSeparated: z.boolean().optional(),
+  average: z.boolean().optional(),
+  decimalBytes: z.boolean().optional(),
+  factor: z.number().optional(),
+  currencySymbol: z.string().optional(),
+  unit: z.string().optional(),
+});
+
+export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+
 // --------------------------
 //  SQL TYPES
 // --------------------------
@@ -140,6 +218,7 @@ export const DerivedColumnSchema = z.intersection(
     // Heatmap-specific fields (optional, only used when displayType is Heatmap)
     countExpression: z.string().optional(),
     heatmapScaleType: z.enum(['log', 'linear']).optional(),
+    numberFormat: NumberFormatSchema.optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -255,18 +334,43 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
-// Base webhook schema (matches backend IWebhook but with JSON-serialized types)
-// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
+/**
+ * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
+ * When making changes here, consider if they need to be made to the external
+ * API schema as well (packages/api/src/utils/zod.ts).
+ *
+ * NOTE: The internal API (`GET/POST/PUT /api/webhooks`) returns masked values:
+ *   - `url`         → `<origin>/****`  (path hidden, may embed tokens)
+ *   - `headers`     → keys preserved, every value replaced with `****`
+ *   - `queryParams` → keys preserved, every value replaced with `****`
+ * The external API v2 returns `url` in plaintext but omits `headers` and
+ * `queryParams` entirely via separate Zod schemas in `packages/api/src/utils/zod.ts`.
+ */
 export const WebhookSchema = z.object({
   _id: z.string(),
   createdAt: z.string(),
   name: z.string(),
   service: z.nativeEnum(WebhookService),
   updatedAt: z.string(),
-  url: z.string().optional(),
+  url: z
+    .string()
+    .optional()
+    .describe(
+      'Internal API returns masked value (<origin>/****). PUT accepts the masked form to preserve the stored URL.',
+    ),
   description: z.string().optional(),
-  queryParams: z.record(z.string(), z.string()).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
+  queryParams: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
+  headers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Internal API returns keys with values replaced by ****. PUT merges **** back to stored values.',
+    ),
   body: z.string().optional(),
 });
 
@@ -592,103 +696,38 @@ export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
 // --------------------------
 // DASHBOARDS
 // --------------------------
-export enum NumericUnit {
-  // Data
-  BytesIEC = 'bytes_iec',
-  BytesSI = 'bytes_si',
-  BitsIEC = 'bits_iec',
-  BitsSI = 'bits_si',
-  Kibibytes = 'kibibytes',
-  Kilobytes = 'kilobytes',
-  Mebibytes = 'mebibytes',
-  Megabytes = 'megabytes',
-  Gibibytes = 'gibibytes',
-  Gigabytes = 'gigabytes',
-  Tebibytes = 'tebibytes',
-  Terabytes = 'terabytes',
-  Pebibytes = 'pebibytes',
-  Petabytes = 'petabytes',
-  // Data Rate
-  PacketsSec = 'packets_sec',
-  BytesSecIEC = 'bytes_sec_iec',
-  BytesSecSI = 'bytes_sec_si',
-  BitsSecIEC = 'bits_sec_iec',
-  BitsSecSI = 'bits_sec_si',
-  KibibytesSec = 'kibibytes_sec',
-  KibibitsSec = 'kibibits_sec',
-  KilobytesSec = 'kilobytes_sec',
-  KilobitsSec = 'kilobits_sec',
-  MebibytesSec = 'mebibytes_sec',
-  MebibitsSec = 'mebibits_sec',
-  MegabytesSec = 'megabytes_sec',
-  MegabitsSec = 'megabits_sec',
-  GibibytesSec = 'gibibytes_sec',
-  GibibitsSec = 'gibibits_sec',
-  GigabytesSec = 'gigabytes_sec',
-  GigabitsSec = 'gigabits_sec',
-  TebibytesSec = 'tebibytes_sec',
-  TebibitsSec = 'tebibits_sec',
-  TerabytesSec = 'terabytes_sec',
-  TerabitsSec = 'terabits_sec',
-  PebibytesSec = 'pebibytes_sec',
-  PebibitsSec = 'pebibits_sec',
-  PetabytesSec = 'petabytes_sec',
-  PetabitsSec = 'petabits_sec',
-  // Throughput
-  Cps = 'cps',
-  Ops = 'ops',
-  Rps = 'rps',
-  ReadsSec = 'reads_sec',
-  Wps = 'wps',
-  Iops = 'iops',
-  Cpm = 'cpm',
-  Opm = 'opm',
-  RpmReads = 'rpm_reads',
-  Wpm = 'wpm',
-}
 
-export const NumberFormatSchema = z.object({
-  output: z.enum([
-    'currency',
-    'percent',
-    'byte', // legacy, treated as data/bytes_iec
-    'time',
-    'duration',
-    'number',
-    'data_rate',
-    'throughput',
-  ]),
-  numericUnit: z.nativeEnum(NumericUnit).optional(),
-  mantissa: z.number().int().optional(),
-  thousandSeparated: z.boolean().optional(),
-  average: z.boolean().optional(),
-  decimalBytes: z.boolean().optional(),
-  factor: z.number().optional(),
-  currencySymbol: z.string().optional(),
-  unit: z.string().optional(),
+export const OnClickFilterTemplateSchema = z.object({
+  kind: z.literal('expressionTemplate'),
+  expression: z.string().min(1, 'Expression is required').max(10000),
+  template: z.string().min(1, 'Template is required').max(10000),
 });
-
-export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+export type OnClickFilterTemplate = z.infer<typeof OnClickFilterTemplateSchema>;
 
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: z.string().min(1) }),
-  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+  z.object({
+    mode: z.literal('template'),
+    template: z.string().min(1).max(10000),
+  }),
 ]);
 export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
 
-const OnClickSearchSchema = z.object({
+export const OnClickSearchSchema = z.object({
   type: z.literal('search'),
   target: OnClickTargetSchema,
-  whereTemplate: z.string().optional(),
+  whereTemplate: z.string().max(10000).optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).max(50).optional(),
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
 export const OnClickDashboardSchema = z.object({
   type: z.literal('dashboard'),
   target: OnClickTargetSchema,
-  whereTemplate: z.string().optional(),
+  whereTemplate: z.string().max(10000).optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  filters: z.array(OnClickFilterTemplateSchema).max(50).optional(),
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
@@ -697,6 +736,36 @@ export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickDashboardSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
+
+export type OnClickSearchById = OnClickSearch & {
+  target: Extract<OnClickTarget, { mode: 'id' }>;
+};
+
+export type OnClickDashboardById = OnClickDashboard & {
+  target: Extract<OnClickTarget, { mode: 'id' }>;
+};
+
+/** True when the onClick links by concrete ID to a search source. */
+export function isOnClickSearchById(
+  onClick: OnClick | undefined,
+): onClick is OnClickSearchById {
+  return (
+    onClick !== undefined &&
+    onClick.type === 'search' &&
+    onClick.target.mode === 'id'
+  );
+}
+
+/** True when the onClick links by concrete ID to a dashboard. */
+export function isOnClickDashboardById(
+  onClick: OnClick | undefined,
+): onClick is OnClickDashboardById {
+  return (
+    onClick !== undefined &&
+    onClick.type === 'dashboard' &&
+    onClick.target.mode === 'id'
+  );
+}
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
@@ -896,9 +965,11 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
-  containerId: z.string().optional(),
+  // `min(1)` matches the external API; an empty string isn't a valid
+  // id and would silently pass `tile.containerId !== undefined` checks.
+  containerId: z.string().min(1).optional(),
   // For tiles inside a tab container: which tab this tile belongs to
-  tabId: z.string().optional(),
+  tabId: z.string().min(1).optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -910,14 +981,33 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+// Reasonable bounds on identifiers and titles. The UI never asks the
+// user to type either an id or a title longer than ~64 chars; capping
+// at 256 leaves room for slugified or composed ids without inviting
+// Mongo-doc bloat. Exported so the external-API tile schema can apply
+// the same cap to tile.containerId / tile.tabId.
+export const DASHBOARD_CONTAINER_ID_MAX = 256;
+const DASHBOARD_CONTAINER_TITLE_MAX = 256;
+// Caps the per-container tab fan-out. The tab bar visually breaks
+// past ~10 tabs and the editor offers no bulk-add affordance. Used
+// only by this schema; not exported.
+const DASHBOARD_CONTAINER_MAX_TABS = 20;
+// Caps the per-dashboard container fan-out.
+export const DASHBOARD_MAX_CONTAINERS = 50;
+// Caps the per-dashboard tile fan-out. The dashboard editor's add-tile
+// affordance is one-at-a-time, but external-API callers can POST a list
+// in one request; without a cap a payload could push tens of MB into
+// Mongo and run out of memory rendering it.
+export const DASHBOARD_MAX_TILES = 500;
+
 export const DashboardContainerTabSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
 });
 
 export const DashboardContainerSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
+  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
   collapsed: z.boolean(),
   // Whether the group can be collapsed (default true)
   collapsible: z.boolean().optional(),
@@ -925,7 +1015,10 @@ export const DashboardContainerSchema = z.object({
   bordered: z.boolean().optional(),
   // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
   // Tiles reference a specific tab via tabId.
-  tabs: z.array(DashboardContainerTabSchema).optional(),
+  tabs: z
+    .array(DashboardContainerTabSchema)
+    .max(DASHBOARD_CONTAINER_MAX_TABS)
+    .optional(),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -976,6 +1069,15 @@ export function addDuplicateTileIdIssues(
   }
 }
 
+// `DashboardSchema` is intentionally left as a `ZodObject` (no parent-level
+// `.superRefine`) so existing call sites that chain `.omit()`, `.partial()`,
+// or `.extend()` keep working (see `routers/api/dashboards.ts` PATCH body
+// and `DashboardWithoutIdSchema` / `DashboardTemplateSchema` below).
+// Cross-tile container/tab reference validation lives in
+// `./dashboardValidation` and is applied at the external-API request body
+// schema (`buildDashboardBodySchema` in `v2/utils/dashboards.ts`), which is
+// the only public surface that accepts arbitrary tile + container payloads
+// in one call.
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -987,13 +1089,20 @@ export const DashboardSchema = z.object({
   savedFilterValues: z.array(FilterSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
-    .refine(
-      containers => {
-        const ids = containers.map(c => c.id);
-        return new Set(ids).size === ids.length;
-      },
-      { message: 'Container IDs must be unique' },
-    )
+    .max(DASHBOARD_MAX_CONTAINERS)
+    .superRefine((containers, ctx) => {
+      const seen = new Set<string>();
+      containers.forEach((c, i) => {
+        if (seen.has(c.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Container IDs must be unique: "${c.id}"`,
+            path: [i, 'id'],
+          });
+        }
+        seen.add(c.id);
+      });
+    })
     .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
@@ -1130,6 +1239,16 @@ export type MaterializedViewConfiguration = z.infer<
   typeof MaterializedViewConfigurationSchema
 >;
 
+export const MetadataMaterializedViewsSchema = z.object({
+  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
+  granularity: SQLIntervalSchema,
+});
+
+export type MetadataMaterializedViews = z.infer<
+  typeof MetadataMaterializedViewsSchema
+>;
+
 // Log source form schema
 export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
@@ -1163,6 +1282,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 
@@ -1202,6 +1322,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
 });
 

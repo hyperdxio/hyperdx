@@ -116,17 +116,26 @@ export function convertToTimeChartConfig(
     granularity,
   );
 
+  // When the range is bucket-aligned, the end is the start of the next bucket,
+  // so end-exclusive is required to avoid double-counting boundary events.
+  // When alignment is off the end is the user's exact selection — fall back to
+  // the caller's setting, if there is one.
+  const isAligned = config.alignDateRangeToGranularity !== false;
+  const dateRangeEndInclusive = isAligned
+    ? false
+    : (config.dateRangeEndInclusive ?? false);
+
   return isBuilderChartConfig(config)
     ? {
         ...config,
         dateRange,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
       }
     : {
         ...config,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         dateRange,
         granularity,
       };
@@ -454,6 +463,8 @@ export interface LineData {
   currentPeriodKey: string;
   previousPeriodKey: string;
   displayName: string;
+  /** The original result column name this series' values were pulled from. */
+  valueColumnName: string;
   color: string;
   isDashed?: boolean;
 }
@@ -580,6 +591,7 @@ function addResponseToFormattedData({
         currentPeriodKey,
         previousPeriodKey,
         displayName: keyName,
+        valueColumnName: valueColumn.name,
         color,
         isDashed: isPreviousPeriod,
       };

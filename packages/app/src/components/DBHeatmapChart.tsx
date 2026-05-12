@@ -56,11 +56,15 @@ export type SelectionBounds = {
  * the URL-backed bounds as the source of truth and mirror them onto the
  * chart imperatively. fireHook=false avoids re-entering the setSelect hook.
  */
-function applySelectionToChart(
+export function applySelectionToChart(
   u: uPlot,
   bounds: SelectionBounds | null | undefined,
   scaleType: HeatmapScaleType,
 ) {
+  // The clear path runs BEFORE the scale-not-populated guard below so a
+  // null bounds always clears the rectangle, even on first paint when
+  // u.scales.y is not yet populated. Keep this ordering when refactoring;
+  // swapping it would suppress clears while scales are loading.
   if (bounds == null) {
     u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
     return;
@@ -361,7 +365,7 @@ function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
   };
 }
 
-export type HeatmapChartConfig = {
+type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
   select: [
     {
@@ -1032,29 +1036,33 @@ function Heatmap({
   // stable across selection/scale changes.
   const selectionBoundsRef = useRef(selectionBounds);
   const scaleTypeRef = useRef(scaleType);
+  // Runs every commit; mirrors latest props into refs (no deps array on
+  // purpose).
   useEffect(() => {
     selectionBoundsRef.current = selectionBounds;
     scaleTypeRef.current = scaleType;
   });
 
+  const { ref, width, height } = useElementSize();
+
   // Reapply the URL-backed selection whenever the bounds prop changes
   // (e.g. a fresh drag-select arrives via the round-trip through the
-  // parent's URL state, or the parent clears the filter). This complements
-  // the uPlot `ready` hook below: that handles initial chart creation
-  // (and any recreation), this handles bounds changes against an existing
-  // chart.
+  // parent's URL state, or the parent clears the filter), or when the
+  // container resizes (uPlot calls setSize, not a full recreate, so the
+  // pixel-space u.select would otherwise be stale). This complements the
+  // uPlot `ready` hook below: that handles initial chart creation (and
+  // any recreation), this handles bounds and size changes against an
+  // existing chart.
   useEffect(() => {
     if (uplotRef.current) {
       applySelectionToChart(uplotRef.current, selectionBounds, scaleType);
     }
-  }, [selectionBounds, scaleType]);
+  }, [selectionBounds, scaleType, width, height]);
 
   // Timestamp of the most recent drag-end. Guards the container's onClick
   // handler from clearing the selection when the synthetic click event
   // that fires on mouseup-after-drag arrives.
   const justDraggedAtRef = useRef(0);
-
-  const { ref, width, height } = useElementSize();
 
   // Stabilize on numberFormat content, not reference. Callers (e.g.
   // DBSearchHeatmapChart) build a fresh `numberFormat` object on every
@@ -1063,6 +1071,13 @@ function Heatmap({
   // optionsUpdateState and treat the change as 'create', destroying the
   // chart and wiping u.select. Hashing the contents lets the memo skip
   // when the actual format is unchanged. (HDX-4147)
+  //
+  // Relies on NumberFormat being JSON-serializable: today it is plain
+  // config (string + number fields), so JSON.stringify is a faithful
+  // fingerprint. If the type ever grows a function-valued field
+  // (e.g. a custom `formatter` callback), switch to a shallow-equal
+  // helper keyed on the known fields, because functions stringify to
+  // undefined and would silently skip rebuilds.
   const numberFormatKey = useMemo(
     () => (numberFormat ? JSON.stringify(numberFormat) : ''),
     [numberFormat],
@@ -1190,7 +1205,7 @@ function Heatmap({
       },
       plugins: [
         // legendAsTooltipPlugin()
-        // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
+
         highlightDataPlugin({
           proximity: 20,
           onPointHighlight: ({

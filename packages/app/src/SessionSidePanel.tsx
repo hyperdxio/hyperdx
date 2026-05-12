@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -8,14 +8,22 @@ import {
   TSessionSource,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Button, Drawer } from '@mantine/core';
+import { ActionIcon, Box, Button, Drawer, Group } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
+
+import {
+  DrawerFullWidthToggle,
+  getInitialDrawerWidthPercent,
+} from '@/components/DrawerUtils';
+import useResizable from '@/hooks/useResizable';
 
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
 import { ZIndexContext } from './zIndex';
+
+import styles from '@/../styles/LogSidePanel.module.scss';
 
 export default function SessionSidePanel({
   traceSource,
@@ -41,6 +49,14 @@ export default function SessionSidePanel({
 }) {
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+
+  const { size, setSize, startResize } = useResizable(
+    getInitialDrawerWidthPercent(),
+  );
+  const isFullWidth = size >= 99;
+  const toggleFullWidth = useCallback(() => {
+    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+  }, [isFullWidth, setSize]);
 
   useHotkeys(
     ['esc'],
@@ -68,7 +84,7 @@ export default function SessionSidePanel({
         }
       }}
       position="right"
-      size="82vw"
+      size={`${size}vw`}
       withCloseButton={false}
       zIndex={zIndex}
       styles={{
@@ -83,7 +99,9 @@ export default function SessionSidePanel({
         <div
           className="d-flex flex-column h-100"
           data-testid="session-side-panel"
+          style={{ position: 'relative' }}
         >
+          <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <div>
             <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
               <div style={{ width: '50%', maxWidth: 500 }}>
@@ -102,7 +120,11 @@ export default function SessionSidePanel({
                   <span>{session?.sessionCount} Events</span>
                 </div>
               </div>
-              <div className="d-flex gap-2">
+              <Group gap="xs" align="center" wrap="nowrap">
+                <DrawerFullWidthToggle
+                  isFullWidth={isFullWidth}
+                  onToggle={toggleFullWidth}
+                />
                 <CopyToClipboard
                   text={window.location.href}
                   onCopy={() => {
@@ -124,7 +146,7 @@ export default function SessionSidePanel({
                 <ActionIcon variant="secondary" size="md" onClick={onClose}>
                   <IconX size={14} />
                 </ActionIcon>
-              </div>
+              </Group>
             </div>
           </div>
           {sessionId != null ? (

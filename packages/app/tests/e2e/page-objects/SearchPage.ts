@@ -2,7 +2,7 @@
  * SearchPage - Page object for the /search page
  * Encapsulates all interactions with the search interface
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
@@ -393,5 +393,14 @@ export class SearchPage {
 
   get otherSources() {
     return this.page.getByRole('option', { selected: false });
+  }
+
+  get totalCountText() {
+    return this.page.getByTestId('search-total-count');
+  }
+
+  async waitForTotalCountLoaded(timeout = 15_000) {
+    await expect(this.totalCountText).toBeVisible({ timeout });
+    await expect(this.totalCountText).not.toContainText('···', { timeout });
   }
 }

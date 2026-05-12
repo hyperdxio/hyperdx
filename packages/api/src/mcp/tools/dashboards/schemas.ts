@@ -1,5 +1,12 @@
+// prose-lint: allow-file
+// MCP tool descriptions intentionally use the established en-dash
+// separator (e.g. "Source ID – call hyperdx_list_sources") for LLM
+// readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  DASHBOARD_CONTAINER_ID_MAX,
+  DASHBOARD_MAX_CONTAINERS,
+  DashboardContainerSchema,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -7,6 +14,68 @@ import { z } from 'zod';
 import { externalQuantileLevelSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
+const mcpNumberFormatSchema = z
+  .object({
+    output: z
+      .enum([
+        'currency',
+        'percent',
+        'byte',
+        'time',
+        'duration',
+        'number',
+        'data_rate',
+        'throughput',
+      ])
+      .describe(
+        'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
+          '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
+          '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
+          '"currency" prepends a symbol. "percent" appends %.',
+      ),
+    mantissa: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'Decimal places (0–10). Not used for "time" or "duration" output.',
+      ),
+    thousandSeparated: z
+      .boolean()
+      .optional()
+      .describe('Separate thousands (e.g. 1,234,567)'),
+    average: z
+      .boolean()
+      .optional()
+      .describe('Abbreviate large numbers (e.g. 1.2m)'),
+    decimalBytes: z
+      .boolean()
+      .optional()
+      .describe(
+        'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
+      ),
+    factor: z
+      .number()
+      .optional()
+      .describe(
+        'Input unit factor for "time" or "duration" output. ' +
+          '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
+      ),
+    currencySymbol: z
+      .string()
+      .optional()
+      .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
+    unit: z
+      .string()
+      .optional()
+      .describe('Suffix appended to the value (e.g. " req/s")'),
+  })
+  .describe(
+    'Controls how the number value is formatted for display. ' +
+      'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+      'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
+  );
+
 const mcpTileSelectItemSchema = z
   .object({
     aggFn: AggregateFunctionSchema.describe(
@@ -31,6 +100,13 @@ const mcpTileSelectItemSchema = z
     level: externalQuantileLevelSchema
       .optional()
       .describe('Percentile level for aggFn="quantile"'),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(
+        'Per-series display formatting, applied to this series only (overrides any tile-level numberFormat). ' +
+          'Example: { output: "duration", factor: 0.000000001 } to render a nanosecond Duration series as human-readable time ' +
+          'while leaving sibling count series unformatted.',
+      ),
   })
   .superRefine((data, ctx) => {
     if (data.level && data.aggFn !== 'quantile') {
@@ -87,6 +163,26 @@ const mcpTileLayoutSchema = z.object({
     .max(36)
     .optional()
     .describe('Tile ID (auto-generated if omitted)'),
+  containerId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      'Container this tile belongs to. Must reference the id of a container in the ' +
+        'dashboard-level containers array. Omit to render the tile in the ungrouped area.',
+    ),
+  tabId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      'Tab within the container this tile belongs to. Requires containerId to be set ' +
+        "and must match a tab id on that container. Omit to render in the container's shell " +
+        '(useful when the container has zero or one tabs, or when a tile should appear above ' +
+        'the tab bar).',
+    ),
 });
 
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
@@ -146,57 +242,15 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
       ),
     orderBy: z.string().optional().describe('Sort results by this column'),
     asRatio: z.boolean().optional(),
+    groupByColumnsOnLeft: z
+      .boolean()
+      .optional()
+      .describe(
+        'Render Group By columns on the left side of the table, before the series columns. ' +
+          'Default false (Group By columns on the right).',
+      ),
   }),
 });
-
-const mcpNumberFormatSchema = z
-  .object({
-    output: z
-      .enum(['currency', 'percent', 'byte', 'time', 'number'])
-      .describe(
-        'Format category. "time" auto-formats durations (use factor for input unit). ' +
-          '"byte" formats as KB/MB/GB. "currency" prepends a symbol. "percent" appends %.',
-      ),
-    mantissa: z
-      .number()
-      .int()
-      .optional()
-      .describe('Decimal places (0–10). Not used for "time" output.'),
-    thousandSeparated: z
-      .boolean()
-      .optional()
-      .describe('Separate thousands (e.g. 1,234,567)'),
-    average: z
-      .boolean()
-      .optional()
-      .describe('Abbreviate large numbers (e.g. 1.2m)'),
-    decimalBytes: z
-      .boolean()
-      .optional()
-      .describe(
-        'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
-      ),
-    factor: z
-      .number()
-      .optional()
-      .describe(
-        'Input unit factor for "time" output. ' +
-          '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
-      ),
-    currencySymbol: z
-      .string()
-      .optional()
-      .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
-    unit: z
-      .string()
-      .optional()
-      .describe('Suffix appended to the value (e.g. " req/s")'),
-  })
-  .describe(
-    'Controls how the number value is formatted for display. ' +
-      'Most useful: { output: "time", factor: 0.000000001 } to auto-format nanosecond durations, ' +
-      'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
-  );
 
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
@@ -209,7 +263,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(
-        'Display formatting for the number value. Example: { output: "time", factor: 0.000000001 } ' +
+        'Display formatting for the number value. Example: { output: "duration", factor: 0.000000001 } ' +
           'to auto-format nanosecond durations as human-readable time.',
       ),
   }),
@@ -226,6 +280,69 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+      ),
+  }),
+});
+
+// Heatmap tiles use a dedicated select-item shape: heatmap aggregation is
+// fixed internally, the chart-level discriminator is
+// `displayType: 'heatmap'`, and `HeatmapSeriesEditor` does not render an
+// alias input. valueExpression is required and non-empty. Mirrors
+// externalDashboardHeatmapSelectItemSchema in
+// `packages/api/src/utils/zod.ts` so the MCP and REST surfaces stay in
+// lockstep.
+const mcpHeatmapSelectItemSchema = z.object({
+  valueExpression: z
+    .string()
+    .min(1)
+    .describe(
+      'Numeric column or expression to bucket. Required and must be non-empty. ' +
+        'Use "Duration" for trace latency heatmaps, or any other numeric column.',
+    ),
+  countExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Custom count expression (e.g. "count()"). Optional; defaults are applied by the renderer.',
+    ),
+  heatmapScaleType: z
+    .enum(['log', 'linear'])
+    .optional()
+    .describe('Color scale: "log" or "linear"'),
+});
+
+// Heatmap tiles are builder-only and currently restricted to Trace sources
+// (see HEATMAP_ALLOWED_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
+// The save path runs `getHeatmapTilesWithIncompatibleSources` after schema
+// validation to enforce that, mirroring the REST handler.
+const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('heatmap')
+      .describe('Heatmap chart, requires a Trace source'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID. Must be a Trace source today; use hyperdx_list_sources and ' +
+          'pick one whose kind is "trace".',
+      ),
+    select: z
+      .array(mcpHeatmapSelectItemSchema)
+      .length(1)
+      .describe('Exactly one heatmap series'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Row-level filter applied before bucketing. Example: "level:error"',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(
+        'Display formatting for bucket values. Example: { output: "time", factor: 0.000000001 } ' +
+          'to format nanosecond durations as human-readable time.',
       ),
   }),
 });
@@ -297,6 +414,7 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
@@ -311,10 +429,40 @@ export const mcpTilesParam = z
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
       '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, { "aggFn": "avg", "valueExpression": "Duration" }] } }\n' +
+      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, ' +
+      '{ "aggFn": "avg", "valueExpression": "Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
+      '   (per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number)\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
       '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
       '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
-      '"numberFormat": { "output": "time", "factor": 0.000000001 } } }',
+      '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }\n' +
+      '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
+      '"select": [{ "valueExpression": "Duration" }], ' +
+      '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
+  );
+
+export const mcpContainersParam = z
+  .array(DashboardContainerSchema)
+  .max(DASHBOARD_MAX_CONTAINERS)
+  .describe(
+    'Optional dashboard organization layer. Each container groups one or more tiles ' +
+      'visually and may carry a tab bar. Tiles join a container by setting tile.containerId; ' +
+      'tiles further select a tab by setting tile.tabId.\n\n' +
+      'Rules:\n' +
+      '- Container ids must be unique on the dashboard.\n' +
+      '- Tab ids must be unique within a container.\n' +
+      '- A tile.containerId must reference a container id in this array.\n' +
+      '- A tile.tabId must reference a tab id on the same container.\n' +
+      '- tile.tabId requires tile.containerId.\n\n' +
+      'Container shape: { id, title, collapsed, collapsible?, bordered?, tabs? }. ' +
+      '`collapsed` is required. `collapsible` and `bordered` are optional and ' +
+      'persisted absent when omitted; the renderer treats absence as true. ' +
+      'Two or more tabs render as a tab bar; zero or one tab renders as a plain group header.\n\n' +
+      'Example:\n' +
+      '[\n' +
+      '  { "id": "service-health", "title": "Service Health", "collapsed": false,\n' +
+      '    "tabs": [ { "id": "errors", "title": "Errors" }, { "id": "latency", "title": "Latency" } ] },\n' +
+      '  { "id": "overview", "title": "Overview", "collapsed": true }\n' +
+      ']',
   );

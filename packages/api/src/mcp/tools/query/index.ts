@@ -5,6 +5,7 @@ import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { ToolDefinition } from '../types';
+import { runEventPatterns } from './eventPatterns';
 import { parseTimeRange, runConfigTile } from './helpers';
 import { hyperdxQuerySchema, validateQueryInput } from './schemas';
 
@@ -24,6 +25,12 @@ const queryTools: ToolDefinition = (server, context) => {
         'PREFERRED: Use the builder display types (line, stacked_bar, table, number, pie) ' +
         'for aggregated metrics, or "search" for browsing individual log/event rows. ' +
         'These are safer, easier to construct, and cover most use cases.\n\n' +
+        'PATTERN MINING: Use "event_patterns" to discover recurring message templates ' +
+        'in logs or traces. Samples random events, clusters them using the Drain algorithm, ' +
+        'and returns patterns sorted by frequency with estimated counts and time trends. ' +
+        'Useful for identifying the most common log messages, spotting anomalies, and understanding noise. ' +
+        'Each pattern includes a "whereSnippet" field — use it as the "where" parameter in a follow-up ' +
+        '"search" query on the same source to browse the matching raw events.\n\n' +
         'ADVANCED: Use displayType "sql" only when you need capabilities the builder cannot express, ' +
         'such as JOINs, sub-queries, CTEs, or querying tables not registered as sources. ' +
         'Raw SQL requires a connectionId (not sourceId) and a hand-written ClickHouse SQL query.\n\n' +
@@ -52,6 +59,23 @@ const queryTools: ToolDefinition = (server, context) => {
         };
       }
       const { startDate, endDate } = timeRange;
+
+      // Event patterns has its own execution path (sample + mine),
+      // so it returns early without going through runConfigTile.
+      if (input.displayType === 'event_patterns') {
+        return runEventPatterns(
+          teamId.toString(),
+          input.sourceId!,
+          startDate,
+          endDate,
+          {
+            where: input.where,
+            whereLanguage: input.whereLanguage,
+            bodyExpression: input.bodyExpression,
+            sampleSize: input.sampleSize,
+          },
+        );
+      }
 
       let tile: ExternalDashboardTileWithId;
 
