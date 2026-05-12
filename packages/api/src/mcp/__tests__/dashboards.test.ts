@@ -20,6 +20,7 @@ import {
   buildDashboardExamplesPrompt,
   buildQueryGuidePrompt,
 } from '../prompts/dashboards/content';
+import { buildSourceSummary } from '../prompts/dashboards/helpers';
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -1323,6 +1324,7 @@ describe('MCP Dashboard Tools', () => {
 
     it('should reject a filter whose sourceId does not exist', async () => {
       const sourceId = traceSource._id.toString();
+      const missingSourceId = '000000000000000000000000';
       const result = await callTool(client, 'hyperdx_save_dashboard', {
         name: 'Bad filter source',
         tiles: [traceTile(sourceId)],
@@ -1331,12 +1333,18 @@ describe('MCP Dashboard Tools', () => {
             type: 'QUERY_EXPRESSION',
             name: 'Service',
             expression: 'ServiceName',
-            sourceId: '000000000000000000000000',
+            sourceId: missingSourceId,
           },
         ],
       });
       expect(result.isError).toBe(true);
-      expect(getFirstText(result)).toContain('source');
+      const text = getFirstText(result);
+      // Tight assertion: the saveDashboard "missing source IDs" envelope
+      // includes the literal "Could not find source IDs:" plus the
+      // unknown id, so a regression that swaps in a different error path
+      // (e.g. a generic Zod validation reject) would fail loudly.
+      expect(text).toContain('Could not find source IDs');
+      expect(text).toContain(missingSourceId);
     });
 
     it('should round-trip a dashboard with no filters (backward compat)', async () => {
@@ -1349,6 +1357,130 @@ describe('MCP Dashboard Tools', () => {
       const dashboard = JSON.parse(getFirstText(result));
       expect(Array.isArray(dashboard.filters)).toBe(true);
       expect(dashboard.filters).toHaveLength(0);
+    });
+
+    it('should accept a create payload with stray filter ids (copy-paste round-trip)', async () => {
+      // An LLM that copies a filter out of hyperdx_get_dashboard and
+      // back into hyperdx_save_dashboard for a NEW dashboard ships an
+      // `id` on the filter. The body schema for create is
+      // `.strict()` and rejects `id`, so saveDashboard normalizes by
+      // stripping ids before validation. Without that normalization
+      // this payload would 4xx with a confusing strict-validation
+      // error.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Create with stray filter id',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            id: '999999999999999999999999', // simulates a copied id
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+        ],
+      });
+      expect(result.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(result));
+      expect(dashboard.filters).toHaveLength(1);
+      // The new dashboard gets a fresh id; the copied one is discarded.
+      expect(dashboard.filters[0].id).not.toBe('999999999999999999999999');
+      expect(dashboard.filters[0]).toMatchObject({
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+      });
+    });
+
+    it('should assign ids to new filters added during update (no-id round-trip)', async () => {
+      // An LLM updating a dashboard to ADD a brand-new filter ships
+      // a filter without an `id`. The body schema for update requires
+      // id, so saveDashboard fills one in. Without that normalization
+      // this payload would 4xx complaining that id is missing.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Update adds new filter',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+        ],
+      });
+      const created = JSON.parse(getFirstText(createResult));
+      const existingFilterId = created.filters[0].id;
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Update adds new filter',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          // Existing filter, preserved by id.
+          {
+            id: existingFilterId,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+          // Brand-new filter, no id. saveDashboard assigns one.
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment',
+            expression: 'deployment.environment',
+            sourceId,
+          },
+        ],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.filters).toHaveLength(2);
+      const envFilter = updated.filters.find(
+        (f: { name: string }) => f.name === 'Environment',
+      );
+      expect(envFilter).toBeDefined();
+      expect(typeof envFilter.id).toBe('string');
+      expect(envFilter.id.length).toBeGreaterThan(0);
+      expect(envFilter.id).not.toBe(existingFilterId);
+    });
+
+    it('should round-trip a table tile that uses a having clause', async () => {
+      // mcpTableTileSchema exposes `having` so the service_detail
+      // example's "Top Error Messages" pattern (groupBy StatusMessage
+      // with having: "StatusMessage != ''") survives MCP authoring.
+      // Without `having` on the schema, Zod would strip it and the
+      // saved tile would include empty-message rows instead of the
+      // filtered set the prompt promises.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Top Error Messages',
+        tiles: [
+          {
+            name: 'Top Error Messages',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count', alias: 'Count' }],
+              groupBy: 'StatusMessage',
+              having: "StatusMessage != ''",
+              orderBy: 'Count DESC',
+              groupByColumnsOnLeft: true,
+            },
+          },
+        ],
+      });
+      expect(result.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(result));
+      expect(dashboard.tiles[0].config.having).toBe("StatusMessage != ''");
     });
   });
 
@@ -1503,15 +1635,75 @@ describe('MCP Dashboard Tools', () => {
 
     it('documents the dashboard filter and per-series numberFormat sections', () => {
       const prompt = buildQueryGuidePrompt();
-      expect(prompt).toContain('== DASHBOARD FILTERS ==');
-      expect(prompt).toContain('== NUMBER FORMAT ==');
-      // The metric one-select rule is the constraint Step 1a caught
-      // during dev-stack verification; without it the AI authors
-      // multi-metric tiles that silently drop everything past select[0].
+      // Sections must exist AND carry the substantive content. Heading-
+      // only assertions let a future contributor empty out a section
+      // and silently pass review.
+      const sliceSection = (heading: string) => {
+        const idx = prompt.indexOf(heading);
+        if (idx === -1) return '';
+        const next = prompt.indexOf('\n== ', idx + heading.length);
+        return prompt.slice(idx, next === -1 ? prompt.length : next);
+      };
+      const filters = sliceSection('== DASHBOARD FILTERS ==');
+      expect(filters).toContain('QUERY_EXPRESSION');
+      expect(filters).toContain('expression');
+      expect(filters).toContain('sourceId');
+      const numberFormat = sliceSection('== NUMBER FORMAT ==');
+      expect(numberFormat).toContain('factor: 0.000000001');
+      expect(numberFormat).toContain('duration');
+      expect(numberFormat.toLowerCase()).toContain('per-series');
+    });
+
+    it('declares the MCP metric-authoring gap rather than referencing fields that do not exist', () => {
+      // The MCP select-item schema does not carry metricName / metricType,
+      // so any prompt that tells the model to author a metric tile via
+      // the builder path is teaching it to ship JSON that gets silently
+      // stripped. Guard with an explicit assertion so a future diff that
+      // restores metric-tile guidance fails this test loudly.
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).not.toMatch(/metricName \+ metricType/);
+      expect(prompt).not.toMatch(/exactly 1 select item with metricName/);
       const constraintsIdx = prompt.indexOf('== PER-TILE TYPE CONSTRAINTS ==');
       const constraintsBody = prompt.slice(constraintsIdx);
-      expect(constraintsBody.toLowerCase()).toContain('metric');
-      expect(constraintsBody).toContain('one tile per metric');
+      expect(constraintsBody).toMatch(/not currently exposed via the MCP/);
+    });
+
+    it('contains no em-dashes or en-dashes used as em-dashes', () => {
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
+      expect(prompt).not.toMatch(/ – /); // [prose-lint: allow]
+    });
+  });
+
+  describe('buildSourceSummary', () => {
+    it('contains no em-dashes or en-dashes used as em-dashes', () => {
+      // buildSourceSummary is the source-list block that gets prepended
+      // to create_dashboard. The first iteration of this PR shipped with
+      // em-dashes here that the content.ts snapshot test missed because
+      // it calls the builders directly. Guard the helper output too.
+      const summary = buildSourceSummary(
+        [
+          {
+            _id: '000000000000000000000001',
+            name: 'Traces',
+            kind: 'trace',
+            connection: '000000000000000000000002',
+          },
+          {
+            _id: '000000000000000000000003',
+            name: 'Logs',
+            kind: 'log',
+            connection: '000000000000000000000002',
+          },
+        ],
+        [{ _id: '000000000000000000000002', name: 'Default' }],
+      );
+      expect(summary).not.toMatch(/—/); // [prose-lint: allow]
+      expect(summary).not.toMatch(/ – /); // [prose-lint: allow]
+      // Sanity: the helper still emits the source list, so the assertion
+      // above isn't trivially passing on an empty string.
+      expect(summary).toContain('Traces');
+      expect(summary).toContain('AVAILABLE SOURCES');
     });
   });
 
@@ -1523,23 +1715,31 @@ describe('MCP Dashboard Tools', () => {
         '000000000000000000000002',
       );
       expect(prompt).toContain('== DESIGN CHECKLIST ==');
-      // Each rule on the checklist exists at the same heading depth so a
-      // future contributor cannot silently drop one. Numbered list
-      // matters because the prompt references rules by position when the
-      // model needs a reminder mid-task.
+      // Each rule on the checklist exists at the same numbered position
+      // so a future contributor cannot silently drop one. Anchor on
+      // line start (with a trailing space) so digit-and-dot substrings
+      // like "0.000000001" elsewhere in the prompt cannot satisfy the
+      // assertion accidentally.
+      const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
+      const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
+      const checklistBody = prompt.slice(checklistIdx, adaptIdx);
       for (let i = 1; i <= 10; i++) {
-        expect(prompt).toContain(`${i}.`);
+        expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
       expect(prompt).toContain('ADAPT, DO NOT COPY');
+      // Rule 9 documents the replace-not-merge semantic on update; an
+      // agent that ignores this can silently drop tiles / filters / containers
+      // on a subsequent save call.
+      expect(checklistBody).toMatch(/UPDATE IS REPLACE, NOT MERGE/);
     });
 
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
       const prompt = buildCreateDashboardPrompt('sources summary', '', '');
-      expect(prompt).not.toMatch(/—/);
+      expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
       // En-dash flanked by spaces reads as an em-dash substitute and is
-      // disallowed by the voice rules. Numeric ranges (e.g. "1–20") are
+      // disallowed by the voice rules. Numeric ranges (e.g. "1-20") are
       // not in the checklist anyway, but guard against them just in case.
-      expect(prompt).not.toMatch(/ – /);
+      expect(prompt).not.toMatch(/ – /); // [prose-lint: allow]
     });
   });
 
@@ -1629,7 +1829,7 @@ describe('MCP Dashboard Tools', () => {
         '000000000000000000000002',
         '000000000000000000000003',
       );
-      expect(all).not.toMatch(/—/);
+      expect(all).not.toMatch(/—/); // [prose-lint: allow]
     });
   });
 });

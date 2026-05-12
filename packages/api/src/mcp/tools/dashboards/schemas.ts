@@ -429,6 +429,16 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Group rows by this column. Use PascalCase for top-level columns (e.g. "SpanName"). ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    having: z
+      .string()
+      .max(10000)
+      .optional()
+      .describe(
+        'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
+          'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
+          'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
+          'table chart config in `externalDashboardTableChartConfigSchema`.',
+      ),
     orderBy: z.string().optional().describe('Sort results by this column'),
     asRatio: z.boolean().optional(),
     groupByColumnsOnLeft: z
@@ -531,7 +541,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(
-        'Display formatting for bucket values. Example: { output: "time", factor: 0.000000001 } ' +
+        'Display formatting for bucket values. Example: { output: "duration", factor: 0.000000001 } ' +
           'to format nanosecond durations as human-readable time.',
       ),
   }),

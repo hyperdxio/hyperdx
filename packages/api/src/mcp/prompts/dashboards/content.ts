@@ -96,7 +96,7 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 8. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
 
-9. METRIC TILES TAKE EXACTLY ONE SELECT ITEM. Each metric is a separate query. To show multiple metrics side by side, create one tile per metric.
+9. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 10. GROUP RELATED TILES INTO CONTAINERS. A container holds tiles that share a theme (Overview / Performance / Errors). Set containers: [{ id, title, collapsed }] at the top level and reference container ids from each tile via containerId. Use tabs when the same container needs to show different views of the same data; the tab bar appears when a container has two or more tabs.
 
@@ -112,7 +112,7 @@ The dashboard_examples prompt returns concrete example shapes. Read them as patt
 - Skipping hyperdx_list_sources (you need real source IDs and real column names).
 - Skipping hyperdx_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
 - Setting chart-level numberFormat on a table that mixes counts and durations (counts render as 0:00:00).
-- Multiple select items on number / pie / heatmap / metric tiles (each takes exactly one).
+- Multiple select items on number / pie / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
 - Assuming StatusCode or SeverityText values (always inspect real values from hyperdx_list_sources).
 - Heatmap on a non-Trace source (heatmap is Trace-only today).
@@ -853,7 +853,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   search       No select items (select is a column list string). where is the filter.
   markdown     No select items. Set markdown field with content.
 
-  METRIC TILES (any of the above with metric source): exactly 1 select item with metricName + metricType (gauge / sum / histogram). To show multiple metrics side by side, create one tile per metric.
+NOTE: Authoring tiles on a metric source is not currently exposed via the MCP schema. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs. If you need infrastructure metrics, use a raw SQL tile (configType: "sql") instead.
 
 == NUMBER FORMAT ==
 
@@ -1009,10 +1009,9 @@ Example: find top patterns for production services over the last 4 hours:
    Correct: groupBy: "SpanAttributes['http.method']"
    NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
 
-4. Multiple select items on number / pie / heatmap / metric tiles
+4. Multiple select items on number / pie / heatmap tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
    Correct: displayType: "number", select: [{ aggFn: "count" }]
-   Same constraint applies to metric source tiles: one tile per metric.
    Note: hyperdx_table (the query tool) auto-upgrades shape:"number" to "table" when select has >1 item; dashboard tiles do not.
 
 5. Missing level for quantile
