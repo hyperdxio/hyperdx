@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
   collectTileContainerRefIssues,
@@ -334,7 +334,11 @@ async function updateDashboard({
     existingTileIds,
   );
 
-  const setPayload: Record<string, unknown> = {
+  // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+  // misnamed or wrong-shape fields fail at compile time, mirroring the
+  // v2 PUT handler's tightening at
+  // `routers/external-api/v2/dashboards.ts:2015`.
+  const setPayload: Partial<IDashboard> = {
     name,
     tiles: internalTiles,
     tags: tags && uniq(tags),

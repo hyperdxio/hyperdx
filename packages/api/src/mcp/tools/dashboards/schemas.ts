@@ -363,7 +363,8 @@ export const mcpContainersParam = z
       '- A tile.tabId must reference a tab id on the same container.\n' +
       '- tile.tabId requires tile.containerId.\n\n' +
       'Container shape: { id, title, collapsed, collapsible?, bordered?, tabs? }. ' +
-      '`collapsed` is required; `collapsible` and `bordered` default to true when omitted. ' +
+      '`collapsed` is required. `collapsible` and `bordered` are optional and ' +
+      'persisted absent when omitted; the renderer treats absence as true. ' +
       'Two or more tabs render as a tab bar; zero or one tab renders as a plain group header.\n\n' +
       'Example:\n' +
       '[\n' +

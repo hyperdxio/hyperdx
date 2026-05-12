@@ -738,12 +738,16 @@ Example:
     ]
   })
 
-Rejection messages on bad inputs (verbatim):
-  Tile references unknown containerId "X"           : tile.containerId not in array
-  Tile references unknown tabId "X" in container "Y": tile.tabId not on the container
-  tabId requires containerId to be set              : tile has tabId but no containerId
-  Container IDs must be unique: "X"                 : duplicate container.id
-  Duplicate tab id "X" in container "Y"             : duplicate tab.id inside a container
+Validation categories on bad inputs:
+  - tile.containerId references a missing container id
+  - tile.tabId references a missing tab id on that container
+  - tile.tabId set without tile.containerId
+  - duplicate container.id within the dashboard
+  - duplicate tab.id within a single container
+
+The server returns a descriptive error string identifying the failing path
+(tiles[i].containerId, tiles[i].tabId, containers[i].id, or
+containers[i].tabs[j].id). Read the path to know which input to fix.
 
 == COMMON MISTAKES ==
 

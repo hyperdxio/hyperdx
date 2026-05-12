@@ -11,6 +11,7 @@ import {
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -482,6 +483,14 @@ describe('MCP Dashboard Tools', () => {
             containerId: 'service-health',
             tabId: 'latency',
           }),
+          // Tile inside a tabbed container without a tabId — renders in
+          // the container shell rather than under a tab. Guards that the
+          // schema does not accidentally require tabId for every tile in
+          // a tabbed container.
+          buildTile(sourceId, {
+            name: 'In Tabbed Group, No Tab',
+            containerId: 'service-health',
+          }),
           buildTile(sourceId, {
             name: 'In Plain Group',
             containerId: 'overview',
@@ -496,9 +505,12 @@ describe('MCP Dashboard Tools', () => {
       const created = JSON.parse(getFirstText(createResult));
       expect(created.containers).toEqual(containers);
 
-      const createdTilesByName: Record<string, any> = Object.fromEntries(
-        created.tiles.map((t: { name: string }) => [t.name, t]),
-      );
+      // Typed as ExternalDashboardTileWithId so a typo on .containerId
+      // would fail typecheck instead of silently asserting undefined.
+      const createdTilesByName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          created.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
       expect(createdTilesByName['In Group, Tab A']).toMatchObject({
         containerId: 'service-health',
         tabId: 'errors',
@@ -507,6 +519,12 @@ describe('MCP Dashboard Tools', () => {
         containerId: 'service-health',
         tabId: 'latency',
       });
+      expect(createdTilesByName['In Tabbed Group, No Tab']).toMatchObject({
+        containerId: 'service-health',
+      });
+      expect(
+        createdTilesByName['In Tabbed Group, No Tab'].tabId,
+      ).toBeUndefined();
       expect(createdTilesByName['In Plain Group']).toMatchObject({
         containerId: 'overview',
       });
@@ -550,6 +568,7 @@ describe('MCP Dashboard Tools', () => {
         tiles: [
           createdTilesByName['In Group, Tab A'],
           createdTilesByName['In Group, Tab B'],
+          createdTilesByName['In Tabbed Group, No Tab'],
           droppedContainerTile,
           reHomedUngrouped,
         ],
@@ -560,14 +579,21 @@ describe('MCP Dashboard Tools', () => {
       expect(updateResult.isError).toBeFalsy();
       const updated = JSON.parse(getFirstText(updateResult));
       expect(updated.containers).toEqual(updatedContainers);
-      const updatedTilesByName: Record<string, any> = Object.fromEntries(
-        updated.tiles.map((t: { name: string }) => [t.name, t]),
-      );
+      const updatedTilesByName: Record<string, ExternalDashboardTileWithId> =
+        Object.fromEntries(
+          updated.tiles.map((t: ExternalDashboardTileWithId) => [t.name, t]),
+        );
       expect(updatedTilesByName['In Plain Group'].containerId).toBeUndefined();
       expect(updatedTilesByName.Ungrouped).toMatchObject({
         containerId: 'service-health',
         tabId: 'errors',
       });
+      expect(updatedTilesByName['In Tabbed Group, No Tab'].containerId).toBe(
+        'service-health',
+      );
+      expect(
+        updatedTilesByName['In Tabbed Group, No Tab'].tabId,
+      ).toBeUndefined();
     });
 
     it('should reject duplicate container ids', async () => {
@@ -670,6 +696,112 @@ describe('MCP Dashboard Tools', () => {
 
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('unknown tabId "ghost"');
+    });
+
+    it('should preserve existing containers on update when body omits the field', async () => {
+      // Exercises the `effectiveContainers = parsedContainers ?? existingDashboard.containers ?? []`
+      // fallback in the MCP update handler. Without it, a PUT that
+      // updates only `tiles` would reject because the tile's
+      // containerId reference would resolve against an empty array.
+      const sourceId = traceSource._id.toString();
+      const containers = [
+        {
+          id: 'service-health',
+          title: 'Service Health',
+          collapsed: false,
+          tabs: [{ id: 'errors', title: 'Errors' }],
+        },
+      ];
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'PUT-without-containers fallback',
+        tiles: [
+          buildTile(sourceId, {
+            name: 'In Group',
+            containerId: 'service-health',
+            tabId: 'errors',
+          }),
+        ],
+        containers,
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'PUT-without-containers fallback',
+        tiles: created.tiles,
+        // containers intentionally omitted
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toEqual(containers);
+      expect(updated.tiles[0]).toMatchObject({
+        containerId: 'service-health',
+        tabId: 'errors',
+      });
+    });
+
+    it('should wipe persisted containers when update body sets containers: []', async () => {
+      // Mirror the v2 behavior: an explicit empty array clears the
+      // persisted containers, and the response normalizes [] back to
+      // absent on read.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Wipe containers',
+        tiles: [buildTile(sourceId, { name: 'Tile' })],
+        containers: [{ id: 'overview', title: 'Overview', collapsed: false }],
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.containers).toHaveLength(1);
+
+      const wipedTile = {
+        ...created.tiles[0],
+        containerId: undefined,
+        tabId: undefined,
+      };
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Wipe containers',
+        tiles: [wipedTile],
+        containers: [],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.containers).toBeUndefined();
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.containers).toBeUndefined();
+    });
+
+    // Bounds mirror DASHBOARD_CONTAINER_ID_MAX (256) on the tile-level
+    // containerId / tabId. 256 chars must accept; 257 must reject.
+    // 257 trips the inputSchema's `.max(256)` and surfaces back as the
+    // MCP SDK's "Input validation error" envelope.
+    it('should accept a 256-char tile.containerId and reject 257', async () => {
+      const sourceId = traceSource._id.toString();
+      const idAtMax = 'c'.repeat(256);
+      const okResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: '256-char containerId',
+        tiles: [buildTile(sourceId, { containerId: idAtMax })],
+        containers: [{ id: idAtMax, title: 'Max', collapsed: false }],
+      });
+      expect(okResult.isError).toBeFalsy();
+
+      const idTooLong = 'c'.repeat(257);
+      const tooLongResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: '257-char containerId',
+        tiles: [buildTile(sourceId, { containerId: idTooLong })],
+        containers: [{ id: idTooLong, title: 'Too long', collapsed: false }],
+      });
+      expect(tooLongResult.isError).toBe(true);
+      expect(getFirstText(tooLongResult)).toContain(
+        'String must contain at most 256 character(s)',
+      );
+      expect(getFirstText(tooLongResult)).toContain('containerId');
     });
   });
 
