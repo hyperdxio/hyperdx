@@ -4,7 +4,7 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { MS_NUMBER_FORMAT } from '@/ChartUtils';
+import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
 import DBListBarChart from '@/components/DBListBarChart';
 import { useJsonColumns } from '@/hooks/useMetadata';
@@ -111,38 +111,48 @@ export default function ServiceDashboardEndpointPerformanceChart({
                 aggFn: 'sum',
                 aggCondition: '',
                 valueExpression: expressions.durationInMillis,
+                numberFormat: MS_NUMBER_FORMAT,
               },
               {
                 alias: 'Number of Calls',
                 valueExpression: 'count()',
+                numberFormat: INTEGER_NUMBER_FORMAT,
               },
               {
                 alias: 'Average Duration',
                 aggFn: 'avg',
                 aggCondition: '',
                 valueExpression: expressions.durationInMillis,
+                numberFormat: MS_NUMBER_FORMAT,
               },
               {
                 alias: 'Min Duration',
                 aggFn: 'min',
                 aggCondition: '',
                 valueExpression: expressions.durationInMillis,
+                numberFormat: MS_NUMBER_FORMAT,
               },
               {
                 alias: 'Max Duration',
                 aggFn: 'max',
                 aggCondition: '',
                 valueExpression: expressions.durationInMillis,
+                numberFormat: MS_NUMBER_FORMAT,
               },
               {
                 alias: 'Number of Requests',
                 aggFn: 'count_distinct',
                 aggCondition: '',
                 valueExpression: expressions.traceId,
+                numberFormat: INTEGER_NUMBER_FORMAT,
               },
               {
                 alias: 'Calls per Request',
-                valueExpression: '"Number of Calls" / "Average Duration"',
+                valueExpression: '"Number of Calls" / "Number of Requests"',
+                numberFormat: {
+                  output: 'number',
+                  mantissa: 2,
+                },
               },
             ],
             selectGroupBy: false,
