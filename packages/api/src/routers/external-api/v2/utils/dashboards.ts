@@ -175,9 +175,11 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           numberFormat: config.numberFormat,
         };
+      // TODO(#2226): add Timeline raw-SQL external-API support when renderer lands
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      case DisplayType.Timeline:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -279,7 +281,9 @@ const convertToExternalTileChartConfig = (
         displayType: config.displayType,
         markdown: stringValueOrDefault(config.markdown, ''),
       };
+    // TODO(#2226): add Timeline builder external-API support when renderer lands
     case DisplayType.Heatmap:
+    case DisplayType.Timeline:
     case undefined:
       logger.error(
         { config },
