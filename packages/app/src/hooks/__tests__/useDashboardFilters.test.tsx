@@ -208,4 +208,68 @@ describe('useDashboardFilters', () => {
       new Set(['api']),
     );
   });
+
+  describe('ignoredFilterExpressions', () => {
+    it('is empty when no URL filters are set', () => {
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+
+    it('is empty when URL filters only reference declared expressions', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "service.name IN ('api')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+
+    it('lists a single ignored expression not declared by the dashboard', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "team IN ('platform')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual(['team']);
+      // sanity: declared expression still wins through normal path
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('lists multiple ignored expressions in URL-encounter order', () => {
+      mockState = [
+        { type: 'sql', condition: "team IN ('platform')" },
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "region IN ('us-east-1')" },
+        { type: 'sql', condition: "owner IN ('drew')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([
+        'team',
+        'region',
+        'owner',
+      ]);
+      expect(Object.keys(result.current.filterValues)).toEqual(['environment']);
+    });
+
+    it('does not flag declared expressions with no URL values as ignored', () => {
+      // URL is empty — every declared expression has no values, but none of
+      // them should be reported as ignored since they are valid dashboard
+      // filters that just happen to be unset.
+      mockState = null;
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.filterValues).toEqual({});
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+  });
 });

@@ -102,9 +102,9 @@ function LoginPrompt({
     if (!password || !client) return;
     setLoading(true);
     setError(null);
-    const ok = await client.login(email, password);
+    const loginError = await client.login(email, password);
     setLoading(false);
-    if (ok) {
+    if (!loginError) {
       exit();
       // Small delay to let Ink unmount before writing to stdout
       setTimeout(() => {
@@ -113,7 +113,7 @@ function LoginPrompt({
         );
       }, 50);
     } else {
-      setError('Login failed. Check your credentials and server URL.');
+      setError(loginError);
       setField('email');
       setEmail('');
       setPassword('');
@@ -295,9 +295,9 @@ function ReLoginPrompt({
     if (!password || !client) return;
     setLoading(true);
     setError(null);
-    const ok = await client.login(email, password);
+    const loginError = await client.login(email, password);
     setLoading(false);
-    if (ok) {
+    if (!loginError) {
       exit();
       setTimeout(() => {
         process.stdout.write(
@@ -306,7 +306,7 @@ function ReLoginPrompt({
         onAuthenticated(client);
       }, 50);
     } else {
-      setError('Login failed. Check your credentials and server URL.');
+      setError(loginError);
       setField('email');
       setEmail('');
       setPassword('');
@@ -444,13 +444,13 @@ auth
         process.exit(1);
       }
       const client = new ApiClient({ appUrl: opts.appUrl });
-      const ok = await client.login(opts.email, opts.password);
-      if (ok) {
+      const loginError = await client.login(opts.email, opts.password);
+      if (!loginError) {
         process.stdout.write(
           chalk.green(`Logged in as ${opts.email} (${opts.appUrl})\n`),
         );
       } else {
-        _origError(chalk.red('Login failed. Check your email and password.\n'));
+        _origError(chalk.red(`${loginError}\n`));
         process.exit(1);
       }
     } else {
