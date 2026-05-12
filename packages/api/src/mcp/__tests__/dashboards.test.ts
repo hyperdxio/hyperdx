@@ -13,6 +13,7 @@ import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
+import { buildQueryGuidePrompt } from '../prompts/dashboards/content';
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -425,6 +426,58 @@ describe('MCP Dashboard Tools', () => {
       expect(output.tiles).toHaveLength(1);
     });
 
+    it('should create a dashboard with a heatmap tile on a Trace source', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap Dashboard',
+        tiles: [
+          {
+            name: 'Latency Heatmap',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'heatmap',
+              sourceId,
+              select: [
+                {
+                  valueExpression: 'Duration',
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles).toHaveLength(1);
+      expect(output.tiles[0].config.displayType).toBe('heatmap');
+      expect(output.tiles[0].config.select[0]).toMatchObject({
+        valueExpression: 'Duration',
+      });
+    });
+
+    it('should reject heatmap tile with empty valueExpression at the schema layer', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Bad Heatmap',
+        tiles: [
+          {
+            name: 'Heatmap',
+            config: {
+              displayType: 'heatmap',
+              sourceId,
+              select: [{ valueExpression: '' }],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
     it.each([
       { output: 'duration', factor: 1e-9 },
       { output: 'data_rate' },
@@ -503,6 +556,43 @@ describe('MCP Dashboard Tools', () => {
       });
 
       expect(result.isError).toBe(true);
+    });
+
+    it('should reject heatmap tile on a non-Trace source', async () => {
+      // Create a Log source so the heatmap source-kind gate has
+      // something to reject. The schema accepts the tile shape (the
+      // sourceId is valid), so this exercises the runtime check that
+      // the REST POST path also runs.
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Heatmap on Log Source',
+        tiles: [
+          {
+            name: 'Heatmap',
+            config: {
+              displayType: 'heatmap',
+              sourceId: logSource._id.toString(),
+              select: [{ valueExpression: 'Duration' }],
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('Trace source');
+      expect(text).toContain(logSource._id.toString());
     });
   });
 
@@ -1008,6 +1098,30 @@ describe('MCP Dashboard Tools', () => {
       // Should succeed (may have empty results since no data inserted)
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+    });
+  });
+
+  describe('buildQueryGuidePrompt', () => {
+    it('documents heatmap in tile-type, constraints, mistakes, and aggFn sections', () => {
+      const prompt = buildQueryGuidePrompt();
+      // Ensure each section the bot called out has a heatmap entry so
+      // the LLM cannot skip the constraints when producing a heatmap
+      // tile through hyperdx_save_dashboard.
+      const sections = [
+        '== AGGREGATION FUNCTIONS (aggFn) ==',
+        '== PER-TILE TYPE CONSTRAINTS ==',
+        '== COMMON MISTAKES ==',
+      ];
+      for (const heading of sections) {
+        const idx = prompt.indexOf(heading);
+        expect(idx).toBeGreaterThan(-1);
+        // Each section's body extends until the next == heading or the
+        // end of the string. Checking for the substring "heatmap" in
+        // that slice is enough to assert the heatmap entry exists.
+        const next = prompt.indexOf('\n== ', idx + heading.length);
+        const body = prompt.slice(idx, next === -1 ? prompt.length : next);
+        expect(body.toLowerCase()).toContain('heatmap');
+      }
     });
   });
 });

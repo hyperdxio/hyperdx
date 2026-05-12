@@ -1,10 +1,8 @@
 import express from 'express';
 import { uniq } from 'lodash';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
-import { getSources } from '@/controllers/sources';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -16,6 +14,9 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  fetchSourcesForValidation,
+  filterChangedHeatmapTiles,
+  getHeatmapTilesWithIncompatibleSources,
   getInvalidOnClickSearchSources,
   getMissingConnections,
   getMissingOnClickDashboards,
@@ -23,6 +24,7 @@ import {
   isConfigTile,
   isRawSqlExternalTileConfig,
   resolveSavedQueryLanguage,
+  SourceForValidation,
   updateDashboardBodySchema,
 } from './utils/dashboards';
 
@@ -43,12 +45,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
   containers: 1,
 } as const;
 
-async function getSourceConnectionMismatches(
-  team: string | mongoose.Types.ObjectId,
+function getSourceConnectionMismatches(
+  sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
-): Promise<string[]> {
-  const existingSources = await getSources(team.toString());
-  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
+): string[] {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
 
   const sourcesWithInvalidConnections: string[] = [];
   for (const tile of tiles) {
@@ -686,6 +687,82 @@ async function getSourceConnectionMismatches(
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
  *
+ *     HeatmapSelectItem:
+ *       type: object
+ *       required:
+ *         - valueExpression
+ *       description: >
+ *         Single select item for a heatmap tile. The value being bucketed is
+ *         provided in valueExpression and the count contributing to each
+ *         bucket in countExpression. The heatmap-specific fields
+ *         (countExpression, heatmapScaleType) are persisted on the select
+ *         item, not the chart config. The chart-level discriminator is the
+ *         HeatmapChartConfig's `displayType: "heatmap"`; no aggregation
+ *         function or alias is exposed on this select item because the
+ *         heatmap aggregation function is fixed internally and the
+ *         HeatmapSeriesEditor does not render an alias input.
+ *       properties:
+ *         valueExpression:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 10000
+ *           description: SQL expression for the value being bucketed on the y-axis. Must be non-empty.
+ *           example: "Duration"
+ *         countExpression:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             SQL expression for the count contributing to each bucket. Defaults
+ *             to "count()" in the editor when omitted.
+ *           example: "count()"
+ *         heatmapScaleType:
+ *           type: string
+ *           enum: [log, linear]
+ *           description: Scale type used to bucket values on the y-axis.
+ *           example: "log"
+ *
+ *     HeatmapChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a heatmap tile. Heatmap is builder-only
+ *         (no Raw SQL variant) and currently supports trace sources. The
+ *         row-level filter lives at the chart-config level (where /
+ *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one heatmap select item.
+ *           items:
+ *             $ref: '#/components/schemas/HeatmapSelectItem'
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Row-level filter (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "ServiceName = 'api'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *           default: "lucene"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
  *     SearchChartConfig:
  *       type: object
  *       required:
@@ -1060,14 +1137,15 @@ async function getSourceConnectionMismatches(
  *         determines which variant group applies. For displayTypes that support
  *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
  *         configType is the secondary discriminant: omit it for the builder
- *         variant or set it to "sql" for the Raw SQL variant. The search and
- *         markdown displayTypes only have a builder variant.
+ *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
+ *         search, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
@@ -1078,6 +1156,7 @@ async function getSourceConnectionMismatches(
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
@@ -1213,7 +1292,7 @@ async function getSourceConnectionMismatches(
  *         Input / request format when creating or updating tiles. The id field is
  *         optional: on create it is ignored (the server always assigns a new ID);
  *         on update, a matching id is used to identify the existing tile to
- *         preserve — tiles whose id does not match an existing tile are assigned
+ *         preserve. Tiles whose id does not match an existing tile are assigned
  *         a new generated ID.
  *       allOf:
  *         - $ref: '#/components/schemas/TileBase'
@@ -1846,19 +1925,34 @@ router.post(
         });
       }
 
+      // Hoist the source fetch so the source-derived validators
+      // (missing sources, source/connection mismatch, heatmap source
+      // kind) reuse one query result instead of each re-running
+      // `getSources(team)`. onClick helpers stay separate because
+      // they own their own dashboard lookup as well as a sources
+      // lookup; firing them inside the same Promise.all keeps the
+      // request latency unchanged.
       const [
-        missingSources,
+        sources,
         missingConnections,
-        sourceConnectionMismatches,
         missingOnClickDashboards,
         invalidOnClickSearchSources,
       ] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
+        fetchSourcesForValidation(teamId),
         getMissingConnections(teamId, tiles),
-        getSourceConnectionMismatches(teamId, tiles),
         getMissingOnClickDashboards(teamId, tiles),
         getInvalidOnClickSearchSources(teamId, tiles),
       ]);
+
+      const missingSources = getMissingSources(sources, tiles, filters);
+      const sourceConnectionMismatches = getSourceConnectionMismatches(
+        sources,
+        tiles,
+      );
+      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+        sources,
+        tiles,
+      );
 
       if (missingSources.length > 0) {
         return res.status(400).json({
@@ -1877,6 +1971,13 @@ router.post(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });
@@ -2100,19 +2201,42 @@ router.put(
         containers,
       } = req.body ?? {};
 
+      // Hoist the source fetch and the existing-dashboard read so the
+      // source-derived validators reuse one query result and the
+      // heatmap source-kind check can scope itself to tiles whose
+      // sourceId/displayType actually changed in this request (a
+      // source whose `kind` was changed after the dashboard was
+      // originally accepted shouldn't wedge unrelated edits). onClick
+      // helpers stay separate because they own their own dashboard
+      // lookup as well as a sources lookup; firing them inside the
+      // same Promise.all keeps the request latency unchanged.
       const [
-        missingSources,
+        sources,
         missingConnections,
-        sourceConnectionMismatches,
         missingOnClickDashboards,
         invalidOnClickSearchSources,
+        existingDashboard,
       ] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
+        fetchSourcesForValidation(teamId),
         getMissingConnections(teamId, tiles),
-        getSourceConnectionMismatches(teamId, tiles),
         getMissingOnClickDashboards(teamId, tiles),
         getInvalidOnClickSearchSources(teamId, tiles),
+        Dashboard.findOne(
+          { _id: dashboardId, team: teamId },
+          { tiles: 1, filters: 1, containers: 1 },
+        ).lean(),
       ]);
+
+      const missingSources = getMissingSources(sources, tiles, filters);
+      const sourceConnectionMismatches = getSourceConnectionMismatches(
+        sources,
+        tiles,
+      );
+      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+        sources,
+        filterChangedHeatmapTiles(tiles, existingDashboard?.tiles ?? []),
+      );
+
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -2130,6 +2254,13 @@ router.put(
       if (sourceConnectionMismatches.length > 0) {
         return res.status(400).json({
           message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (heatmapNonTraceSources.length > 0) {
+        return res.status(400).json({
+          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
             ', ',
           )}`,
         });
@@ -2156,11 +2287,9 @@ router.put(
       // edits. The endpoint contract is at-most-one-writer; the
       // OpenAPI description above documents this. Adding ETag-style
       // concurrency would be a breaking change to the request shape
-      // and is tracked separately.
-      const existingDashboard = await Dashboard.findOne(
-        { _id: dashboardId, team: teamId },
-        { tiles: 1, filters: 1, containers: 1 },
-      ).lean();
+      // and is tracked separately. `existingDashboard` is fetched in
+      // the hoisted Promise.all above and reused here for tile-ref
+      // resolution against the effective container set.
       const existingTileIds = new Set(
         (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
       );
