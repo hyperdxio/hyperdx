@@ -176,6 +176,7 @@ const DBRowTableFieldWithPopover = ({
             tabIndex={-1}
             aria-hidden="true"
             style={{ cursor: 'pointer' }}
+            data-testid="field-popover-trigger"
           >
             {children}
           </span>

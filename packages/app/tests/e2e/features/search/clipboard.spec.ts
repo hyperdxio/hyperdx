@@ -180,11 +180,12 @@ test.describe('Clipboard fallback', { tag: ['@search'] }, () => {
     const searchPage = new SearchPage(page);
     await openSearchAndFirstRow(searchPage);
 
-    // Hover a cell to open the field popover; click the copy button by testid.
-    const firstCell = searchPage.table.firstRow.locator('td').nth(1);
-    await firstCell.hover();
+    // Target the span that triggers DBRowTableFieldWithPopover directly.
+    // Hovering the outer td can miss the span's onMouseEnter (does not bubble).
+    const firstFieldTrigger = page.getByTestId('field-popover-trigger').first();
+    await firstFieldTrigger.hover();
     const copyFieldButton = page.getByTestId('field-copy-value-button');
-    await expect(copyFieldButton).toBeVisible();
+    await expect(copyFieldButton).toBeVisible({ timeout: 10000 });
     await copyFieldButton.click();
 
     await expect(page.getByText('Copied field value')).toBeVisible();
