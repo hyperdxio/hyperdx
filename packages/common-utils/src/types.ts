@@ -699,32 +699,35 @@ export type PinnedFilter = z.infer<typeof PinnedFilterSchema>;
 
 export const OnClickFilterTemplateSchema = z.object({
   kind: z.literal('expressionTemplate'),
-  expression: z.string().min(1, 'Expression is required'),
-  template: z.string().min(1, 'Template is required'),
+  expression: z.string().min(1, 'Expression is required').max(10000),
+  template: z.string().min(1, 'Template is required').max(10000),
 });
 export type OnClickFilterTemplate = z.infer<typeof OnClickFilterTemplateSchema>;
 
 const OnClickTargetSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('id'), id: z.string().min(1) }),
-  z.object({ mode: z.literal('template'), template: z.string().min(1) }),
+  z.object({
+    mode: z.literal('template'),
+    template: z.string().min(1).max(10000),
+  }),
 ]);
 export type OnClickTarget = z.infer<typeof OnClickTargetSchema>;
 
-const OnClickSearchSchema = z.object({
+export const OnClickSearchSchema = z.object({
   type: z.literal('search'),
   target: OnClickTargetSchema,
-  whereTemplate: z.string().optional(),
+  whereTemplate: z.string().max(10000).optional(),
   whereLanguage: SearchConditionLanguageSchema,
-  filters: z.array(OnClickFilterTemplateSchema).optional(),
+  filters: z.array(OnClickFilterTemplateSchema).max(50).optional(),
 });
 export type OnClickSearch = z.infer<typeof OnClickSearchSchema>;
 
 export const OnClickDashboardSchema = z.object({
   type: z.literal('dashboard'),
   target: OnClickTargetSchema,
-  whereTemplate: z.string().optional(),
+  whereTemplate: z.string().max(10000).optional(),
   whereLanguage: SearchConditionLanguageSchema,
-  filters: z.array(OnClickFilterTemplateSchema).optional(),
+  filters: z.array(OnClickFilterTemplateSchema).max(50).optional(),
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
