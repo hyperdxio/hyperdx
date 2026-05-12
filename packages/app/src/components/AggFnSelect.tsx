@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { AGG_FNS } from '@/ChartUtils';
@@ -14,11 +15,13 @@ function AggFnSelect({
   defaultValue,
   onChange,
   hideCustom,
+  metricType,
 }: {
   value: string;
   defaultValue: string;
   onChange: (value: OnChangeValue) => void;
   hideCustom?: boolean;
+  metricType?: MetricsDataType;
 }) {
   const _onChange = useCallback(
     (value: string | null) => {
@@ -37,6 +40,15 @@ function AggFnSelect({
     [onChange],
   );
 
+  const options = useMemo(() => {
+    let opts = hideCustom ? AGG_FNS.filter(fn => fn.value !== 'none') : AGG_FNS;
+    // Only show 'increase' when the source is a Sum (counter) metric.
+    if (metricType !== MetricsDataType.Sum) {
+      opts = opts.filter(fn => fn.value !== 'increase');
+    }
+    return opts;
+  }, [hideCustom, metricType]);
+
   return (
     <Select
       withScrollArea={false}
@@ -44,7 +56,7 @@ function AggFnSelect({
       value={value}
       defaultValue={defaultValue}
       onChange={_onChange}
-      data={hideCustom ? AGG_FNS.filter(fn => fn.value !== 'none') : AGG_FNS}
+      data={options}
       data-testid="agg-fn-select"
     />
   );
@@ -55,12 +67,14 @@ export function AggFnSelectControlled({
   quantileLevelName,
   defaultValue,
   hideCustom,
+  metricType,
   ...props
 }: {
   defaultValue: string;
   aggFnName: string;
   quantileLevelName: string;
   hideCustom?: boolean;
+  metricType?: MetricsDataType;
 } & Omit<UseControllerProps<any>, 'name'>) {
   const {
     field: { onChange: onAggFnChange, value: aggFnValue },
@@ -101,6 +115,7 @@ export function AggFnSelectControlled({
       defaultValue={defaultValue}
       onChange={onChange}
       hideCustom={hideCustom}
+      metricType={metricType}
     />
   );
 }
