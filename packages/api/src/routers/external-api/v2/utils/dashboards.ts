@@ -1,9 +1,20 @@
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  validateDashboardContainersStructure,
+  validateDashboardTileContainerRefs,
+} from '@hyperdx/common-utils/dist/dashboardValidation';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  DASHBOARD_MAX_CONTAINERS,
+  DashboardContainer,
+  DashboardContainerSchema,
   DisplayType,
+  isLogSource,
+  isOnClickDashboardById,
+  isOnClickSearchById,
+  isTraceSource,
   RawSqlSavedChartConfig,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
@@ -16,7 +27,7 @@ import { z } from 'zod';
 import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
-import { DashboardDocument } from '@/models/dashboard';
+import Dashboard, { DashboardDocument } from '@/models/dashboard';
 import {
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
@@ -46,9 +57,7 @@ export type SeriesTile = ExternalDashboardTileWithId & {
   series: Exclude<ExternalDashboardTileWithId['series'], undefined>;
 };
 
-export function isSeriesTile(
-  tile: ExternalDashboardTileWithId,
-): tile is SeriesTile {
+function isSeriesTile(tile: ExternalDashboardTileWithId): tile is SeriesTile {
   return 'series' in tile && tile.series !== undefined;
 }
 
@@ -77,6 +86,7 @@ export type ExternalDashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: string | null;
   savedFilterValues?: DashboardDocument['savedFilterValues'];
+  containers?: DashboardContainer[];
 };
 
 // --------------------------------------------------------------------------------
@@ -99,7 +109,13 @@ const convertToExternalSelectItem = (
       : undefined;
   const level = parsedLevel?.success ? parsedLevel.data : undefined;
   return {
-    ...pick(item, ['valueExpression', 'alias', 'metricType', 'metricName']),
+    ...pick(item, [
+      'valueExpression',
+      'alias',
+      'metricType',
+      'metricName',
+      'numberFormat',
+    ]),
     aggFn,
     where: item.aggCondition ?? '',
     whereLanguage: item.aggConditionLanguage ?? 'lucene',
@@ -144,6 +160,7 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          onClick: config.onClick,
         };
       case DisplayType.Number:
         return {
@@ -241,7 +258,12 @@ const convertToExternalTileChartConfig = (
       };
     case DisplayType.Table:
       return {
-        ...pick(config, ['having', 'numberFormat', 'groupByColumnsOnLeft']),
+        ...pick(config, [
+          'having',
+          'numberFormat',
+          'groupByColumnsOnLeft',
+          'onClick',
+        ]),
         displayType: config.displayType,
         sourceId,
         asRatio:
@@ -281,6 +303,8 @@ const convertToExternalTileChartConfig = (
 
 function convertTileToExternalChart(
   tile: DashboardDocument['tiles'][number],
+  containerById: Map<string, DashboardContainer>,
+  dashboardId: string,
 ): ExternalDashboardTileWithId | undefined {
   // Returned in case of a failure converting the saved chart config
   const defaultTileConfig: ExternalDashboardTileConfig =
@@ -297,27 +321,97 @@ function convertTileToExternalChart(
           select: [DEFAULT_SELECT_ITEM],
         };
 
+  // Treat empty-string container/tab refs as absent so legacy Mongo docs
+  // (the underlying `tiles` field is `Mixed`, so older entries may carry
+  // `containerId: ""`) round-trip through the external schema, which now
+  // enforces `min(1)`. Without this, a GET that hit a legacy doc would
+  // return a tile that the next PUT couldn't validate.
+  let containerId =
+    typeof tile.containerId === 'string' && tile.containerId.length > 0
+      ? tile.containerId
+      : undefined;
+  let tabId =
+    typeof tile.tabId === 'string' && tile.tabId.length > 0
+      ? tile.tabId
+      : undefined;
+
+  // Self-heal orphan refs on read. A doc may carry a containerId that
+  // points at a container that has since been removed (or never
+  // existed: legacy docs predating the containers feature can have any
+  // value in this `Mixed`-typed field). Round-trip these as if absent
+  // so a subsequent PUT validates instead of failing schema with
+  // "Tile references unknown containerId". Same idea for tabId.
+  if (containerId !== undefined) {
+    const container = containerById.get(containerId);
+    if (!container) {
+      logger.warn(
+        { dashboardId, tileId: tile.id, containerId },
+        'Tile references unknown containerId; dropping ref on read',
+      );
+      containerId = undefined;
+      tabId = undefined;
+    } else if (
+      tabId !== undefined &&
+      !container.tabs?.some(t => t.id === tabId)
+    ) {
+      logger.warn(
+        { dashboardId, tileId: tile.id, containerId, tabId },
+        'Tile references unknown tabId; dropping tabId on read',
+      );
+      tabId = undefined;
+    }
+  } else if (tabId !== undefined) {
+    // tabId without containerId is invalid in the schema; the legacy
+    // doc would fail a subsequent PUT, so drop it on read.
+    logger.warn(
+      { dashboardId, tileId: tile.id, tabId },
+      'Tile has tabId without containerId; dropping tabId on read',
+    );
+    tabId = undefined;
+  }
+
+  const { id, x, y, w, h } = tile;
   return {
-    ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
+    id,
+    x,
+    y,
+    w,
+    h,
     name: tile.config.name ?? '',
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
+    ...(containerId !== undefined ? { containerId } : {}),
+    ...(tabId !== undefined ? { tabId } : {}),
   };
 }
 
 export function convertToExternalDashboard(
   dashboard: DashboardDocument,
 ): ExternalDashboard {
+  const containers = dashboard.containers ?? [];
+  // Dedupe by id when building the lookup map: a doc with duplicate
+  // container ids can only resolve tile refs against one of them, and
+  // last-write-wins is consistent with how Mongo would have persisted
+  // the array. Tile-resolution ambiguity in this case is logged when
+  // the tile ref turns out to point at a missing container.
+  const containerById = new Map<string, DashboardContainer>(
+    containers.map(c => [c.id, c]),
+  );
+  const dashboardId = dashboard._id.toString();
   return {
-    id: dashboard._id.toString(),
+    id: dashboardId,
     name: dashboard.name,
     tiles: dashboard.tiles
-      .map(convertTileToExternalChart)
+      .map(tile => convertTileToExternalChart(tile, containerById, dashboardId))
       .filter(t => t !== undefined),
     tags: dashboard.tags || [],
     filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
     savedFilterValues: dashboard.savedFilterValues ?? [],
+    // Mongoose persists missing arrays as []. Only emit containers when
+    // the user actually saved one or more, so dashboards without the
+    // organization layer round-trip with the field absent.
+    ...(containers.length > 0 ? { containers } : {}),
   };
 }
 
@@ -329,7 +423,14 @@ const convertToInternalSelectItem = (
   item: ExternalDashboardSelectItem,
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
-    ...pick(item, ['alias', 'metricType', 'metricName', 'aggFn', 'level']),
+    ...pick(item, [
+      'alias',
+      'metricType',
+      'metricName',
+      'aggFn',
+      'level',
+      'numberFormat',
+    ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
     isDelta: item.periodAggFn === 'delta',
@@ -383,6 +484,10 @@ export function convertToInternalTileConfig(
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
           numberFormat: externalConfig.numberFormat,
+          onClick:
+            externalConfig.displayType === 'table'
+              ? externalConfig.onClick
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -424,6 +529,7 @@ export function convertToInternalTileConfig(
             'having',
             'orderBy',
             'groupByColumnsOnLeft',
+            'onClick',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),
@@ -488,8 +594,23 @@ export function convertToInternalTileConfig(
 
   const strippedConfig = _.omitBy(internalConfig, _.isNil) as SavedChartConfig;
 
+  // Mirror the spread-conditional pattern used in `convertTileToExternalChart`:
+  // destructure statically (compile-time narrowing) and include the optional
+  // refs only when set, so a tile without a containerId never persists
+  // `containerId: undefined` to Mongo. The previous `pick(...)` over the
+  // external tile included `name`, but the internal `Tile` type stores the
+  // name on `config`, not at the top level (`strippedConfig` carries it).
+  // Stripping the top-level `name` brings the runtime shape back in line
+  // with `DashboardDocument['tiles'][number]`.
+  const { id, x, y, w, h, containerId, tabId } = externalTile;
   return {
-    ...pick(externalTile, ['id', 'x', 'y', 'w', 'h', 'name']),
+    id,
+    x,
+    y,
+    w,
+    h,
+    ...(containerId !== undefined ? { containerId } : {}),
+    ...(tabId !== undefined ? { tabId } : {}),
     config: strippedConfig,
   };
 }
@@ -497,6 +618,16 @@ export function convertToInternalTileConfig(
 // --------------------------------------------------------------------------------
 // Shared dashboard validation helpers (used by both the REST router and MCP tools)
 // --------------------------------------------------------------------------------
+
+/**
+ * Extract the tile's onClick config, if the tile uses the new "config" format
+ * and the display type supports onClick (currently only table).
+ */
+function getTileOnClick(tile: ExternalDashboardTileWithId) {
+  if (!isConfigTile(tile)) return undefined;
+  if (!('onClick' in tile.config)) return undefined;
+  return tile.config.onClick;
+}
 
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
 export async function getMissingSources(
@@ -518,6 +649,12 @@ export async function getMissingSources(
         sourceIds.add(tile.config.sourceId);
       }
     }
+
+    // Include source IDs referenced by OnClick link-outs (mode=id, type=search)
+    const onClick = getTileOnClick(tile);
+    if (isOnClickSearchById(onClick)) {
+      sourceIds.add(onClick.target.id);
+    }
   }
 
   if (filters?.length) {
@@ -533,6 +670,65 @@ export async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/**
+ * Returns source IDs referenced by onClick search link-outs (mode=id,
+ * type=search) whose source kind is not log or trace. The /search destination
+ * only supports log and trace sources, so linking to a metric/session source
+ * would produce a broken link at click time.
+ *
+ * Sources that don't exist are ignored here — getMissingSources handles that
+ * case separately with a clearer error message.
+ */
+export async function getInvalidOnClickSearchSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const sourceIds = new Set<string>();
+
+  for (const tile of tiles) {
+    const onClick = getTileOnClick(tile);
+    if (isOnClickSearchById(onClick)) {
+      sourceIds.add(onClick.target.id);
+    }
+  }
+
+  if (sourceIds.size === 0) return [];
+
+  const sources = await getSources(team.toString());
+  const validSources = sources.filter(s => isLogSource(s) || isTraceSource(s));
+  const validSourceIds = new Set(validSources.map(s => s._id.toString()));
+  return [...sourceIds].filter(id => !validSourceIds.has(id));
+}
+
+/**
+ * Returns dashboard IDs referenced by tile OnClick link-outs (mode=id,
+ * type=dashboard) that do not exist for the team.
+ */
+export async function getMissingOnClickDashboards(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const dashboardIds = new Set<string>();
+
+  for (const tile of tiles) {
+    const onClick = getTileOnClick(tile);
+    if (isOnClickDashboardById(onClick)) {
+      dashboardIds.add(onClick.target.id);
+    }
+  }
+
+  if (dashboardIds.size === 0) return [];
+
+  const existingDashboards = await Dashboard.find(
+    { team, _id: { $in: [...dashboardIds] } },
+    { _id: 1 },
+  ).lean();
+  const existingDashboardIds = new Set(
+    existingDashboards.map(d => d._id.toString()),
+  );
+  return [...dashboardIds].filter(id => !existingDashboardIds.has(id));
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
@@ -582,6 +778,13 @@ const dashboardBodyBaseShape = {
   savedQueryLanguage: whereLanguageSchema.nullable().optional(),
   savedFilterValues: z
     .array(externalDashboardSavedFilterValueSchema)
+    .optional(),
+  // The internal `DashboardContainerSchema` already caps individual
+  // container/tab/title sizes; the array cap mirrors what the editor
+  // would ever generate.
+  containers: z
+    .array(DashboardContainerSchema)
+    .max(DASHBOARD_MAX_CONTAINERS)
     .optional(),
 };
 
@@ -701,7 +904,43 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
           path: ['savedQueryLanguage'],
         });
       }
+
+      // Schema-level: only structural checks on containers (duplicate
+      // ids, per-container tab-id uniqueness). Cross-tile resolution
+      // moved to the request handler so a PUT can fall back to the
+      // existing dashboard's containers when the body omits the field
+      // (otherwise a tile that references a real preserved container
+      // would be rejected against an empty `data.containers ?? []`).
+      validateDashboardContainersStructure(data.containers ?? [], ctx);
     });
+}
+
+/**
+ * Cross-tile container/tab reference resolution against an effective
+ * container set. Used by the POST and PUT handlers in
+ * `routers/external-api/v2/dashboards.ts`: POST validates against the
+ * request body's containers, PUT validates against the request body's
+ * containers when present, falling back to the existing dashboard's
+ * containers when the body omits the field. Returns a list of
+ * `path: message` strings shaped to mirror the body-schema validation
+ * error format used by `validateRequestWithEnhancedErrors`.
+ */
+export function collectTileContainerRefIssues(
+  containers: DashboardContainer[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const schema = z.object({}).superRefine((_, ctx) => {
+    const containerById = new Map<string, DashboardContainer>(
+      containers.map(c => [c.id, c]),
+    );
+    validateDashboardTileContainerRefs(containerById, tiles, ctx);
+  });
+  const result = schema.safeParse({});
+  if (result.success) return [];
+  return result.error.issues.map(issue => {
+    const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
+    return `${path}${issue.message}`;
+  });
 }
 
 export const createDashboardBodySchema = buildDashboardBodySchema(

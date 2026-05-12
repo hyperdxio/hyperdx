@@ -932,6 +932,135 @@ describe('utils', () => {
         connection: '',
       });
     });
+
+    describe('onClick id-mode target rewriting', () => {
+      const source: TSource = {
+        id: 'source1',
+        name: 'Logs',
+        connection: 'conn1',
+        kind: SourceKind.Log,
+        from: { databaseName: 'db1', tableName: 'logs_table' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '',
+      };
+
+      const makeDashboard = (
+        onClick: unknown,
+      ): z.infer<typeof DashboardSchema> =>
+        DashboardSchema.parse({
+          id: 'dashboard1',
+          name: 'My Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: 'tile1',
+              config: {
+                name: 'Table Tile',
+                source: 'source1',
+                select: '',
+                where: '',
+                ...(onClick != null ? { onClick } : {}),
+              },
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 6,
+            },
+          ],
+        });
+
+      it('rewrites a search onClick id to the source name', () => {
+        const dashboard = makeDashboard({
+          type: 'search',
+          target: { mode: 'id', id: 'source1' },
+          whereLanguage: 'sql',
+        });
+
+        const template = convertToDashboardTemplate(dashboard, [source]);
+
+        expect(template.tiles[0].config).toMatchObject({
+          onClick: {
+            type: 'search',
+            target: { mode: 'id', id: 'Logs' },
+            whereLanguage: 'sql',
+          },
+        });
+      });
+
+      it('rewrites a dashboard onClick id to the dashboard name', () => {
+        const dashboard = makeDashboard({
+          type: 'dashboard',
+          target: { mode: 'id', id: 'target-dash-id' },
+          whereLanguage: 'lucene',
+        });
+
+        const template = convertToDashboardTemplate(
+          dashboard,
+          [source],
+          [],
+          [{ id: 'target-dash-id', name: 'Ops Overview' }],
+        );
+
+        expect(template.tiles[0].config).toMatchObject({
+          onClick: {
+            type: 'dashboard',
+            target: { mode: 'id', id: 'Ops Overview' },
+            whereLanguage: 'lucene',
+          },
+        });
+      });
+
+      it('leaves template-mode onClick targets untouched', () => {
+        const dashboard = makeDashboard({
+          type: 'search',
+          target: { mode: 'template', template: '{{Src}}' },
+          whereLanguage: 'sql',
+        });
+
+        const template = convertToDashboardTemplate(dashboard, [source]);
+
+        expect(template.tiles[0].config).toMatchObject({
+          onClick: {
+            type: 'search',
+            target: { mode: 'template', template: '{{Src}}' },
+            whereLanguage: 'sql',
+          },
+        });
+      });
+
+      it('drops a search onClick whose source was deleted', () => {
+        const dashboard = makeDashboard({
+          type: 'search',
+          target: { mode: 'id', id: 'missing-source' },
+          whereLanguage: 'sql',
+        });
+
+        const template = convertToDashboardTemplate(dashboard, [source]);
+
+        expect(
+          (template.tiles[0].config as { onClick?: unknown }).onClick,
+        ).toBeUndefined();
+      });
+
+      it('drops a dashboard onClick whose dashboard was deleted', () => {
+        const dashboard = makeDashboard({
+          type: 'dashboard',
+          target: { mode: 'id', id: 'missing-dash' },
+          whereLanguage: 'sql',
+        });
+
+        const template = convertToDashboardTemplate(
+          dashboard,
+          [source],
+          [],
+          [{ id: 'other-dash', name: 'Other' }],
+        );
+
+        expect(
+          (template.tiles[0].config as { onClick?: unknown }).onClick,
+        ).toBeUndefined();
+      });
+    });
   });
 
   describe('DashboardTemplateSchema duplicate tile IDs', () => {
