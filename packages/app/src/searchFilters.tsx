@@ -1,64 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
+import {
+  type FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
 import { useLocalStorage } from './utils';
 
 export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
-
-export type FilterState = {
-  [key: string]: {
-    included: Set<string | boolean>;
-    excluded: Set<string | boolean>;
-    range?: { min: number; max: number }; // For BETWEEN conditions
-  };
-};
-
-export const filtersToQuery = (
-  filters: FilterState,
-  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
-): Filter[] => {
-  return Object.entries(filters)
-    .filter(
-      ([_, values]) =>
-        values.included.size > 0 ||
-        values.excluded.size > 0 ||
-        values.range != null,
-    )
-    .flatMap(([key, values]) => {
-      const conditions = [];
-      const actualKey = stringifyKeys ? `toString(${key})` : key;
-
-      if (values.included.size > 0) {
-        conditions.push({
-          type: 'sql' as const,
-          condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v =>
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
-            )
-            .join(', ')})`,
-        });
-      }
-      if (values.excluded.size > 0) {
-        conditions.push({
-          type: 'sql' as const,
-          condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v =>
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v,
-            )
-            .join(', ')})`,
-        });
-      }
-      if (values.range != null) {
-        conditions.push({
-          type: 'sql' as const,
-          condition: `${actualKey} BETWEEN ${values.range.min} AND ${values.range.max}`,
-        });
-      }
-      return conditions;
-    });
-};
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
@@ -100,20 +51,27 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
     return trimmed.toLowerCase() === 'true';
   }
 
-  // Remove surrounding quotes and un-escape '' → '
+  // Remove surrounding quotes and reverse the escape sequences produced by
+  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
+  // that the following '' → ' pass doesn't mistake content for an escape.
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).replace(/''/g, "'");
+    return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
   }
   return trimmed;
 };
 
 // Returns true when the single-quote at position `i` is a real string delimiter
 // rather than an escape sequence.  Handles both ClickHouse/SQL '' escaping and
-// backslash \' escaping.
+// backslash \' escaping.  An odd number of preceding backslashes means the
+// quote is escaped via \'; an even number (including zero) means the
+// backslashes are themselves escaped (\\) and the quote is a real boundary.
 function isQuoteBoundary(s: string, i: number): boolean {
   if (s[i] !== "'") return false;
-  if (i > 0 && s[i - 1] === '\\') return false;
-  return true;
+  let backslashes = 0;
+  for (let j = i - 1; j >= 0 && s[j] === '\\'; j--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 0;
 }
 
 // If we're inside a quoted string and hit a quote, check whether the next

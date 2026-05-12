@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import {
+  Controller,
+  useForm,
+  UseFormGetValues,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
-import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
+import {
+  isSearchableSource,
+  OnClick,
+  OnClickTarget,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -20,6 +30,7 @@ import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { useDashboards } from '@/dashboard';
 import { useSources } from '@/source';
 
+import { FilterTemplateList } from './FilterTemplateList';
 import { OnClickTargetInputControlled } from './OnClickTargetInputControlled';
 import {
   DrawerControl,
@@ -53,6 +64,8 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
         objectType="source"
       />
 
+      <FilterTemplateList control={control} />
+
       <Box>
         <InputLabelWithTooltip
           label="WHERE"
@@ -72,7 +85,15 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
   );
 }
 
-function DashboardOnClickFields({ control }: { control: DrawerControl }) {
+function DashboardOnClickFields({
+  control,
+  setValue,
+  getValues,
+}: {
+  control: DrawerControl;
+  setValue: UseFormSetValue<DrawerFormValues>;
+  getValues: UseFormGetValues<DrawerFormValues>;
+}) {
   const { data: dashboards } = useDashboards();
   const dashboardOptions = useMemo(() => {
     return dashboards?.map(dashboard => ({
@@ -80,6 +101,31 @@ function DashboardOnClickFields({ control }: { control: DrawerControl }) {
       value: dashboard.id,
     }));
   }, [dashboards]);
+
+  // When the target dashboard changes, create empty filter templates
+  // for each of the target dashboard's existing filters
+  // (if the current templates are all empty).
+  const handleTargetChange = useCallback(
+    (target: OnClickTarget) => {
+      if (target.mode !== 'id') return;
+      const selected = dashboards?.find(d => d.id === target.id);
+      const dashboardFilters = selected?.filters ?? [];
+
+      const currentFilters = getValues('onClick.filters') ?? [];
+      const allTemplatesEmpty = currentFilters.every(f => f.template === '');
+      if (!allTemplatesEmpty) return;
+
+      setValue(
+        'onClick.filters',
+        dashboardFilters.map(f => ({
+          kind: 'expressionTemplate' as const,
+          expression: f.expression,
+          template: '',
+        })),
+      );
+    },
+    [dashboards, setValue, getValues],
+  );
 
   return (
     <Stack gap="xs">
@@ -91,7 +137,10 @@ function DashboardOnClickFields({ control }: { control: DrawerControl }) {
         control={control}
         options={dashboardOptions}
         objectType="dashboard"
+        onTargetChange={handleTargetChange}
       />
+
+      <FilterTemplateList control={control} />
 
       <Box>
         <InputLabelWithTooltip
@@ -112,13 +161,27 @@ function DashboardOnClickFields({ control }: { control: DrawerControl }) {
   );
 }
 
-function ModeFields({ control }: { control: DrawerControl }) {
+function ModeFields({
+  control,
+  setValue,
+  getValues,
+}: {
+  control: DrawerControl;
+  setValue: UseFormSetValue<DrawerFormValues>;
+  getValues: UseFormGetValues<DrawerFormValues>;
+}) {
   const onClick = useWatch({ control, name: 'onClick' });
 
   if (onClick?.type === 'search') {
     return <SearchOnClickFields control={control} />;
   } else if (onClick?.type === 'dashboard') {
-    return <DashboardOnClickFields control={control} />;
+    return (
+      <DashboardOnClickFields
+        control={control}
+        setValue={setValue}
+        getValues={getValues}
+      />
+    );
   }
 
   return (
@@ -147,10 +210,11 @@ export default function OnClickDrawer({
     [value],
   );
 
-  const { control, handleSubmit, reset, setValue } = useForm<DrawerFormValues>({
-    defaultValues: appliedDefaults,
-    resolver: zodResolver(DrawerSchema),
-  });
+  const { control, handleSubmit, reset, setValue, getValues } =
+    useForm<DrawerFormValues>({
+      defaultValues: appliedDefaults,
+      resolver: zodResolver(DrawerSchema),
+    });
 
   // Whenever the drawer is (re)opened with a fresh value from the parent,
   // sync the local form to that value. Reopening after a cancel should not
@@ -239,7 +303,11 @@ export default function OnClickDrawer({
           )}
         />
 
-        <ModeFields control={control} />
+        <ModeFields
+          control={control}
+          setValue={setValue}
+          getValues={getValues}
+        />
 
         <Divider />
         <Group justify="space-between">
