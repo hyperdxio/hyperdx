@@ -83,10 +83,7 @@ export function registerSaveSavedSearch(
         const updated = await updateSavedSearch(
           teamId,
           input.id!,
-          {
-            ...existing.toJSON(),
-            ...savedSearchData,
-          },
+          savedSearchData,
           userId,
         );
 

@@ -10,6 +10,7 @@ import {
   validateAlertInput,
 } from '@/controllers/alerts';
 import { type AlertChannel, AlertSource } from '@/models/alert';
+import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 import { withToolTracing } from '../../utils/tracing';
@@ -101,11 +102,10 @@ export function registerSaveAlert(
       try {
         await validateAlertInput(mongoTeamId, alertInput);
       } catch (e) {
-        // Api400Error stores the descriptive message in `name` (e.g.
-        // "Saved search not found") while `message` is a generic
-        // "Bad Request".  Prefer `name` when it looks descriptive.
+        // BaseError subclasses (Api400Error, Api404Error, etc.) store the
+        // descriptive message in `name` and a generic string in `message`.
         const msg =
-          e instanceof Error && e.name && e.name !== e.constructor.name
+          e instanceof BaseError
             ? e.name
             : e instanceof Error
               ? e.message
