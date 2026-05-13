@@ -7,13 +7,15 @@ import {
   getChartColorWarning,
 } from '@/utils';
 
-// Labels for chart colors - brand green first, then Observable palette
+// Labels for chart colors - shared categorical palette across both themes.
+// Order matches `COLORS` in `utils.ts` and `--color-chart-N` in
+// `_chart-tokens.scss` (blue is slot 1).
 const COLOR_LABELS = [
-  'Green (Brand)',
-  'Blue',
+  'Blue (Primary)',
   'Orange',
   'Red',
   'Cyan',
+  'Green',
   'Pink',
   'Purple',
   'Light Blue',
