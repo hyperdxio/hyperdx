@@ -3,13 +3,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bulkInsertLogs,
   DEFAULT_DATABASE,
+  DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { Source } from '@/models/source';
+import { Source, type SourceDocument } from '@/models/source';
 
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -18,7 +20,7 @@ describe('MCP Query Tool', () => {
   const server = getServer();
   let team: any;
   let user: any;
-  let traceSource: any;
+  let traceSource: SourceDocument;
   let connection: any;
   let client: Client;
 
@@ -241,6 +243,225 @@ describe('MCP Query Tool', () => {
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+    });
+  });
+
+  describe('event_patterns queries', () => {
+    let logSource: SourceDocument;
+
+    beforeEach(async () => {
+      logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+        bodyExpression: 'Body',
+        severityTextExpression: 'SeverityText',
+      });
+    });
+
+    it('should execute an event_patterns query on a log source', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+      expect(output.result).toHaveProperty('patterns');
+      expect(output.result).toHaveProperty('totalCount');
+      expect(output.result).toHaveProperty('sampledRows');
+      expect(output.result).toHaveProperty('sampleMultiplier');
+      expect(output.result).toHaveProperty('bodyColumn', 'Body');
+      expect(output.result).toHaveProperty('timeRange');
+      expect(Array.isArray(output.result.patterns)).toBe(true);
+    });
+
+    it('should execute an event_patterns query on a trace source with explicit bodyExpression', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: traceSource._id.toString(),
+        bodyExpression: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+      expect(Array.isArray(output.result.patterns)).toBe(true);
+    });
+
+    it('should respect sampleSize parameter', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        sampleSize: 100,
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should respect where filter', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        where: "SeverityText = 'ERROR'",
+        whereLanguage: 'sql',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should accept custom bodyExpression', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: logSource._id.toString(),
+        bodyExpression: 'SeverityText',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output.result).toHaveProperty('bodyColumn', 'SeverityText');
+    });
+
+    it('should require sourceId', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('sourceId is required');
+    });
+
+    it('should return error for non-existent source', async () => {
+      const result = await callTool(client, 'hyperdx_query', {
+        displayType: 'event_patterns',
+        sourceId: '000000000000000000000000',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Source not found');
+    });
+
+    it('should include event_patterns in the schema displayType enum', async () => {
+      const { tools } = await client.listTools();
+      const queryTool = tools.find(t => t.name === 'hyperdx_query');
+      expect(queryTool).toBeDefined();
+
+      const schema = queryTool!.inputSchema;
+      const displayTypeSchema = (schema.properties as any)?.displayType;
+      expect(displayTypeSchema?.enum).toContain('event_patterns');
+
+      // Verify new fields are present
+      const props = Object.keys(schema.properties ?? {});
+      expect(props).toContain('sampleSize');
+      expect(props).toContain('bodyExpression');
+    });
+
+    describe('with seeded data', () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        // Seed several distinct log templates so Drain produces multiple patterns
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+
+        // Template A: "User <name> logged in from <ip>" — 20 rows
+        for (let i = 0; i < 20; i++) {
+          logs.push({
+            Body: `User user_${i} logged in from 10.0.0.${i % 256}`,
+            ServiceName: 'auth-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + i * 1000),
+          });
+        }
+
+        // Template B: "Payment processed for order <id>" — 10 rows
+        for (let i = 0; i < 10; i++) {
+          logs.push({
+            Body: `Payment processed for order ${1000 + i}`,
+            ServiceName: 'payment-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + (20 + i) * 1000),
+          });
+        }
+
+        // Template C: unique single message
+        logs.push({
+          Body: 'System startup complete, all services healthy',
+          ServiceName: 'system',
+          SeverityText: 'INFO',
+          Timestamp: new Date(fiveMinAgo.getTime() + 31000),
+        });
+
+        await bulkInsertLogs(logs);
+      });
+
+      it('should mine patterns from seeded data and return non-empty results', async () => {
+        const result = await callTool(client, 'hyperdx_query', {
+          displayType: 'event_patterns',
+          sourceId: logSource._id.toString(),
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        const { patterns, totalCount, sampledRows } = output.result;
+
+        // Should have found data
+        expect(totalCount).toBeGreaterThanOrEqual(31);
+        expect(sampledRows).toBeGreaterThanOrEqual(31);
+
+        // Should have mined at least one pattern
+        expect(patterns.length).toBeGreaterThanOrEqual(1);
+
+        // The most common pattern should contain <*> placeholders
+        const topPattern = patterns[0];
+        expect(topPattern.pattern).toContain('<*>');
+
+        // Patterns should be sorted by estimatedCount descending (monotonic)
+        for (let i = 1; i < patterns.length; i++) {
+          expect(patterns[i - 1].estimatedCount).toBeGreaterThanOrEqual(
+            patterns[i].estimatedCount,
+          );
+        }
+
+        // Each pattern should have trend data with at least some non-zero buckets
+        for (const p of patterns) {
+          expect(p.trend.length).toBeGreaterThan(0);
+        }
+
+        // At least one pattern should have a non-zero trend bucket count
+        const hasNonZeroTrend = patterns.some((p: any) =>
+          p.trend.some((t: any) => t.count > 0),
+        );
+        expect(hasNonZeroTrend).toBe(true);
+      });
     });
   });
 

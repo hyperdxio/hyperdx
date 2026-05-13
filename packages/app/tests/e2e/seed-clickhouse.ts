@@ -9,6 +9,15 @@
  * to tune the future buffer.
  */
 
+import {
+  E2E_CLICKHOUSE_DATABASE,
+  E2E_LOGS_TABLE,
+  E2E_METRICS_GAUGE_TABLE,
+  E2E_METRICS_SUM_TABLE,
+  E2E_SESSIONS_TABLE,
+  E2E_TRACES_TABLE,
+} from './utils/constants';
+
 interface ClickHouseConfig {
   host: string;
   user: string;
@@ -628,11 +637,21 @@ async function clearTestData(
   client: ReturnType<typeof createClickHouseClient>,
 ): Promise<void> {
   console.log('  Clearing existing test data...');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_logs');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_traces');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_hyperdx_sessions');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_metrics_gauge');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_metrics_sum');
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_GAUGE_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE}`,
+  );
   console.log('  Existing data cleared');
 }
 
@@ -651,7 +670,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert log data
   console.log('  Inserting log data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -662,7 +681,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert K8s-aware log data (logs with k8s resource attributes for infrastructure correlation)
   console.log('  Inserting K8s log data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -673,7 +692,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert trace data
   console.log('  Inserting trace data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_traces (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
       Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
       ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
@@ -686,7 +705,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert session trace data (spans with rum.sessionId for session tracking)
   console.log('  Inserting session trace data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_traces (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
       Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
       ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
@@ -699,7 +718,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert session data
   console.log('  Inserting session data...');
   await client.query(`
-    INSERT INTO default.e2e_hyperdx_sessions (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -710,7 +729,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes gauge metrics (pods and nodes)
   console.log('  Inserting Kubernetes gauge metrics...');
   await client.query(`
-    INSERT INTO default.e2e_otel_metrics_gauge (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_GAUGE_TABLE} (
       ResourceAttributes, ResourceSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes,
       ScopeDroppedAttrCount, ScopeSchemaUrl, ServiceName, MetricName, MetricDescription,
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
@@ -725,7 +744,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes sum metrics (uptime)
   console.log('  Inserting Kubernetes sum metrics...');
   await client.query(`
-    INSERT INTO default.e2e_otel_metrics_sum (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE} (
       ResourceAttributes, ResourceSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes,
       ScopeDroppedAttrCount, ScopeSchemaUrl, ServiceName, MetricName, MetricDescription,
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
@@ -739,7 +758,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes event logs
   console.log('  Inserting Kubernetes event logs...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
