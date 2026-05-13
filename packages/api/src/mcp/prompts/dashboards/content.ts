@@ -56,7 +56,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   line         Time-series trends (error rate, request volume, latency over time).
   stacked_bar  Compare categories over time (requests by service, errors by status code).
   number       Single KPI metric (total requests, current error rate, p99 latency).
-  table        Ranked lists (top endpoints by latency, error counts by service).
+  table        Ranked lists (top endpoints by latency, error counts by service). Tables can wire row-click navigation via config.onClick to the /search page or another dashboard. See "TABLE TILE LINKING" below.
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
   search       Browse raw log/event rows (error logs, recent traces).
@@ -604,12 +604,6 @@ copy the right ID and discover which filters are available.
           { aggFn: "count", alias: "Requests" },
           { aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }
         ],
-        // The target dashboard MUST declare a top-level DashboardFilter
-        // with expression: "ServiceName" — otherwise the value is dropped.
-        // Call hyperdx_get_dashboard(<TARGET_DASHBOARD_ID>) and
-        // inspect its filters[] before generating this onClick. If the
-        // target doesn't declare it, either update the target to declare
-        // ServiceName, or switch to a whereTemplate clause here.
         onClick: {
           type: "dashboard",
           target: { mode: "id", id: "<TARGET_DASHBOARD_ID>" },
@@ -903,6 +897,83 @@ Example:
 
 When a value is picked in the dropdown, the renderer combines it with each tile's existing where clause via AND. Tiles do NOT need to reference the filter name; the source match alone is enough.
 
+== TABLE TILE LINKING (config.onClick) ==
+
+Table tiles can wire up row-click navigation via config.onClick. Builder table tiles (displayType: "table") and raw-SQL tiles (configType: "sql", displayType: "table") both accept this; other tile types ignore it.
+
+Destination types:
+  { type: "search",    target, whereLanguage, whereTemplate?, filters? }
+    Opens the /search page for a log or trace source. Metric and session sources are rejected by the server (the /search page does not render those kinds).
+  { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
+    Opens another HyperDX dashboard owned by the same team.
+
+Target shape, how the destination is identified:
+  target: { mode: "id", id: "<object-id>" }
+    Pins a specific source (for type=search) or dashboard (for type=dashboard) by its ID. Prefer this when the target is known. Find source IDs with hyperdx_list_sources; find dashboard IDs with hyperdx_get_dashboard (no id arg returns the list of all dashboards).
+  target: { mode: "template", template: "<handlebars>" }
+    Renders the template against the clicked row's columns, then resolves the result by NAME on the destination team. Example template "{{Service}}" reads the row's Service value and looks up a source/dashboard with that name. Use this when the destination depends on which row was clicked. A constant template like "Service Detail" (no Handlebars vars) simply resolves to the dashboard or source with that exact name.
+
+Templating values come from the clicked row's columns. The column name in {{...}} must match a column produced by the table query (group-by columns and aliases both work).
+
+  whereTemplate    Handlebars-style template. The rendered string is placed in the destination's \`where\` query param. Uses Lucene or SQL syntax matching \`whereLanguage\`. Example: "ServiceName = '{{service.name}}'".
+
+  filters          Array of { kind: "expressionTemplate", expression, template }. Each filter renders to an IN clause on the destination (\`expression IN ('rendered-value')\`). When multiple filters share an expression they are merged into one IN clause. The destination dashboard auto-populates its filter list (matched by expression), so prefer this shape over whereTemplate when the target dashboard already declares the same filter expressions.
+
+whereLanguage is optional, but set it to "sql" or "lucene" so the destination knows how to parse whereTemplate / filter values when a template is rendered.
+
+Example, search drill-down with a row-driven filter:
+  {
+    "displayType": "table",
+    "sourceId": "<trace-source-id>",
+    "groupBy": "ResourceAttributes['service.name']",
+    "select": [{ "aggFn": "count" }],
+    "onClick": {
+      "type": "search",
+      "target": { "mode": "id", "id": "<trace-source-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        }
+      ]
+    }
+  }
+
+Example, dashboard drill-down with multiple row-driven filters:
+  "onClick": {
+    "type": "dashboard",
+    "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
+    "whereLanguage": "sql",
+    "filters": [
+      {
+        "kind": "expressionTemplate",
+        "expression": "ServiceName",
+        "template": "{{ResourceAttributes['service.name']}}"
+      },
+      {
+        "kind": "expressionTemplate",
+        "expression": "Environment",
+        "template": "{{ResourceAttributes['deployment.environment']}}"
+      }
+    ]
+  }
+
+Example, destination chosen by the clicked row (rare; prefer mode="id"):
+  "onClick": {
+    "type": "dashboard",
+    "target": { "mode": "template", "template": "{{TargetDashboardName}}" },
+    "whereLanguage": "lucene"
+  }
+
+Validation rules the server enforces:
+  - target.id (mode="id") must be a valid ObjectId.
+  - For type="search", target.id must reference an existing source whose kind is "log" or "trace". Metric and session sources are rejected with: "The following onClick search source IDs are not log or trace sources: ..."
+  - For type="dashboard", target.id must reference an existing dashboard owned by the same team. Missing dashboards are rejected with: "Could not find the following onClick dashboard IDs: ..."
+
+When pairing a service-inventory table with a service-detail dashboard, use target.mode: "template" with the partner dashboard's exact name as the constant template (e.g. "Service Detail"). The clicked row's groupBy column (ServiceName) carries through as a filter expression. See the "service_inventory" example in dashboard_examples for the canonical wiring.
+
 == CONTAINERS AND TABS ==
 
 Optional dashboard organization layer. Group related tiles visually with optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers" array; reference containers from tiles via "containerId" (and "tabId" when the container has tabs).
@@ -1073,19 +1144,5 @@ Example: find top patterns for production services over the last 4 hours:
     If the column doesn't appear in the table query, the template renders
     as empty at click time and the destination opens unfiltered. Match
     {{column}} names to columns produced by the table (group-by columns
-    and aliases both work).
-
-15. onClick (type="dashboard") filter expression not declared on the target
-    For a dashboard target, each entry in onClick.filters[] only takes
-    effect when the destination dashboard declares a top-level
-    DashboardFilter with the SAME \`expression\`. The renderer drops URL
-    filter entries whose expression isn't in the destination's declared
-    filter set — so the user lands on the destination unfiltered.
-    Before generating an onClick.filters entry, call
-    hyperdx_get_dashboard on the target and confirm its
-    \`filters[].expression\` list. If the expression isn't there, either:
-      a) declare it on the target dashboard's top-level \`filters\` array
-         (passed to hyperdx_save_dashboard), or
-      b) use \`whereTemplate\` instead, which doesn't require a declared
-         filter on the target."`;
+    and aliases both work).`;
 }

@@ -179,7 +179,7 @@ const mcpOnClickTargetSchema = z
             'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
               'Get source IDs from hyperdx_list_sources; get dashboard IDs from ' +
               'hyperdx_get_dashboard (no id arg returns the list). ' +
-              'For type=search the source kind must be "log" or "trace" — the /search ' +
+              'For type=search the source kind must be "log" or "trace"; the /search ' +
               'page does not render metric/session sources.',
           ),
       })
@@ -196,7 +196,7 @@ const mcpOnClickTargetSchema = z
               'resolved by NAME on the destination team. ' +
               'Example: "ServiceOverview-{{ServiceName}}" assumes a row column ServiceName whose value ' +
               'is the name of a source/dashboard. Prefer mode="id" when the target is ' +
-              'known up-front — it survives renames.',
+              'known up-front; it survives renames.',
           ),
       })
       .describe(
@@ -224,7 +224,7 @@ const mcpOnClickSearchSchema = z
           "and placed in the destination's `where` query param. " +
           'Example: "ServiceName = \'{{service.name}}\'" pulls service.name from the row. ' +
           'Use Lucene or SQL syntax matching `whereLanguage`. Prefer `filters` (below) ' +
-          'for simple equality — filters merge nicely on the destination.',
+          'for simple equality; filters merge nicely on the destination.',
       ),
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
@@ -256,10 +256,8 @@ const mcpOnClickDashboardSchema = z
       .optional()
       .describe(
         'Optional Handlebars-style WHERE template applied to the destination ' +
-          "dashboard's global filter. Unlike `filters`, this does NOT require the target " +
-          'dashboard to declare anything specific — the rendered string is dropped into the ' +
-          "destination's `where` query param as-is. Use this when the target dashboard " +
-          'does not declare a matching DashboardFilter for the column you want to scope by.',
+          "dashboard's global filter. Useful when the target dashboard exposes a single " +
+          'global scope rather than per-tile filters.',
       ),
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
@@ -271,19 +269,10 @@ const mcpOnClickDashboardSchema = z
       .max(50)
       .optional()
       .describe(
-        'Optional list of templated equality filters. Each entry pre-populates the ' +
-          "destination dashboard's filter bar dropdown for the matching `expression`.\n\n" +
-          'REQUIRES: the destination dashboard must declare a top-level filter ' +
-          "whose `expression` equals this filter's `expression`. If the target does not " +
-          'declare a matching filter, the value is SILENTLY DROPPED at click time and the ' +
-          'destination opens unfiltered.\n\n' +
-          'Before generating dashboard onClick filters, call `hyperdx_get_dashboard` on the ' +
-          'target and confirm its `filters[].expression` list. If the target does not ' +
-          'declare the expression you want to scope by, either (a) add it to the target ' +
-          "dashboard's `filters` array, or (b) use `whereTemplate` instead, which does not " +
-          'require a declared filter.\n\n' +
-          'The save tool validates this and will reject onClick filters whose expression ' +
-          'is not declared on the target dashboard.',
+        'Optional list of templated equality filters. The destination dashboard ' +
+          'auto-populates its filter list with these (matched by expression), so prefer ' +
+          'this over whereTemplate when the target dashboard already declares the same ' +
+          'filter expressions.',
       ),
   })
   .describe(

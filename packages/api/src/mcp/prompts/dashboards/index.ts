@@ -104,7 +104,7 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
       title: 'Dashboard Examples',
       description:
         'Concrete dashboard example shapes for common observability patterns: ' +
-        'service_inventory, service_detail, log_analytics, backend_dependencies, infrastructure_sql. ' +
+        'service_inventory, service_detail, log_analytics, backend_dependencies, drilldown_links, infrastructure_sql. ' +
         'Each example carries a "when to use" header. Adapt the structure to the user\'s request; ' +
         'do not copy literal column names or status values without verifying via hyperdx_list_sources first.',
       argsSchema: {
@@ -112,7 +112,7 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
           .string()
           .optional()
           .describe(
-            'Filter to a specific pattern: service_inventory, service_detail, log_analytics, backend_dependencies, infrastructure_sql',
+            'Filter to a specific pattern: service_inventory, service_detail, log_analytics, backend_dependencies, drilldown_links, infrastructure_sql',
           ),
       },
     },

@@ -1,6 +1,5 @@
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -1484,6 +1483,433 @@ describe('MCP Dashboard Tools', () => {
     });
   });
 
+  describe('hyperdx_save_dashboard - table onClick linking', () => {
+    // Mirrors the v2 external-API onClick tests so the MCP path
+    // enforces the same drill-down rules: row-click can target /search
+    // for a log/trace source or another dashboard, by concrete ID or
+    // by templated name, with optional whereTemplate/filters.
+    it('should round-trip a table tile with a search onClick by ID', async () => {
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick search by id',
+        tiles: [
+          {
+            name: 'Errors by Service',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: "{{ResourceAttributes['service.name']}}",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.tiles[0].config.onClick).toEqual({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: "{{ResourceAttributes['service.name']}}",
+          },
+        ],
+      });
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config.onClick).toEqual(
+        created.tiles[0].config.onClick,
+      );
+    });
+
+    it('should round-trip a table tile with a dashboard onClick by ID', async () => {
+      const sourceId = traceSource._id.toString();
+      // Create the target dashboard the onClick will link to so the
+      // server-side `getMissingOnClickDashboards` check resolves.
+      const targetDashboard = await new Dashboard({
+        name: 'Service Detail',
+        tiles: [],
+        team: team._id,
+      }).save();
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick dashboard by id',
+        tiles: [
+          {
+            name: 'Top Services',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: {
+                  mode: 'id',
+                  id: targetDashboard._id.toString(),
+                },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: "{{ResourceAttributes['service.name']}}",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'dashboard',
+        target: { mode: 'id', id: targetDashboard._id.toString() },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: "{{ResourceAttributes['service.name']}}",
+          },
+        ],
+      });
+    });
+
+    it('should round-trip a templated dashboard onClick (mode=template)', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick dashboard by template',
+        tiles: [
+          {
+            name: 'Service Picker',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: 'SpanName',
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: {
+                  mode: 'template',
+                  template: '{{TargetDashboard}}',
+                },
+                whereLanguage: 'lucene',
+                whereTemplate:
+                  "service.name:{{ResourceAttributes['service.name']}}",
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'dashboard',
+        target: { mode: 'template', template: '{{TargetDashboard}}' },
+        whereLanguage: 'lucene',
+        whereTemplate: "service.name:{{ResourceAttributes['service.name']}}",
+      });
+    });
+
+    it('should round-trip onClick on a raw SQL table tile', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'SQL onClick',
+        tiles: [
+          {
+            name: 'Raw SQL Table',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM otel_traces GROUP BY ServiceName LIMIT 50',
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: '{{ServiceName}}',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: '{{ServiceName}}',
+          },
+        ],
+      });
+    });
+
+    it('should reject a table tile onClick referencing a non-existent dashboard', async () => {
+      const sourceId = traceSource._id.toString();
+      const ghostDashboardId = new mongoose.Types.ObjectId().toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick missing dashboard',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: ghostDashboardId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('onClick dashboard');
+      expect(text).toContain(ghostDashboardId);
+    });
+
+    it('should reject a table tile onClick search target with a non-log/trace source', async () => {
+      // /search only renders log/trace sources; targeting a metric
+      // source must be rejected at save time, matching the REST POST
+      // path. Create the metric source inline so this test is
+      // self-contained.
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics',
+      });
+      const sourceId = traceSource._id.toString();
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick metric source',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: {
+                  mode: 'id',
+                  id: metricSource._id.toString(),
+                },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('log or trace');
+      expect(text).toContain(metricSource._id.toString());
+    });
+
+    it('should reject a table tile onClick with an invalid target.id', async () => {
+      // target.id must be a valid ObjectId. Bad shape is caught by the
+      // input schema and surfaces as the SDK's "Input validation error"
+      // envelope rather than a custom 400 message.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick bad object id',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: 'not-a-valid-object-id' },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should accept onClick without whereLanguage (it is optional at the schema layer)', async () => {
+      // SearchConditionLanguageSchema is `.optional()` in common-utils,
+      // so omitting whereLanguage is allowed. Pin that behavior so a
+      // future tightening of the schema doesn't quietly change it
+      // without updating the docs that callers rely on.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick no whereLanguage',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                // whereLanguage intentionally omitted
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toMatchObject({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+      });
+    });
+
+    it('should reject an unknown onClick.type', async () => {
+      // The schema is a discriminated union on `type`; a bogus type
+      // must be rejected up front.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick bad type',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'navigate-to-mars',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should validate onClick on update too', async () => {
+      // Round-trip a tile with no onClick, then update it to add an
+      // onClick pointing at a non-existent dashboard. The PUT path
+      // mirrors POST: missing dashboards are rejected with the same
+      // message.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick update validation',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const ghostDashboardId = new mongoose.Types.ObjectId().toString();
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'OnClick update validation',
+        tiles: [
+          {
+            ...created.tiles[0],
+            config: {
+              ...created.tiles[0].config,
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: ghostDashboardId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(updateResult.isError).toBe(true);
+      const text = getFirstText(updateResult);
+      expect(text).toContain('onClick dashboard');
+      expect(text).toContain(ghostDashboardId);
+    });
+  });
+
   describe('hyperdx_delete_dashboard', () => {
     it('should delete an existing dashboard', async () => {
       const dashboard = await new Dashboard({
@@ -1668,6 +2094,44 @@ describe('MCP Dashboard Tools', () => {
       expect(constraintsBody).toMatch(/not currently exposed via the MCP/);
     });
 
+    it('documents table-tile onClick linking features', () => {
+      // Lock down the documentation for row-click drill-downs so a
+      // future refactor can't quietly drop the section the LLM relies
+      // on to wire up onClick correctly.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== TABLE TILE LINKING (config.onClick) ==');
+      expect(idx).toBeGreaterThan(-1);
+      const next = prompt.indexOf('\n== ', idx + 1);
+      const section = prompt.slice(idx, next === -1 ? prompt.length : next);
+
+      // Both destination types are mentioned.
+      expect(section).toContain('type: "search"');
+      expect(section).toContain('type: "dashboard"');
+      // Both target modes are mentioned.
+      expect(section).toContain('mode: "id"');
+      expect(section).toContain('mode: "template"');
+      // Templating fields are mentioned.
+      expect(section).toContain('whereTemplate');
+      expect(section).toContain('filters');
+      expect(section).toContain('expressionTemplate');
+      // The two server-side validation error messages are quoted so
+      // the LLM can recognize and recover from them.
+      expect(section).toContain('onClick search source IDs');
+      expect(section).toContain('onClick dashboard IDs');
+    });
+
+    it('documents onClick pitfalls under common mistakes', () => {
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== COMMON MISTAKES ==');
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      // Mention the four failure modes we hit during validation.
+      expect(section.toLowerCase()).toContain('onclick on a non-table tile');
+      expect(section.toLowerCase()).toContain('non-log/trace source');
+      expect(section.toLowerCase()).toContain('missing wherelanguage');
+      expect(section.toLowerCase()).toContain("isn't in the table");
+    });
+
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
       const prompt = buildQueryGuidePrompt();
       expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
@@ -1741,6 +2205,26 @@ describe('MCP Dashboard Tools', () => {
       // not in the checklist anyway, but guard against them just in case.
       expect(prompt).not.toMatch(/ – /); // [prose-lint: allow]
     });
+
+    it("mentions row-click linking in the table tile's description", () => {
+      // The create prompt is the LLM's primary entry point for new
+      // dashboards. Surface onClick on the TILE TYPE GUIDE so the
+      // model considers wiring it up on overview tables without the
+      // user having to ask.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const guideIdx = prompt.indexOf('== TILE TYPE GUIDE ==');
+      expect(guideIdx).toBeGreaterThan(-1);
+      const guideEnd = prompt.indexOf('\n== ', guideIdx + 1);
+      const guideBody = prompt.slice(guideIdx, guideEnd);
+      // The table line must hint at onClick and point at the
+      // consolidated TABLE TILE LINKING section in the query guide.
+      expect(guideBody).toContain('onClick');
+      expect(guideBody).toContain('TABLE TILE LINKING');
+    });
   });
 
   describe('buildDashboardExamplesPrompt', () => {
@@ -1761,6 +2245,7 @@ describe('MCP Dashboard Tools', () => {
         'service_detail',
         'log_analytics',
         'backend_dependencies',
+        'drilldown_links',
         'infrastructure_sql',
       ]);
     });
@@ -1807,6 +2292,31 @@ describe('MCP Dashboard Tools', () => {
       expect(single).toContain('== SERVICE INVENTORY ==');
       expect(single).not.toContain('== SERVICE DETAIL ==');
       expect(single).not.toContain('== LOG ANALYTICS ==');
+    });
+
+    it('exposes a drilldown_links example pattern with onClick wiring', () => {
+      // Drew's drilldown_links example carries a self-contained
+      // onClick walkthrough (search drill-down + dashboard drill-down).
+      // Keep it discoverable so an agent asked to wire up drill-downs
+      // can opt into this example by pattern name.
+      const all = buildDashboardExamplesPrompt(
+        'trace_src',
+        'log_src',
+        'conn_id',
+      );
+      expect(all).toContain('drilldown_links');
+
+      const filtered = buildDashboardExamplesPrompt(
+        'trace_src',
+        'log_src',
+        'conn_id',
+        'drilldown_links',
+      );
+      expect(filtered).toContain('ROW-CLICK DRILL-DOWN LINKS');
+      expect(filtered).toContain('onClick');
+      expect(filtered).toContain('type: "search"');
+      expect(filtered).toContain('type: "dashboard"');
+      expect(filtered).toContain('expressionTemplate');
     });
 
     it('falls back to showing all examples when pattern is unknown', () => {
