@@ -80,6 +80,7 @@ const formatAlertResponse = (
       'state',
       'source',
       'tileId',
+      'note',
       'createdAt',
       'updatedAt',
       'executionErrors',
