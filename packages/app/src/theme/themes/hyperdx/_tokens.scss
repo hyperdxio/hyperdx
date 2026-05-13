@@ -6,7 +6,13 @@
  * These mixins define all design tokens for HyperDX theme.
  * They are used both here (for .theme-hyperdx scoped selectors) and
  * in _base-tokens.scss (for unscoped fallback selectors during SSR).
+ *
+ * Chart color tokens (categorical + semantic) are intentionally shared
+ * with the ClickStack theme. They live in `_chart-tokens.scss` and are
+ * `@include`d here so a single hex change updates both themes.
  */
+
+@use '../chart-tokens';
 
 @mixin dark-mode-tokens {
   /* Backgrounds */
@@ -92,29 +98,10 @@
   --color-json-array: var(--mantine-color-green-3);
   --color-json-punctuation: var(--mantine-color-dark-4);
 
-  /* Chart Colors - Brand green first, then Observable palette
-     Note: 1-indexed CSS vars map to 0-indexed COLORS array in utils.ts
-     e.g., --color-chart-1 corresponds to COLORS[0] */
-  --color-chart-1: #00c28a; /* Green - Brand (primary) */
-  --color-chart-2: #4269d0; /* Blue */
-  --color-chart-3: #efb118; /* Orange */
-  --color-chart-4: #ff725c; /* Red */
-  --color-chart-5: #6cc5b0; /* Cyan */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
-
-  /* Chart Semantic Colors */
-  --color-chart-success: #00c28a; /* Green - Brand */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
-
-  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-success-highlight: #80d9b3;
-  --color-chart-warning-highlight: #f5c94d;
-  --color-chart-error-highlight: #ffa090;
+  /* Chart Colors - shared across themes via the chart-tokens partial.
+     1-indexed CSS vars map to 0-indexed COLORS array in utils.ts
+     (e.g., --color-chart-1 corresponds to COLORS[0]). */
+  @include chart-tokens.chart-tokens;
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
@@ -206,27 +193,8 @@
   --color-json-array: var(--mantine-color-green-7);
   --color-json-punctuation: var(--mantine-color-dark-5);
 
-  /* Chart Colors - Brand green first, then Observable palette (same for light mode) */
-  --color-chart-1: #00c28a; /* Green - Brand (primary) */
-  --color-chart-2: #4269d0; /* Blue */
-  --color-chart-3: #efb118; /* Orange */
-  --color-chart-4: #ff725c; /* Red */
-  --color-chart-5: #6cc5b0; /* Cyan */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
-
-  /* Chart Semantic Colors */
-  --color-chart-success: #00c28a; /* Green - Brand */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
-
-  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-success-highlight: #80d9b3;
-  --color-chart-warning-highlight: #f5c94d;
-  --color-chart-error-highlight: #ffa090;
+  /* Chart Colors - shared across themes via the chart-tokens partial. */
+  @include chart-tokens.chart-tokens;
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);

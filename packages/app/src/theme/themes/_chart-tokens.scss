@@ -1,0 +1,52 @@
+/* Shared Chart Color Tokens
+ *
+ * The categorical and semantic chart palettes are intentionally identical
+ * across the HyperDX and ClickStack themes. Rather than duplicate hex
+ * values across four scheme blocks (HyperDX dark/light + ClickStack
+ * dark/light), both themes `@use` this partial and `@include` the
+ * `chart-tokens` mixin inside their own scope selectors.
+ *
+ * Source: Observable 10 categorical palette
+ * https://observablehq.com/@d3/color-schemes
+ *
+ * Note: chart vars do not currently differ between dark and light schemes.
+ * If that changes, split this into `chart-tokens-dark` / `chart-tokens-light`
+ * and adjust the per-theme `@include`s accordingly.
+ */
+
+@mixin categorical-chart-tokens {
+  /* Categorical palette - 10 distinct, accessible hues
+   * NOTE: These vars are intentionally duplicated into both dark and light
+   * scheme blocks via the consuming theme files. CSS specificity requires
+   * them to be defined within each [data-mantine-color-scheme] selector;
+   * declaring them only on `.theme-*` would cause the scheme-scoped block
+   * to take precedence and reset them to undefined. */
+  --color-chart-1: #437eef; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+}
+
+@mixin semantic-chart-tokens {
+  /* Semantic chart colors */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Semantic chart colors - highlighted (hover/selection states) */
+  --color-chart-success-highlight: #80d9b3;
+  --color-chart-warning-highlight: #f5c94d;
+  --color-chart-error-highlight: #ffa090;
+}
+
+/* Convenience mixin that includes both categorical and semantic tokens. */
+@mixin chart-tokens {
+  @include categorical-chart-tokens;
+  @include semantic-chart-tokens;
+}
