@@ -71,5 +71,3 @@ export const mcpSaveSavedSearchSchema = z.object({
     .optional()
     .describe('Additional structured filters.'),
 });
-
-export type McpSaveSavedSearchInput = z.infer<typeof mcpSaveSavedSearchSchema>;
