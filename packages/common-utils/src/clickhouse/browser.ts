@@ -124,7 +124,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
-    if (!shouldSkipApplySettings) {
+    if (!shouldSkipApplySettings && connectionId) {
       clickhouseSettings = await this.processClickhouseSettings({
         connectionId,
         externalClickhouseSettings,

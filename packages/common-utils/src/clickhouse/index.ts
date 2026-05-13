@@ -508,7 +508,7 @@ export abstract class BaseClickhouseClient {
     connectionId,
     externalClickhouseSettings,
   }: {
-    connectionId?: string;
+    connectionId: string;
     externalClickhouseSettings?: ClickHouseSettings;
   }): Promise<ClickHouseSettings> {
     const clickhouse_settings = structuredClone(

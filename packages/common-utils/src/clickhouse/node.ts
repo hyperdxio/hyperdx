@@ -34,6 +34,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     query_params = {},
     abort_signal,
     clickhouse_settings: externalClickhouseSettings,
+    connectionId,
     queryId,
     shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
@@ -41,9 +42,10 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
-    if (!shouldSkipApplySettings) {
+    if (!shouldSkipApplySettings && connectionId) {
       clickhouseSettings = await this.processClickhouseSettings({
         externalClickhouseSettings,
+        connectionId,
       });
     }
 
