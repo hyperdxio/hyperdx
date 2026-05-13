@@ -48,9 +48,15 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
+} from '@/defaults';
+import {
   useAllFields,
+  useAllFieldsAndValues,
   useColumns,
   useGetKeyValues,
   useGetValuesDistribution,
@@ -1119,6 +1125,7 @@ const DBSearchPageFiltersComponent = ({
     'hdx-shared-filters-expanded',
     true,
   );
+  const [showAllValues, setShowAllValues] = useState(true);
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
@@ -1128,7 +1135,38 @@ const DBSearchPageFiltersComponent = ({
   });
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
-  const { data, isLoading, error } = useAllFields(
+  const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
+
+  const { data: me } = api.useMe();
+  const defaultLimit = sourceTableConnection.metadataMVs
+    ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
+    : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
+
+  // 'all' mode: single combined query for keys + values
+  const {
+    data: allFieldsAndValues,
+    isLoading: isAllLoading,
+    isFetching: isAllFetching,
+    error: allError,
+  } = useAllFieldsAndValues(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+      metadataMVs: sourceTableConnection.metadataMVs,
+      dateRange: chartConfig.dateRange,
+      maxKeys,
+    },
+    { enabled: filterMode === 'all' },
+  );
+
+  // 'exact' mode: separate key discovery + value fetching
+  const {
+    data: allFields,
+    isLoading: isExactFieldsLoading,
+    error: exactError,
+  } = useAllFields(
     {
       databaseName: chartConfig.from.databaseName,
       tableName: chartConfig.from.tableName,
@@ -1137,8 +1175,10 @@ const DBSearchPageFiltersComponent = ({
     },
     {
       dateRange: chartConfig.dateRange,
+      enabled: filterMode === 'exact',
     },
   );
+
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -1147,6 +1187,7 @@ const DBSearchPageFiltersComponent = ({
 
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
+  const error = filterMode === 'all' ? allError : exactError;
   useEffect(() => {
     if (error) {
       notifications.show({
@@ -1161,11 +1202,11 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
-    if (!data) {
+    if (filterMode === 'all' || !allFields) {
       return [];
     }
 
-    const strings = data
+    const strings = allFields
       .sort((a, b) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
@@ -1199,9 +1240,10 @@ const DBSearchPageFiltersComponent = ({
       );
     return strings;
   }, [
-    data,
+    allFields,
     jsonColumns,
     filterState,
+    filterMode,
     showMoreFields,
     isFieldPinned,
     isSharedFieldPinned,
@@ -1226,15 +1268,28 @@ const DBSearchPageFiltersComponent = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
+  // 'exact' mode: fetch values for discovered keys
   const {
-    data: facets,
-    isLoading: isFacetsLoading,
-    isFetching: isFacetsFetching,
-  } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
-    limit: INITIAL_LOAD_LIMIT,
-    keys: keysToFetch,
-  });
+    data: exactFacets,
+    isLoading: isExactFacetsLoading,
+    isFetching: isExactFacetsFetching,
+  } = useGetKeyValues(
+    {
+      chartConfig: { ...chartConfig, dateRange },
+      limit: INITIAL_LOAD_LIMIT,
+      keys: keysToFetch,
+    },
+    { enabled: filterMode === 'exact' },
+  );
+
+  // Merge: in 'all' mode use combined query result; in 'exact' mode use two-step result
+  const facets = filterMode === 'all' ? allFieldsAndValues : exactFacets;
+  const isFacetsLoading =
+    filterMode === 'all'
+      ? isAllLoading
+      : isExactFieldsLoading || isExactFacetsLoading;
+  const isFacetsFetching =
+    filterMode === 'all' ? isAllFetching : isExactFacetsFetching;
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
@@ -1266,17 +1321,30 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
+        let newValues: string[];
+        if (filterMode === 'all') {
+          const results = await metadata.getAllKeyValues({
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            connectionId: chartConfig.connection,
+            keyExpressions: [key],
+            metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
-          },
-          keys: [key],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
-        });
-        const newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+          });
+          newValues = results[0] ? results[0].value : [];
+        } else {
+          const newKeyVals = await metadata.getKeyValuesWithMVs({
+            chartConfig: {
+              ...chartConfig,
+              dateRange,
+            },
+            keys: [key],
+            limit: LOAD_MORE_LOAD_LIMIT,
+            disableRowLimit: true,
+            source,
+          });
+          newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+        }
         if (newValues.length > 0) {
           setExtraFacets(prev => ({
             ...prev,
@@ -1293,7 +1361,15 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange, metadata, source],
+    [
+      chartConfig,
+      setExtraFacets,
+      dateRange,
+      metadata,
+      source,
+      filterMode,
+      sourceTableConnection.metadataMVs,
+    ],
   );
 
   // Build the set of team-pinned fields for the Shared Filters section,
@@ -1727,6 +1803,8 @@ const DBSearchPageFiltersComponent = ({
                 onResetPersonalPins={resetPersonalPins}
                 hasSharedPins={hasSharedPins}
                 onResetSharedFilters={resetSharedFilters}
+                showAllValues={showAllValues}
+                onShowAllValuesChange={setShowAllValues}
               />
               {onCollapse && (
                 <Tooltip label="Hide filters" position="bottom">
@@ -1907,7 +1985,7 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
-                {isLoading || isFacetsLoading ? (
+                {isFacetsLoading ? (
                   <Flex align="center" justify="center">
                     <Loader size="xs" color="gray" />
                   </Flex>

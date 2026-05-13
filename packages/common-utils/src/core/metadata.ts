@@ -1207,14 +1207,14 @@ export class Metadata {
   }
 
   /**
-   * Autocomplete: fetches top values for a specific map key from the KV rollup table.
-   * Only filters by date range — no WHERE conditions. Values ordered by frequency.
+   * Fetches top values for one or more keys from the KV rollup table in a
+   * single batched query. Falls back to getMapValues when no rollup is available.
    */
   async getAllKeyValues({
     databaseName,
     tableName,
-    keyExpression,
-    maxValues = 1000,
+    keyExpressions,
+    maxValuesPerKey = 1000,
     connectionId,
     metadataMVs,
     dateRange,
@@ -1222,23 +1222,30 @@ export class Metadata {
   }: {
     databaseName: string;
     tableName: string;
-    /** Bracket-notation key string, e.g. `ResourceAttributes['service.name']` or `ServiceName` */
-    keyExpression: string;
-    maxValues?: number;
+    keyExpressions: string[];
+    maxValuesPerKey?: number;
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     signal?: AbortSignal;
-  }): Promise<string[]> {
-    const path = parseKeyPath(keyExpression);
-    const isMapKey = path.length >= 2;
+  }): Promise<{ key: string; value: string[] }[]> {
+    if (keyExpressions.length === 0) return [];
+
+    // Parse all keys into (rollupColumn, rollupKey) pairs
+    const parsed = keyExpressions.map(keyExpr => {
+      const path = parseKeyPath(keyExpr);
+      const isMapKey = path.length >= 2;
+      return {
+        keyExpression: keyExpr,
+        rollupColumn: isMapKey ? path[0] : 'NativeColumn',
+        rollupKey: isMapKey ? path[1] : path[0],
+        column: path[0],
+        mapKey: isMapKey ? path[1] : undefined,
+      };
+    });
 
     // Try rollup table first when available
     if (metadataMVs && dateRange) {
-      const rollupColumn = isMapKey ? path[0] : 'NativeColumn';
-      const rollupKey = isMapKey ? path[1] : path[0];
-
-      // Align date range to rollup granularity for consistent cache keys
       const alignedDateRange = getAlignedDateRange(
         dateRange,
         metadataMVs.granularity,
@@ -1253,20 +1260,38 @@ export class Metadata {
         chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
       );
       const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${rollupColumn}.${rollupKey}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues`;
 
-      const rollupValues = await this.cache.getOrFetch(cacheKey, async () => {
+      const sortedKeyIds = parsed
+        .map(p => `${p.rollupColumn}:${p.rollupKey}`)
+        .sort()
+        .join(',');
+      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${sortedKeyIds}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues`;
+
+      const tupleParams = concatChSql(
+        ',',
+        parsed.map(
+          p =>
+            chSql`(${{ String: p.rollupColumn }}, ${{ String: p.rollupKey }})`,
+        ),
+      );
+
+      type BatchRow = {
+        ColumnIdentifier: string;
+        Key: string;
+        Value: string;
+        total_count: number;
+      };
+
+      const batchResults = await this.cache.getOrFetch(cacheKey, async () => {
         try {
           const sql = chSql`
-              SELECT Value
+              SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
               FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
-              WHERE ColumnIdentifier = ${{ String: rollupColumn }}
-                AND Key = ${{ String: rollupKey }}
+              WHERE (ColumnIdentifier, Key) IN (${tupleParams})
                 AND Value != ''
                 ${timeFilter}
-              GROUP BY Value
-              ORDER BY sum(count) DESC
-              LIMIT ${{ Int32: maxValues }}
+              GROUP BY ColumnIdentifier, Key, Value
+              ORDER BY ColumnIdentifier, Key, total_count DESC
             `;
 
           return await this.clickhouseClient
@@ -1282,27 +1307,186 @@ export class Metadata {
               },
               abort_signal: signal,
             })
-            .then(res => res.json<{ Value: string }>())
-            .then(d => d.data.map(r => r.Value));
+            .then(res => res.json<BatchRow>())
+            .then(d => d.data);
         } catch (e) {
           console.warn('getAllKeyValues rollup query failed', e);
           return [];
         }
       });
 
-      if (rollupValues.length > 0) return rollupValues;
+      // Group results by (ColumnIdentifier, Key) and apply per-key limit
+      const resultMap = new Map<string, string[]>();
+      for (const row of batchResults) {
+        const mapKey = `${row.ColumnIdentifier}:${row.Key}`;
+        let arr = resultMap.get(mapKey);
+        if (!arr) {
+          arr = [];
+          resultMap.set(mapKey, arr);
+        }
+        if (arr.length < maxValuesPerKey) {
+          arr.push(row.Value);
+        }
+      }
+
+      // Build results, falling back to getMapValues for keys with no rollup data
+      return Promise.all(
+        parsed.map(async p => {
+          const mapKey = `${p.rollupColumn}:${p.rollupKey}`;
+          const values = resultMap.get(mapKey);
+          if (values && values.length > 0) {
+            return { key: p.keyExpression, value: values };
+          }
+          const fallback = await this.getMapValues({
+            databaseName,
+            tableName,
+            column: p.column,
+            key: p.mapKey,
+            connectionId,
+          });
+          return { key: p.keyExpression, value: fallback };
+        }),
+      );
     }
 
-    // Fall back to main table scan
-    const column = path[0];
-    const mapKey = isMapKey ? path[1] : undefined;
-    return this.getMapValues({
+    // No rollup available — fall back to main table scan for all keys
+    return Promise.all(
+      parsed.map(async p => {
+        const value = await this.getMapValues({
+          databaseName,
+          tableName,
+          column: p.column,
+          key: p.mapKey,
+          connectionId,
+        });
+        return { key: p.keyExpression, value };
+      }),
+    );
+  }
+
+  /**
+   * Single-query discovery: returns all (ColumnIdentifier, Key) pairs from the
+   * KV rollup table. Falls back to column metadata + getMapValues when no rollup
+   * is available.
+   */
+  async getAllFieldsAndValues({
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    maxValuesPerKey = 20,
+    maxKeys,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
+    maxValuesPerKey?: number;
+    maxKeys?: number;
+    signal?: AbortSignal;
+  }): Promise<{ key: string; value: string[] }[]> {
+    if (metadataMVs && dateRange) {
+      const alignedDateRange = getAlignedDateRange(
+        dateRange,
+        metadataMVs.granularity,
+      );
+
+      const startExpr = renderStartOfBucketExpr(
+        metadataMVs.granularity,
+        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+      );
+      const endExpr = renderStartOfBucketExpr(
+        metadataMVs.granularity,
+        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+      );
+      const timeFilter = chSql`Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+
+      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.fieldsAndValues.${maxValuesPerKey}.${maxKeys ?? 'all'}`;
+
+      type RollupRow = {
+        ColumnIdentifier: string;
+        Key: string;
+        Values: string[];
+      };
+
+      const rows = await this.cache.getOrFetch(cacheKey, async () => {
+        try {
+          const limitClause = maxKeys
+            ? chSql`LIMIT ${{ Int32: maxKeys }}`
+            : chSql``;
+          const sql = chSql`
+            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) AS Values
+            FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+            WHERE Value != ''
+              AND ${timeFilter}
+            GROUP BY ColumnIdentifier, Key
+            ORDER BY ColumnIdentifier = 'NativeColumn' DESC, ColumnIdentifier, Key
+            ${limitClause}
+          `;
+
+          return await this.clickhouseClient
+            .query<'JSON'>({
+              query: sql.sql,
+              query_params: sql.params,
+              connectionId,
+              clickhouse_settings: {
+                ...this.getClickHouseSettings(),
+                timeout_overflow_mode: 'break',
+                max_execution_time: 30,
+                max_rows_to_read: '0',
+              },
+              abort_signal: signal,
+            })
+            .then(res => res.json<RollupRow>())
+            .then(d => d.data);
+        } catch (e) {
+          console.warn('getAllFieldsAndValues rollup query failed', e);
+          return [];
+        }
+      });
+
+      if (rows.length > 0) {
+        return rows.map(row => {
+          const keyExpr =
+            row.ColumnIdentifier === 'NativeColumn'
+              ? row.Key
+              : `${row.ColumnIdentifier}['${row.Key}']`;
+          return { key: keyExpr, value: row.Values };
+        });
+      }
+    }
+
+    // Fallback: use getAllFields + getMapValues individually
+    const fields = await this.getAllFields({
       databaseName,
       tableName,
-      column,
-      key: mapKey,
       connectionId,
+      metadataMVs,
+      dateRange,
     });
+
+    const stringFields = fields.filter(
+      f => f.jsType && f.jsType === JSDataType.String,
+    );
+
+    return Promise.all(
+      stringFields.slice(0, maxKeys).map(async f => {
+        const isMapKey = f.path.length >= 2;
+        const value = await this.getMapValues({
+          databaseName,
+          tableName,
+          column: f.path[0],
+          key: isMapKey ? f.path[1] : undefined,
+          maxValues: maxValuesPerKey,
+          connectionId,
+        });
+        const keyExpr = isMapKey ? `${f.path[0]}['${f.path[1]}']` : f.path[0];
+        return { key: keyExpr, value };
+      }),
+    );
   }
 
   async getKeyValues({

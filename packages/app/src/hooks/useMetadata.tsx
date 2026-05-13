@@ -279,20 +279,15 @@ export function useMultipleGetKeyValues(
         const connectionId = firstConfig.connection;
         const dateRange = firstConfig.dateRange;
 
-        return Promise.all(
-          keys.slice(0, maxKeys).map(async keyExpression => {
-            const value = await metadata.getAllKeyValues({
-              databaseName,
-              tableName,
-              keyExpression,
-              connectionId,
-              metadataMVs,
-              dateRange,
-              signal,
-            });
-            return { key: keyExpression, value };
-          }),
-        );
+        return metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          connectionId,
+          metadataMVs,
+          dateRange,
+          signal,
+        });
       }
 
       // 'exact' mode
@@ -390,6 +385,65 @@ export function useGetKeyValues(
     },
     options,
   );
+}
+
+/**
+ * Combined key + value discovery in a single rollup query.
+ * Returns all fields and their top N values without needing a separate
+ * useAllFields + useGetKeyValues chain.
+ */
+export function useAllFieldsAndValues(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    maxValuesPerKey,
+    maxKeys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
+    maxValuesPerKey?: number;
+    maxKeys?: number;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  const { enabled = true } = options || {};
+
+  return useQuery<{ key: string; value: string[] }[]>({
+    queryKey: [
+      'useMetadata.useAllFieldsAndValues',
+      databaseName,
+      tableName,
+      connectionId,
+      metadataMVs,
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
+      maxValuesPerKey,
+      maxKeys,
+    ],
+    queryFn: async ({ signal }) => {
+      return metadata.getAllFieldsAndValues({
+        databaseName,
+        tableName,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        maxValuesPerKey,
+        maxKeys,
+        signal,
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
+    ...options,
+    enabled: !!enabled && !!databaseName && !!tableName && !!connectionId,
+  });
 }
 
 export function deduplicateArray<T extends object>(array: T[]): T[] {
