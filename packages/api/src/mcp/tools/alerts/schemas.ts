@@ -21,7 +21,6 @@ const mcpAlertChannelSchema = z
       .describe('Channel type for alert notifications.'),
     webhookId: z
       .string()
-      .optional()
       .describe('Webhook destination ID (required for webhook channel).'),
   })
   .describe('Alert notification channel configuration.');
@@ -157,13 +156,6 @@ export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
       data.scheduleOffsetMinutes >= intervalMinutes
     ) {
       return `scheduleOffsetMinutes (${data.scheduleOffsetMinutes}) must be less than the interval (${data.interval} = ${intervalMinutes} minutes)`;
-    }
-  }
-
-  // Channel-specific required fields
-  if (data.channel.type === 'webhook') {
-    if (!data.channel.webhookId) {
-      return 'webhookId is required when channel type is "webhook"';
     }
   }
 

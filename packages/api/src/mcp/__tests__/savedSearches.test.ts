@@ -109,7 +109,7 @@ describe('MCP Saved Search Tools', () => {
         // Detail fields should NOT be present in list mode
         expect(output[0]).not.toHaveProperty('where');
         expect(output[0]).not.toHaveProperty('whereLanguage');
-        expect(output[0]).not.toHaveProperty('source');
+        expect(output[0]).not.toHaveProperty('sourceId');
         expect(output[0]).not.toHaveProperty('select');
         expect(output[0]).not.toHaveProperty('filters');
       });
@@ -156,13 +156,17 @@ describe('MCP Saved Search Tools', () => {
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
-        expect(output._id).toBe(savedSearch._id.toString());
+        // External format uses 'id' not '_id'
+        expect(output.id).toBe(savedSearch._id.toString());
+        expect(output).not.toHaveProperty('_id');
         expect(output.name).toBe('Detail Test');
         expect(output.where).toBe('level:error');
         // Full detail includes fields not in the list summary
-        expect(output).toHaveProperty('source');
+        expect(output).toHaveProperty('sourceId');
         expect(output).toHaveProperty('whereLanguage');
         expect(output).toHaveProperty('tags');
+        expect(output).toHaveProperty('teamId');
+        expect(output).toHaveProperty('createdAt');
       });
 
       it('should return error for invalid ObjectId format', async () => {
@@ -201,14 +205,16 @@ describe('MCP Saved Search Tools', () => {
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
-        expect(output._id).toBeDefined();
+        // External format uses 'id' not '_id'
+        expect(output.id).toBeDefined();
+        expect(output).not.toHaveProperty('_id');
         expect(output.name).toBe('Error Traces');
         expect(output.where).toBe('StatusCode:Error');
         expect(output.whereLanguage).toBe('lucene');
         expect(output.tags).toEqual(['errors']);
 
         // Verify in database
-        const savedSearch = await SavedSearch.findById(output._id);
+        const savedSearch = await SavedSearch.findById(output.id);
         expect(savedSearch).not.toBeNull();
         expect(savedSearch?.name).toBe('Error Traces');
       });
@@ -318,7 +324,8 @@ describe('MCP Saved Search Tools', () => {
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
-        expect(output._id).toBe(savedSearch._id.toString());
+        expect(output.id).toBe(savedSearch._id.toString());
+        expect(output).not.toHaveProperty('_id');
         expect(output.name).toBe('Updated Name');
         expect(output.where).toBe('StatusCode:Ok');
         expect(output.tags).toEqual(['updated']);

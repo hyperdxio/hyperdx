@@ -8,6 +8,7 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
+import { translateSavedSearchDocumentToExternalSavedSearch } from '@/utils/externalApi';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -105,7 +106,7 @@ export function registerSaveSavedSearch(
               type: 'text' as const,
               text: JSON.stringify(
                 {
-                  ...updated.toJSON(),
+                  ...translateSavedSearchDocumentToExternalSavedSearch(updated),
                   ...(frontendUrl
                     ? { url: `${frontendUrl}/search/${updated._id}` }
                     : {}),
@@ -127,7 +128,7 @@ export function registerSaveSavedSearch(
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...created.toJSON(),
+                ...translateSavedSearchDocumentToExternalSavedSearch(created),
                 ...(frontendUrl
                   ? { url: `${frontendUrl}/search/${created._id}` }
                   : {}),

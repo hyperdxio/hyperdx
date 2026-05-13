@@ -3,7 +3,9 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import { getSavedSearch, getSavedSearches } from '@/controllers/savedSearch';
+import { getSavedSearch } from '@/controllers/savedSearch';
+import { SavedSearch } from '@/models/savedSearch';
+import { translateSavedSearchDocumentToExternalSavedSearch } from '@/utils/externalApi';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -34,14 +36,17 @@ export function registerGetSavedSearch(
       }),
     },
     withToolTracing('hyperdx_get_saved_search', context, async ({ id }) => {
-      // ── List all saved searches ──
+      // ── List all saved searches (slim query — only fetch the fields we need) ──
       if (!id) {
-        const savedSearches = await getSavedSearches(teamId);
+        const savedSearches = await SavedSearch.find(
+          { team: teamId },
+          'name tags',
+        ).lean();
         const output = savedSearches.map(ss => ({
-          id: ss.id,
+          id: ss._id.toString(),
           name: ss.name,
           tags: ss.tags,
-          ...(frontendUrl ? { url: `${frontendUrl}/search/${ss.id}` } : {}),
+          ...(frontendUrl ? { url: `${frontendUrl}/search/${ss._id}` } : {}),
         }));
         return {
           content: [
@@ -72,7 +77,9 @@ export function registerGetSavedSearch(
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...savedSearch.toJSON(),
+                ...translateSavedSearchDocumentToExternalSavedSearch(
+                  savedSearch,
+                ),
                 ...(frontendUrl
                   ? { url: `${frontendUrl}/search/${savedSearch._id}` }
                   : {}),

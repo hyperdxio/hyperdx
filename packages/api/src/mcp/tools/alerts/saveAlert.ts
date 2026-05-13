@@ -24,14 +24,11 @@ import {
 /**
  * Convert the flat MCP channel object into the discriminated-union
  * `AlertChannel` that the controller layer expects.
- *
- * By the time this is called, `validateSaveAlertInput` has already
- * ensured the channel-specific required fields are present.
  */
 function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
   return {
     type: 'webhook',
-    webhookId: ch.webhookId!,
+    webhookId: ch.webhookId,
   };
 }
 
@@ -62,11 +59,9 @@ export function registerSaveAlert(
         };
       }
 
-      // ── Determine if this is a create or update ──
-      const isUpdate = !!input.id;
-
-      // ── Validate ID for updates ──
-      if (isUpdate && !mongoose.Types.ObjectId.isValid(input.id!)) {
+      // ── Validate ID for updates (early return narrows input.id to string) ──
+      const alertId = input.id;
+      if (alertId != null && !mongoose.Types.ObjectId.isValid(alertId)) {
         return {
           isError: true,
           content: [{ type: 'text' as const, text: 'Invalid alert ID' }],
@@ -74,9 +69,6 @@ export function registerSaveAlert(
       }
 
       // Build the alert input matching the shape expected by controllers.
-      // The flat MCP channel must be narrowed into the discriminated union,
-      // and string literals must be cast to their enum counterparts.
-      // Runtime validation (above) has already verified correctness.
       const channel = toAlertChannel(input.channel);
       const source =
         input.source === 'tile' ? AlertSource.TILE : AlertSource.SAVED_SEARCH;
@@ -118,9 +110,9 @@ export function registerSaveAlert(
 
       const mongoUserId = new mongoose.Types.ObjectId(userId);
 
-      // ── Create or update ──
-      if (isUpdate) {
-        const updated = await updateAlert(input.id!, mongoTeamId, alertInput);
+      // ── Update existing alert ──
+      if (alertId) {
+        const updated = await updateAlert(alertId, mongoTeamId, alertInput);
         if (!updated) {
           return {
             isError: true,
@@ -144,8 +136,7 @@ export function registerSaveAlert(
         };
       }
 
-      // Cast to satisfy the compiler – runtime validation (above) has
-      // already ensured correctness.
+      // ── Create new alert ──
       const created = await createAlert(
         mongoTeamId,
         alertInput as Parameters<typeof createAlert>[1],
