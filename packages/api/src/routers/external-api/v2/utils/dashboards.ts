@@ -3,7 +3,10 @@ import {
   validateDashboardContainersStructure,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isHeatmapCompatibleSource,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
@@ -39,6 +42,7 @@ import {
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
+  ExternalDashboardHeatmapSelectItem,
   ExternalDashboardRawSqlTileConfig,
   externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
@@ -97,6 +101,21 @@ const DEFAULT_SELECT_ITEM: ExternalDashboardSelectItem = {
   aggFn: 'count',
   where: '',
 };
+
+const convertToExternalHeatmapSelectItem = (
+  item: Exclude<BuilderSavedChartConfig['select'][number], string>,
+): ExternalDashboardHeatmapSelectItem => ({
+  valueExpression: item.valueExpression,
+  // Use `!== undefined` (not truthy) to match the deserializer in
+  // convertToInternalTileConfig so empty-string round-trips do not
+  // silently drop fields.
+  ...(item.countExpression !== undefined
+    ? { countExpression: item.countExpression }
+    : {}),
+  ...(item.heatmapScaleType !== undefined
+    ? { heatmapScaleType: item.heatmapScaleType }
+    : {}),
+});
 
 const convertToExternalSelectItem = (
   item: Exclude<BuilderSavedChartConfig['select'][number], string>,
@@ -289,7 +308,51 @@ const convertToExternalTileChartConfig = (
         displayType: config.displayType,
         markdown: stringValueOrDefault(config.markdown, ''),
       };
-    case DisplayType.Heatmap:
+    case DisplayType.Heatmap: {
+      // The internal heatmap schema requires `select[0]` to be a builder
+      // item with a non-empty `valueExpression`. Legacy/corrupted Mongo
+      // docs that lack one would otherwise produce a tile that violates
+      // the external schema's `min(1)` rule. Returning undefined here
+      // would let the caller fall through to `defaultTileConfig`, which
+      // emits `displayType: 'line'`. A subsequent GET -> PUT round-trip
+      // through the API would then silently overwrite the heatmap with
+      // a line chart in Mongo (data loss). Instead, emit a
+      // heatmap-shaped placeholder with an empty valueExpression so the
+      // response preserves displayType, and a re-PUT surfaces the
+      // breakage as a clear validation error from the input schema's
+      // `min(1)` rule on `valueExpression` rather than silently
+      // downgrading the tile.
+      const item = Array.isArray(config.select) ? config.select[0] : undefined;
+      if (
+        item === undefined ||
+        typeof item === 'string' ||
+        !item.valueExpression
+      ) {
+        logger.warn(
+          { tileId: sourceId, hasItem: item !== undefined },
+          'Heatmap tile is missing select[0].valueExpression; emitting placeholder so callers do not silently downgrade to line',
+        );
+        const placeholderItem: ExternalDashboardHeatmapSelectItem = {
+          valueExpression: '',
+        };
+        return {
+          displayType: DisplayType.Heatmap,
+          sourceId,
+          select: [placeholderItem],
+          where: stringValueOrDefault(config.where, ''),
+          whereLanguage: config.whereLanguage ?? 'lucene',
+          numberFormat: config.numberFormat,
+        };
+      }
+      return {
+        displayType: DisplayType.Heatmap,
+        sourceId,
+        select: [convertToExternalHeatmapSelectItem(item)],
+        where: stringValueOrDefault(config.where, ''),
+        whereLanguage: config.whereLanguage ?? 'lucene',
+        numberFormat: config.numberFormat,
+      };
+    }
     case undefined:
       logger.error(
         { config },
@@ -559,6 +622,67 @@ export function convertToInternalTileConfig(
           name,
         } satisfies BuilderSavedChartConfig;
         break;
+      case 'heatmap': {
+        // Heatmap is builder-only and uses a single select item with
+        // its own shape: aggFn is the literal 'heatmap' on the external
+        // surface, mapped to the internal 'count' aggFn that the editor
+        // form persists, with the heatmap-specific countExpression /
+        // heatmapScaleType fields preserved on the select item. The
+        // row-level filter lives at the chart-config level (matching
+        // HeatmapSeriesEditor in the UI), not on the select item.
+        const item = externalConfig.select[0];
+        internalConfig = {
+          ...pick(externalConfig, ['numberFormat']),
+          displayType: DisplayType.Heatmap,
+          // Match the editor's `applyHeatmapDefaults` (in
+          // `packages/app/src/components/DBEditTimeChartForm/EditTimeChartForm.tsx`,
+          // search for `aggFn: 'count'`) for the two fields the editor
+          // always writes on the select item: `aggFn: 'count'` and
+          // `aggCondition: ''`.
+          //
+          // Where this path intentionally diverges from the editor:
+          //
+          //   - `aggConditionLanguage` is hardcoded `'lucene'`; the
+          //     editor uses `getStoredLanguage() ?? 'lucene'` (a user
+          //     session preference). For a UI-saved heatmap whose
+          //     author had `'sql'` selected, a GET -> PUT round-trip
+          //     through this converter will downgrade the persisted
+          //     value to `'lucene'`. The chart renderer does not read
+          //     `aggConditionLanguage` for heatmap tiles (heatmap has
+          //     no per-select where), so the change is invisible at
+          //     render time.
+          //
+          //   - The editor unconditionally writes
+          //     `numberFormat: { output: 'duration', factor: 0.001 }`
+          //     and `series.0.countExpression: 'count()'`. Both are
+          //     passed through verbatim from the external payload here
+          //     and left absent otherwise, so an API-built tile
+          //     renders without duration formatting unless the caller
+          //     asks for it.
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: item.valueExpression,
+              ...(item.countExpression !== undefined
+                ? { countExpression: item.countExpression }
+                : {}),
+              ...(item.heatmapScaleType !== undefined
+                ? { heatmapScaleType: item.heatmapScaleType }
+                : {}),
+            },
+          ],
+          source: externalConfig.sourceId,
+          // `where` is `z.string().max(10000).optional().default('')` so
+          // it is always a string post-parse; sibling pie/number/table
+          // arms write the unconditional value too.
+          where: externalConfig.where,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      }
       case 'search':
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),
@@ -620,6 +744,26 @@ export function convertToInternalTileConfig(
 // --------------------------------------------------------------------------------
 
 /**
+ * The shape of a source as returned from `getSources(team)` (and reused
+ * by every dashboard validation helper below). Re-exported so the
+ * router can pass a single fetched array into multiple helpers without
+ * pulling in `controllers/sources` for the type alone.
+ */
+export type SourceForValidation = Awaited<
+  ReturnType<typeof getSources>
+>[number];
+
+/** Fetches sources for a team. Re-exports the controller call so callers
+ * outside `controllers/sources` don't need a second import for the
+ * validation flow. The return type is the awaited shape of `getSources`
+ * (an array of Source documents) so callers can `await` it directly. */
+export async function fetchSourcesForValidation(
+  team: string | mongoose.Types.ObjectId,
+): Promise<SourceForValidation[]> {
+  return getSources(team.toString());
+}
+
+/**
  * Extract the tile's onClick config, if the tile uses the new "config" format
  * and the display type supports onClick (currently only table).
  */
@@ -630,11 +774,11 @@ function getTileOnClick(tile: ExternalDashboardTileWithId) {
 }
 
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
-export async function getMissingSources(
-  team: string | mongoose.Types.ObjectId,
+export function getMissingSources(
+  sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
   filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
-): Promise<string[]> {
+): string[] {
   const sourceIds = new Set<string>();
 
   for (const tile of tiles) {
@@ -665,11 +809,86 @@ export async function getMissingSources(
     }
   }
 
-  const existingSources = await getSources(team.toString());
   const existingSourceIds = new Set(
-    existingSources.map(source => source._id.toString()),
+    sources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/**
+ * Returns source IDs referenced by heatmap tiles that exist but are not
+ * compatible with heatmap rendering. The heatmap UI gates the source picker
+ * via the same `HEATMAP_ALLOWED_SOURCE_KINDS` set used here (see
+ * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
+ * UI and API gates move together.
+ */
+export function getHeatmapTilesWithIncompatibleSources(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const heatmapSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      !isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.displayType === 'heatmap' &&
+      tile.config.sourceId
+    ) {
+      heatmapSourceIds.add(tile.config.sourceId);
+    }
+  }
+  if (heatmapSourceIds.size === 0) return [];
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  return [...heatmapSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && !isHeatmapCompatibleSource(source);
+  });
+}
+
+/**
+ * For a PUT (update) request, return only the heatmap tiles that need
+ * to be re-validated against the source-kind gate. A heatmap tile that
+ * was already on the same source in the existing dashboard is kept as
+ * "unchanged" so the user can edit other parts of the dashboard
+ * without being blocked when the underlying source's `kind` was
+ * changed after the heatmap was originally accepted. New heatmap
+ * tiles, tiles whose displayType just changed to heatmap, and tiles
+ * whose `sourceId` changed all flow through the check.
+ */
+export function filterChangedHeatmapTiles(
+  requestTiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'],
+): ExternalDashboardTileWithId[] {
+  const existingTilesById = new Map<string, DashboardDocument['tiles'][number]>(
+    existingTiles.map(t => [t.id, t]),
+  );
+  return requestTiles.filter(tile => {
+    if (
+      !isConfigTile(tile) ||
+      isRawSqlExternalTileConfig(tile.config) ||
+      tile.config.displayType !== 'heatmap'
+    ) {
+      return false;
+    }
+    const existing = tile.id ? existingTilesById.get(tile.id) : undefined;
+    if (existing === undefined) {
+      // New heatmap tile: validate.
+      return true;
+    }
+    const existingConfig = existing.config;
+    if (isRawSqlSavedChartConfig(existingConfig)) {
+      // Existing tile was raw-SQL; user is converting to a heatmap.
+      return true;
+    }
+    if (existingConfig.displayType !== DisplayType.Heatmap) {
+      // displayType changed to heatmap.
+      return true;
+    }
+    // Existing tile was already a heatmap. Re-check only when the
+    // source changed.
+    return existingConfig.source?.toString() !== tile.config.sourceId;
+  });
 }
 
 /**
@@ -678,7 +897,7 @@ export async function getMissingSources(
  * only supports log and trace sources, so linking to a metric/session source
  * would produce a broken link at click time.
  *
- * Sources that don't exist are ignored here — getMissingSources handles that
+ * Sources that don't exist are ignored here, getMissingSources handles that
  * case separately with a clearer error message.
  */
 export async function getInvalidOnClickSearchSources(
@@ -813,7 +1032,7 @@ export function convertExternalTilesToInternal(
     if (isSeriesTile(tileWithId)) {
       return translateExternalChartToTileConfig(tileWithId);
     }
-    // Fallback for tiles with neither config nor series — treat as empty series tile.
+    // Fallback for tiles with neither config nor series; treat as empty series tile.
     // This shouldn't happen with valid input, but matches the previous behavior.
     return translateExternalChartToTileConfig(tileWithId as SeriesTile);
   });

@@ -1,6 +1,7 @@
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  alertNoteSchema,
   AlertThresholdType,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
@@ -320,6 +321,44 @@ const externalDashboardPieChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+// Heatmap charts use a dedicated select item schema because they carry the
+// heatmap-specific fields `countExpression` and `heatmapScaleType` from
+// `DerivedColumnSchema` in common-utils, and they do not expose the line/bar
+// `aggFn` or `alias`. The chart-level discriminator is
+// `displayType: 'heatmap'`; the heatmap aggregation function is fixed
+// internally (`count`) and `HeatmapSeriesEditor` does not render an alias
+// input. `valueExpression` must be non-empty to match the editor-form rule
+// (validateChartForm in
+// packages/app/src/components/ChartEditor/utils.ts: "Value expression is
+// required for heatmap charts").
+const externalDashboardHeatmapSelectItemSchema = z.object({
+  valueExpression: z.string().min(1).max(10000),
+  countExpression: z.string().max(10000).optional(),
+  heatmapScaleType: z.enum(['log', 'linear']).optional(),
+});
+
+export type ExternalDashboardHeatmapSelectItem = z.infer<
+  typeof externalDashboardHeatmapSelectItemSchema
+>;
+
+// Heatmap exposes the row-level filter at the chart-config level (matching
+// the editor: HeatmapSeriesEditor renders a single SearchWhereInput bound
+// to the top-level `where` / `whereLanguage`). There is no groupBy in the
+// heatmap UI (HeatmapSeriesEditor doesn't render one), so it is omitted
+// from the schema.
+const externalDashboardHeatmapChartConfigSchema = z.object({
+  displayType: z.literal('heatmap'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
+  where: z.string().max(10000).optional().default(''),
+  // `whereLanguageSchema` (an alias for `SearchConditionLanguageSchema`)
+  // is already `.optional()` internally; sibling chart-config schemas
+  // in this file (e.g. `externalDashboardSearchChartConfigSchema`) drop
+  // the redundant outer `.optional()`.
+  whereLanguage: whereLanguageSchema,
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
@@ -341,6 +380,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ],
@@ -543,6 +583,7 @@ export const alertSchema = z
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
+    note: alertNoteSchema,
   })
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertScheduleOffsetMinutes)
