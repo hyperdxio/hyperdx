@@ -388,6 +388,7 @@ export const buildAlertMessageTemplateHdxLink = (
       endTime,
       granularity,
       startTime,
+      tileId: alert.tileId,
     });
   }
 
