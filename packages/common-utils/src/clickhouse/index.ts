@@ -508,7 +508,7 @@ export abstract class BaseClickhouseClient {
     connectionId,
     externalClickhouseSettings,
   }: {
-    connectionId: string;
+    connectionId?: string;
     externalClickhouseSettings?: ClickHouseSettings;
   }): Promise<ClickHouseSettings> {
     const clickhouse_settings = structuredClone(
@@ -532,8 +532,13 @@ export abstract class BaseClickhouseClient {
       output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
     };
 
-    const metadata = getMetadata(this);
-    const serverSettings = await metadata.getSettings({ connectionId });
+    // Only look up server-specific optimization settings when we have a
+    // connectionId to scope the cache key. Without one the cache key would
+    // be "undefined.availableSettings", which can collide across different
+    // ClickHouse instances sharing the same MetadataCache singleton.
+    const serverSettings = connectionId
+      ? await getMetadata(this).getSettings({ connectionId })
+      : undefined;
 
     const applySettingIfAvailable = (name: string, value: string) => {
       if (!serverSettings || !serverSettings.has(name)) return;
