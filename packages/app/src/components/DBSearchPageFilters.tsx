@@ -1128,13 +1128,9 @@ const DBSearchPageFiltersComponent = ({
   const [showAllValues, setShowAllValues] = useState(true);
   const { size, startResize } = useResizable(16, 'left');
 
-  const { data: jsonColumns } = useJsonColumns({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
+  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
   const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
 
   const { data: me } = api.useMe();
@@ -1142,6 +1138,11 @@ const DBSearchPageFiltersComponent = ({
     ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
     : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
   const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
+
+  // Special case for live tail
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
+  );
 
   // 'all' mode: single combined query for keys + values
   const {
@@ -1174,7 +1175,8 @@ const DBSearchPageFiltersComponent = ({
       metadataMVs: sourceTableConnection.metadataMVs,
     },
     {
-      dateRange: chartConfig.dateRange,
+      dateRange,
+      timestampValueExpression: chartConfig.timestampValueExpression,
       enabled: filterMode === 'exact',
     },
   );
@@ -1248,11 +1250,6 @@ const DBSearchPageFiltersComponent = ({
     isFieldPinned,
     isSharedFieldPinned,
   ]);
-
-  // Special case for live tail
-  const [dateRange, setDateRange] = useState<[Date, Date]>(
-    chartConfig.dateRange,
-  );
 
   useEffect(() => {
     if (!isLive) {

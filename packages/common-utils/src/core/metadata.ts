@@ -12,7 +12,7 @@ import {
   JSDataType,
   tableExpr,
 } from '@/clickhouse';
-import { renderChartConfig } from '@/core/renderChartConfig';
+import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
@@ -349,6 +349,7 @@ export class Metadata {
     metricName,
     metadataMVs,
     dateRange,
+    timestampValueExpression,
   }: {
     databaseName: string;
     tableName: string;
@@ -358,6 +359,7 @@ export class Metadata {
     metricName?: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   }) {
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
@@ -365,11 +367,15 @@ export class Metadata {
         ? getAlignedDateRange(dateRange, metadataMVs.granularity)
         : undefined;
 
+    const dateRangeCacheSuffix =
+      dateRange && timestampValueExpression
+        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+        : '';
     const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
       : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${dateRangeCacheSuffix}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -445,9 +451,27 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
-    const where = metricName
-      ? chSql`WHERE MetricName=${{ String: metricName }}`
+    const timeFilterCondition =
+      dateRange && timestampValueExpression
+        ? await timeFilterExpr({
+            connectionId,
+            databaseName,
+            tableName,
+            dateRange,
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: true,
+            timestampValueExpression,
+            metadata: this,
+          })
+        : null;
+    const whereConditions: ChSql[] = [
+      ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
+      ...(timeFilterCondition ? [timeFilterCondition] : []),
+    ];
+    const where = whereConditions.length
+      ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
       : '';
+
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
       sql = chSql`
@@ -524,9 +548,13 @@ export class Metadata {
     tableName,
     connectionId,
     metricName,
+    dateRange,
+    timestampValueExpression,
   }: {
     column: string;
     maxKeys?: number;
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   } & TableConnection) {
     // HDX-2480 delete line below to reenable json filters
     return []; // Need to disable JSON keys for the time being.
@@ -537,8 +565,25 @@ export class Metadata {
     return this.cache.getOrFetch<{ key: string; chType: string }[]>(
       cacheKey,
       async () => {
-        const where = metricName
-          ? chSql`WHERE MetricName=${{ String: metricName }}`
+        const timeFilterCondition =
+          dateRange && timestampValueExpression
+            ? await timeFilterExpr({
+                connectionId,
+                databaseName,
+                tableName,
+                dateRange,
+                dateRangeStartInclusive: true,
+                dateRangeEndInclusive: true,
+                timestampValueExpression,
+                metadata: this,
+              })
+            : null;
+        const whereConditions: ChSql[] = [
+          ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
+          ...(timeFilterCondition ? [timeFilterCondition] : []),
+        ];
+        const where = whereConditions.length
+          ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
           : '';
         const sql = chSql`WITH all_paths AS
         (
@@ -592,15 +637,23 @@ export class Metadata {
     key,
     maxValues = 20,
     connectionId,
+    dateRange,
+    timestampValueExpression,
   }: {
     databaseName: string;
     tableName: string;
     column: string;
     key?: string;
     maxValues?: number;
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
     connectionId: string;
   }) {
-    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.values`;
+    const dateRangeCacheSuffix =
+      dateRange && timestampValueExpression
+        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+        : '';
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.${dateRangeCacheSuffix}.values`;
 
     const cachedValues = this.cache.get<string[]>(cacheKey);
 
@@ -608,13 +661,34 @@ export class Metadata {
       return cachedValues;
     }
 
+    const timeFilterCondition =
+      dateRange && timestampValueExpression
+        ? await timeFilterExpr({
+            connectionId,
+            databaseName,
+            tableName,
+            dateRange,
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: true,
+            timestampValueExpression,
+            metadata: this,
+          })
+        : null;
+    // `value != ''` stays first so existing behavior is preserved; source filters
+    // and time filter are appended via AND when provided.
+    const whereConditions: ChSql[] = [
+      chSql`value != ''`,
+      ...(timeFilterCondition ? [timeFilterCondition] : []),
+    ];
+    const where = chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`;
+
     const sql = key
       ? chSql`
       SELECT DISTINCT ${{
         Identifier: column,
       }}[${{ String: key }}] as value
       FROM ${tableExpr({ database: databaseName, table: tableName })}
-      WHERE value != ''
+      ${where}
       LIMIT ${{
         Int32: maxValues,
       }}
@@ -624,7 +698,7 @@ export class Metadata {
         Identifier: column,
       }} as value
       FROM ${tableExpr({ database: databaseName, table: tableName })}
-      WHERE value != ''
+      ${where}
       LIMIT ${{
         Int32: maxValues,
       }}
@@ -658,7 +732,11 @@ export class Metadata {
     metricName,
     metadataMVs,
     dateRange,
-  }: TableConnection & { dateRange?: [Date, Date] }) {
+    timestampValueExpression,
+  }: TableConnection & {
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+  }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -688,6 +766,8 @@ export class Metadata {
             column: column.name,
             connectionId,
             metricName,
+            dateRange,
+            timestampValueExpression,
           });
 
           for (const path of paths) {
@@ -708,6 +788,7 @@ export class Metadata {
           metricName,
           metadataMVs,
           dateRange,
+          timestampValueExpression,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);

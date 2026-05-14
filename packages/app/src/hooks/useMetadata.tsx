@@ -130,17 +130,19 @@ export function useMultipleAllFields(
   tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, ...queryOptions } = options ?? {};
+  const { dateRange, timestampValueExpression, ...queryOptions } =
+    options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
+      dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
+      timestampValueExpression,
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -149,7 +151,9 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields({ ...tc, dateRange })),
+        tableConnections.map(tc =>
+          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+        ),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -182,6 +186,7 @@ export function useAllFields(
   tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   return useMultipleAllFields(
