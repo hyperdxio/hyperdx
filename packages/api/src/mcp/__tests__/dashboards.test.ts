@@ -2091,7 +2091,14 @@ describe('MCP Dashboard Tools', () => {
       expect(prompt).not.toMatch(/exactly 1 select item with metricName/);
       const constraintsIdx = prompt.indexOf('== PER-TILE TYPE CONSTRAINTS ==');
       const constraintsBody = prompt.slice(constraintsIdx);
-      expect(constraintsBody).toMatch(/not currently exposed via the MCP/);
+      // The constraints section closes with an explicit note that builder
+      // tiles on a metric source are not reliable today, with a fallback
+      // recipe to raw SQL. Anchor on the phrase so a future diff that
+      // drops the gap-acknowledgement fails loudly.
+      expect(constraintsBody).toMatch(
+        /Authoring builder tiles on a metric source is not reliable/,
+      );
+      expect(constraintsBody).toMatch(/MCP select-item shape does not carry/);
     });
 
     it('documents table-tile onClick linking features', () => {
@@ -2316,11 +2323,13 @@ describe('MCP Dashboard Tools', () => {
       const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
       const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
       const checklistBody = prompt.slice(checklistIdx, adaptIdx);
-      // Twelve rules: the original ten plus VALIDATE EVERY TILE AFTER SAVE
-      // (rule 11) and NO TITLE-RECAP MARKDOWN TILE (rule 12). Both came out
-      // of the May verification pass after watching Claude reliably ignore
-      // the soft "should" formulations.
-      for (let i = 1; i <= 12; i++) {
+      // Thirteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
+      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), and NO
+      // TITLE-RECAP MARKDOWN TILE (rule 13). Each came out of a live
+      // verification pass after watching Claude reliably ignore the soft
+      // "should" formulations or hit a schema gap the earlier checklist
+      // did not call out.
+      for (let i = 1; i <= 13; i++) {
         expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
       expect(prompt).toContain('ADAPT, DO NOT COPY');
@@ -2333,6 +2342,13 @@ describe('MCP Dashboard Tools', () => {
       // pass at this dropped aliases on number tiles because it read rule 2
       // as table-specific. The stronger phrasing pulls them in.
       expect(checklistBody).toMatch(/ALIAS EVERY SELECT ITEM/);
+      // Rule 3 calls out the schema gap on groupBy: the chart config takes
+      // a single expression string with no alias field, so a table grouped
+      // by SpanAttributes['http.route'] renders arrayElement(...) as the
+      // column header. Naming the limit explicitly lets Claude pick a
+      // top-level column (SpanName, ServiceName) instead of grouping on
+      // the raw Map expression.
+      expect(checklistBody).toMatch(/GROUP BY HAS NO ALIAS HOOK/);
       // Rule 10 must be a hard requirement at 5+ tiles, not a soft hint.
       // Without the imperative, Claude built five dashboards averaging ten
       // tiles each with zero containers.

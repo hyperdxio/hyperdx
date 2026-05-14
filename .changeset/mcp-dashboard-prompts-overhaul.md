@@ -4,7 +4,7 @@
 
 feat(mcp): rewrite dashboard authoring prompts and expose `filters` on `hyperdx_save_dashboard`
 
-The `create_dashboard` prompt now leads with a ten-rule design checklist (RED columns with aliases, per-series `numberFormat` for durations, `groupByColumnsOnLeft` for inventory tables, dashboard-level filters instead of per-tile `where` literals, one-metric-per-tile for metric sources, containers and tabs for grouping). The wall-of-JSON canonical example is gone; the four `dashboard_examples` patterns carry the concrete shapes.
+The `create_dashboard` prompt now leads with a design checklist (alias every select item including number tiles, schema gap on `groupBy` so tables don't render `arrayElement(SpanAttributes, '...')` as the column header, RED columns with aliases, per-series `numberFormat` for durations, `groupByColumnsOnLeft` for inventory tables, dashboard-level filters instead of per-tile `where` literals, one-metric-per-tile for metric sources, required containers at five or more tiles, post-save validation of every tile, no title-recap markdown). The wall-of-JSON canonical example is gone; the `dashboard_examples` patterns carry the concrete shapes.
 
 The `dashboard_examples` set is replaced with four verified patterns (`service_inventory`, `service_detail`, `log_analytics`, `backend_dependencies`) plus the existing `infrastructure_sql`. Each non-SQL example leads with a "When to use" header and a "Why this shape" note so the model picks by intent, not by surface keyword match. Examples were built and rendered on a live dev stack before landing.
 

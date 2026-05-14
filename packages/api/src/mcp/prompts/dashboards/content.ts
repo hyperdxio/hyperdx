@@ -89,21 +89,23 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
    Number tile, wrong:      select: [{ aggFn: "count" }]
    Quantile (number/table): select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95 Duration" }]
 
-3. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
+3. GROUP BY HAS NO ALIAS HOOK. The chart config's groupBy is a single expression string and the renderer uses it verbatim as the column header (tables) and as the raw column name everywhere else (CSV export, tooltips, orderBy references, onClick template references). Grouping a table by SpanAttributes['http.route'] produces a column header that reads literally as arrayElement(SpanAttributes, 'http.route'). When a top-level column carries the same semantic, prefer it: SpanName for operation, ServiceName for service, SeverityText for log severity. When the dimension exists only as a Map attribute and the column header matters, drop to a raw SQL tile (configType: "sql") and write the column with AS alias. Line, stacked_bar, and pie tiles legend by the value not the column name, so the issue is invisible on the chart itself but still bites CSV export and onClick template references.
 
-4. RED COLUMNS FOR SERVICE / ENDPOINT TABLES. Request rate (count), Error rate (count with where: "StatusCode:STATUS_CODE_ERROR"), Duration (quantile P95 on the Duration column). Three columns, all aliased.
+4. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
 
-5. PER-SERIES NUMBER FORMAT FOR DURATIONS. Put numberFormat on each select item that needs special rendering. Example: { output: "duration", factor: 0.000000001 } on a Duration percentile. NEVER set chart-level numberFormat for tables that mix counts and durations; the count columns will render as 0:00:00.
+5. RED COLUMNS FOR SERVICE / ENDPOINT TABLES. Request rate (count), Error rate (count with where: "StatusCode:STATUS_CODE_ERROR"), Duration (quantile P95 on the Duration column). Three columns, all aliased.
 
-6. LINE CHARTS CAN PASS UP TO 20 SELECT ITEMS. Plot related metrics together (p50, p95, p99 on one chart). Each series can carry its own numberFormat.
+6. PER-SERIES NUMBER FORMAT FOR DURATIONS. Put numberFormat on each select item that needs special rendering. Example: { output: "duration", factor: 0.000000001 } on a Duration percentile. NEVER set chart-level numberFormat for tables that mix counts and durations; the count columns will render as 0:00:00.
 
-7. HEATMAPS FOR DISTRIBUTIONS. Trace duration buckets, payload size buckets. Trace sources only. Set numberFormat: { output: "duration", factor: 0.000000001 } on the chart config so the y-axis reads in human time.
+7. LINE CHARTS CAN PASS UP TO 20 SELECT ITEMS. Plot related metrics together (p50, p95, p99 on one chart). Each series can carry its own numberFormat.
 
-8. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
+8. HEATMAPS FOR DISTRIBUTIONS. Trace duration buckets, payload size buckets. Trace sources only. Set numberFormat: { output: "duration", factor: 0.000000001 } on the chart config so the y-axis reads in human time.
 
-9. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
+9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
 
-10. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
+10. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
+
+11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
 
    Concrete shape (copy this directly into the save payload):
      containers: [
@@ -118,9 +120,9 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
      ]
    Use tabs when one container needs to show different views of the same data (Throughput / Latency / Errors over time, for instance); the tab bar appears when a container has two or more tabs declared.
 
-11. VALIDATE EVERY TILE AFTER SAVE. After hyperdx_save_dashboard, call hyperdx_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
+12. VALIDATE EVERY TILE AFTER SAVE. After hyperdx_save_dashboard, call hyperdx_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
 
-12. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
+13. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
 
 == ADAPT, DO NOT COPY ==
 
