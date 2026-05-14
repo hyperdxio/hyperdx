@@ -1283,36 +1283,32 @@ export class Metadata {
       };
 
       const batchResults = await this.cache.getOrFetch(cacheKey, async () => {
-        try {
-          const sql = chSql`
-              SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
-              FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
-              WHERE (ColumnIdentifier, Key) IN (${tupleParams})
-                AND Value != ''
-                ${timeFilter}
-              GROUP BY ColumnIdentifier, Key, Value
-              ORDER BY ColumnIdentifier, Key, total_count DESC
-            `;
+        const sql = chSql`
+            SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
+            FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+            WHERE (ColumnIdentifier, Key) IN (${tupleParams})
+              AND Value != ''
+              ${timeFilter}
+            GROUP BY ColumnIdentifier, Key, Value
+            ORDER BY ColumnIdentifier, Key, total_count DESC
+            LIMIT ${{ Int32: maxValuesPerKey }} BY ColumnIdentifier, Key
+          `;
 
-          return await this.clickhouseClient
-            .query<'JSON'>({
-              query: sql.sql,
-              query_params: sql.params,
-              connectionId,
-              clickhouse_settings: {
-                ...this.getClickHouseSettings(),
-                timeout_overflow_mode: 'break',
-                max_execution_time: 15,
-                max_rows_to_read: '0',
-              },
-              abort_signal: signal,
-            })
-            .then(res => res.json<BatchRow>())
-            .then(d => d.data);
-        } catch (e) {
-          console.warn('getAllKeyValues rollup query failed', e);
-          return [];
-        }
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              max_rows_to_read: '0',
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<BatchRow>())
+          .then(d => d.data);
       });
 
       // Group results by (ColumnIdentifier, Key) and apply per-key limit
@@ -1342,6 +1338,7 @@ export class Metadata {
             tableName,
             column: p.column,
             key: p.mapKey,
+            maxValues: maxValuesPerKey,
             connectionId,
           });
           return { key: p.keyExpression, value: fallback };
@@ -1357,6 +1354,7 @@ export class Metadata {
           tableName,
           column: p.column,
           key: p.mapKey,
+          maxValues: maxValuesPerKey,
           connectionId,
         });
         return { key: p.keyExpression, value };
@@ -1413,11 +1411,10 @@ export class Metadata {
       };
 
       const rows = await this.cache.getOrFetch(cacheKey, async () => {
-        try {
-          const limitClause = maxKeys
-            ? chSql`LIMIT ${{ Int32: maxKeys }}`
-            : chSql``;
-          const sql = chSql`
+        const limitClause = maxKeys
+          ? chSql`LIMIT ${{ Int32: maxKeys }}`
+          : chSql``;
+        const sql = chSql`
             SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) AS Values
             FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
             WHERE Value != ''
@@ -1427,25 +1424,21 @@ export class Metadata {
             ${limitClause}
           `;
 
-          return await this.clickhouseClient
-            .query<'JSON'>({
-              query: sql.sql,
-              query_params: sql.params,
-              connectionId,
-              clickhouse_settings: {
-                ...this.getClickHouseSettings(),
-                timeout_overflow_mode: 'break',
-                max_execution_time: 30,
-                max_rows_to_read: '0',
-              },
-              abort_signal: signal,
-            })
-            .then(res => res.json<RollupRow>())
-            .then(d => d.data);
-        } catch (e) {
-          console.warn('getAllFieldsAndValues rollup query failed', e);
-          return [];
-        }
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 30,
+              max_rows_to_read: '0',
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<RollupRow>())
+          .then(d => d.data);
       });
 
       if (rows.length > 0) {

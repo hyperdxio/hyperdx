@@ -1328,6 +1328,7 @@ const DBSearchPageFiltersComponent = ({
             tableName: chartConfig.from.tableName,
             connectionId: chartConfig.connection,
             keyExpressions: [key],
+            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
             metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
           });
