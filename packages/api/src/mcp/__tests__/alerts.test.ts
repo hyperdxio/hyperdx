@@ -63,7 +63,7 @@ describe('MCP Alert Tools', () => {
   });
 
   afterEach(async () => {
-    await client.close();
+    await client?.close();
     await server.clearDBs();
   });
 
@@ -191,16 +191,11 @@ describe('MCP Alert Tools', () => {
       it('should not return alerts from another team', async () => {
         await createTestAlert({ name: 'Team Scoped' });
 
-        // Create a new team/user with its own client
-        const result2 = await getLoggedInAgent(server, {
-          email: 'other-team-user@test.com',
-          password: 'TacoCat!2#4X',
-        });
-        const context2: McpContext = {
-          teamId: result2.team._id.toString(),
-          userId: result2.user._id.toString(),
+        const otherTeamContext: McpContext = {
+          teamId: '000000000000000000000099',
+          userId: user._id.toString(),
         };
-        const client2 = await createTestClient(context2);
+        const client2 = await createTestClient(otherTeamContext);
 
         // List should be empty for the other team
         const listResult = await callTool(client2, 'hyperdx_get_alert', {});
@@ -253,15 +248,11 @@ describe('MCP Alert Tools', () => {
       it('should not return alert from another team by id', async () => {
         const alert = await createTestAlert({ name: 'Team Scoped' });
 
-        const result2 = await getLoggedInAgent(server, {
-          email: 'other-team-user@test.com',
-          password: 'TacoCat!2#4X',
-        });
-        const context2: McpContext = {
-          teamId: result2.team._id.toString(),
-          userId: result2.user._id.toString(),
+        const otherTeamContext: McpContext = {
+          teamId: '000000000000000000000099',
+          userId: user._id.toString(),
         };
-        const client2 = await createTestClient(context2);
+        const client2 = await createTestClient(otherTeamContext);
 
         const getResult = await callTool(client2, 'hyperdx_get_alert', {
           id: alert._id.toString(),
@@ -612,15 +603,11 @@ describe('MCP Alert Tools', () => {
         url: 'https://example.com/hook',
       });
 
-      const result2 = await getLoggedInAgent(server, {
-        email: 'other-team-user@test.com',
-        password: 'TacoCat!2#4X',
-      });
-      const context2: McpContext = {
-        teamId: result2.team._id.toString(),
-        userId: result2.user._id.toString(),
+      const otherTeamContext: McpContext = {
+        teamId: '000000000000000000000099',
+        userId: user._id.toString(),
       };
-      const client2 = await createTestClient(context2);
+      const client2 = await createTestClient(otherTeamContext);
 
       const listResult = await callTool(client2, 'hyperdx_get_webhook', {});
       const output = JSON.parse(getFirstText(listResult));

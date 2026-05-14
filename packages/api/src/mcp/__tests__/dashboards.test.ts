@@ -62,7 +62,7 @@ describe('MCP Dashboard Tools', () => {
   });
 
   afterEach(async () => {
-    await client.close();
+    await client?.close();
     await server.clearDBs();
   });
 

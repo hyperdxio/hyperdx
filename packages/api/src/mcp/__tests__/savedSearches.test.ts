@@ -60,7 +60,7 @@ describe('MCP Saved Search Tools', () => {
   });
 
   afterEach(async () => {
-    await client.close();
+    await client?.close();
     await server.clearDBs();
   });
 
