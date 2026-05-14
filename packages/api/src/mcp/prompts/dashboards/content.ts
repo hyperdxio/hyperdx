@@ -60,7 +60,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
   search       Browse raw log/event rows (error logs, recent traces).
-  markdown     Dashboard notes, section headers, or documentation.
+  markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, use h: 1, plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
   Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie).
@@ -82,7 +82,7 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
-2. ALIAS EVERY AGGREGATION. Set alias on each select item ("Requests", "Errors", "P95 Duration"). Without alias, table headers read like raw expressions.
+2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. Without alias, the result column is named like the raw expression ("quantile(0.95)(Duration)"), which reads ugly in headers and breaks any downstream onClick template that references a column name. Number tiles look fine in the UI without an alias, but the underlying query still emits a raw-expression column name; the alias is required for export, for orderBy, for consistency, and because the renderer can flip behavior on this. Treat "no alias" as a save-time bug.
 
 3. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
 
@@ -98,11 +98,19 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 9. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
-10. GROUP RELATED TILES INTO CONTAINERS. A container holds tiles that share a theme (Overview / Performance / Errors). Set containers: [{ id, title, collapsed }] at the top level and reference container ids from each tile via containerId. Use tabs when the same container needs to show different views of the same data; the tab bar appears when a container has two or more tabs.
+10. GROUP RELATED TILES INTO CONTAINERS. A container holds tiles that share a theme (Overview / Performance / Errors). Set containers: [{ id, title, collapsed }] at the top level and reference container ids from each tile via containerId. Use tabs when the same container needs to show different views of the same data; the tab bar appears when a container has two or more tabs. REQUIRED at five or more tiles. An ungrouped wall of tiles is a readability failure; even three named containers ("KPIs", "Trends", "Errors") turn a flat dashboard into a scannable one. Containers are the right way to introduce structure; markdown tiles for section labels are not.
+
+11. VALIDATE EVERY TILE AFTER SAVE. After hyperdx_save_dashboard, call hyperdx_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
+
+12. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
 
 == ADAPT, DO NOT COPY ==
 
 The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with hyperdx_list_sources before reusing literals.
+
+== DEFAULT TIME WINDOW ==
+
+Dashboards open with a 15-minute default window. There is no dashboard-level field to change this default today; it is a user-side control in the header. For overview / starter dashboards on intermittent or batch-ingested data, the 15-minute window may show empty tiles even when the queries are correct. After save, tell the user the default is 15 minutes and that widening to 1h or 24h is the first thing to try if a tile looks empty. Do NOT compensate by hardcoding a wider time range into individual tiles; that desynchronizes them from the dashboard time picker.
 
 == COMMON MISTAKES TO AVOID ==
 
@@ -797,6 +805,21 @@ Used in the "where" field of select items and search tiles.
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
 This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
+GOTCHA: Lucene comparison operators (>=, >, <=, <) and trailing wildcards (*) on dotted attribute paths parse and save without error but fail silently at query time. The translator treats the dotted path as a literal column rather than mapping it to SpanAttributes['path']. Symptoms: a tile saves fine, hyperdx_query_tile returns an error, and the dashboard renders with "Error loading chart" on that tile.
+
+  Breaks:   http.status_code:>=500
+  Breaks:   http.route:*
+  Works:    http.status_code:200            (simple equality on a dotted path is fine)
+  Works:    Duration:>1000000000            (top-level numeric column with range)
+
+Workaround: switch the where to SQL with bracket access. Map column values are stored as strings, so quote the comparison value.
+
+  whereLanguage: "sql"
+  where: "SpanAttributes['http.status_code'] >= '500'"
+
+  whereLanguage: "sql"
+  where: "SpanAttributes['http.route'] != ''"
+
 == SQL FILTER SYNTAX ==
 
 Alternative to Lucene. Set whereLanguage: "sql" when using SQL syntax.
@@ -866,7 +889,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   search       No select items (select is a column list string). where is the filter.
   markdown     No select items. Set markdown field with content.
 
-NOTE: Authoring tiles on a metric source is not currently exposed via the MCP schema. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs. If you need infrastructure metrics, use a raw SQL tile (configType: "sql") instead.
+NOTE: Authoring builder tiles on a metric source is not reliable today. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs, and a save with a metric sourceId may render in the UI as "Both table name and UUID are empty" even though the save itself succeeded. For metrics, use a raw SQL tile (configType: "sql") with explicit table reference. The standard tables that back a metric source are otel_metrics_gauge, otel_metrics_sum, and otel_metrics_histogram; hyperdx_list_sources returns the metric source's metricTables map so you know which table holds which metric kind. Discovery: metric source schemas today do NOT publish mapAttributeKeys for ResourceAttributes / Attributes the way log and trace sources do, so attribute keys must be discovered by sampling (SELECT DISTINCT mapKeys(Attributes) FROM ...).
 
 == NUMBER FORMAT ==
 
@@ -992,6 +1015,26 @@ Validation rules the server enforces:
   - For type="dashboard", target.id must reference an existing dashboard owned by the same team. Missing dashboards are rejected with: "Could not find the following onClick dashboard IDs: ..."
 
 When pairing a service-inventory table with a service-detail dashboard, use target.mode: "template" with the partner dashboard's exact name as the constant template (e.g. "Service Detail"). The clicked row's groupBy column (ServiceName) carries through as a filter expression. See the "service_inventory" example in dashboard_examples for the canonical wiring.
+
+== GROUPBY ALIASES AND ROW-CLICK TEMPLATES ==
+
+Builder table tiles do NOT currently expose a groupBy alias / "AS" field. When the groupBy expression is a plain column (ServiceName, SpanName, StatusCode, SeverityText), the result column comes back with that same name, so {{ServiceName}} in an onClick template just works.
+
+When the groupBy expression is a map attribute (SpanAttributes['http.route'], ResourceAttributes['deployment.environment']), the result column name is the raw expression (arrayElement(SpanAttributes, 'http.route') or similar), which is not a valid Handlebars identifier and cannot be referenced as {{Route}} or {{http.route}}.
+
+Workaround: when you need a row-click drill-down from a map-attribute groupBy, author the tile as raw SQL (configType: "sql", displayType: "table") with an explicit AS alias on the groupBy column. Reference that alias from the onClick template.
+
+  Builder, breaks {{Route}}:
+    groupBy: "SpanAttributes['http.route']"   -- column comes back without a clean name
+
+  Raw SQL, alias the column:
+    configType: "sql", displayType: "table",
+    sqlTemplate: "SELECT SpanAttributes['http.route'] AS Route, count() AS Requests FROM otel_traces WHERE $__timeFilter(TimestampTime) AND $__filters GROUP BY Route ORDER BY Requests DESC LIMIT 100"
+    onClick: { type: "search", target: { mode: "id", id: "<trace-source-id>" },
+               whereLanguage: "sql",
+               filters: [{ kind: "expressionTemplate", expression: "SpanAttributes['http.route']", template: "{{Route}}" }] }
+
+For onClick drill-down on a plain top-level column (ServiceName), no workaround needed; use the builder.
 
 == CONTAINERS AND TABS ==
 
@@ -1119,7 +1162,7 @@ Example: find top patterns for production services over the last 4 hours:
    The dashboard filter applies globally; tiles do not need the literal.
 
 8. Forgetting to validate tiles after saving
-   Always call hyperdx_query_tile after hyperdx_save_dashboard to verify each tile returns data.
+   Always call hyperdx_query_tile on EVERY tile after hyperdx_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
 
 9. Using sourceId with SQL tiles or connectionId with builder tiles
    Builder tiles (line, table, etc.) use sourceId.
@@ -1141,27 +1184,54 @@ Example: find top patterns for production services over the last 4 hours:
     Correct: select: [{ valueExpression: "Duration" }]
     Heatmap requires a non-empty numeric column or expression to bucket.
 
-11. onClick on a non-table tile
+13. Missing alias on a select item
+    Wrong:   select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration" }]
+    Correct: select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }]
+    Every select entry MUST carry an alias. This applies to number tiles too, not just tables. Without alias the result column is named after the raw expression, which breaks orderBy references, breaks onClick template lookups, and shows ugly headers on tables. Number tiles render the value with the tile name in the UI, so the missing alias is invisible there, but the underlying query still emits a raw-expression column name. Treat "no alias" as a save-time bug, not a style nit.
+
+14. Lucene comparison or wildcard on a dotted map-attribute path
+    Wrong:   where: "http.status_code:>=500"      (whereLanguage: "lucene")
+    Wrong:   where: "http.route:*"                (whereLanguage: "lucene")
+    Correct: where: "SpanAttributes['http.status_code'] >= '500'"   (whereLanguage: "sql")
+    Correct: where: "SpanAttributes['http.route'] != ''"            (whereLanguage: "sql")
+    Lucene parses these patterns happily at save time but the translator does not map http.status_code to SpanAttributes['http.status_code'] when an operator or wildcard is in play. The tile saves clean and fails at render with "Error loading chart". For comparison (>=, >, <=, <) and wildcard (*) on map-attribute paths, switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
+
+15. onClick on a non-table tile
     Only table tiles (builder displayType: "table" and raw-SQL configType: "sql"
     with displayType: "table") support config.onClick. Other displayTypes
     ignore the field. Putting onClick on a line/number/pie/heatmap/search/markdown
     tile won't error but won't do anything either.
 
-12. onClick targeting a non-log/trace source for type="search"
+16. onClick targeting a non-log/trace source for type="search"
     The /search page only renders log and trace sources. Targeting a
     metric or session source is rejected at save time with:
     "The following onClick search source IDs are not log or trace sources: ..."
 
-13. Missing whereLanguage on onClick
+17. Missing whereLanguage on onClick
     whereLanguage is technically optional, but should still be set to
     "lucene" or "sql" so the destination knows how to parse rendered
     whereTemplate / filter values. Leaving it unset can cause the
     destination to fall back to its own default.
 
-14. Templating against a column that isn't in the table's select/groupBy
+18. Templating against a column that isn't in the table's select/groupBy
     Templates like "{{ServiceName}}" pull from the clicked row's columns.
     If the column doesn't appear in the table query, the template renders
     as empty at click time and the destination opens unfiltered. Match
     {{column}} names to columns produced by the table (group-by columns
-    and aliases both work).`;
+    and aliases both work). For map-attribute groupBys, see GROUPBY ALIASES
+    AND ROW-CLICK TEMPLATES; builder tiles do not alias map-attribute
+    columns cleanly, so you need a raw SQL tile with explicit AS.
+
+== REFERENCES ==
+
+External docs for the syntax and macros referenced in this guide:
+
+  Lucene search syntax (the "where" field with whereLanguage: "lucene"):
+    https://clickhouse.com/docs/use-cases/observability/clickstack/search
+
+  ClickHouse SQL functions (the "where" field with whereLanguage: "sql", and any sqlTemplate body):
+    https://clickhouse.com/docs/sql-reference
+
+  Dashboard time / filter macros used in raw-SQL tile sqlTemplate ($__timeFilter, $__timeFilter_ms, $__timeInterval, $__timeInterval_ms, $__filters):
+    https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations`;
 }

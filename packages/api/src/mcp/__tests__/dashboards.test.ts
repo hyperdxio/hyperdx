@@ -2132,6 +2132,100 @@ describe('MCP Dashboard Tools', () => {
       expect(section.toLowerCase()).toContain("isn't in the table");
     });
 
+    it('documents the missing-alias mistake explicitly', () => {
+      // Claude built three number tiles without alias on the quantile()
+      // select item, even though rule 2 of the design checklist says
+      // ALIAS EVERY SELECT ITEM. Spelling out the mistake under COMMON
+      // MISTAKES gives the model a second touchpoint to catch it.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== COMMON MISTAKES ==');
+      const section = prompt.slice(idx);
+      expect(section).toMatch(/Missing alias on a select item/);
+      // Must call out that number tiles need the alias too; this is the
+      // exact case Claude got wrong.
+      expect(section).toMatch(/number tiles too/);
+    });
+
+    it('documents the Lucene comparison/wildcard gotcha on map attributes', () => {
+      // Lucene parses http.status_code:>=500 happily but the translator
+      // doesn't map dotted paths to bracket access when an operator is
+      // in play. The tile saves, query_tile errors, and the dashboard
+      // shows "Error loading chart" with no explanation.
+      const prompt = buildQueryGuidePrompt();
+      const luceneIdx = prompt.indexOf('== LUCENE FILTER SYNTAX ==');
+      const luceneBody = prompt.slice(luceneIdx);
+      // The gotcha block is in the Lucene section.
+      expect(luceneBody).toMatch(
+        /Lucene comparison operators .* fail silently/,
+      );
+      expect(luceneBody).toMatch(/http\.status_code:>=500/);
+      expect(luceneBody).toMatch(/switch the where to SQL with bracket access/);
+
+      // Also a top-level entry in COMMON MISTAKES for discoverability.
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Lucene comparison or wildcard on a dotted map-attribute path/,
+      );
+    });
+
+    it('documents the groupBy alias workaround for map-attribute drill-downs', () => {
+      // Builder tiles don't expose a groupBy alias today; map-attribute
+      // groupBys produce result columns named like the raw expression,
+      // which onClick template lookups can't reference. The workaround
+      // (author the tile as raw SQL with AS) needs to be findable.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf(
+        '== GROUPBY ALIASES AND ROW-CLICK TEMPLATES ==',
+      );
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      expect(section).toMatch(/do NOT currently expose a groupBy alias/);
+      expect(section).toMatch(/configType: "sql", displayType: "table"/);
+      expect(section).toMatch(/AS Route/);
+    });
+
+    it('points at ClickStack and ClickHouse docs in REFERENCES', () => {
+      // Without external doc links, the LLM has to guess at Lucene
+      // operators and ClickHouse function names. Anchor the canonical
+      // URLs in the prompt so it can cite them and so a future doc
+      // restructure can be caught here.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== REFERENCES ==');
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      expect(section).toContain(
+        'https://clickhouse.com/docs/use-cases/observability/clickstack/search',
+      );
+      expect(section).toContain('https://clickhouse.com/docs/sql-reference');
+      expect(section).toContain(
+        'https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations',
+      );
+    });
+
+    it('strengthens the validate-every-tile rule under common mistakes', () => {
+      // Saving validates input shape, not query semantics. The prompt
+      // has to push for query_tile on every tile, not "at least one".
+      const prompt = buildQueryGuidePrompt();
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const section = prompt.slice(mistakesIdx);
+      expect(section).toMatch(
+        /on EVERY tile after hyperdx_save_dashboard, not just one/,
+      );
+    });
+
+    it('flags the metric source builder gap', () => {
+      // Builder tiles on metric sources currently save but render with
+      // "Both table name and UUID are empty". Claude went 100% raw SQL
+      // across 21 metric tiles for this reason; the prompt has to make
+      // the workaround obvious so the model doesn't try the builder
+      // first and fail silently.
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).toMatch(/Both table name and UUID are empty/);
+      expect(prompt).toMatch(/use a raw SQL tile/);
+      expect(prompt).toMatch(/otel_metrics_gauge/);
+    });
+
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
       const prompt = buildQueryGuidePrompt();
       expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
@@ -2187,7 +2281,11 @@ describe('MCP Dashboard Tools', () => {
       const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
       const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
       const checklistBody = prompt.slice(checklistIdx, adaptIdx);
-      for (let i = 1; i <= 10; i++) {
+      // Twelve rules: the original ten plus VALIDATE EVERY TILE AFTER SAVE
+      // (rule 11) and NO TITLE-RECAP MARKDOWN TILE (rule 12). Both came out
+      // of the May verification pass after watching Claude reliably ignore
+      // the soft "should" formulations.
+      for (let i = 1; i <= 12; i++) {
         expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
       expect(prompt).toContain('ADAPT, DO NOT COPY');
@@ -2195,6 +2293,53 @@ describe('MCP Dashboard Tools', () => {
       // agent that ignores this can silently drop tiles / filters / containers
       // on a subsequent save call.
       expect(checklistBody).toMatch(/UPDATE IS REPLACE, NOT MERGE/);
+      // Rule 2 must cover EVERY select item (including number tiles), not
+      // just aggregations on tables. The phrasing matters: Claude's first
+      // pass at this dropped aliases on number tiles because it read rule 2
+      // as table-specific. The stronger phrasing pulls them in.
+      expect(checklistBody).toMatch(/ALIAS EVERY SELECT ITEM/);
+      // Rule 10 must be a hard requirement at 5+ tiles, not a soft hint.
+      // Without the imperative, Claude built five dashboards averaging ten
+      // tiles each with zero containers.
+      expect(checklistBody).toMatch(/REQUIRED at five or more tiles/);
+      // Rule 11 + 12 close the post-save loop and the title-recap markdown
+      // habit Claude landed on every starter dashboard.
+      expect(checklistBody).toMatch(/VALIDATE EVERY TILE AFTER SAVE/);
+      expect(checklistBody).toMatch(/NO TITLE-RECAP MARKDOWN TILE/);
+    });
+
+    it('warns explicitly against title-recap markdown tiles in the tile type guide', () => {
+      // The TILE TYPE GUIDE entry for markdown is where a model reading
+      // top-down first decides whether to add an "About this dashboard"
+      // tile. The entry has to actively discourage it, not just describe
+      // the tile type, because every model trained on dashboard examples
+      // reaches for a title tile by default.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const guideIdx = prompt.indexOf('== TILE TYPE GUIDE ==');
+      const guideEnd = prompt.indexOf('\n== ', guideIdx + 1);
+      const guideBody = prompt.slice(guideIdx, guideEnd);
+      // The markdown line must say "skip" / "sparingly" / "do not" /
+      // "no headings", not just "use for notes". Look for the most
+      // load-bearing phrase.
+      expect(guideBody).toMatch(/Skip markdown tiles for starter dashboards/);
+    });
+
+    it('explains the 15-minute default time window UX trap', () => {
+      // Empty tiles on a fresh dashboard are usually a time-window problem,
+      // not a query problem. The prompt has to surface this so Claude
+      // tells the user (rather than silently padding individual tile time
+      // ranges to make a 24-hour view fit a 15-minute dashboard frame).
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      expect(prompt).toMatch(/DEFAULT TIME WINDOW/);
+      expect(prompt).toMatch(/15-minute default window/);
     });
 
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
