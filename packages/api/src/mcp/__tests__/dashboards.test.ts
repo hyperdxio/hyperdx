@@ -2294,6 +2294,30 @@ describe('MCP Dashboard Tools', () => {
       expect(single).not.toContain('== LOG ANALYTICS ==');
     });
 
+    it('wires service_inventory row-click into the service_detail dashboard', () => {
+      // The service_inventory pattern's main RED table should carry an
+      // onClick that drills into the partner "Service Detail" dashboard
+      // by name template, with a ServiceName filter rendered from the
+      // clicked row. Without this wiring, an agent following the canonical
+      // workflow would have to invent the drill-down each time and
+      // sometimes get the field shape wrong.
+      const single = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+        'service_inventory',
+      );
+      // The onClick target points at the partner pattern by name.
+      expect(single).toContain(
+        'target: { mode: "template", template: "Service Detail" }',
+      );
+      // The onClick filter expression matches service_detail's filter expression,
+      // so the destination dashboard's "Service" dropdown auto-populates.
+      expect(single).toContain('expression: "ServiceName"');
+      // The template references the row's groupBy column (ServiceName).
+      expect(single).toContain('template: "{{ServiceName}}"');
+    });
+
     it('exposes a drilldown_links example pattern with onClick wiring', () => {
       // Drew's drilldown_links example carries a self-contained
       // onClick walkthrough (search drill-down + dashboard drill-down).

@@ -134,6 +134,8 @@ When to use: the user wants a multi-service overview, one row per service, with 
 
 Why this shape: the table answers "how is each thing doing right now". The Trends container answers "what changed over time". Tabs keep the trends section compact (only the active view renders).
 
+Pairing: the Services table wires row-click to drill into a partner per-service dashboard. The canonical partner is the "service_detail" pattern saved as "Service Detail"; clicking a service row opens it with the ServiceName filter pre-populated to that row's value. Save the service_detail dashboard FIRST (or alongside) so the partner exists when a user clicks; mode: "template" resolves by name at click time, so a missing partner shows an error toast instead of navigating. If the user renames the detail dashboard, update the onClick template to match.
+
 {
   name: "Service Inventory",
   containers: [
@@ -165,7 +167,24 @@ Why this shape: the table answers "how is each thing doing right now". The Trend
         ],
         groupBy: "ServiceName",
         orderBy: "Requests DESC",
-        groupByColumnsOnLeft: true
+        groupByColumnsOnLeft: true,
+        // Row-click drills into the partner "Service Detail" dashboard.
+        // The detail dashboard declares filter expression "ServiceName";
+        // expression here MUST match for the destination's dropdown to
+        // auto-populate. {{ServiceName}} pulls the clicked row's
+        // ServiceName column value (set by groupBy above).
+        onClick: {
+          type: "dashboard",
+          target: { mode: "template", template: "Service Detail" },
+          whereLanguage: "sql",
+          filters: [
+            {
+              kind: "expressionTemplate",
+              expression: "ServiceName",
+              template: "{{ServiceName}}"
+            }
+          ]
+        }
       }
     },
     {
