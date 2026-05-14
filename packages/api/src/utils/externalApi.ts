@@ -359,3 +359,51 @@ export function translateAlertDocumentToExternalAlert(
 
   return result;
 }
+
+// Saved search related types and transformations
+export type ExternalSavedSearch = {
+  id: string;
+  name: string;
+  select?: string;
+  where?: string;
+  whereLanguage?: string;
+  orderBy?: string;
+  sourceId?: string;
+  tags?: string[];
+  filters?: unknown[];
+  teamId: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export function translateSavedSearchDocumentToExternalSavedSearch(doc: {
+  _id: unknown;
+  name?: string;
+  select?: string;
+  where?: string;
+  whereLanguage?: string;
+  orderBy?: string;
+  source?: unknown;
+  tags?: string[];
+  filters?: unknown[];
+  team?: unknown;
+  createdAt?: Date;
+  updatedAt?: Date;
+}): ExternalSavedSearch {
+  return {
+    id: String(doc._id),
+    name: doc.name ?? '',
+    select: doc.select,
+    where: doc.where,
+    whereLanguage: doc.whereLanguage,
+    orderBy: doc.orderBy,
+    sourceId: doc.source ? String(doc.source) : undefined,
+    tags: doc.tags,
+    filters: doc.filters,
+    teamId: doc.team ? String(doc.team) : '',
+    createdAt:
+      doc.createdAt instanceof Date ? doc.createdAt.toISOString() : undefined,
+    updatedAt:
+      doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : undefined,
+  };
+}

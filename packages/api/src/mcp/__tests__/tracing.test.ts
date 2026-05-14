@@ -87,21 +87,6 @@ describe('withToolTracing', () => {
     );
   });
 
-  it('should not set user id attribute when userId is undefined', async () => {
-    const noUserContext = { teamId: 'team-123' };
-    const handler = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'ok' }],
-    });
-
-    const traced = withToolTracing('my_tool', noUserContext, handler);
-    await traced({});
-
-    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
-      'mcp.user.id',
-      expect.anything(),
-    );
-  });
-
   it('should set OK status for successful results', async () => {
     const handler = jest.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],

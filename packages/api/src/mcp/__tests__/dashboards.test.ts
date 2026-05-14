@@ -62,7 +62,7 @@ describe('MCP Dashboard Tools', () => {
   });
 
   afterEach(async () => {
-    await client.close();
+    await client?.close();
     await server.clearDBs();
   });
 
@@ -115,6 +115,7 @@ describe('MCP Dashboard Tools', () => {
       const result2 = await getLoggedInAgent(server);
       const context2: McpContext = {
         teamId: result2.team._id.toString(),
+        userId: result2.user._id.toString(),
       };
       const client2 = await createTestClient(context2);
 
