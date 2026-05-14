@@ -926,7 +926,7 @@ export class Metadata {
     });
   }
 
-  async getSettings({ connectionId }: { connectionId?: string }) {
+  async getSettings({ connectionId }: { connectionId: string }) {
     return this.cache.getOrFetch(
       `${connectionId}.availableSettings`,
       async () => {
