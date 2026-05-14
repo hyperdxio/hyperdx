@@ -696,7 +696,6 @@ jobs:
   # Failure notification
   # ---------------------------------------------------------------------------
   slack-notify-failure:
-    name: Notify Slack on Failure
     needs:
       [
         check_changesets,
@@ -710,52 +709,32 @@ jobs:
         notify_clickhouse_clickstack,
       ]
     runs-on: ubuntu-24.04
-    if: failure() && always()
+    if: failure()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Get failed jobs
-        id: get_failed_jobs
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const response = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId
-            });
-
-            const failedJobs = response.data.jobs
-              .filter(job => job.status === 'completed' && job.conclusion === 'failure')
-              .map(job => job.name)
-              .join(', ');
-
-            core.setOutput('failed_jobs', failedJobs);
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         with:
           status: custom
-          fields: repo,workflow,commit,author
+          fields: repo,workflow
           custom_payload: |
             {
-              "text": "Release Failed",
+              "text": "Release workflow failed!",
               "attachments": [{
                 "color": "danger",
                 "fields": [
-                  {
-                    "title": "Failed Build",
-                    "value": "${{ steps.get_failed_jobs.outputs.failed_jobs }}",
-                    "short": false
-                  },
                   {
                     "title": "Commit",
                     "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>",
                     "short": false
                   },
                   {
-                    "title": "Author",
+                    "title": "Actor",
                     "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Run",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>",
                     "short": true
                   }
                 ]
