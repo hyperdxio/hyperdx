@@ -365,9 +365,12 @@ const api = {
       UpdateClickHouseSettingsApiResponse,
       HTTPError,
       {
-        searchRowLimit?: number;
-        fieldMetadataDisabled?: boolean;
-        metadataMaxRowsToRead?: number;
+        searchRowLimit?: number | null;
+        fieldMetadataDisabled?: boolean | null;
+        metadataMaxRowsToRead?: number | null;
+        queryTimeout?: number | null;
+        parallelizeWhenPossible?: boolean | null;
+        filterKeysFetchLimit?: number | null;
       }
     >({
       mutationFn: async settings =>

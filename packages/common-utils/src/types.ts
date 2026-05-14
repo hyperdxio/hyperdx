@@ -1145,6 +1145,19 @@ export const TeamClickHouseSettingsSchema = z.object({
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
 });
+
+/** Accepts null to unset (reset to default) a setting. */
+export const TeamClickHouseSettingsUpdateSchema = z.object({
+  fieldMetadataDisabled: z.boolean().nullable().optional(),
+  searchRowLimit: z.number().nullable().optional(),
+  queryTimeout: z.number().nullable().optional(),
+  metadataMaxRowsToRead: z.number().nullable().optional(),
+  parallelizeWhenPossible: z.boolean().nullable().optional(),
+  filterKeysFetchLimit: z.number().nullable().optional(),
+});
+export type TeamClickHouseSettingsUpdate = z.infer<
+  typeof TeamClickHouseSettingsUpdateSchema
+>;
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
