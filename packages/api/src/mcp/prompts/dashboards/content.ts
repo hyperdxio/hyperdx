@@ -22,10 +22,11 @@ IMPORTANT: Call hyperdx_list_sources first to get the full column schema and att
 == WORKFLOW ==
 
 1. Call hyperdx_list_sources to discover source IDs, column schemas, and attribute keys.
-2. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
-3. Design the dashboard by following the design checklist below.
-4. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
-5. Call hyperdx_query_tile on each tile to confirm queries return data.
+2. Call hyperdx_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
+3. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
+4. Sketch tiles, THEN group them into 2-4 containers (Overview / Trends / Errors is a sane default for a service-health pattern) before assembling the save payload. Ungrouped tiles render as a flat sprawl that fails the readability test at five or more tiles.
+5. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
+6. Call hyperdx_query_tile on EVERY tile (not just one) to confirm queries return data and the dashboard is not silently degraded.
 
 == UPDATING AN EXISTING DASHBOARD ==
 
@@ -82,7 +83,11 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
-2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. Without alias, the result column is named like the raw expression ("quantile(0.95)(Duration)"), which reads ugly in headers and breaks any downstream onClick template that references a column name. Number tiles look fine in the UI without an alias, but the underlying query still emits a raw-expression column name; the alias is required for export, for orderBy, for consistency, and because the renderer can flip behavior on this. Treat "no alias" as a save-time bug.
+2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. The number-tile case is the one most often missed because the rendered UI uses the tile's name (not the column alias), so the absence looks invisible; the underlying query still emits a raw-expression column name (count(), quantile(0.95)(Duration)), which breaks orderBy references, CSV export, and any downstream onClick template that references the column by name. Treat "no alias" as a save-time bug, not a style nit. Heatmap is the only exception: heatmap select items take a valueExpression and no alias.
+
+   Number tile, correct:    select: [{ aggFn: "count", alias: "Server Requests" }]
+   Number tile, wrong:      select: [{ aggFn: "count" }]
+   Quantile (number/table): select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95 Duration" }]
 
 3. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
 
@@ -98,7 +103,20 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 9. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
-10. GROUP RELATED TILES INTO CONTAINERS. A container holds tiles that share a theme (Overview / Performance / Errors). Set containers: [{ id, title, collapsed }] at the top level and reference container ids from each tile via containerId. Use tabs when the same container needs to show different views of the same data; the tab bar appears when a container has two or more tabs. REQUIRED at five or more tiles. An ungrouped wall of tiles is a readability failure; even three named containers ("KPIs", "Trends", "Errors") turn a flat dashboard into a scannable one. Containers are the right way to introduce structure; markdown tiles for section labels are not.
+10. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
+
+   Concrete shape (copy this directly into the save payload):
+     containers: [
+       { id: "kpis",   title: "KPIs",   collapsed: false },
+       { id: "trends", title: "Trends", collapsed: false },
+       { id: "errors", title: "Errors", collapsed: false }
+     ]
+   Reference container ids from each tile:
+     tiles: [
+       { name: "Server Requests", containerId: "kpis",   config: { displayType: "number", select: [{ aggFn: "count", alias: "Server Requests" }], ... } },
+       { name: "Latency p95",     containerId: "trends", config: { displayType: "line",   select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }], ... } }
+     ]
+   Use tabs when one container needs to show different views of the same data (Throughput / Latency / Errors over time, for instance); the tab bar appears when a container has two or more tabs declared.
 
 11. VALIDATE EVERY TILE AFTER SAVE. After hyperdx_save_dashboard, call hyperdx_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
 
@@ -805,20 +823,32 @@ Used in the "where" field of select items and search tiles.
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
 This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
-GOTCHA: Lucene comparison operators (>=, >, <=, <) and trailing wildcards (*) on dotted attribute paths parse and save without error but fail silently at query time. The translator treats the dotted path as a literal column rather than mapping it to SpanAttributes['path']. Symptoms: a tile saves fine, hyperdx_query_tile returns an error, and the dashboard renders with "Error loading chart" on that tile.
+GOTCHA: Lucene queries that reference map-attribute keys via dotted paths (http.status_code, db.system, deployment.environment, anything under SpanAttributes / ResourceAttributes / LogAttributes) are NOT reliably translated to bracket access. Operators (>=, >, <=, <), wildcards (*), AND simple equality all hit translator gaps depending on the column. Symptoms: tile saves fine; hyperdx_query_tile returns an error or returns zero rows when there should be matches; the dashboard renders "Error loading chart" on the tile. Do NOT trust dotted-path Lucene; use SQL with bracket access for ALL map-attribute filtering.
 
-  Breaks:   http.status_code:>=500
-  Breaks:   http.route:*
-  Works:    http.status_code:200            (simple equality on a dotted path is fine)
-  Works:    Duration:>1000000000            (top-level numeric column with range)
+  Unreliable in Lucene (any operation, any operator):
+    http.status_code:>=500    (operator)
+    http.route:*              (wildcard)
+    db.system:mongodb         (simple equality; the translator does NOT map this to SpanAttributes['db.system'])
 
-Workaround: switch the where to SQL with bracket access. Map column values are stored as strings, so quote the comparison value.
+  Reliable in Lucene (top-level columns only):
+    Duration:>1000000000      (top-level numeric range)
+    ServiceName:checkout      (top-level string, see fuzzy-match note below for what this actually means)
+
+Workaround: switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
 
   whereLanguage: "sql"
   where: "SpanAttributes['http.status_code'] >= '500'"
 
   whereLanguage: "sql"
-  where: "SpanAttributes['http.route'] != ''"
+  where: "SpanAttributes['db.system'] = 'mongodb'"
+
+  whereLanguage: "sql"
+  where: "SpanAttributes['http.route'] != ''"     (filters out empty keys; map values are often empty)
+
+FUZZY-MATCH NOTE: Lucene field:value on a top-level string column translates to ilike(field, '%value%'), not exact equality. That is fine for free-text columns (Body, StatusMessage) but surprising for enum-like columns (SpanKind, SeverityText, StatusCode). SpanKind:Server matches "Server" AND any other string containing "Server" as a substring. For exact-match semantics on top-level columns, use SQL:
+
+  whereLanguage: "sql"
+  where: "SpanKind = 'Server'"
 
 == SQL FILTER SYNTAX ==
 
@@ -1189,31 +1219,42 @@ Example: find top patterns for production services over the last 4 hours:
     Correct: select: [{ aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }]
     Every select entry MUST carry an alias. This applies to number tiles too, not just tables. Without alias the result column is named after the raw expression, which breaks orderBy references, breaks onClick template lookups, and shows ugly headers on tables. Number tiles render the value with the tile name in the UI, so the missing alias is invisible there, but the underlying query still emits a raw-expression column name. Treat "no alias" as a save-time bug, not a style nit.
 
-14. Lucene comparison or wildcard on a dotted map-attribute path
-    Wrong:   where: "http.status_code:>=500"      (whereLanguage: "lucene")
-    Wrong:   where: "http.route:*"                (whereLanguage: "lucene")
+14. Lucene on a map-attribute path (any operation)
+    Wrong:   where: "http.status_code:>=500"      (operator)
+    Wrong:   where: "http.route:*"                (wildcard)
+    Wrong:   where: "db.system:mongodb"           (equality; translator does NOT map to SpanAttributes['db.system'])
     Correct: where: "SpanAttributes['http.status_code'] >= '500'"   (whereLanguage: "sql")
-    Correct: where: "SpanAttributes['http.route'] != ''"            (whereLanguage: "sql")
-    Lucene parses these patterns happily at save time but the translator does not map http.status_code to SpanAttributes['http.status_code'] when an operator or wildcard is in play. The tile saves clean and fails at render with "Error loading chart". For comparison (>=, >, <=, <) and wildcard (*) on map-attribute paths, switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
+    Correct: where: "SpanAttributes['db.system'] = 'mongodb'"        (whereLanguage: "sql")
+    Lucene parses dotted-path queries happily at save time but the translator does not reliably map them to bracket access. Behavior varies by column and operator. Treat any Lucene filter on a map-attribute key as a save-time bug and use SQL with bracket access for ALL map-attribute filtering. Map values are stored as strings; quote the comparison value.
 
-15. onClick on a non-table tile
+15. Lucene field:value on enum-like top-level columns (fuzzy substring match, not equality)
+    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "Server_Client", "Internal_Server_Error", etc.)
+    Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql")
+    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Fine for Body and StatusMessage; wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode). When the column has discrete known values, use SQL with =.
+
+16. Forgetting that map-attribute values are often empty strings
+    Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.
+    Correct: add where: "SpanAttributes['db.collection.name'] != ''" alongside the groupBy.
+    ClickHouse map columns return '' (not NULL) for keys that were not set on a given row. Filter them out whenever you groupBy a map-attribute key that is not guaranteed populated on every event.
+
+17. onClick on a non-table tile
     Only table tiles (builder displayType: "table" and raw-SQL configType: "sql"
     with displayType: "table") support config.onClick. Other displayTypes
     ignore the field. Putting onClick on a line/number/pie/heatmap/search/markdown
     tile won't error but won't do anything either.
 
-16. onClick targeting a non-log/trace source for type="search"
+18. onClick targeting a non-log/trace source for type="search"
     The /search page only renders log and trace sources. Targeting a
     metric or session source is rejected at save time with:
     "The following onClick search source IDs are not log or trace sources: ..."
 
-17. Missing whereLanguage on onClick
+19. Missing whereLanguage on onClick
     whereLanguage is technically optional, but should still be set to
     "lucene" or "sql" so the destination knows how to parse rendered
     whereTemplate / filter values. Leaving it unset can cause the
     destination to fall back to its own default.
 
-18. Templating against a column that isn't in the table's select/groupBy
+20. Templating against a column that isn't in the table's select/groupBy
     Templates like "{{ServiceName}}" pull from the clicked row's columns.
     If the column doesn't appear in the table query, the template renders
     as empty at click time and the destination opens unfiltered. Match

@@ -2146,27 +2146,62 @@ describe('MCP Dashboard Tools', () => {
       expect(section).toMatch(/number tiles too/);
     });
 
-    it('documents the Lucene comparison/wildcard gotcha on map attributes', () => {
-      // Lucene parses http.status_code:>=500 happily but the translator
-      // doesn't map dotted paths to bracket access when an operator is
-      // in play. The tile saves, query_tile errors, and the dashboard
-      // shows "Error loading chart" with no explanation.
+    it('documents the Lucene map-attribute gotcha across all operators including simple equality', () => {
+      // The original rule covered only comparison/wildcard. Claude's
+      // second pass showed simple equality (db.system:mongodb) also
+      // fails to translate to SpanAttributes['db.system']. Broaden the
+      // gotcha to "ALL Lucene operations on map-attribute paths".
       const prompt = buildQueryGuidePrompt();
       const luceneIdx = prompt.indexOf('== LUCENE FILTER SYNTAX ==');
       const luceneBody = prompt.slice(luceneIdx);
-      // The gotcha block is in the Lucene section.
-      expect(luceneBody).toMatch(
-        /Lucene comparison operators .* fail silently/,
-      );
-      expect(luceneBody).toMatch(/http\.status_code:>=500/);
-      expect(luceneBody).toMatch(/switch the where to SQL with bracket access/);
+      expect(luceneBody).toMatch(/NOT reliably translated to bracket access/);
+      expect(luceneBody).toMatch(/http\.status_code:>=500/); // operator
+      expect(luceneBody).toMatch(/http\.route:\*/); // wildcard
+      expect(luceneBody).toMatch(/db\.system:mongodb/); // simple equality
+      expect(luceneBody).toMatch(/use SQL with bracket access/);
 
       // Also a top-level entry in COMMON MISTAKES for discoverability.
       const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
       const mistakesBody = prompt.slice(mistakesIdx);
       expect(mistakesBody).toMatch(
-        /Lucene comparison or wildcard on a dotted map-attribute path/,
+        /Lucene on a map-attribute path \(any operation\)/,
       );
+    });
+
+    it('documents the Lucene fuzzy-substring behavior on top-level columns', () => {
+      // Lucene field:value translates to ilike(field, '%value%'), not
+      // equality. Claude's second pass hit this on SpanKind:Server,
+      // which matched broader strings than intended. The note has to
+      // be in the Lucene section so a model reading top-down sees it
+      // before writing a SpanKind filter.
+      const prompt = buildQueryGuidePrompt();
+      const luceneIdx = prompt.indexOf('== LUCENE FILTER SYNTAX ==');
+      const luceneBody = prompt.slice(luceneIdx);
+      expect(luceneBody).toMatch(/FUZZY-MATCH NOTE/);
+      expect(luceneBody).toMatch(/ilike\(field, '%value%'\)/);
+      // The canonical fix is SQL with =.
+      expect(luceneBody).toMatch(/SpanKind = 'Server'/);
+
+      // And a COMMON MISTAKES entry covering enum-like columns.
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Lucene field:value on enum-like top-level columns/,
+      );
+    });
+
+    it('documents the empty-string trap for map-attribute groupBy', () => {
+      // Map columns return '' (not NULL) when a key is unset on a row.
+      // A groupBy on such a key produces an empty-string bucket alongside
+      // the real values, which is visual noise on tables and pies. The
+      // standard fix is where: "<map-attr> != ''" alongside the groupBy.
+      const prompt = buildQueryGuidePrompt();
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Forgetting that map-attribute values are often empty strings/,
+      );
+      expect(mistakesBody).toMatch(/db\.collection\.name'\] != ''/);
     });
 
     it('documents the groupBy alias workaround for map-attribute drill-downs', () => {
@@ -2306,6 +2341,46 @@ describe('MCP Dashboard Tools', () => {
       // habit Claude landed on every starter dashboard.
       expect(checklistBody).toMatch(/VALIDATE EVERY TILE AFTER SAVE/);
       expect(checklistBody).toMatch(/NO TITLE-RECAP MARKDOWN TILE/);
+      // Rule 2 now carries a concrete number-tile example. Claude's
+      // second pass still dropped aliases on every builder number tile,
+      // because the text rule was abstract; a copy-pasteable shape next
+      // to the rule is what makes it stick.
+      expect(checklistBody).toMatch(
+        /Number tile, correct:.*alias: "Server Requests"/,
+      );
+      // Rule 10 now carries a concrete containers shape. Claude's
+      // second pass built five dashboards with 9-10 tiles each and zero
+      // containers despite the REQUIRED phrasing; a copy-pasteable shape
+      // inside the rule itself is the next-level push.
+      expect(checklistBody).toMatch(/Concrete shape \(copy this directly/);
+      expect(checklistBody).toMatch(/id: "kpis"/);
+      expect(checklistBody).toMatch(/id: "trends"/);
+      expect(checklistBody).toMatch(/id: "errors"/);
+    });
+
+    it('walks the workflow through six steps including read-existing and group-into-containers', () => {
+      // The workflow is the first thing a model anchors on. Claude
+      // skipped both "read existing dashboards before designing" and
+      // "group tiles into containers before saving" because neither was
+      // a numbered workflow step; both lived only in the checklist. The
+      // workflow now lists six steps with those two explicitly.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const wfIdx = prompt.indexOf('== WORKFLOW ==');
+      const wfEnd = prompt.indexOf('\n== ', wfIdx + 1);
+      const wf = prompt.slice(wfIdx, wfEnd);
+      for (let i = 1; i <= 6; i++) {
+        expect(wf).toMatch(new RegExp(`^${i}\\. `, 'm'));
+      }
+      // Step 2 must point at hyperdx_get_dashboard with no id.
+      expect(wf).toMatch(/hyperdx_get_dashboard \(no id\)/);
+      // Step 4 must call out grouping tiles into containers before save.
+      expect(wf).toMatch(/group them into 2-4 containers/);
+      // Step 6 must call out EVERY tile, not just one.
+      expect(wf).toMatch(/EVERY tile \(not just one\)/);
     });
 
     it('warns explicitly against title-recap markdown tiles in the tile type guide', () => {
