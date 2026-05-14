@@ -27,19 +27,19 @@ function deriveAlertName(alert: {
   }
 
   // Fall back to saved search name
-  if (alert.savedSearch && 'name' in alert.savedSearch) {
-    return alert.savedSearch.name ?? null;
+  if (alert.savedSearch?.name) {
+    return alert.savedSearch.name;
   }
 
   // Fall back to dashboard tile name or dashboard name
-  if (alert.dashboard && 'name' in alert.dashboard) {
+  if (alert.dashboard?.name) {
     if (alert.tileId) {
       const tile = alert.dashboard.tiles?.find(t => t.id === alert.tileId);
       if (tile?.config?.name) {
         return tile.config.name;
       }
     }
-    return alert.dashboard.name ?? null;
+    return alert.dashboard.name;
   }
 
   return null;
@@ -123,6 +123,15 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
         };
       }
 
+      const external = translateAlertDocumentToExternalAlert(alert);
+
+      // Populate refs so deriveAlertName can fall back to the
+      // saved search / dashboard name when the alert has no explicit name.
+      const populated = await alert.populate<{
+        savedSearch: ISavedSearch | null;
+        dashboard: IDashboard | null;
+      }>(['savedSearch', 'dashboard']);
+
       const history = await getRecentAlertHistories({
         alertId: new ObjectId(alert._id),
         interval: alert.interval as AlertInterval,
@@ -135,7 +144,8 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateAlertDocumentToExternalAlert(alert),
+                ...external,
+                name: deriveAlertName(populated) ?? external.name,
                 history,
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },

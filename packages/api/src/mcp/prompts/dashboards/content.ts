@@ -799,7 +799,7 @@ Example: find top patterns for production services over the last 4 hours:
 
 == COMMON MISTAKES ==
 
- 1. Using valueExpression with aggFn "count"
+1. Using valueExpression with aggFn "count"
    Wrong:   { aggFn: "count", valueExpression: "Duration" }
    Correct: { aggFn: "count" }
 

@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-export type ExternalSavedSearch = {
+type ExternalSavedSearch = {
   id: string;
   name: string;
   select?: string;
