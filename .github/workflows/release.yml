@@ -26,6 +26,11 @@ jobs:
           cache: 'yarn'
           # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
           # that conflicts with npm OIDC trusted publishing
+      # npm OIDC trusted publishing requires npm >= 11.5.1 client-side. Node 22
+      # LTS ships npm 10.x, which has no OIDC code path and falls back to
+      # NODE_AUTH_TOKEN, failing ENEEDAUTH.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Configure npm registry
         run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
