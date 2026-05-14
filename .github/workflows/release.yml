@@ -39,7 +39,6 @@ jobs:
         run: make ci-build
       - name: Create Release Pull Request or Publish to npm
         if: always()
-        continue-on-error: true
         id: changesets
         uses: changesets/action@v1
         with:
