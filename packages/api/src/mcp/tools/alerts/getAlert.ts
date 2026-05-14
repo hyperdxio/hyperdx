@@ -8,10 +8,42 @@ import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
 import Alert from '@/models/alert';
+import type { IDashboard } from '@/models/dashboard';
+import type { ISavedSearch } from '@/models/savedSearch';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
+
+function deriveAlertName(alert: {
+  name?: string | null;
+  tileId?: string;
+  savedSearch?: ISavedSearch | null;
+  dashboard?: IDashboard | null;
+}): string | null {
+  // Prefer explicit alert name
+  if (alert.name) {
+    return alert.name;
+  }
+
+  // Fall back to saved search name
+  if (alert.savedSearch?.name) {
+    return alert.savedSearch.name;
+  }
+
+  // Fall back to dashboard tile name or dashboard name
+  if (alert.dashboard?.name) {
+    if (alert.tileId) {
+      const tile = alert.dashboard.tiles?.find(t => t.id === alert.tileId);
+      if (tile?.config?.name) {
+        return tile.config.name;
+      }
+    }
+    return alert.dashboard.name;
+  }
+
+  return null;
+}
 
 export function registerGetAlert(server: McpServer, context: McpContext): void {
   const { teamId } = context;
@@ -52,16 +84,22 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
         if (state) {
           query.state = state;
         }
-        const alerts = await Alert.find(query);
+        const alerts = await Alert.find(query).populate<{
+          savedSearch: ISavedSearch | null;
+          dashboard: IDashboard | null;
+        }>(['savedSearch', 'dashboard']);
 
-        const output = alerts.map(alert => ({
-          id: alert._id.toString(),
-          name: alert.name,
-          state: alert.state,
-          source: alert.source,
-          interval: alert.interval,
-          ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
-        }));
+        const output = alerts.map(alert => {
+          const name = deriveAlertName(alert);
+          return {
+            id: alert._id.toString(),
+            name,
+            state: alert.state,
+            source: alert.source,
+            interval: alert.interval,
+            ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
+          };
+        });
         return {
           content: [
             { type: 'text' as const, text: JSON.stringify(output, null, 2) },
@@ -85,6 +123,15 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
         };
       }
 
+      const external = translateAlertDocumentToExternalAlert(alert);
+
+      // Populate refs so deriveAlertName can fall back to the
+      // saved search / dashboard name when the alert has no explicit name.
+      const populated = await alert.populate<{
+        savedSearch: ISavedSearch | null;
+        dashboard: IDashboard | null;
+      }>(['savedSearch', 'dashboard']);
+
       const history = await getRecentAlertHistories({
         alertId: new ObjectId(alert._id),
         interval: alert.interval as AlertInterval,
@@ -97,7 +144,8 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateAlertDocumentToExternalAlert(alert),
+                ...external,
+                name: deriveAlertName(populated) ?? external.name,
                 history,
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },

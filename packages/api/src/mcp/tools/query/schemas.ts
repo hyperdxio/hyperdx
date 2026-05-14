@@ -109,8 +109,9 @@ export const hyperdxQuerySchema = z.object({
         '  number – single aggregate scalar (builder)\n' +
         '  pie – pie chart, one metric grouped (builder)\n' +
         '  search – browse individual log/event rows\n' +
-        '  event_patterns – mine recurring patterns from log/event bodies using the Drain algorithm. ' +
-        'Returns the most common message templates, estimated counts, and time-bucketed trends.\n' +
+        '  event_patterns – discover the most common log messages / event patterns. ' +
+        'Use this when asked about "top patterns", "common logs", "noisy services", or "recurring messages". ' +
+        'Returns message templates with estimated counts and time trends.\n' +
         '  sql – ADVANCED: raw ClickHouse SQL query',
     ),
   startTime: z

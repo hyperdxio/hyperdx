@@ -5,7 +5,6 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
 import { SavedSearch } from '@/models/savedSearch';
-import { translateSavedSearchDocumentToExternalSavedSearch } from '@/utils/externalApi';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -77,9 +76,7 @@ export function registerGetSavedSearch(
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateSavedSearchDocumentToExternalSavedSearch(
-                  savedSearch,
-                ),
+                ...savedSearch.toExternalJSON(),
                 ...(frontendUrl
                   ? { url: `${frontendUrl}/search/${savedSearch._id}` }
                   : {}),
