@@ -305,6 +305,14 @@ export class ChartEditorComponent {
     await input.blur();
   }
 
+  /**
+   * Set the note field in the tile alert editor.
+   */
+  async setTileAlertNote(note: string) {
+    const noteInput = this.page.getByTestId('alert-note-input');
+    await noteInput.fill(note);
+  }
+
   // ---- Row Click Action drawer helpers ----
 
   /**
