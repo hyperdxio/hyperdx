@@ -99,8 +99,9 @@
   --color-json-punctuation: var(--mantine-color-dark-4);
 
   /* Chart Colors - shared across themes via the chart-tokens partial.
-     1-indexed CSS vars map to 0-indexed COLORS array in utils.ts
-     (e.g., --color-chart-1 corresponds to COLORS[0]). */
+     Categorical slots are addressed by name (e.g. `--color-chart-blue`);
+     positional access goes through `getColorFromCSSVariable(index)` in
+     `utils.ts` using the `CATEGORICAL_ORDER` array. */
   @include chart-tokens.chart-tokens;
 
   /* Mantine Overrides */

@@ -9,11 +9,11 @@
 There are **three** color systems for data viz, with three different
 consumption patterns:
 
-| System                         | Use for                                  | Source of truth                          | How to consume                                |
-| ------------------------------ | ---------------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| **Categorical 1–10**           | Multi-series line/bar/area/pie charts    | CSS vars `--color-chart-1`..`-10`        | `getColorProps(index, label)` in `utils.ts`   |
-| **Semantic (success/warn/err)**| Status indicators, log levels, deltas    | CSS vars `--color-chart-{success,...}`   | `getChartColorSuccess/Warning/Error()`        |
-| **Heatmap continuous**         | `DBHeatmapChart` density gradients       | `darkPalette`/`lightPalette` arrays      | Imported directly from `DBHeatmapChart.tsx`   |
+| System                         | Use for                                  | Source of truth                            | How to consume                                |
+| ------------------------------ | ---------------------------------------- | ------------------------------------------ | --------------------------------------------- |
+| **Categorical (10 named hues)**| Multi-series line/bar/area/pie charts    | CSS vars `--color-chart-{blue,orange,...}` | `getColorProps(index, label)` in `utils.ts`   |
+| **Semantic (success/warn/err)**| Status indicators, log levels, deltas    | CSS vars `--color-chart-{success,...}`     | `getChartColorSuccess/Warning/Error()`        |
+| **Heatmap continuous**         | `DBHeatmapChart` density gradients       | `darkPalette`/`lightPalette` arrays        | Imported directly from `DBHeatmapChart.tsx`   |
 
 The categorical and semantic palettes are **identical across the HyperDX
 and ClickStack themes** — they're defined once in
@@ -29,33 +29,62 @@ accent, Click UI globals); chart colors do not.
   Use `logLevelColor()` / `getColorProps()` — they pick the correct
   semantic chart color.
 - The categorical palette and the heatmap palette are **different things**.
-  Don't reuse `--color-chart-N` for heatmap density; don't reuse the heatmap
-  arrays for series colors.
+  Don't reuse `--color-chart-{name}` vars for heatmap density; don't reuse
+  the heatmap arrays for series colors.
+
+**Two ways to address the categorical palette**:
+
+- **By name** (identity): `var(--color-chart-cyan)` always means cyan,
+  regardless of where cyan sits in the categorical assignment order. Use
+  this when a specific element should always be the same hue.
+- **By position** (ordering): `getColorProps(index, label)` returns the
+  `index`-th color from `CATEGORICAL_ORDER` in `utils.ts`. Use this for
+  multi-series charts where each series just needs a distinct slot.
+
+The two layers are decoupled: changing `CATEGORICAL_ORDER` to re-prioritize
+which hue is "slot 0" doesn't move any of the named vars around.
 
 ## Where the colors live
 
-### Categorical series palette (`--color-chart-1` through `--color-chart-10`)
+### Categorical series palette (named slots)
 
 Defined once in **`packages/app/src/theme/themes/_chart-tokens.scss`**
 and consumed by both themes via `@include chart-tokens.chart-tokens`
 inside their dark and light scheme blocks:
 
-| Slot | Hex       | Hue       |
-| ---- | --------- | --------- |
-| 1    | `#437eef` | Blue (primary) |
-| 2    | `#efb118` | Orange    |
-| 3    | `#ff725c` | Red       |
-| 4    | `#6cc5b0` | Cyan      |
-| 5    | `#3ca951` | Green     |
-| 6    | `#ff8ab7` | Pink      |
-| 7    | `#a463f2` | Purple    |
-| 8    | `#97bbf5` | Light blue|
-| 9    | `#9c6b4e` | Brown     |
-| 10   | `#9498a0` | Gray      |
+| CSS var                     | Hex       |
+| --------------------------- | --------- |
+| `--color-chart-blue`        | `#437eef` |
+| `--color-chart-orange`      | `#efb118` |
+| `--color-chart-red`         | `#ff725c` |
+| `--color-chart-cyan`        | `#6cc5b0` |
+| `--color-chart-green`       | `#3ca951` |
+| `--color-chart-pink`        | `#ff8ab7` |
+| `--color-chart-purple`      | `#a463f2` |
+| `--color-chart-light-blue`  | `#97bbf5` |
+| `--color-chart-brown`       | `#9c6b4e` |
+| `--color-chart-gray`        | `#9498a0` |
 
 Source: [Observable 10 categorical palette](https://observablehq.com/@d3/color-schemes).
 Designed to be distinguishable on both dark and light backgrounds and
 for color-vision-deficient viewers.
+
+#### Ordering for multi-series charts
+
+The categorical assignment order — which named slot is "slot 0", "slot 1",
+etc. for multi-series charts — lives entirely in JS, in
+`packages/app/src/utils.ts`:
+
+```ts
+const CATEGORICAL_ORDER = [
+  'blue', 'orange', 'red', 'cyan', 'green',
+  'pink', 'purple', 'lightBlue', 'brown', 'gray',
+] as const;
+```
+
+`getColorProps(index, label)` walks this array. To re-prioritize the
+default ordering for all charts, edit `CATEGORICAL_ORDER` — no SCSS edit
+required. The named vars stay where they are.
 
 #### Why one palette across both themes
 
@@ -104,26 +133,29 @@ Also defined in `_chart-tokens.scss`. Identical across themes:
 | `--color-chart-warning-highlight`  | `#f5c94d` |
 | `--color-chart-error-highlight`    | `#ffa090` |
 
-Note that `--color-chart-success` (`#3ca951`) is **not** the same as
-the categorical green at slot 5 (`#3ca951`) — they happen to coincide
-today but they're two different vars with different intents. Treat
-them as independent contracts.
+Note that `--color-chart-success` (`#3ca951`) is **not** the same var as
+`--color-chart-green` (`#3ca951`) — they happen to coincide today but
+they're two different vars with different intents. Treat them as
+independent contracts: success can change to a less-saturated green
+without touching the categorical palette, and vice versa.
 
-### JavaScript fallback (`packages/app/src/utils.ts`)
+### JavaScript palette (`packages/app/src/utils.ts`)
 
-The CSS vars are the source of truth at runtime, but a single
-`CHART_PALETTE` object in `utils.ts` mirrors them as the SSR fallback
-**and** the storybook reference:
+The CSS vars are the source of truth at runtime; `utils.ts` mirrors them
+in three pieces:
 
 ```text
-CHART_PALETTE              # blue-first, lines ~360-378
-COLORS                     # Exported, ordered, slot-1-is-blue array, lines ~382-393
+CHART_PALETTE        # name -> hex map, mirrors `_chart-tokens.scss`
+CATEGORICAL_ORDER    # ordered list of palette keys for slot-N assignment
+COLORS               # exported hex array, derived from CATEGORICAL_ORDER
 ```
 
-`COLORS[0]` corresponds to `--color-chart-1`, `COLORS[1]` to `--color-chart-2`,
-and so on. **Keep them in sync.** A hex change must update both
-`_chart-tokens.scss` and `CHART_PALETTE`. Adding a new color also
-requires updating `COLORS`.
+`COLORS[i]` always equals `CHART_PALETTE[CATEGORICAL_ORDER[i]]`. It's
+exported as the SSR fallback for `getColorFromCSSVariable(index)` and a
+convenience for callers that want a positional hex without going through
+the helpers. **Keep them in sync.** A hex change must update both
+`_chart-tokens.scss` and `CHART_PALETTE`. Re-ordering the categorical
+assignment is a `CATEGORICAL_ORDER`-only edit.
 
 ### Reader functions (`packages/app/src/utils.ts`)
 
@@ -142,9 +174,11 @@ These are the only functions React code should call:
 
 Internals worth knowing:
 
-- `getColorFromCSSVariable(index)` reads `--color-chart-{index+1}` from
-  `documentElement` via `getComputedStyle`. On SSR or if the var is
-  missing, it falls back to `COLORS[index % COLORS.length]`.
+- `getColorFromCSSVariable(index)` looks up the categorical slot name via
+  `CATEGORICAL_ORDER[index % CATEGORICAL_ORDER.length]`, then reads the
+  matching `--color-chart-{kebab-case name}` var from `documentElement`
+  via `getComputedStyle`. On SSR or if the var is missing, it falls back
+  to `CHART_PALETTE[name]`.
 - `getSemanticChartColor(varName, fallback)` does the same for the
   semantic vars. Single-argument fallback — both themes resolve to the
   same hex now, so the SSR fallback always matches the live value.
@@ -174,7 +208,8 @@ or semantic palettes:
 - `ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)'` in
   `packages/app/src/components/deltaChartUtils.ts` — the "all spans"
   reference bar in `DBDeltaChart`. Keep using this var; don't replace
-  it with `--color-chart-1` (it's a comparison reference, not a series).
+  it with `--color-chart-blue` (it's a comparison reference, not a
+  categorical series).
 - Trace waterfall span tints in `DBTraceWaterfallChart.tsx` — derived
   from span attributes, not from this palette.
 
@@ -292,7 +327,7 @@ new semantic var (`--color-chart-brand`?), never as a categorical slot.
 
 ## Adding new entries
 
-### A new categorical slot (slot 11+)
+### A new categorical slot (an 11th hue)
 
 Don't, unless you have a real need. Ten distinguishable hues is the
 upper bound for readable categorical legends — beyond that, viewers
@@ -301,18 +336,30 @@ Solutions in descending order of preference:
 
 1. **Group small categories** into "Other" before charting.
 2. **Reuse slots** with patterns/strokes/labels for disambiguation.
-3. If you really must extend: add the new `--color-chart-N` var to the
-   `categorical-chart-tokens` mixin in `_chart-tokens.scss`, append the
-   hex to `CHART_PALETTE` and `COLORS` in `utils.ts`, and append a label
-   to `COLOR_LABELS` in `ChartColors.stories.tsx`. Three places, not
-   four — that's the whole point of the partial.
+3. If you really must extend:
+   - Add the new `--color-chart-{name}` var to the
+     `categorical-chart-tokens` mixin in `_chart-tokens.scss`.
+   - Add the hex to `CHART_PALETTE` in `utils.ts` (camelCase key).
+   - Append the new key to `CATEGORICAL_ORDER` in `utils.ts` to put it
+     at the end of the assignment order, or insert it earlier to bump
+     other hues down a slot.
+   - Append a `{ key, cssSlug, label }` row to `CATEGORICAL_SLOTS` in
+     `ChartColors.stories.tsx`.
+
+### Reordering the categorical assignment (which hue is "slot 0"?)
+
+Edit `CATEGORICAL_ORDER` in `utils.ts`. SCSS does not need to change —
+the named vars stay where they are; only `getColorProps(index)`'s mapping
+from index to hue moves.
 
 ### A new semantic color (e.g. `--color-chart-pending`)
 
 1. Add `--color-chart-pending` and (if needed)
    `--color-chart-pending-highlight` to the `semantic-chart-tokens`
    mixin in `_chart-tokens.scss`.
-2. Add the hex to `CHART_PALETTE` in `utils.ts`.
+2. Add the hex to `CHART_PALETTE` in `utils.ts` (do **not** add it to
+   `CATEGORICAL_ORDER` — semantic vars are independent of the
+   categorical assignment order).
 3. Add a `getChartColorPending()` reader in `utils.ts` that calls
    `getSemanticChartColor('--color-chart-pending', CHART_PALETTE.<key>)`.
 4. Update `ChartColors.stories.tsx` `SEMANTIC_CHART_COLORS` so the new
@@ -364,6 +411,9 @@ Why each is wrong:
       `utils.ts` helpers or CSS vars.
 - [ ] If you added or changed a hex, changed it in **two** places
       (`_chart-tokens.scss` + `CHART_PALETTE` in `utils.ts`).
+- [ ] If you added a new categorical slot, also added it to
+      `CATEGORICAL_ORDER` in `utils.ts` and `CATEGORICAL_SLOTS` in
+      `ChartColors.stories.tsx`.
 - [ ] Storybook `Design Tokens / Chart Colors` still renders correctly.
 
 ## File reference summary

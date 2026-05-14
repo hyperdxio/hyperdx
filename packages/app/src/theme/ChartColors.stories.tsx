@@ -7,27 +7,31 @@ import {
   getChartColorWarning,
 } from '@/utils';
 
-// Labels for chart colors - shared categorical palette across both themes.
-// Order matches `COLORS` in `utils.ts` and `--color-chart-N` in
-// `_chart-tokens.scss` (blue is slot 1).
-const COLOR_LABELS = [
-  'Blue (Primary)',
-  'Orange',
-  'Red',
-  'Cyan',
-  'Green',
-  'Pink',
-  'Purple',
-  'Light Blue',
-  'Brown',
-  'Gray',
-];
+// Categorical chart slots in canonical assignment order. The CSS var name
+// is the kebab-case form of the camelCase key, and the human label is just
+// the prettified version of the same (so adding a new slot only requires
+// touching `CATEGORICAL_ORDER` in `utils.ts` and adding the matching var
+// to `_chart-tokens.scss` — no story edits needed).
+const CATEGORICAL_SLOTS = [
+  { key: 'blue', cssSlug: 'blue', label: 'Blue (Primary)' },
+  { key: 'orange', cssSlug: 'orange', label: 'Orange' },
+  { key: 'red', cssSlug: 'red', label: 'Red' },
+  { key: 'cyan', cssSlug: 'cyan', label: 'Cyan' },
+  { key: 'green', cssSlug: 'green', label: 'Green' },
+  { key: 'pink', cssSlug: 'pink', label: 'Pink' },
+  { key: 'purple', cssSlug: 'purple', label: 'Purple' },
+  { key: 'lightBlue', cssSlug: 'light-blue', label: 'Light Blue' },
+  { key: 'brown', cssSlug: 'brown', label: 'Brown' },
+  { key: 'gray', cssSlug: 'gray', label: 'Gray' },
+] as const;
 
-// Derive chart colors from the single source of truth in utils.ts
-const CHART_COLORS = COLORS.map((hex, i) => ({
-  name: `color-chart-${i + 1}`,
-  hex,
-  label: COLOR_LABELS[i] || `Color ${i + 1}`,
+// Derive chart colors from the single source of truth in utils.ts (COLORS
+// is hex-by-position; CATEGORICAL_SLOTS is name-by-position; their lengths
+// and ordering are kept in lockstep).
+const CHART_COLORS = CATEGORICAL_SLOTS.map((slot, i) => ({
+  name: `color-chart-${slot.cssSlug}`,
+  hex: COLORS[i],
+  label: slot.label,
 }));
 
 const SEMANTIC_CHART_COLORS = [

@@ -358,7 +358,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 // must update both this object and the SCSS partial.
 // https://observablehq.com/@d3/color-schemes
 const CHART_PALETTE = {
-  blue: '#437eef', // Primary categorical color
+  blue: '#437eef',
   orange: '#efb118',
   red: '#ff725c',
   cyan: '#6cc5b0',
@@ -374,41 +374,50 @@ const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// Ordered array for chart series - blue first to match the categorical
-// palette in `_chart-tokens.scss`. Maps positionally to the CSS vars:
-// COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
-// NOTE: SSR fallback only. In the browser, getColorFromCSSVariable() reads
-// the live CSS var so any future runtime overrides take effect.
-export const COLORS = [
-  CHART_PALETTE.blue, // 1
-  CHART_PALETTE.orange, // 2
-  CHART_PALETTE.red, // 3
-  CHART_PALETTE.cyan, // 4
-  CHART_PALETTE.green, // 5
-  CHART_PALETTE.pink, // 6
-  CHART_PALETTE.purple, // 7
-  CHART_PALETTE.lightBlue, // 8
-  CHART_PALETTE.brown, // 9
-  CHART_PALETTE.gray, // 10
-];
+// Canonical ordering for the categorical palette. Multi-series charts pick
+// colors by index; index N maps to the Nth name in this list, which in
+// turn maps to `--color-chart-{kebab-case name}` in `_chart-tokens.scss`.
+// To re-order how slots are assigned, change this array — no SCSS edit
+// required.
+const CATEGORICAL_ORDER = [
+  'blue',
+  'orange',
+  'red',
+  'cyan',
+  'green',
+  'pink',
+  'purple',
+  'lightBlue',
+  'brown',
+  'gray',
+] as const satisfies ReadonlyArray<keyof typeof CHART_PALETTE>;
+
+// Ordered hex array - SSR fallback for `getColorFromCSSVariable()`. Kept
+// in sync with `CATEGORICAL_ORDER` so `COLORS[i]` always equals the live
+// value of `var(--color-chart-{CATEGORICAL_ORDER[i]})`.
+export const COLORS = CATEGORICAL_ORDER.map(name => CHART_PALETTE[name]);
+
+// Convert a camelCase palette key to its CSS-var slug (e.g. `lightBlue`
+// becomes `light-blue`).
+function paletteKeyToCssSlug(name: keyof typeof CHART_PALETTE): string {
+  return name.replace(/([A-Z])/g, '-$1').toLowerCase();
+}
 
 /**
- * Reads chart color from CSS variable based on index.
- * CSS variables handle theme switching automatically via theme classes on documentElement.
- * Falls back to COLORS array if CSS variable is not available (SSR or getComputedStyle fails).
- *
- * Both themes resolve `--color-chart-N` to the same hex (see
+ * Reads a chart color from a CSS variable, addressed by categorical index.
+ * Both themes resolve every `--color-chart-{name}` var to the same hex (see
  * `_chart-tokens.scss`), so the SSR fallback matches the live value.
  */
 function getColorFromCSSVariable(index: number): string {
-  const colorArrayLength = COLORS.length;
+  const order = CATEGORICAL_ORDER;
+  const name = order[index % order.length];
 
   if (typeof window === 'undefined') {
-    return COLORS[index % colorArrayLength];
+    return CHART_PALETTE[name];
   }
 
   try {
-    const cssVarName = `--color-chart-${(index % colorArrayLength) + 1}`;
+    const cssVarName = `--color-chart-${paletteKeyToCssSlug(name)}`;
     const computedStyle = getComputedStyle(document.documentElement);
     const color = computedStyle.getPropertyValue(cssVarName).trim();
 
@@ -419,7 +428,7 @@ function getColorFromCSSVariable(index: number): string {
     // Fallback if getComputedStyle fails
   }
 
-  return COLORS[index % colorArrayLength];
+  return CHART_PALETTE[name];
 }
 
 export function hashCode(str: string) {

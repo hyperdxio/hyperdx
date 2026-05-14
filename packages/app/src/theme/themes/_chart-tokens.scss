@@ -15,22 +15,28 @@
  */
 
 @mixin categorical-chart-tokens {
-  /* Categorical palette - 10 distinct, accessible hues
+  /* Categorical palette - 10 distinct, accessible hues addressed by name.
+   *
+   * Multi-series charts pick from these slots in a canonical order defined
+   * by `CATEGORICAL_ORDER` in `packages/app/src/utils.ts`. Identity callers
+   * (e.g. "this status pill is always cyan") can reference the named var
+   * directly: `var(--color-chart-cyan)`.
+   *
    * NOTE: These vars are intentionally duplicated into both dark and light
    * scheme blocks via the consuming theme files. CSS specificity requires
    * them to be defined within each [data-mantine-color-scheme] selector;
    * declaring them only on `.theme-*` would cause the scheme-scoped block
    * to take precedence and reset them to undefined. */
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #efb118; /* Orange */
-  --color-chart-3: #ff725c; /* Red */
-  --color-chart-4: #6cc5b0; /* Cyan */
-  --color-chart-5: #3ca951; /* Green */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
+  --color-chart-blue: #437eef;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
 }
 
 @mixin semantic-chart-tokens {
