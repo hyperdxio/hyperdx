@@ -1156,7 +1156,8 @@ const DBSearchPageFiltersComponent = ({
       tableName: chartConfig.from.tableName,
       connectionId: chartConfig.connection,
       metadataMVs: sourceTableConnection.metadataMVs,
-      dateRange: chartConfig.dateRange,
+      dateRange,
+      timestampValueExpression: chartConfig.timestampValueExpression,
       maxKeys,
     },
     { enabled: filterMode === 'all' },
@@ -1328,6 +1329,7 @@ const DBSearchPageFiltersComponent = ({
             maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
             metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
+            timestampValueExpression: chartConfig.timestampValueExpression,
           });
           newValues = results[0] ? results[0].value : [];
         } else {

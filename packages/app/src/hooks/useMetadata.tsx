@@ -291,6 +291,7 @@ export function useMultipleGetKeyValues(
           connectionId,
           metadataMVs,
           dateRange,
+          timestampValueExpression: firstConfig.timestampValueExpression,
           signal,
         });
       }
@@ -404,6 +405,7 @@ export function useAllFieldsAndValues(
     connectionId,
     metadataMVs,
     dateRange,
+    timestampValueExpression,
     maxValuesPerKey,
     maxKeys,
   }: {
@@ -412,13 +414,16 @@ export function useAllFieldsAndValues(
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
     maxValuesPerKey?: number;
     maxKeys?: number;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const { data: me } = api.useMe();
   const { enabled = true } = options || {};
+  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
 
   return useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
@@ -433,12 +438,16 @@ export function useAllFieldsAndValues(
       maxKeys,
     ],
     queryFn: async ({ signal }) => {
+      if (fieldMetadataDisabled) {
+        return [];
+      }
       return metadata.getAllFieldsAndValues({
         databaseName,
         tableName,
         connectionId,
         metadataMVs,
         dateRange,
+        timestampValueExpression,
         maxValuesPerKey,
         maxKeys,
         signal,
@@ -447,7 +456,12 @@ export function useAllFieldsAndValues(
     staleTime: 1000 * 60 * 5,
     placeholderData: keepPreviousData,
     ...options,
-    enabled: !!enabled && !!databaseName && !!tableName && !!connectionId,
+    enabled:
+      !!enabled &&
+      !fieldMetadataDisabled &&
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId,
   });
 }
 

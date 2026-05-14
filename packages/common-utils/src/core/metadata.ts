@@ -374,7 +374,7 @@ export class Metadata {
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
       : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${dateRangeCacheSuffix}.keys`
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
@@ -1299,6 +1299,7 @@ export class Metadata {
     connectionId,
     metadataMVs,
     dateRange,
+    timestampValueExpression,
     signal,
   }: {
     databaseName: string;
@@ -1308,6 +1309,7 @@ export class Metadata {
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
     signal?: AbortSignal;
   }): Promise<{ key: string; value: string[] }[]> {
     if (keyExpressions.length === 0) return [];
@@ -1346,7 +1348,7 @@ export class Metadata {
         .map(p => `${p.rollupColumn}:${p.rollupKey}`)
         .sort()
         .join(',');
-      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${sortedKeyIds}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues`;
+      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${sortedKeyIds}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues.${maxValuesPerKey}`;
 
       const tupleParams = concatChSql(
         ',',
@@ -1421,6 +1423,8 @@ export class Metadata {
             key: p.mapKey,
             maxValues: maxValuesPerKey,
             connectionId,
+            dateRange,
+            timestampValueExpression,
           });
           return { key: p.keyExpression, value: fallback };
         }),
@@ -1437,6 +1441,8 @@ export class Metadata {
           key: p.mapKey,
           maxValues: maxValuesPerKey,
           connectionId,
+          dateRange,
+          timestampValueExpression,
         });
         return { key: p.keyExpression, value };
       }),
@@ -1454,6 +1460,7 @@ export class Metadata {
     connectionId,
     metadataMVs,
     dateRange,
+    timestampValueExpression,
     maxValuesPerKey = 20,
     maxKeys,
     signal,
@@ -1463,6 +1470,7 @@ export class Metadata {
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
     maxValuesPerKey?: number;
     maxKeys?: number;
     signal?: AbortSignal;
@@ -1540,6 +1548,7 @@ export class Metadata {
       connectionId,
       metadataMVs,
       dateRange,
+      timestampValueExpression,
     });
 
     const stringFields = fields.filter(
@@ -1556,6 +1565,8 @@ export class Metadata {
           key: isMapKey ? f.path[1] : undefined,
           maxValues: maxValuesPerKey,
           connectionId,
+          dateRange,
+          timestampValueExpression,
         });
         const keyExpr = isMapKey ? `${f.path[0]}['${f.path[1]}']` : f.path[0];
         return { key: keyExpr, value };
