@@ -138,6 +138,7 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
     type: 'webhook',
     webhookId: '',
   },
+  note: null,
 };
 
 /**
