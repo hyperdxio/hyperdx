@@ -14,7 +14,6 @@ import {
   buildMVDateRangeIndicator,
   convertToTableChartConfig,
 } from '@/ChartUtils';
-import { IS_DASHBOARD_LINKING_ENABLED } from '@/config';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -227,12 +226,11 @@ export default function DBTableChart({
   const hasOnRowClick = !!getOnClickLink || !!getRowSearchLink;
   const onRowClick = useCallback(
     (row: Record<string, unknown>, e?: React.MouseEvent) => {
-      const url =
-        getOnClickLink && IS_DASHBOARD_LINKING_ENABLED
-          ? getOnClickLink(row)
-          : getRowSearchLink
-            ? getRowSearchLink(row)
-            : null;
+      const url = getOnClickLink
+        ? getOnClickLink(row)
+        : getRowSearchLink
+          ? getRowSearchLink(row)
+          : null;
 
       // getOnClickLink will surface any errors notifications
       if (!url) return;
