@@ -25,6 +25,7 @@ const eventPatternsSchema = z.object({
     .min(1)
     .max(25_000)
     .optional()
+    .default(10_000)
     .describe(
       'Number of random rows to sample for pattern mining. ' +
         'Default: 10000. Higher values produce more accurate patterns but take longer.',

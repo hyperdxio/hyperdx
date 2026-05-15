@@ -88,8 +88,8 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
           alias: s.alias,
           level: s.level,
         })),
-        groupBy: input.groupBy ?? undefined,
-        orderBy: input.orderBy ?? undefined,
+        groupBy: input.groupBy,
+        orderBy: input.orderBy,
         ...(input.granularity ? { granularity: input.granularity } : {}),
       });
 

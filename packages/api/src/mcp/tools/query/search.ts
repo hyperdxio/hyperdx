@@ -24,7 +24,7 @@ const searchSchema = z.object({
     .default('')
     .describe(
       'Comma-separated columns to include in search results. ' +
-        'Leave empty for defaults. Example: "body,service.name,duration"',
+        'Leave empty for defaults. Example: "Body,ServiceName,Duration"',
     ),
   maxResults: z
     .number()
