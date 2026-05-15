@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { notifications } from '@mantine/notifications';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
@@ -53,7 +55,15 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       );
 
       const rowData = JSON.stringify(parsedRow, null, 2);
-      await navigator.clipboard.writeText(rowData);
+      const copied = await copyTextToClipboard(rowData);
+      if (!copied) {
+        notifications.show({
+          color: 'red',
+          message:
+            'Could not access the clipboard. Check browser permissions or use HTTPS.',
+        });
+        return;
+      }
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
@@ -71,7 +81,15 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       if (sourceId) {
         currentUrl.searchParams.set('rowSource', sourceId);
       }
-      await navigator.clipboard.writeText(currentUrl.toString());
+      const copied = await copyTextToClipboard(currentUrl.toString());
+      if (!copied) {
+        notifications.show({
+          color: 'red',
+          message:
+            'Could not access the clipboard. Check browser permissions or use HTTPS.',
+        });
+        return;
+      }
       setIsUrlCopied(true);
       setTimeout(() => setIsUrlCopied(false), 2000);
     } catch (error) {

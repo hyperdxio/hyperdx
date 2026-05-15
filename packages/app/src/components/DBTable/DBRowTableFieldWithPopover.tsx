@@ -2,7 +2,10 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
+
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
@@ -86,7 +89,15 @@ const DBRowTableFieldWithPopover = ({
     try {
       const value =
         typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      await navigator.clipboard.writeText(value);
+      const copied = await copyTextToClipboard(value);
+      if (!copied) {
+        notifications.show({
+          color: 'red',
+          message:
+            'Could not access the clipboard. Check browser permissions or use HTTPS.',
+        });
+        return;
+      }
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
