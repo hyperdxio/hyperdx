@@ -1097,13 +1097,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })
       .then(value => value === '1')
       .catch(error => {
-        console.error('Error fetching enable_full_text_index setting:', error);
+        console.warn('Error fetching enable_full_text_index setting:', error);
         return false;
       });
 
     // Pre-fetch KV items lookup (map column -> KV items column with text(tokenizer=array) index)
     this.kvItemsLookupPromise = this.buildKvItemsLookup().catch(error => {
-      console.error('Error building KV items lookup:', error);
+      console.warn('Error building KV items lookup:', error);
       return new Map();
     });
   }

@@ -222,6 +222,7 @@ describe('External API Alerts', () => {
           id: expect.any(String),
           name: 'Format Test Alert',
           message: 'This is a test alert for format verification',
+          note: null,
           threshold: 123,
           interval: '15m',
           source: AlertSource.TILE,
