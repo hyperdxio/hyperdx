@@ -130,6 +130,6 @@ Sessions keeps a **single-row** query toolbar (source, where filter, time range,
 - Kubernetes Dashboard, Clickhouse Dashboard — `PageLayout` with `breadcrumbs`, `leading`, `actions`, `padded` (no `title`)
 - Client Sessions — `PageLayout` with custom `PageHeader` containing the full single-row query toolbar
 
-## Knip (`PageLayout` temporary ignore)
+## Knip
 
-`PageLayout.tsx` is listed in **`knip.json`** under `workspaces["packages/app"].ignoreFiles` so the layout shell can merge before every consumer route imports it (Knip only treats `pages/`, `scripts/`, and e2e as entry roots by default). **Delete that `ignoreFiles` entry** when `yarn knip` passes without it—typically after the dashboard and tool-page migrations that import `@/components/PageLayout` are on `main`.
+`packages/app` Knip entry roots are `pages/`, `scripts/`, and e2e tests. After you add or move a `PageLayout` import, run `yarn knip` from the repo root (or `yarn knip` in `packages/app` if configured) so new consumers stay wired.
