@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── Shared description fragments ────────────────────────────────────────────
 
-export const WHERE_DESCRIPTION =
+const WHERE_DESCRIPTION =
   'Row filter.\n\n' +
   'FIRST: pick a language (whereLanguage):\n' +
   '  Lucene (default): Column:value          e.g. level:error\n' +
@@ -14,14 +14,14 @@ export const WHERE_DESCRIPTION =
   'MAP ATTRIBUTE ACCESS requires whereLanguage:"sql" — the Lucene parser ' +
   "does not accept SpanAttributes['key'] bracket syntax.";
 
-export const WHERE_LANGUAGE_DESCRIPTION =
+const WHERE_LANGUAGE_DESCRIPTION =
   'Query language for the "where" filter. Default: lucene.\n' +
   'Use "sql" when filtering on map attributes (SpanAttributes[\'key\']) or ' +
   'when you need SQL operators like >=, LIKE, IN, etc.';
 
 // ─── Shared Zod schemas ──────────────────────────────────────────────────────
 
-export const mcpAggFnSchema = z
+const mcpAggFnSchema = z
   .enum([
     'avg',
     'count',

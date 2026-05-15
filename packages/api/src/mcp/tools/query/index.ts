@@ -7,8 +7,6 @@ import { registerSql } from './sql';
 import { registerTable } from './table';
 import { registerTimeseries } from './timeseries';
 
-export * from './schemas';
-
 const queryTools: ToolDefinition = (server: McpServer, context: McpContext) => {
   registerTimeseries(server, context);
   registerTable(server, context);
