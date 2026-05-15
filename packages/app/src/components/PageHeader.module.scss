@@ -5,11 +5,62 @@
   color: var(--color-text-default);
   display: flex;
   font-weight: 500;
-  height: 60px;
+  gap: 16px;
+  min-height: 60px;
   justify-content: space-between;
   line-height: 1;
-  padding: 0 32px;
+  /* Match Search page toolbar: DBSearchPage uses Mantine `px="sm"` */
+  padding: 0 var(--mantine-spacing-sm);
   position: sticky;
   top: 0;
   z-index: 100;
+}
+
+/* Breadcrumbs row + toolbar row inside one sticky header */
+.headerStacked {
+  align-items: stretch;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  justify-content: flex-start;
+  min-height: auto;
+  padding-block: var(--mantine-spacing-xs);
+}
+
+.breadcrumbsRow {
+  flex-shrink: 0;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.toolbarRow {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 44px;
+  min-width: 0;
+}
+
+.start {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+}
+
+.title {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
 }
