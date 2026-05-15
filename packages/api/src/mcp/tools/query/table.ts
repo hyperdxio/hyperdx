@@ -36,7 +36,8 @@ const tableSchema = z.object({
     .default('table')
     .describe(
       'Output shape: "table" (grouped rows, default), "number" (single scalar), or "pie" (pie chart). ' +
-        'If "number" or "pie" is set with select.length > 1, it is auto-upgraded to "table".',
+        'If "number" or "pie" is set with select.length > 1, it is auto-upgraded to "table". ' +
+        'groupBy is ignored when shape is "number".',
     ),
   groupBy: groupBySchema,
   orderBy: orderBySchema,
@@ -81,7 +82,7 @@ export function registerTable(server: McpServer, context: McpContext) {
 
       // Auto-upgrade shape when select has multiple items but shape is
       // single-value (number/pie). This is the #1 Zod error class from agents.
-      let displayType: string = input.shape ?? 'table';
+      let displayType: 'table' | 'number' | 'pie' = input.shape ?? 'table';
       if (
         (displayType === 'number' || displayType === 'pie') &&
         input.select.length > 1

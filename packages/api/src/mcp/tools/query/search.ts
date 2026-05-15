@@ -85,7 +85,7 @@ export function registerSearch(server: McpServer, context: McpContext) {
           config: {
             displayType: 'search' as const,
             sourceId: input.sourceId,
-            select: input.columns ?? '',
+            select: input.columns,
             where: input.where ?? '',
             whereLanguage: input.whereLanguage ?? 'lucene',
           },

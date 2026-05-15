@@ -68,6 +68,8 @@ export function registerSql(server: McpServer, context: McpContext) {
         'ADVANCED: only use this when you need capabilities the builder tools cannot express — ' +
         'JOINs, sub-queries, CTEs, or querying tables not registered as sources.\n\n' +
         'Requires connectionId (not sourceId) — call hyperdx_list_sources to find connections.\n\n' +
+        'Results are always returned as table rows — for time-series semantics, ' +
+        'include a time column and ORDER BY it in your SQL.\n\n' +
         'For standard aggregations use hyperdx_table. ' +
         'For time-series charts use hyperdx_timeseries. ' +
         'For browsing rows use hyperdx_search.',
