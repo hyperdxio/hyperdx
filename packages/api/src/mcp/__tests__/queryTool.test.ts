@@ -353,6 +353,7 @@ describe('MCP Query Tools', () => {
       });
 
       expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/sourceId/i);
     });
   });
 
@@ -441,6 +442,7 @@ describe('MCP Query Tools', () => {
       });
 
       expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/sourceId/i);
     });
 
     it('should return error for non-existent source', async () => {
