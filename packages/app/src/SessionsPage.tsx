@@ -452,7 +452,7 @@ export default function SessionsPage() {
                       <SessionSetupInstructions />
                     </Flex>
                   ) : (
-                    <div style={{ minHeight: 0 }} className="mt-4">
+                    <div style={{ minHeight: 0 }}>
                       <SessionCardList
                         onClick={session => {
                           setSelectedSession(session);
