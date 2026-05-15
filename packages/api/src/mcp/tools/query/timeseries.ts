@@ -78,12 +78,12 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       const { startDate, endDate } = timeRange;
 
       const tile = buildTile('MCP Timeseries', 12, 4, {
-        displayType: input.shape ?? 'line',
+        displayType: input.shape,
         sourceId: input.sourceId,
         select: input.select.map(s => ({
           aggFn: s.aggFn,
-          where: s.where ?? '',
-          whereLanguage: s.whereLanguage ?? 'lucene',
+          where: s.where,
+          whereLanguage: s.whereLanguage,
           valueExpression: s.valueExpression,
           alias: s.alias,
           level: s.level,

@@ -78,7 +78,7 @@ export function registerTable(server: McpServer, context: McpContext) {
 
       // Auto-upgrade shape when select has multiple items but shape is
       // single-value (number/pie). This is the #1 Zod error class from agents.
-      let displayType: 'table' | 'number' | 'pie' = input.shape ?? 'table';
+      let displayType: 'table' | 'number' | 'pie' = input.shape;
       if (
         (displayType === 'number' || displayType === 'pie') &&
         input.select.length > 1
@@ -91,13 +91,13 @@ export function registerTable(server: McpServer, context: McpContext) {
         sourceId: input.sourceId,
         select: input.select.map(s => ({
           aggFn: s.aggFn,
-          where: s.where ?? '',
-          whereLanguage: s.whereLanguage ?? 'lucene',
+          where: s.where,
+          whereLanguage: s.whereLanguage,
           valueExpression: s.valueExpression,
           alias: s.alias,
           level: s.level,
         })),
-        groupBy: input.groupBy ?? undefined,
+        groupBy: displayType === 'number' ? undefined : input.groupBy,
         orderBy: input.orderBy ?? undefined,
       });
 

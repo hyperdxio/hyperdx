@@ -74,8 +74,8 @@ export function registerSearch(server: McpServer, context: McpContext) {
         displayType: 'search' as const,
         sourceId: input.sourceId,
         select: input.columns,
-        where: input.where ?? '',
-        whereLanguage: input.whereLanguage ?? 'lucene',
+        where: input.where,
+        whereLanguage: input.whereLanguage,
       });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate, {
