@@ -62,7 +62,7 @@ export async function updateSource(
     return getModelForKind(source.kind)?.findOneAndUpdate(
       { _id: sourceId, team },
       source,
-      { new: true, overwrite: true },
+      { new: true },
     );
   }
 
