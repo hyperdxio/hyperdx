@@ -1,13 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { parseTimeRange, runConfigTile } from './helpers';
+import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
   endTimeSchema,
   sourceIdSchema,
@@ -74,22 +70,13 @@ export function registerSearch(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
-      const tile: ExternalDashboardTileWithId =
-        externalDashboardTileSchemaWithId.parse({
-          id: new ObjectId().toString(),
-          name: 'MCP Search',
-          x: 0,
-          y: 0,
-          w: 24,
-          h: 6,
-          config: {
-            displayType: 'search' as const,
-            sourceId: input.sourceId,
-            select: input.columns,
-            where: input.where ?? '',
-            whereLanguage: input.whereLanguage ?? 'lucene',
-          },
-        });
+      const tile = buildTile('MCP Search', 24, 6, {
+        displayType: 'search' as const,
+        sourceId: input.sourceId,
+        select: input.columns,
+        where: input.where ?? '',
+        whereLanguage: input.whereLanguage ?? 'lucene',
+      });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate, {
         maxResults: input.maxResults,

@@ -1,13 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { parseTimeRange, runConfigTile } from './helpers';
+import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import { endTimeSchema, startTimeSchema } from './schemas';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -85,21 +81,12 @@ export function registerSql(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
-      const tile: ExternalDashboardTileWithId =
-        externalDashboardTileSchemaWithId.parse({
-          id: new ObjectId().toString(),
-          name: 'MCP SQL',
-          x: 0,
-          y: 0,
-          w: 24,
-          h: 6,
-          config: {
-            configType: 'sql' as const,
-            displayType: 'table' as const,
-            connectionId: input.connectionId,
-            sqlTemplate: input.sql,
-          },
-        });
+      const tile = buildTile('MCP SQL', 24, 6, {
+        configType: 'sql' as const,
+        displayType: 'table' as const,
+        connectionId: input.connectionId,
+        sqlTemplate: input.sql,
+      });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate);
     }),

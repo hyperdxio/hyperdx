@@ -1,13 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { parseTimeRange, runConfigTile } from './helpers';
+import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
   endTimeSchema,
   groupBySchema,
@@ -81,32 +77,21 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
-      const displayType = input.shape ?? 'line';
-
-      const tile: ExternalDashboardTileWithId =
-        externalDashboardTileSchemaWithId.parse({
-          id: new ObjectId().toString(),
-          name: 'MCP Timeseries',
-          x: 0,
-          y: 0,
-          w: 12,
-          h: 4,
-          config: {
-            displayType,
-            sourceId: input.sourceId,
-            select: input.select.map(s => ({
-              aggFn: s.aggFn,
-              where: s.where ?? '',
-              whereLanguage: s.whereLanguage ?? 'lucene',
-              valueExpression: s.valueExpression,
-              alias: s.alias,
-              level: s.level,
-            })),
-            groupBy: input.groupBy ?? undefined,
-            orderBy: input.orderBy ?? undefined,
-            ...(input.granularity ? { granularity: input.granularity } : {}),
-          },
-        });
+      const tile = buildTile('MCP Timeseries', 12, 4, {
+        displayType: input.shape ?? 'line',
+        sourceId: input.sourceId,
+        select: input.select.map(s => ({
+          aggFn: s.aggFn,
+          where: s.where ?? '',
+          whereLanguage: s.whereLanguage ?? 'lucene',
+          valueExpression: s.valueExpression,
+          alias: s.alias,
+          level: s.level,
+        })),
+        groupBy: input.groupBy ?? undefined,
+        orderBy: input.orderBy ?? undefined,
+        ...(input.granularity ? { granularity: input.granularity } : {}),
+      });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate);
     }),

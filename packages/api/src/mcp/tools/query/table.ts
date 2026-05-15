@@ -1,13 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { parseTimeRange, runConfigTile } from './helpers';
+import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
   endTimeSchema,
   groupBySchema,
@@ -90,29 +86,20 @@ export function registerTable(server: McpServer, context: McpContext) {
         displayType = 'table';
       }
 
-      const tile: ExternalDashboardTileWithId =
-        externalDashboardTileSchemaWithId.parse({
-          id: new ObjectId().toString(),
-          name: 'MCP Table',
-          x: 0,
-          y: 0,
-          w: 12,
-          h: 4,
-          config: {
-            displayType,
-            sourceId: input.sourceId,
-            select: input.select.map(s => ({
-              aggFn: s.aggFn,
-              where: s.where ?? '',
-              whereLanguage: s.whereLanguage ?? 'lucene',
-              valueExpression: s.valueExpression,
-              alias: s.alias,
-              level: s.level,
-            })),
-            groupBy: input.groupBy ?? undefined,
-            orderBy: input.orderBy ?? undefined,
-          },
-        });
+      const tile = buildTile('MCP Table', 12, 4, {
+        displayType,
+        sourceId: input.sourceId,
+        select: input.select.map(s => ({
+          aggFn: s.aggFn,
+          where: s.where ?? '',
+          whereLanguage: s.whereLanguage ?? 'lucene',
+          valueExpression: s.valueExpression,
+          alias: s.alias,
+          level: s.level,
+        })),
+        groupBy: input.groupBy ?? undefined,
+        orderBy: input.orderBy ?? undefined,
+      });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate);
     }),
