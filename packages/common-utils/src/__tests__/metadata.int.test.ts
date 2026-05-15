@@ -3,6 +3,10 @@ import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import {
+  parseKvItemsCastExpression,
+  parseKvItemsExpression,
+} from '@/queryParser';
 import { ChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 describe('Metadata Integration Tests', () => {
@@ -675,6 +679,101 @@ describe('Metadata Integration Tests', () => {
         connectionId: 'test_connection',
       });
       expect(settingValue).toBeUndefined();
+    });
+  });
+
+  describe('KV items column default_expression parsing', () => {
+    const castTableName = 'test_kv_items_cast';
+    const inlineTableName = 'test_kv_items_inline';
+    let metadata: Metadata;
+
+    beforeAll(async () => {
+      // CAST(X, 'Type') form — the form ClickHouse uses in production
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${castTableName} (
+            Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+            ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+            ResourceAttributeItems Array(String) MATERIALIZED
+              arrayMap(x -> concat(x.1, '=', x.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))
+              CODEC(ZSTD(1)),
+            INDEX idx_res_attr_items ResourceAttributeItems TYPE text(tokenizer = 'array') GRANULARITY 1
+          )
+          ENGINE = MergeTree()
+          ORDER BY (Timestamp)
+        `,
+      });
+
+      // X::Type inline cast form
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${inlineTableName} (
+            Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+            LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+            LogAttributeItems Array(String) MATERIALIZED
+              arrayMap((x) -> concat(x.1, '=', x.2), LogAttributes::Array(Tuple(String, String)))
+              CODEC(ZSTD(1)),
+            INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array') GRANULARITY 1
+          )
+          ENGINE = MergeTree()
+          ORDER BY (Timestamp)
+        `,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${castTableName}`,
+      });
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${inlineTableName}`,
+      });
+    });
+
+    it('should parse CAST form default_expression from ClickHouse', async () => {
+      const columns = await metadata.getColumns({
+        databaseName: 'default',
+        tableName: castTableName,
+        connectionId: 'test_connection',
+      });
+
+      const kvColumn = columns.find(c => c.name === 'ResourceAttributeItems');
+      expect(kvColumn).toBeDefined();
+      expect(kvColumn!.default_type).toBe('MATERIALIZED');
+      expect(kvColumn!.type).toBe('Array(String)');
+
+      const expr = kvColumn!.default_expression;
+      const castResult = parseKvItemsCastExpression(expr);
+      const inlineResult = parseKvItemsExpression(expr);
+      const parsed = castResult ?? inlineResult;
+
+      expect(parsed).toBeDefined();
+      expect(parsed!.mapColumn).toBe('ResourceAttributes');
+      expect(parsed!.separator).toBe('=');
+    });
+
+    it('should parse inline cast form default_expression from ClickHouse', async () => {
+      const columns = await metadata.getColumns({
+        databaseName: 'default',
+        tableName: inlineTableName,
+        connectionId: 'test_connection',
+      });
+
+      const kvColumn = columns.find(c => c.name === 'LogAttributeItems');
+      expect(kvColumn).toBeDefined();
+      expect(kvColumn!.default_type).toBe('MATERIALIZED');
+      expect(kvColumn!.type).toBe('Array(String)');
+
+      const expr = kvColumn!.default_expression;
+      const castResult = parseKvItemsCastExpression(expr);
+      const inlineResult = parseKvItemsExpression(expr);
+      const parsed = castResult ?? inlineResult;
+
+      expect(parsed).toBeDefined();
+      expect(parsed!.mapColumn).toBe('LogAttributes');
+      expect(parsed!.separator).toBe('=');
     });
   });
 });
