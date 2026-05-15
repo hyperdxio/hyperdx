@@ -1,3 +1,6 @@
+// TODO: Remove `src/components/PageLayout.tsx` from `knip.json` → `workspaces["packages/app"].ignoreFiles`
+// once enough app pages import `PageLayout` that Knip no longer reports it as unused.
+
 import classNames from 'classnames';
 
 import { PageHeader, type PageHeaderProps } from './PageHeader';
