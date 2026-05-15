@@ -484,6 +484,11 @@ export function getChartColorError(): string {
   return getSemanticChartColor('--color-chart-error', CHART_PALETTE.red);
 }
 
+/** Info-level logs (see `getLogLevelClass`): `--color-chart-info` (green on HyperDX, blue on ClickStack). */
+export function getChartColorInfo(): string {
+  return getSemanticChartColor('--color-chart-info', CHART_PALETTE.green);
+}
+
 export function getChartColorSuccessHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-success-highlight',
@@ -516,8 +521,7 @@ export const semanticKeyedColor = (
       ? getChartColorError()
       : logLevel === 'warn'
         ? getChartColorWarning()
-        : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-          getColorFromCSSVariable(0);
+        : getChartColorInfo();
   }
 
   // Use CSS variable for theme-aware colors, fallback to hardcoded array
@@ -530,14 +534,15 @@ export const logLevelColor = (key: string | number | undefined) => {
     ? getChartColorError()
     : logLevel === 'warn'
       ? getChartColorWarning()
-      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-        getColorFromCSSVariable(0);
+      : getChartColorInfo();
 };
 
-// order of colors for sorting. primary color (blue/green) on bottom, then yellow, then red
+// Sort order (lowest severity first): info (theme: HyperDX green / ClickStack blue), warn, error
 // Computed lazily to avoid DOM access at module initialization (SSR-safe)
-export function getLogLevelColorOrder(): string[] {
-  return [logLevelColor('info'), logLevelColor('warn'), logLevelColor('error')];
+export function getLogLevelColorOrder(
+  colorForLevel: typeof logLevelColor = logLevelColor,
+): string[] {
+  return [colorForLevel('info'), colorForLevel('warn'), colorForLevel('error')];
 }
 
 const getLevelColor = (logLevel?: string) => {
@@ -548,8 +553,7 @@ const getLevelColor = (logLevel?: string) => {
     ? getChartColorError()
     : logLevel === 'warn'
       ? getChartColorWarning()
-      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-        getColorFromCSSVariable(0);
+      : getChartColorInfo();
 };
 
 export const getColorProps = (index: number, level: string): string => {

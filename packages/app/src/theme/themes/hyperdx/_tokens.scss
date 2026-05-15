@@ -7,9 +7,9 @@
  * They are used both here (for .theme-hyperdx scoped selectors) and
  * in _base-tokens.scss (for unscoped fallback selectors during SSR).
  *
- * Chart color tokens (categorical + semantic) are intentionally shared
- * with the ClickStack theme. They live in `_chart-tokens.scss` and are
- * `@include`d here so a single hex change updates both themes.
+ * Most chart color tokens (categorical + semantic) are intentionally shared
+ * with the ClickStack theme via `_chart-tokens.scss`. `--color-chart-info`
+ * (log / chart “info” severity) is set per brand below after that include.
  */
 
 @use '../chart-tokens';
@@ -104,6 +104,9 @@
      `utils.ts` using the `CATEGORICAL_ORDER` array. */
   @include chart-tokens.chart-tokens;
 
+  /* Log / chart “info” severity — HyperDX Mantine brand greens. */
+  --color-chart-info: var(--mantine-color-green-6);
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
   --mantine-color-text: var(--color-text);
@@ -196,6 +199,9 @@
 
   /* Chart Colors - shared across themes via the chart-tokens partial. */
   @include chart-tokens.chart-tokens;
+
+  /* Log / chart “info” severity — HyperDX Mantine brand greens. */
+  --color-chart-info: var(--mantine-color-green-7);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);

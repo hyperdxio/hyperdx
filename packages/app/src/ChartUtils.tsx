@@ -521,6 +521,7 @@ function addResponseToFormattedData({
   previousPeriodOffsetSeconds,
   isPreviousPeriod,
   hiddenSeries = [],
+  logLevelColorFn = logLevelColor,
 }: {
   tsBucketMap: Map<number, Record<string, any>>;
   lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
@@ -529,6 +530,8 @@ function addResponseToFormattedData({
   isPreviousPeriod: boolean;
   previousPeriodOffsetSeconds: number;
   hiddenSeries?: string[];
+  /** When set (e.g. HyperDX log charts), avoids reading nested Mantine vars from the DOM before Mantine updates them after a brand switch. */
+  logLevelColorFn?: typeof logLevelColor;
 }) {
   const { meta, data } = response;
   if (meta == null) {
@@ -584,7 +587,7 @@ function addResponseToFormattedData({
       // Special handling for log level / trace severity colors
       let color: string | undefined = undefined;
       if (firstGroupColumnIsLogLevel(source, groupColumns)) {
-        color = logLevelColor(row[groupColumns[0].name]);
+        color = logLevelColorFn(row[groupColumns[0].name]);
       }
 
       lineDataMap[keyName] = {
@@ -611,6 +614,7 @@ export function formatResponseForTimeChart({
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
+  logLevelColorFn,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -620,6 +624,7 @@ export function formatResponseForTimeChart({
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
+  logLevelColorFn?: typeof logLevelColor;
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -650,6 +655,8 @@ export function formatResponseForTimeChart({
     [keyName: string]: LineDataWithOptionalColor;
   } = {};
 
+  const resolveLogLevelColor = logLevelColorFn ?? logLevelColor;
+
   addResponseToFormattedData({
     response: currentPeriodResponse,
     lineDataMap,
@@ -658,6 +665,7 @@ export function formatResponseForTimeChart({
     isPreviousPeriod: false,
     previousPeriodOffsetSeconds,
     hiddenSeries,
+    logLevelColorFn: resolveLogLevelColor,
   });
 
   if (previousPeriodResponse != null) {
@@ -669,10 +677,11 @@ export function formatResponseForTimeChart({
       isPreviousPeriod: true,
       previousPeriodOffsetSeconds,
       hiddenSeries,
+      logLevelColorFn: resolveLogLevelColor,
     });
   }
 
-  const logLevelColorOrder = getLogLevelColorOrder();
+  const logLevelColorOrder = getLogLevelColorOrder(resolveLogLevelColor);
   const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -

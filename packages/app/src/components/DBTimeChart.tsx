@@ -22,6 +22,8 @@ import {
   Stack,
   Text,
   Tooltip,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
 
@@ -41,6 +43,13 @@ import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
+import { useAppTheme } from '@/theme/ThemeProvider';
+import {
+  getChartColorError,
+  getChartColorWarning,
+  getLogLevelClass,
+  logLevelColor,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -286,6 +295,35 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(config);
 
+  const { themeName } = useAppTheme();
+  const mantineTheme = useMantineTheme();
+  const { colorScheme } = useMantineColorScheme();
+  const hyperdxGreen6 = mantineTheme.colors?.green?.[6];
+  const hyperdxGreen7 = mantineTheme.colors?.green?.[7];
+
+  /** HyperDX: `--color-chart-info` uses Mantine green-*; those CSS vars update after our DOM read on brand switch, so resolve from the live Mantine theme object instead. */
+  const resolveLogLevelColorForTimeChart = useMemo((): typeof logLevelColor => {
+    if (
+      themeName !== 'hyperdx' ||
+      hyperdxGreen6 == null ||
+      hyperdxGreen7 == null
+    ) {
+      return logLevelColor;
+    }
+    const effectiveScheme = colorScheme ?? 'dark';
+    const infoHex = effectiveScheme === 'light' ? hyperdxGreen7 : hyperdxGreen6;
+    return (key: string | number | undefined) => {
+      const lvl = getLogLevelClass(`${key}`);
+      if (lvl === 'error') {
+        return getChartColorError();
+      }
+      if (lvl === 'warn') {
+        return getChartColorWarning();
+      }
+      return infoHex;
+    };
+  }, [themeName, colorScheme, hyperdxGreen6, hyperdxGreen7]);
+
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(config),
     [config],
@@ -403,6 +441,7 @@ function DBTimeChartComponent({
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
+        logLevelColorFn: resolveLogLevelColorForTimeChart,
       });
       return {
         ...defaultResponse,
@@ -426,6 +465,8 @@ function DBTimeChartComponent({
     previousPeriodData,
     hiddenSeries,
     previousPeriodOffsetSeconds,
+    // Brand + Mantine-sensitive log colors flow through `resolveLogLevelColorForTimeChart`.
+    resolveLogLevelColorForTimeChart,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType

@@ -3,6 +3,7 @@ import React from 'react';
 import {
   COLORS,
   getChartColorError,
+  getChartColorInfo,
   getChartColorSuccess,
   getChartColorWarning,
 } from '@/utils';
@@ -39,6 +40,11 @@ const SEMANTIC_CHART_COLORS = [
     name: 'color-chart-success',
     hex: getChartColorSuccess(),
     label: 'Success (Green)',
+  },
+  {
+    name: 'color-chart-info',
+    hex: getChartColorInfo(),
+    label: 'Info logs (HyperDX: green · ClickStack: blue)',
   },
   {
     name: 'color-chart-warning',

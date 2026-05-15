@@ -36,6 +36,18 @@ jest.mock('@/source', () => ({
     .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
 }));
 
+jest.mock('@/theme/ThemeProvider', () => ({
+  useAppTheme: jest.fn(() => ({
+    theme: { name: 'hyperdx' },
+    themeName: 'hyperdx',
+    availableThemes: ['hyperdx', 'clickstack'],
+    setTheme: jest.fn(),
+    toggleTheme: jest.fn(),
+    clearThemeOverride: jest.fn(),
+    isDev: false,
+  })),
+}));
+
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );

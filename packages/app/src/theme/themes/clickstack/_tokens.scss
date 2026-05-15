@@ -4,9 +4,9 @@
 
 /* Uses Click UI design tokens */
 
-/* Chart color tokens (categorical + semantic) are intentionally shared
- * with the HyperDX theme. They live in `_chart-tokens.scss` and are
- * `@include`d below so a single hex change updates both themes. */
+/* Chart color tokens (categorical + semantic) are mostly shared with the
+ * HyperDX theme via `_chart-tokens.scss`. `--color-chart-info` (log / chart
+ * “info” severity) is set per brand after that include. */
 
 @use '../chart-tokens';
 
@@ -180,6 +180,9 @@
 
   /* Chart Colors - shared across themes via the chart-tokens partial. */
   @include chart-tokens.chart-tokens;
+
+  /* Log / chart "info" severity — ClickStack brand (blue). */
+  --color-chart-info: var(--color-chart-blue);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
@@ -362,6 +365,9 @@
 
   /* Chart Colors - shared across themes via the chart-tokens partial. */
   @include chart-tokens.chart-tokens;
+
+  /* Log / chart "info" severity — ClickStack brand (blue). */
+  --color-chart-info: var(--color-chart-blue);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;

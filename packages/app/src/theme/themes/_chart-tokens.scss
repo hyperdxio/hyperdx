@@ -1,10 +1,8 @@
 /* Shared Chart Color Tokens
  *
- * The categorical and semantic chart palettes are intentionally identical
- * across the HyperDX and ClickStack themes. Rather than duplicate hex
- * values across four scheme blocks (HyperDX dark/light + ClickStack
- * dark/light), both themes `@use` this partial and `@include` the
- * `chart-tokens` mixin inside their own scope selectors.
+ * The categorical chart palette and most semantic chart colors are identical
+ * across the HyperDX and ClickStack themes. `--color-chart-info` (log / chart
+ * “info” severity) is defined per brand in each theme’s `_tokens.scss`.
  *
  * Source: Observable 10 categorical palette
  * https://observablehq.com/@d3/color-schemes

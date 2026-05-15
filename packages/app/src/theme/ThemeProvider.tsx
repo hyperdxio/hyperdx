@@ -4,7 +4,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 
@@ -55,10 +54,11 @@ export function AppThemeProvider({
   // SSR/initial render: Always use props or DEFAULT_THEME for hydration consistency.
   // The server cannot read localStorage, so we must start with a deterministic value.
   //
-  // HYDRATION NOTE: In dev mode, the useEffect below may update the theme after hydration
-  // if localStorage contains a different theme. This is intentional for dev testing
-  // and will cause a brief flash. In production (IS_DEV=false), theme is stable and
-  // matches server render. To avoid any flash in production, pass themeName prop explicitly.
+  // HYDRATION NOTE: In dev mode, the useEffect that syncs localStorage may update
+  // the theme after hydration if localStorage contains a different theme. This is
+  // intentional for dev testing and will cause a brief flash. In production
+  // (IS_DEV=false), theme is stable and matches server render. To avoid any flash
+  // in production, pass themeName prop explicitly.
   const [resolvedThemeName, setResolvedThemeName] = useState<ThemeName>(
     () => propsThemeName ?? DEFAULT_THEME,
   );
@@ -131,28 +131,22 @@ export function AppThemeProvider({
     [theme, setTheme, toggleTheme, clearThemeOverride],
   );
 
-  // Track previous theme class for efficient swap
-  const prevThemeClassRef = useRef<string | null>(null);
-
-  // Apply theme CSS class to document (single class swap for performance)
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      const html = document.documentElement;
-      const newClass = theme.cssClass;
-
-      // Remove only the previous theme class (not all themes)
-      if (prevThemeClassRef.current && prevThemeClassRef.current !== newClass) {
-        html.classList.remove(prevThemeClassRef.current);
+  // Apply theme CSS class to <html> synchronously during render so descendants
+  // that read CSS variables in the same commit (e.g. chart formatting via
+  // getComputedStyle) see the correct theme. useEffect runs too late — after
+  // children have already rendered with the previous class still on the document.
+  if (typeof document !== 'undefined') {
+    const html = document.documentElement;
+    const nextClass = theme.cssClass;
+    for (const t of Object.values(themes)) {
+      if (t.cssClass !== nextClass) {
+        html.classList.remove(t.cssClass);
       }
-
-      // Add new theme class if not already present
-      if (!html.classList.contains(newClass)) {
-        html.classList.add(newClass);
-      }
-
-      prevThemeClassRef.current = newClass;
     }
-  }, [theme]);
+    if (!html.classList.contains(nextClass)) {
+      html.classList.add(nextClass);
+    }
+  }
 
   // Dev mode: expose theme API to window (namespaced to avoid global pollution)
   useEffect(() => {
