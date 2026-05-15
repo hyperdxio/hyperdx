@@ -7,11 +7,13 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
+  DashboardFilterType,
+  MetricsDataType,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { externalQuantileLevelSchema } from '@/utils/zod';
+import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 const mcpNumberFormatSchema = z
@@ -251,8 +253,10 @@ const mcpOnClickDashboardSchema = z
       .optional()
       .describe(
         'Optional Handlebars-style WHERE template applied to the destination ' +
-          "dashboard's global filter. Useful when the target dashboard exposes a single " +
-          'global scope rather than per-tile filters.',
+          "dashboard's global filter. Unlike `filters`, this does NOT require the target " +
+          'dashboard to declare anything specific — the rendered string is dropped into the ' +
+          "destination's `where` query param as-is. Use this when the target dashboard " +
+          'does not declare a matching DashboardFilter for the column you want to scope by.',
       ),
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
@@ -264,10 +268,19 @@ const mcpOnClickDashboardSchema = z
       .max(50)
       .optional()
       .describe(
-        'Optional list of templated equality filters. The destination dashboard ' +
-          'auto-populates its filter list with these (matched by expression), so prefer ' +
-          'this over whereTemplate when the target dashboard already declares the same ' +
-          'filter expressions.',
+        'Optional list of templated equality filters. Each entry pre-populates the ' +
+          "destination dashboard's filter bar dropdown for the matching `expression`.\n\n" +
+          'REQUIRES: the destination dashboard must declare a top-level filter ' +
+          "whose `expression` equals this filter's `expression`. If the target does not " +
+          'declare a matching filter, the value is SILENTLY DROPPED at click time and the ' +
+          'destination opens unfiltered.\n\n' +
+          'Before generating dashboard onClick filters, call `hyperdx_get_dashboard` on the ' +
+          'target and confirm its `filters[].expression` list. If the target does not ' +
+          'declare the expression you want to scope by, either (a) add it to the target ' +
+          "dashboard's `filters` array, or (b) use `whereTemplate` instead, which does not " +
+          'require a declared filter.\n\n' +
+          'The save tool validates this and will reject onClick filters whose expression ' +
+          'is not declared on the target dashboard.',
       ),
   })
   .describe(
@@ -615,6 +628,85 @@ export const mcpTilesParam = z
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
+  );
+
+const mcpDashboardFilterSchema = z
+  .object({
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Filter identity. ' +
+          'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
+          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'you are keeping (so saved values bound to it stay attached), and generate ' +
+          'a fresh random hex/ObjectId string for any filter you are adding in this ' +
+          'update. Omitting `id` on an existing filter would orphan its saved values; ' +
+          'reusing an existing id for a new filter would silently overwrite the old ' +
+          'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
+          'be omitted and one will be generated server-side.',
+      ),
+    type: DashboardFilterType.describe(
+      'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
+    ),
+    name: z
+      .string()
+      .min(1)
+      .describe(
+        'Human-readable filter label shown in the dashboard filter bar dropdown.',
+      ),
+    expression: z
+      .string()
+      .min(1)
+      .describe(
+        'Column or SQL expression this filter binds to. Example: "ServiceName" ' +
+          'or "SpanAttributes[\'http.method\']". ' +
+          'IMPORTANT: This is the key that table-tile onClick filters match against ' +
+          'when a row click navigates here — an onClick filter whose `expression` is ' +
+          "not declared in any of this dashboard's filters is silently dropped at click time. " +
+          'Declare an expression here for every column you plan to drive via row-click.',
+      ),
+    sourceId: objectIdSchema.describe(
+      'Source the filter values are pulled from (for the dropdown). ' +
+        'Get IDs from hyperdx_list_sources.',
+    ),
+    sourceMetricType: z
+      .nativeEnum(MetricsDataType)
+      .optional()
+      .describe(
+        'Required only when `sourceId` is a Metric source — picks which metric table the ' +
+          'dropdown values come from.',
+      ),
+    where: z
+      .string()
+      .optional()
+      .describe(
+        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.describe(
+      'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
+    ),
+  })
+  .describe(
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'Each filter binds a label/name to a column expression on a source. ' +
+      "Filters are also the contract for row-click navigation: a table tile's " +
+      'onClick.filters[i].expression must match a filter declared here for the value to land.',
+  );
+
+export const mcpFiltersParam = z
+  .array(mcpDashboardFilterSchema)
+  .describe(
+    'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
+      'bar AND the expressions that table-tile row-click navigation can populate. ' +
+      'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
+      'this array MUST declare a filter whose `expression` is "X" — otherwise the value is ' +
+      'dropped on arrival and the destination opens unfiltered.\n\n' +
+      'Example:\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']',
   );
 
 export const mcpContainersParam = z

@@ -29,6 +29,29 @@ IMPORTANT: Call hyperdx_list_sources first to get the full column schema and att
 3. Call hyperdx_save_dashboard — create the dashboard with all tiles
 4. Call hyperdx_query_tile on each tile — validate queries return data
 
+== UPDATING AN EXISTING DASHBOARD ==
+
+When updating a dashboard (passing the top-level \`id\` to hyperdx_save_dashboard),
+the \`filters\` array must be fully self-describing — every filter needs an \`id\`:
+
+  - Existing filter you are KEEPING: copy its \`id\` verbatim from the
+    hyperdx_get_dashboard response. The same applies if you are renaming
+    or tweaking it. This preserves any savedFilterValues bound to that id.
+  - New filter you are ADDING in this update: generate a fresh random
+    24-character hex string (a Mongo-style ObjectId) and set it as \`id\`.
+    Do not reuse an existing filter's id and do not leave \`id\` blank —
+    omitting it would force the server to generate one and obscure the
+    new filter's identity from your own bookkeeping.
+  - Existing filter you are REMOVING: drop it from the array entirely.
+
+Recommended pattern:
+
+  1. \`hyperdx_get_dashboard({ id })\` to capture the current \`filters[]\`
+     and their ids.
+  2. Build the new array: spread the kept filters as-is, append new
+     filters with freshly-minted ids, omit removed ones.
+  3. \`hyperdx_save_dashboard({ id, ..., filters: <new array> })\`.
+
 == TILE TYPE GUIDE ==
 
 Use BUILDER tiles (with sourceId) for most cases:
@@ -202,9 +225,13 @@ Field rules:
     the content of the whereTemplate, when one is set.
   - Template values are pulled from the clicked row's columns. The column
     name in {{...}} must match a column produced by the table query.
-  - Filters for dashboard targets should be used when the expression is
-    already defined as a filter on the target dashboard, otherwise it will
-    not be applied.
+  - For type="dashboard": each \`filters[i].expression\` MUST match a
+    top-level DashboardFilter declared on the target dashboard. Otherwise
+    the value is silently dropped at click time and the destination opens
+    unfiltered. Call hyperdx_get_dashboard on the target first to inspect
+    its declared \`filters[]\` list. If the expression isn't declared,
+    either add it to the target dashboard's \`filters\` array OR use
+    \`whereTemplate\` instead (which doesn't require a declared filter).
 
 Example — drill from a per-service error count into the matching trace
 search, scoping the search to that service:
@@ -232,19 +259,40 @@ search, scoping the search to that service:
     }
   }
 
-Example — drill from a service overview row into a per-service dashboard:
-  "onClick": {
-    "type": "dashboard",
-    "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
-    "whereLanguage": "sql",
-    "filters": [
-      {
-        "kind": "expressionTemplate",
-        "expression": "ServiceName",
-        "template": "{{ResourceAttributes['service.name']}}"
-      }
-    ]
-  }
+Example — drill from a service overview row into a per-service dashboard.
+For the filter to actually land, the TARGET dashboard must declare a
+matching DashboardFilter (same \`expression\`). Pass them on the target
+dashboard's hyperdx_save_dashboard call as a top-level \`filters\` array.
+
+  Source dashboard (the one with the table tile + onClick):
+    "onClick": {
+      "type": "dashboard",
+      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        }
+      ]
+    }
+
+  Target dashboard (must declare ServiceName as a top-level filter):
+    hyperdx_save_dashboard({
+      id: "<service-detail-dashboard-id>",
+      name: "Service Detail",
+      tiles: [/* ... */],
+      filters: [
+        {
+          type: "QUERY_EXPRESSION",
+          name: "Service",
+          expression: "ServiceName",
+          sourceId: "<trace-source-id>",
+          whereLanguage: "sql"
+        }
+      ]
+    })
 
 == STATUS CODE & SEVERITY VALUES ==
 
@@ -601,6 +649,12 @@ copy the right ID and discover which filters are available.
           { aggFn: "count", alias: "Requests" },
           { aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }
         ],
+        // The target dashboard MUST declare a top-level DashboardFilter
+        // with expression: "ServiceName" — otherwise the value is dropped.
+        // Call hyperdx_get_dashboard(<TARGET_DASHBOARD_ID>) and
+        // inspect its filters[] before generating this onClick. If the
+        // target doesn't declare it, either update the target to declare
+        // ServiceName, or switch to a whereTemplate clause here.
         onClick: {
           type: "dashboard",
           target: { mode: "id", id: "<TARGET_DASHBOARD_ID>" },
@@ -896,10 +950,17 @@ and aliases both work).
                   template }. Each filter renders to an IN clause on the
                   destination (\`expression IN ('rendered-value')\`). When
                   multiple filters share an expression they are merged
-                  into one IN clause. The destination dashboard
-                  auto-populates its filter list (matched by expression),
-                  so prefer this shape over whereTemplate when the target
-                  dashboard already declares the same filter expressions.
+                  into one IN clause.
+                  For type="dashboard" targets: the destination only
+                  applies these when it declares a top-level
+                  DashboardFilter with the SAME \`expression\` — otherwise
+                  the value is dropped at click time and the
+                  destination opens unfiltered. Call hyperdx_get_dashboard
+                  on the target first to confirm its \`filters[].expression\`
+                  list, and either add a matching DashboardFilter (via the
+                  hyperdx_save_dashboard \`filters\` param on the target)
+                  or fall back to whereTemplate. For type="search" targets: 
+                  no declaration required; filters always apply.
 
 whereLanguage is optional, but set it to "sql" or "lucene" so the
 destination knows how to parse whereTemplate / filter values when a
@@ -925,24 +986,35 @@ Example — search drill-down with a row-driven filter:
     }
   }
 
-Example — dashboard drill-down with multiple row-driven filters:
-  "onClick": {
-    "type": "dashboard",
-    "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
-    "whereLanguage": "sql",
-    "filters": [
-      {
-        "kind": "expressionTemplate",
-        "expression": "ServiceName",
-        "template": "{{ResourceAttributes['service.name']}}"
-      },
-      {
-        "kind": "expressionTemplate",
-        "expression": "Environment",
-        "template": "{{ResourceAttributes['deployment.environment']}}"
-      }
+Example — dashboard drill-down with multiple row-driven filters. Both
+\`expression\` values (ServiceName, Environment) must be declared on the
+target dashboard's top-level \`filters\` for the values to apply.
+  Source tile onClick:
+    "onClick": {
+      "type": "dashboard",
+      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        },
+        {
+          "kind": "expressionTemplate",
+          "expression": "Environment",
+          "template": "{{ResourceAttributes['deployment.environment']}}"
+        }
+      ]
+    }
+  Target dashboard's top-level \`filters\` (passed to
+  hyperdx_save_dashboard when creating/updating it):
+    filters: [
+      { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName",
+        sourceId: "<trace-source-id>", whereLanguage: "sql" },
+      { type: "QUERY_EXPRESSION", name: "Environment", expression: "Environment",
+        sourceId: "<trace-source-id>", whereLanguage: "sql" }
     ]
-  }
 
 Example — destination chosen by the clicked row (rare; prefer mode="id"):
   "onClick": {
@@ -959,6 +1031,11 @@ Validation categories the server enforces:
   - For type="dashboard", target.id must reference an existing dashboard
     owned by the same team; missing dashboards are rejected with:
     "Could not find the following onClick dashboard IDs: ..."
+  - For type="dashboard" with \`filters\`, each filter's \`expression\` must
+    match a top-level DashboardFilter declared on the target dashboard.
+    Otherwise the save is rejected with:
+    "onClick filter expressions are not declared on the target dashboard
+    and would be silently dropped at click time: ..."
 
 == CONTAINERS AND TABS ==
 
@@ -1096,5 +1173,19 @@ containers[i].tabs[j].id). Read the path to know which input to fix.
     If the column doesn't appear in the table query, the template renders
     as empty at click time and the destination opens unfiltered. Match
     {{column}} names to columns produced by the table (group-by columns
-    and aliases both work).`;
+    and aliases both work).
+
+15. onClick (type="dashboard") filter expression not declared on the target
+    For a dashboard target, each entry in onClick.filters[] only takes
+    effect when the destination dashboard declares a top-level
+    DashboardFilter with the SAME \`expression\`. The renderer drops URL
+    filter entries whose expression isn't in the destination's declared
+    filter set — so the user lands on the destination unfiltered.
+    Before generating an onClick.filters entry, call
+    hyperdx_get_dashboard on the target and confirm its
+    \`filters[].expression\` list. If the expression isn't there, either:
+      a) declare it on the target dashboard's top-level \`filters\` array
+         (passed to hyperdx_save_dashboard), or
+      b) use \`whereTemplate\` instead, which doesn't require a declared
+         filter on the target."`;
 }

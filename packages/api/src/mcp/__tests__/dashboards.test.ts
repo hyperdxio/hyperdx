@@ -1,5 +1,6 @@
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -1637,6 +1638,189 @@ describe('MCP Dashboard Tools', () => {
       const text = getFirstText(updateResult);
       expect(text).toContain('onClick dashboard');
       expect(text).toContain(ghostDashboardId);
+    });
+  });
+
+  describe('hyperdx_save_dashboard - top-level filters', () => {
+    it('should round-trip dashboard-level filters on create', async () => {
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Service Detail',
+        tiles: [
+          {
+            name: 'Latency',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.95,
+                  valueExpression: 'Duration',
+                },
+              ],
+            },
+          },
+        ],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.filters).toHaveLength(1);
+      expect(created.filters[0]).toMatchObject({
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql',
+      });
+      expect(typeof created.filters[0].id).toBe('string');
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.filters).toEqual(created.filters);
+    });
+
+    it('should round-trip dashboard-level filters on update', async () => {
+      const sourceId = traceSource._id.toString();
+      const initial = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'No filters yet',
+        tiles: [
+          {
+            name: 'Total',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      });
+      expect(initial.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(initial));
+      expect(created.filters ?? []).toHaveLength(0);
+
+      const updated = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'With filters now',
+        tiles: created.tiles,
+        filters: [
+          {
+            id: new ObjectId().toString(),
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment',
+            expression: 'Environment',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+      expect(updated.isError).toBeFalsy();
+      const after = JSON.parse(getFirstText(updated));
+      expect(after.filters).toHaveLength(1);
+      expect(after.filters[0]).toMatchObject({
+        expression: 'Environment',
+        name: 'Environment',
+      });
+    });
+
+    it('preserves filter ids when callers round-trip them on update', async () => {
+      const sourceId = traceSource._id.toString();
+      const initial = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Round-trip filters',
+        tiles: [
+          {
+            name: 'Total',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+      expect(initial.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(initial));
+      expect(created.filters).toHaveLength(1);
+      const serviceFilterId = created.filters[0].id;
+      expect(typeof serviceFilterId).toBe('string');
+
+      // Round-trip the existing filter's id AND add a new filter
+      // without an id. The existing id must be preserved (so any
+      // savedFilterValues bound to it stay attached); the new filter
+      // must get a fresh server-generated id.
+      const updated = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Round-trip filters',
+        tiles: created.tiles,
+        filters: [
+          {
+            id: serviceFilterId,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+          {
+            id: new ObjectId().toString(),
+            type: 'QUERY_EXPRESSION',
+            name: 'Severity',
+            expression: 'SeverityText',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+      expect(updated.isError).toBeFalsy();
+      const after = JSON.parse(getFirstText(updated));
+      expect(after.filters).toHaveLength(2);
+
+      const serviceFilter = after.filters.find(
+        (f: { name: string }) => f.name === 'Service',
+      );
+      const severityFilter = after.filters.find(
+        (f: { name: string }) => f.name === 'Severity',
+      );
+      expect(serviceFilter.id).toBe(serviceFilterId);
+      expect(typeof severityFilter.id).toBe('string');
+      expect(severityFilter.id).not.toBe(serviceFilterId);
+
+      // A subsequent fetch must surface the same persisted ids — guards
+      // against a path that lies in the update response but writes
+      // something different to Mongo.
+      const fetched = JSON.parse(
+        getFirstText(
+          await callTool(client, 'hyperdx_get_dashboard', { id: created.id }),
+        ),
+      );
+      expect(fetched.filters).toHaveLength(2);
+      expect(
+        fetched.filters.find((f: { name: string }) => f.name === 'Service').id,
+      ).toBe(serviceFilterId);
+      expect(
+        fetched.filters.find((f: { name: string }) => f.name === 'Severity').id,
+      ).toBe(severityFilter.id);
     });
   });
 
