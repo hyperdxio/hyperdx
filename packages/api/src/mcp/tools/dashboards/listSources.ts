@@ -31,8 +31,9 @@ export function registerListSources(
       title: 'List Sources & Connections',
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
-        'Returns source IDs (use as sourceId in hyperdx_query and dashboard tiles) and ' +
-        'connection IDs (use as connectionId for advanced raw SQL queries). ' +
+        'Returns source IDs (use as sourceId in hyperdx_timeseries, hyperdx_table, hyperdx_search, ' +
+        'hyperdx_event_patterns, and dashboard tiles) and ' +
+        'connection IDs (use as connectionId for hyperdx_sql raw SQL queries). ' +
         'Each source includes its full column schema and sampled attribute keys from map columns ' +
         '(e.g. SpanAttributes, ResourceAttributes). ' +
         'Column names are PascalCase (e.g. Duration, not duration). ' +
@@ -167,9 +168,9 @@ export function registerListSources(
           mapAttributes:
             "Use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']",
           sourceIds:
-            'Use sourceId with builder display types (line, stacked_bar, table, number, pie, search) for standard queries',
+            'Use sourceId with hyperdx_timeseries, hyperdx_table, hyperdx_search, and hyperdx_event_patterns',
           connectionIds:
-            'ADVANCED: Use connectionId only with raw SQL queries (displayType "sql" or configType "sql"). ' +
+            'ADVANCED: Use connectionId with hyperdx_sql for raw ClickHouse SQL. ' +
             'Raw SQL is for advanced use cases like JOINs, sub-queries, or querying tables not registered as sources.',
         },
       };
