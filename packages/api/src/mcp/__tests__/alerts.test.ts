@@ -204,6 +204,53 @@ describe('MCP Alert Tools', () => {
 
         await client2.close();
       });
+
+      it('should derive name from saved search when alert has no explicit name', async () => {
+        const savedSearch = await createTestSavedSearch(); // name: 'Test Saved Search'
+        await new Alert({
+          team: team._id,
+          source: 'saved_search',
+          savedSearch: savedSearch._id,
+          threshold: 100,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: 'fake-webhook-id' },
+          state: AlertState.OK,
+          createdBy: user._id,
+          // no name set
+        }).save();
+
+        const result = await callTool(client, 'hyperdx_get_alert', {});
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).toHaveLength(1);
+        expect(output[0].name).toBe('Test Saved Search');
+      });
+
+      it('should derive name from dashboard tile when tile alert has no explicit name', async () => {
+        const dashboard = await createTestDashboardWithTile(); // tile name: 'Error Count'
+        await new Alert({
+          team: team._id,
+          source: 'tile',
+          dashboard: dashboard._id,
+          tileId: 'tile-1',
+          threshold: 100,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: 'fake-webhook-id' },
+          state: AlertState.OK,
+          createdBy: user._id,
+          // no name set
+        }).save();
+
+        const result = await callTool(client, 'hyperdx_get_alert', {});
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).toHaveLength(1);
+        expect(output[0].name).toBe('Error Count');
+      });
     });
 
     describe('detail (with id)', () => {
