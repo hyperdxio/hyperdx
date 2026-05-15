@@ -38,8 +38,9 @@ export function registerListSources(
         '(e.g. SpanAttributes, ResourceAttributes). ' +
         'Column names are PascalCase (e.g. Duration, not duration). ' +
         "Map attributes must be accessed via bracket syntax: SpanAttributes['key'].\n\n" +
-        'NOTE: For most queries, use source IDs with the builder display types. ' +
-        'Connection IDs are only needed for advanced raw SQL queries (displayType "sql").',
+        'NOTE: For most queries, use source IDs with hyperdx_timeseries, hyperdx_table, ' +
+        'hyperdx_search, or hyperdx_event_patterns. ' +
+        'Connection IDs are only needed for hyperdx_sql (raw ClickHouse SQL).',
       inputSchema: z.object({}),
     },
     withToolTracing('hyperdx_list_sources', context, async () => {

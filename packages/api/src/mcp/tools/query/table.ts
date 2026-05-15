@@ -89,16 +89,9 @@ export function registerTable(server: McpServer, context: McpContext) {
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,
         sourceId: input.sourceId,
-        select: input.select.map(s => ({
-          aggFn: s.aggFn,
-          where: s.where,
-          whereLanguage: s.whereLanguage,
-          valueExpression: s.valueExpression,
-          alias: s.alias,
-          level: s.level,
-        })),
+        select: input.select,
         groupBy: displayType === 'number' ? undefined : input.groupBy,
-        orderBy: input.orderBy ?? undefined,
+        orderBy: input.orderBy,
       });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate);

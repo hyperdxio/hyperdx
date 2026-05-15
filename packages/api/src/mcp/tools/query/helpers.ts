@@ -219,11 +219,25 @@ export async function runConfigTile(
     } satisfies ChartConfigWithDateRange;
 
     const metadata = getMetadata(clickhouseClient);
-    const result = await clickhouseClient.queryChartConfig({
-      config: chartConfig,
-      metadata,
-      querySettings: source.querySettings,
-    });
+    let result;
+    try {
+      result = await clickhouseClient.queryChartConfig({
+        config: chartConfig,
+        metadata,
+        querySettings: source.querySettings,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        isError: true as const,
+        content: [
+          {
+            type: 'text' as const,
+            text: `ClickHouse query failed: ${message}`,
+          },
+        ],
+      };
+    }
 
     return formatQueryResult(result);
   }
@@ -279,11 +293,25 @@ export async function runConfigTile(
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
-  const result = await clickhouseClient.queryChartConfig({
-    config: chartConfig,
-    metadata,
-    querySettings: undefined,
-  });
+  let result;
+  try {
+    result = await clickhouseClient.queryChartConfig({
+      config: chartConfig,
+      metadata,
+      querySettings: undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text: `ClickHouse query failed: ${message}`,
+        },
+      ],
+    };
+  }
 
   return formatQueryResult(result);
 }

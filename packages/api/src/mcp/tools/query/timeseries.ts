@@ -80,14 +80,7 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       const tile = buildTile('MCP Timeseries', 12, 4, {
         displayType: input.shape,
         sourceId: input.sourceId,
-        select: input.select.map(s => ({
-          aggFn: s.aggFn,
-          where: s.where,
-          whereLanguage: s.whereLanguage,
-          valueExpression: s.valueExpression,
-          alias: s.alias,
-          level: s.level,
-        })),
+        select: input.select,
         groupBy: input.groupBy,
         orderBy: input.orderBy,
         ...(input.granularity ? { granularity: input.granularity } : {}),
