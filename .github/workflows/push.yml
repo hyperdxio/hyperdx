@@ -2,9 +2,11 @@ name: Push Downstream
 on:
   push:
     branches: [main]
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# NOTE: Intentionally no `concurrency` block. Each run is a single short
+# `createWorkflowDispatch` API call, so there is no benefit to cancelling
+# in-flight runs. A previous `cancel-in-progress: true` setting caused at
+# least one push (f6a1d02 / PR #2250) to be skipped entirely under load,
+# dropping the EE downstream port. See HDX-4235.
 jobs:
   push-downstream:
     timeout-minutes: 5
