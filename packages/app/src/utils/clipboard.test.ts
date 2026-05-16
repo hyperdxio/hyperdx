@@ -39,6 +39,34 @@ describe('copyTextToClipboard', () => {
     expect(document.querySelector('textarea')).toBeNull();
   });
 
+  it('does not fall back when the Clipboard API rejects', async () => {
+    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    document.execCommand = jest.fn().mockReturnValue(true);
+
+    await expect(copyTextToClipboard('blocked')).resolves.toBe(false);
+
+    expect(writeText).toHaveBeenCalledWith('blocked');
+    expect(document.execCommand).not.toHaveBeenCalled();
+  });
+
+  it('removes the fallback textarea when execCommand throws', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+    document.execCommand = jest.fn(() => {
+      throw new Error('copy failed');
+    });
+
+    await expect(copyTextToClipboard('throwing copy')).resolves.toBe(false);
+
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+
   it('reports failure when both copy methods are unavailable', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,

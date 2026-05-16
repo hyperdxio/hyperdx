@@ -1,11 +1,14 @@
+export const CLIPBOARD_ERROR_MESSAGE =
+  'Could not access the clipboard. Check browser permissions or use HTTPS.';
+
 export async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
+  if (navigator.clipboard?.writeText) {
+    try {
       await navigator.clipboard.writeText(text);
       return true;
+    } catch {
+      return false;
     }
-  } catch {
-    // Fall through to the legacy copy path below.
   }
 
   return copyTextWithTextarea(text);
@@ -46,8 +49,12 @@ function copyTextWithTextarea(text: string): boolean {
   } finally {
     document.body.removeChild(textArea);
     if (previousRange && selection) {
-      selection.removeAllRanges();
-      selection.addRange(previousRange);
+      try {
+        selection.removeAllRanges();
+        selection.addRange(previousRange);
+      } catch {
+        // Ignore restore failures if the previous selection was detached.
+      }
     }
   }
 

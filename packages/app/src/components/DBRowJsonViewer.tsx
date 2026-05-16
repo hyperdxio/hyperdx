@@ -29,7 +29,10 @@ import {
 
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
-import { copyTextToClipboard } from '@/utils/clipboard';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 type JSONExtractFn =
   | 'JSONExtractString'
@@ -229,8 +232,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
             if (!copied) {
               notifications.show({
                 color: 'red',
-                message:
-                  'Could not access the clipboard. Check browser permissions or use HTTPS.',
+                message: CLIPBOARD_ERROR_MESSAGE,
               });
               return;
             }
@@ -574,8 +576,7 @@ export function DBRowJsonViewer({
         if (!copied) {
           notifications.show({
             color: 'red',
-            message:
-              'Could not access the clipboard. Check browser permissions or use HTTPS.',
+            message: CLIPBOARD_ERROR_MESSAGE,
           });
           return;
         }
@@ -609,8 +610,7 @@ export function DBRowJsonViewer({
             if (!copied) {
               notifications.show({
                 color: 'red',
-                message:
-                  'Could not access the clipboard. Check browser permissions or use HTTPS.',
+                message: CLIPBOARD_ERROR_MESSAGE,
               });
               return;
             }

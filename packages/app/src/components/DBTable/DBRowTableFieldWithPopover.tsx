@@ -5,7 +5,10 @@ import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
-import { copyTextToClipboard } from '@/utils/clipboard';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
@@ -86,24 +89,18 @@ const DBRowTableFieldWithPopover = ({
   };
 
   const copyFieldValue = async () => {
-    try {
-      const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      const copied = await copyTextToClipboard(value);
-      if (!copied) {
-        notifications.show({
-          color: 'red',
-          message:
-            'Could not access the clipboard. Check browser permissions or use HTTPS.',
-        });
-        return;
-      }
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const value =
+      typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+    const copied = await copyTextToClipboard(value);
+    if (!copied) {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+      return;
     }
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   const addFilter = () => {

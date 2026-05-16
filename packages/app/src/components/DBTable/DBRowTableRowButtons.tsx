@@ -3,7 +3,10 @@ import { notifications } from '@mantine/notifications';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
-import { copyTextToClipboard } from '@/utils/clipboard';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
@@ -28,74 +31,62 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
   const copyRowData = async () => {
-    try {
-      // Filter out internal metadata fields that start with __ or are generated IDs
+    // Filter out internal metadata fields that start with __ or are generated IDs
 
-      const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
+    const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
 
-      // Parse JSON string fields to make them proper JSON objects
-      const parsedRow = Object.entries(cleanRow).reduce(
-        (acc, [key, value]) => {
-          if (
-            typeof value === 'string' &&
-            (value.startsWith('{') || value.startsWith('['))
-          ) {
-            try {
-              acc[key] = JSON.parse(value);
-            } catch {
-              // If parsing fails, keep the original string
-              acc[key] = value;
-            }
-          } else {
+    // Parse JSON string fields to make them proper JSON objects
+    const parsedRow = Object.entries(cleanRow).reduce(
+      (acc, [key, value]) => {
+        if (
+          typeof value === 'string' &&
+          (value.startsWith('{') || value.startsWith('['))
+        ) {
+          try {
+            acc[key] = JSON.parse(value);
+          } catch {
+            // If parsing fails, keep the original string
             acc[key] = value;
           }
-          return acc;
-        },
-        {} as Record<string, any>,
-      );
+        } else {
+          acc[key] = value;
+        }
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
 
-      const rowData = JSON.stringify(parsedRow, null, 2);
-      const copied = await copyTextToClipboard(rowData);
-      if (!copied) {
-        notifications.show({
-          color: 'red',
-          message:
-            'Could not access the clipboard. Check browser permissions or use HTTPS.',
-        });
-        return;
-      }
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy row data to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const rowData = JSON.stringify(parsedRow, null, 2);
+    const copied = await copyTextToClipboard(rowData);
+    if (!copied) {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+      return;
     }
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   const copyRowUrl = async () => {
-    try {
-      const rowWhereResult = getRowWhere(row);
-      const currentUrl = new URL(window.location.href);
-      // Add the row identifier as query parameters
-      currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
-      if (sourceId) {
-        currentUrl.searchParams.set('rowSource', sourceId);
-      }
-      const copied = await copyTextToClipboard(currentUrl.toString());
-      if (!copied) {
-        notifications.show({
-          color: 'red',
-          message:
-            'Could not access the clipboard. Check browser permissions or use HTTPS.',
-        });
-        return;
-      }
-      setIsUrlCopied(true);
-      setTimeout(() => setIsUrlCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy URL to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const rowWhereResult = getRowWhere(row);
+    const currentUrl = new URL(window.location.href);
+    // Add the row identifier as query parameters
+    currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
+    if (sourceId) {
+      currentUrl.searchParams.set('rowSource', sourceId);
     }
+    const copied = await copyTextToClipboard(currentUrl.toString());
+    if (!copied) {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+      return;
+    }
+    setIsUrlCopied(true);
+    setTimeout(() => setIsUrlCopied(false), 2000);
   };
 
   return (
