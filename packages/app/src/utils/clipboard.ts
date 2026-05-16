@@ -7,7 +7,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      return false;
+      return copyTextWithTextarea(text);
     }
   }
 
@@ -36,6 +36,10 @@ function copyTextWithTextarea(text: string): boolean {
   const selection = document.getSelection();
   const previousRange =
     selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const previousActiveElement =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
 
   document.body.appendChild(textArea);
   textArea.select();
@@ -48,6 +52,9 @@ function copyTextWithTextarea(text: string): boolean {
     copied = false;
   } finally {
     document.body.removeChild(textArea);
+    if (previousActiveElement && document.contains(previousActiveElement)) {
+      previousActiveElement.focus({ preventScroll: true });
+    }
     if (previousRange && selection) {
       try {
         selection.removeAllRanges();
