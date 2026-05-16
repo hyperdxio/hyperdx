@@ -29,13 +29,38 @@ IMPORTANT: Call hyperdx_list_sources first to get the full column schema and att
 3. Call hyperdx_save_dashboard — create the dashboard with all tiles
 4. Call hyperdx_query_tile on each tile — validate queries return data
 
+== UPDATING AN EXISTING DASHBOARD ==
+
+When updating a dashboard (passing the top-level \`id\` to hyperdx_save_dashboard),
+the \`filters\` array must be fully self-describing — every filter needs an \`id\`:
+
+  - Existing filter you are KEEPING: copy its \`id\` verbatim from the
+    hyperdx_get_dashboard response. The same applies if you are renaming
+    or tweaking it. This preserves any savedFilterValues bound to that id.
+  - New filter you are ADDING in this update: generate a fresh random
+    24-character hex string (a Mongo-style ObjectId) and set it as \`id\`.
+    Do not reuse an existing filter's id and do not leave \`id\` blank —
+    omitting it would force the server to generate one and obscure the
+    new filter's identity from your own bookkeeping.
+  - Existing filter you are REMOVING: drop it from the array entirely.
+
+Recommended pattern:
+
+  1. \`hyperdx_get_dashboard({ id })\` to capture the current \`filters[]\`
+     and their ids.
+  2. Build the new array: spread the kept filters as-is, append new
+     filters with freshly-minted ids, omit removed ones.
+  3. \`hyperdx_save_dashboard({ id, ..., filters: <new array> })\`.
+
 == TILE TYPE GUIDE ==
 
 Use BUILDER tiles (with sourceId) for most cases:
   line        — Time-series trends (error rate, request volume, latency over time)
   stacked_bar — Compare categories over time (requests by service, errors by status code)
   number      — Single KPI metric (total requests, current error rate, p99 latency)
-  table       — Ranked lists (top endpoints by latency, error counts by service)
+  table       — Ranked lists (top endpoints by latency, error counts by service).
+                Tables can wire row-click navigation via config.onClick to the
+                /search page or another dashboard — see "ROW-CLICK LINKING" below.
   pie         — Proportional breakdowns (traffic share by service, errors by type)
   heatmap     — Distribution of a numeric value over time (latency buckets, request size buckets)
                 Trace sources only. Requires non-empty valueExpression.
@@ -157,6 +182,117 @@ hyperdx_save_dashboard({
     }
   ]
 })
+
+== ROW-CLICK LINKING (table tiles) ==
+
+Table tiles support an optional config.onClick that turns each row into a
+drill-down link to the /search page or another dashboard. Use this when
+the dashboard answers "which thing?" and the user needs the next step —
+"what's actually happening in that thing?" — to be one click away.
+
+Two destination types:
+  type: "search"    — opens /search for a log or trace source. Source
+                      kind must be "log" or "trace"; metric/session
+                      sources are rejected.
+  type: "dashboard" — opens another HyperDX dashboard.
+
+Two ways to address the destination:
+  target.mode: "id"       — pin a concrete source/dashboard by its ID.
+                            Prefer this when the target is known up-front;
+                            it survives renames.
+  target.mode: "template" — render a Handlebars-style template against the
+                            clicked row, then resolve by NAME on the
+                            destination team. Example template "Service Details: {{ServiceName}}"
+                            reads the row's ServiceName column and looks up a
+                            source/dashboard with that name.
+
+Templating, applied at click time:
+  whereTemplate   — raw filter expression placed in the destination's
+                    \`where\` query param. Uses Lucene or SQL syntax matching
+                    \`whereLanguage\`. Example: "ServiceName = '{{service.name}}'".
+  filters         — array of { kind: "expressionTemplate", expression,
+                    template }. Each becomes an IN clause on the destination
+                    (\`expression IN ('rendered-value')\`); filters that share
+                    an expression are merged into one IN clause. Prefer
+                    filters over whereTemplate for simple row-driven
+                    equality — the destination dashboard auto-populates its
+                    own dropdown filters from these values.
+
+Field rules:
+  - onClick is supported on builder table tiles AND raw-SQL tiles with
+    displayType: "table". Other displayTypes ignore the field.
+  - whereLanguage is optional but should be set to "sql" or "lucene" to match
+    the content of the whereTemplate, when one is set.
+  - Template values are pulled from the clicked row's columns. The column
+    name in {{...}} must match a column produced by the table query.
+  - For type="dashboard": each \`filters[i].expression\` MUST match a
+    top-level DashboardFilter declared on the target dashboard. Otherwise
+    the value is silently dropped at click time and the destination opens
+    unfiltered. Call hyperdx_get_dashboard on the target first to inspect
+    its declared \`filters[]\` list. If the expression isn't declared,
+    either add it to the target dashboard's \`filters\` array OR use
+    \`whereTemplate\` instead (which doesn't require a declared filter).
+
+Example — drill from a per-service error count into the matching trace
+search, scoping the search to that service:
+  {
+    "name": "Errors by Service",
+    "config": {
+      "displayType": "table",
+      "sourceId": "<trace-source-id>",
+      "groupBy": "ResourceAttributes['service.name']",
+      "select": [
+        { "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }
+      ],
+      "onClick": {
+        "type": "search",
+        "target": { "mode": "id", "id": "<trace-source-id>" },
+        "whereLanguage": "sql",
+        "filters": [
+          {
+            "kind": "expressionTemplate",
+            "expression": "ServiceName",
+            "template": "{{ResourceAttributes['service.name']}}"
+          }
+        ]
+      }
+    }
+  }
+
+Example — drill from a service overview row into a per-service dashboard.
+For the filter to actually land, the TARGET dashboard must declare a
+matching DashboardFilter (same \`expression\`). Pass them on the target
+dashboard's hyperdx_save_dashboard call as a top-level \`filters\` array.
+
+  Source dashboard (the one with the table tile + onClick):
+    "onClick": {
+      "type": "dashboard",
+      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        }
+      ]
+    }
+
+  Target dashboard (must declare ServiceName as a top-level filter):
+    hyperdx_save_dashboard({
+      id: "<service-detail-dashboard-id>",
+      name: "Service Detail",
+      tiles: [/* ... */],
+      filters: [
+        {
+          type: "QUERY_EXPRESSION",
+          name: "Service",
+          expression: "ServiceName",
+          sourceId: "<trace-source-id>",
+          whereLanguage: "sql"
+        }
+      ]
+    })
 
 == STATUS CODE & SEVERITY VALUES ==
 
@@ -461,6 +597,81 @@ Analyze log volume, severity distribution, and browse log events.
   ]
 }`;
 
+  examples['drilldown_links'] = `
+== ROW-CLICK DRILL-DOWN LINKS ==
+
+A dashboard whose tables are wired up to drill down into either /search
+or a more detailed dashboard. Useful when the dashboard answers
+"which service?" and the next click should answer "what's happening
+inside that service?".
+
+Replace <TARGET_DASHBOARD_ID> with the ID of an existing service-detail
+dashboard. Use hyperdx_get_dashboard (no id) to list dashboards and
+copy the right ID and discover which filters are available.
+
+{
+  name: "Service Drill-Down",
+  tags: ["overview", "drilldown"],
+  tiles: [
+    {
+      name: "Errors by Service (click a row to search traces)",
+      x: 0, y: 0, w: 12, h: 6,
+      config: {
+        displayType: "table",
+        sourceId: "${traceSourceId}",
+        groupBy: "ResourceAttributes['service.name']",
+        select: [
+          { aggFn: "count", alias: "Errors", where: "StatusCode:STATUS_CODE_ERROR" },
+          { aggFn: "count", alias: "Total" }
+        ],
+        onClick: {
+          type: "search",
+          target: { mode: "id", id: "${traceSourceId}" },
+          whereLanguage: "sql",
+          filters: [
+            {
+              kind: "expressionTemplate",
+              expression: "ServiceName",
+              template: "{{ResourceAttributes['service.name']}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      name: "Top Endpoints (click a row to open service-detail dashboard)",
+      x: 12, y: 0, w: 12, h: 6,
+      config: {
+        displayType: "table",
+        sourceId: "${traceSourceId}",
+        groupBy: "ResourceAttributes['service.name']",
+        select: [
+          { aggFn: "count", alias: "Requests" },
+          { aggFn: "quantile", level: 0.95, valueExpression: "Duration", alias: "P95" }
+        ],
+        // The target dashboard MUST declare a top-level DashboardFilter
+        // with expression: "ServiceName" — otherwise the value is dropped.
+        // Call hyperdx_get_dashboard(<TARGET_DASHBOARD_ID>) and
+        // inspect its filters[] before generating this onClick. If the
+        // target doesn't declare it, either update the target to declare
+        // ServiceName, or switch to a whereTemplate clause here.
+        onClick: {
+          type: "dashboard",
+          target: { mode: "id", id: "<TARGET_DASHBOARD_ID>" },
+          whereLanguage: "sql",
+          filters: [
+            {
+              kind: "expressionTemplate",
+              expression: "ServiceName",
+              template: "{{ResourceAttributes['service.name']}}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}`;
+
   examples['infrastructure_sql'] = `
 == INFRASTRUCTURE MONITORING (Raw SQL) ==
 
@@ -699,6 +910,133 @@ to plot the first as a ratio of the second. Useful for error rates:
   ],
   asRatio: true
 
+== TABLE TILE LINKING (config.onClick) ==
+
+Table tiles can wire up row-click navigation via config.onClick. Builder
+table tiles (displayType: "table") and raw-SQL tiles (configType: "sql",
+displayType: "table") both accept this; other tile types ignore it.
+
+Destination types:
+  { type: "search",    target, whereLanguage, whereTemplate?, filters? }
+    Opens the /search page for a log or trace source. Metric and session
+    sources are rejected by the server (the /search page does not render
+    those kinds).
+  { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
+    Opens another HyperDX dashboard owned by the same team.
+
+Target shape — how the destination is identified:
+  target: { mode: "id", id: "<object-id>" }
+    Pins a specific source (for type=search) or dashboard
+    (for type=dashboard) by its ID. Prefer this when the target is known.
+    Find source IDs with hyperdx_list_sources; find dashboard IDs with
+    hyperdx_get_dashboard (no id arg returns the list of all dashboards).
+  target: { mode: "template", template: "<handlebars>" }
+    Renders the template against the clicked row's columns, then resolves
+    the result by NAME on the destination team. Example template
+    "{{Service}}" reads the row's Service value and looks up a
+    source/dashboard with that name. Use this when the destination depends
+    on which row was clicked.
+
+Templating values come from the clicked row's columns. The column name in
+{{...}} must match a column produced by the table query (group-by columns
+and aliases both work).
+
+  whereTemplate — Handlebars-style template. The rendered string is placed
+                  in the destination's \`where\` query param. Uses Lucene or
+                  SQL syntax matching \`whereLanguage\`. Example:
+                  "ServiceName = '{{service.name}}'".
+
+  filters       — array of { kind: "expressionTemplate", expression,
+                  template }. Each filter renders to an IN clause on the
+                  destination (\`expression IN ('rendered-value')\`). When
+                  multiple filters share an expression they are merged
+                  into one IN clause.
+                  For type="dashboard" targets: the destination only
+                  applies these when it declares a top-level
+                  DashboardFilter with the SAME \`expression\` — otherwise
+                  the value is dropped at click time and the
+                  destination opens unfiltered. Call hyperdx_get_dashboard
+                  on the target first to confirm its \`filters[].expression\`
+                  list, and either add a matching DashboardFilter (via the
+                  hyperdx_save_dashboard \`filters\` param on the target)
+                  or fall back to whereTemplate. For type="search" targets: 
+                  no declaration required; filters always apply.
+
+whereLanguage is optional, but set it to "sql" or "lucene" so the
+destination knows how to parse whereTemplate / filter values when a
+template is rendered.
+
+Example — search drill-down with a row-driven filter:
+  {
+    "displayType": "table",
+    "sourceId": "<trace-source-id>",
+    "groupBy": "ResourceAttributes['service.name']",
+    "select": [{ "aggFn": "count" }],
+    "onClick": {
+      "type": "search",
+      "target": { "mode": "id", "id": "<trace-source-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        }
+      ]
+    }
+  }
+
+Example — dashboard drill-down with multiple row-driven filters. Both
+\`expression\` values (ServiceName, Environment) must be declared on the
+target dashboard's top-level \`filters\` for the values to apply.
+  Source tile onClick:
+    "onClick": {
+      "type": "dashboard",
+      "target": { "mode": "id", "id": "<service-detail-dashboard-id>" },
+      "whereLanguage": "sql",
+      "filters": [
+        {
+          "kind": "expressionTemplate",
+          "expression": "ServiceName",
+          "template": "{{ResourceAttributes['service.name']}}"
+        },
+        {
+          "kind": "expressionTemplate",
+          "expression": "Environment",
+          "template": "{{ResourceAttributes['deployment.environment']}}"
+        }
+      ]
+    }
+  Target dashboard's top-level \`filters\` (passed to
+  hyperdx_save_dashboard when creating/updating it):
+    filters: [
+      { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName",
+        sourceId: "<trace-source-id>", whereLanguage: "sql" },
+      { type: "QUERY_EXPRESSION", name: "Environment", expression: "Environment",
+        sourceId: "<trace-source-id>", whereLanguage: "sql" }
+    ]
+
+Example — destination chosen by the clicked row (rare; prefer mode="id"):
+  "onClick": {
+    "type": "dashboard",
+    "target": { "mode": "template", "template": "{{TargetDashboardName}}" },
+    "whereLanguage": "lucene"
+  }
+
+Validation categories the server enforces:
+  - target.id (mode="id") must be a valid ObjectId.
+  - For type="search", target.id must reference an existing source whose
+    kind is "log" or "trace" — metric/session sources are rejected with:
+    "The following onClick search source IDs are not log or trace sources: ..."
+  - For type="dashboard", target.id must reference an existing dashboard
+    owned by the same team; missing dashboards are rejected with:
+    "Could not find the following onClick dashboard IDs: ..."
+  - For type="dashboard" with \`filters\`, each filter's \`expression\` must
+    match a top-level DashboardFilter declared on the target dashboard.
+    Otherwise the save is rejected with:
+    "onClick filter expressions are not declared on the target dashboard
+    and would be silently dropped at click time: ..."
+
 == CONTAINERS AND TABS ==
 
 Optional dashboard organization layer. Group related tiles visually with
@@ -766,6 +1104,37 @@ The server returns a descriptive error string identifying the failing path
 (tiles[i].containerId, tiles[i].tabId, containers[i].id, or
 containers[i].tabs[j].id). Read the path to know which input to fix.
 
+== EVENT PATTERN MINING ==
+
+Use displayType "event_patterns" on hyperdx_query when asked to find common log
+messages, recurring patterns, noisy services, or top event types. This is the
+right choice whenever the question is about "most common logs", "top patterns",
+"what is generating the most log volume", or similar pattern-discovery questions.
+
+It samples random events and clusters them with the Drain algorithm, returning:
+  - pattern templates (with <*> wildcards for variable parts)
+  - estimated counts (scaled from the sample to the full time range)
+  - time-bucketed trends
+  - a whereSnippet for each pattern to drill into matching raw events
+
+Required parameters:
+  - sourceId (call hyperdx_list_sources first)
+  - startTime / endTime for the time window
+
+Optional parameters:
+  - where — filter to specific services or severity levels before mining
+  - sampleSize — increase for more accurate patterns (default 10000, max 25000)
+  - bodyExpression — column to mine (auto-detected: Body for logs, SpanName for traces)
+
+Example: find top patterns for production services over the last 4 hours:
+  hyperdx_query({
+    displayType: "event_patterns",
+    sourceId: "<log-source-id>",
+    startTime: "<4 hours ago ISO>",
+    endTime: "<now ISO>",
+    where: "service.name:prod-*"
+  })
+
 == COMMON MISTAKES ==
 
 1. Using valueExpression with aggFn "count"
@@ -811,5 +1180,43 @@ containers[i].tabs[j].id). Read the path to know which input to fix.
     Wrong:   select: [{}]
     Wrong:   select: [{ valueExpression: "" }]
     Correct: select: [{ valueExpression: "Duration" }]
-    Heatmap requires a non-empty numeric column or expression to bucket.`;
+    Heatmap requires a non-empty numeric column or expression to bucket.
+
+11. onClick on a non-table tile
+    Only table tiles (builder displayType: "table" and raw-SQL configType: "sql"
+    with displayType: "table") support config.onClick. Other displayTypes
+    ignore the field. Putting onClick on a line/number/pie/heatmap/search/markdown
+    tile won't error but won't do anything either.
+
+12. onClick targeting a non-log/trace source for type="search"
+    The /search page only renders log and trace sources. Targeting a
+    metric or session source is rejected at save time with:
+    "The following onClick search source IDs are not log or trace sources: ..."
+
+13. Missing whereLanguage on onClick
+    whereLanguage is technically optional, but should still be set to
+    "lucene" or "sql" so the destination knows how to parse rendered
+    whereTemplate / filter values. Leaving it unset can cause the
+    destination to fall back to its own default.
+
+14. Templating against a column that isn't in the table's select/groupBy
+    Templates like "{{ServiceName}}" pull from the clicked row's columns.
+    If the column doesn't appear in the table query, the template renders
+    as empty at click time and the destination opens unfiltered. Match
+    {{column}} names to columns produced by the table (group-by columns
+    and aliases both work).
+
+15. onClick (type="dashboard") filter expression not declared on the target
+    For a dashboard target, each entry in onClick.filters[] only takes
+    effect when the destination dashboard declares a top-level
+    DashboardFilter with the SAME \`expression\`. The renderer drops URL
+    filter entries whose expression isn't in the destination's declared
+    filter set — so the user lands on the destination unfiltered.
+    Before generating an onClick.filters entry, call
+    hyperdx_get_dashboard on the target and confirm its
+    \`filters[].expression\` list. If the expression isn't there, either:
+      a) declare it on the target dashboard's top-level \`filters\` array
+         (passed to hyperdx_save_dashboard), or
+      b) use \`whereTemplate\` instead, which doesn't require a declared
+         filter on the target."`;
 }

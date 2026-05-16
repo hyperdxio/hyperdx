@@ -25,10 +25,10 @@ const queryTools: ToolDefinition = (server, context) => {
         'PREFERRED: Use the builder display types (line, stacked_bar, table, number, pie) ' +
         'for aggregated metrics, or "search" for browsing individual log/event rows. ' +
         'These are safer, easier to construct, and cover most use cases.\n\n' +
-        'PATTERN MINING: Use "event_patterns" to discover recurring message templates ' +
-        'in logs or traces. Samples random events, clusters them using the Drain algorithm, ' +
-        'and returns patterns sorted by frequency with estimated counts and time trends. ' +
-        'Useful for identifying the most common log messages, spotting anomalies, and understanding noise. ' +
+        'PATTERN MINING: Use "event_patterns" whenever asked about the most common log messages, ' +
+        'top log/event patterns, noisy or high-volume services, recurring messages, or log noise analysis. ' +
+        'It samples random events, clusters them using the Drain algorithm, and returns patterns sorted ' +
+        'by frequency with estimated counts and time trends. ' +
         'Each pattern includes a "whereSnippet" field — use it as the "where" parameter in a follow-up ' +
         '"search" query on the same source to browse the matching raw events.\n\n' +
         'ADVANCED: Use displayType "sql" only when you need capabilities the builder cannot express, ' +

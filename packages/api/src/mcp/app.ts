@@ -32,6 +32,12 @@ app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   }
 
   const userId = req.user?._id?.toString();
+  if (!userId) {
+    logger.warn('MCP request rejected: no userId');
+    res.sendStatus(403);
+    return;
+  }
+
   const context: McpContext = {
     teamId: teamId.toString(),
     userId,
@@ -39,7 +45,7 @@ app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
 
   setTraceAttributes({
     'mcp.team.id': context.teamId,
-    ...(userId && { 'mcp.user.id': userId }),
+    'mcp.user.id': userId,
   });
 
   logger.info({ teamId: context.teamId, userId }, 'MCP request received');

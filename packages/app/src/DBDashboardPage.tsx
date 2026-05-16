@@ -1329,10 +1329,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const watchedGranularity = useWatch({ control, name: 'granularity' });
 
   useEffect(() => {
-    if (watchedGranularity && watchedGranularity !== granularity) {
+    if (
+      router.isReady &&
+      watchedGranularity &&
+      watchedGranularity !== granularity
+    ) {
       setGranularity(watchedGranularity as SQLInterval);
     }
-  }, [watchedGranularity, granularity, setGranularity]);
+  }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');
@@ -1556,6 +1560,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [setUrlActiveTabs],
   );
+
+  // When arriving via ?highlightedTileId, switch to the tile's tab if it
+  // isn't already active so the tile is in the DOM for the Tile-level
+  // scroll/highlight effect to take effect. Guard with a ref keyed on the
+  // highlighted id so a user manually switching tabs afterwards doesn't
+  // get reverted on the next render.
+  const handledHighlightRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlightedTileId || !dashboard) return;
+    if (handledHighlightRef.current === highlightedTileId) return;
+    handledHighlightRef.current = highlightedTileId;
+    const tile = dashboard.tiles.find(t => t.id === highlightedTileId);
+    if (!tile?.containerId || !tile.tabId) return;
+    const container = containers.find(c => c.id === tile.containerId);
+    if (!container || getActiveTabId(container) === tile.tabId) return;
+    setUrlActiveTabs(prev => ({
+      ...(prev ?? {}),
+      [container.id]: tile.tabId!,
+    }));
+  }, [
+    highlightedTileId,
+    dashboard,
+    containers,
+    getActiveTabId,
+    setUrlActiveTabs,
+  ]);
 
   // Valid move targets: groups and individual tabs within groups
   const moveTargetContainers = useMemo<MoveTarget[]>(() => {
