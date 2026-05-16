@@ -359,13 +359,28 @@ const externalDashboardHeatmapChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
-const externalDashboardSearchChartConfigSchema = z.object({
+export const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
   select: z.string().max(10000),
   where: z.string().max(10000).optional().default(''),
   whereLanguage: whereLanguageSchema,
 });
+
+export type ExternalDashboardSearchChartConfig = z.infer<
+  typeof externalDashboardSearchChartConfigSchema
+>;
+
+// Extended schema for the /api/v2/search endpoint — adds orderBy which is not
+// applicable to dashboard tiles.
+export const externalDashboardSearchRequestSchema =
+  externalDashboardSearchChartConfigSchema.extend({
+    orderBy: z.string().max(1024).optional(),
+  });
+
+export type ExternalDashboardSearchRequestConfig = z.infer<
+  typeof externalDashboardSearchRequestSchema
+>;
 
 const externalDashboardMarkdownChartConfigSchema = z.object({
   displayType: z.literal('markdown'),
