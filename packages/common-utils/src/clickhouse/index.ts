@@ -22,6 +22,7 @@ import {
   hashCode,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
+  sqlForAliasMapParser,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
 import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
@@ -832,10 +833,11 @@ export function chSqlToAliasMap(
 
     // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
     const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
+    const sqlForParser = sqlForAliasMapParser(sqlWithoutSettingsClause);
 
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sqlWithoutSettingsClause);
+      replaceJsonExpressions(sqlForParser);
     const parser = new SQLParser.Parser();
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
@@ -876,11 +878,11 @@ export function chSqlToAliasMap(
     }
     return aliasMap;
   } catch (e) {
-    console.error(
-      'Error parsing alias map with JSON removed',
-      e,
-      'for query',
-      chSql,
+    // Warn without passing the Error object — Next.js dev overlay treats
+    // console.error(error) as an uncaught runtime failure.
+    console.warn(
+      'Error parsing alias map with JSON removed:',
+      e instanceof Error ? e.message : e,
     );
   }
 

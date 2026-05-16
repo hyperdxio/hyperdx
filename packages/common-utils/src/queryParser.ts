@@ -52,7 +52,7 @@ function buildMapContains(mapField: string) {
 }
 
 /** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
-function normalizeChExpression(expr: string): string {
+export function normalizeChExpression(expr: string): string {
   return expr.replace(/\s+/g, '').replace(/`/g, '');
 }
 
@@ -1048,7 +1048,7 @@ export function parseKvItemsCastExpression(
 }
 
 // To add another known KV items parsing strategy, simply define another function with the same signature and add the strategy to this array
-const KV_ITEMS_STRATEGIES = [
+export const KV_ITEMS_STRATEGIES = [
   parseKvItemsExpression,
   parseKvItemsCastExpression,
 ] as const;
@@ -1115,56 +1115,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * a text(tokenizer=array) skip index.
    */
   private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [columns, skipIndices] = await Promise.all([
-      this.metadata.getColumns({
-        databaseName: this.databaseName,
-        tableName: this.tableName,
-        connectionId: this.connectionId,
-      }),
-      this.skipIndicesPromise ?? Promise.resolve([]),
-    ]);
-
-    const lookup: KvItemsLookup = new Map();
-
-    // Find columns that are ALIAS or MATERIALIZED with KV items expressions
-    const kvItemsCandidates = columns.filter(
-      c =>
-        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
-        c.default_expression,
-    );
-
-    for (const candidate of kvItemsCandidates) {
-      const parsed = (() => {
-        let parsed: { mapColumn: string; separator: string } | undefined;
-        for (const strategy of KV_ITEMS_STRATEGIES) {
-          parsed = strategy(candidate.default_expression);
-          if (parsed) break;
-        }
-        return parsed;
-      })();
-      if (!parsed) continue;
-
-      // Check if this column has a text(tokenizer=array) skip index
-      const hasArrayTextIndex = skipIndices.some(idx => {
-        if (idx.type !== 'text') return false;
-        const tokenizer = parseTokenizerFromTextIndex(idx);
-        if (tokenizer?.type !== 'array') return false;
-        // Require exact match: has() won't benefit from a transformed index like lower(col)
-        return (
-          normalizeChExpression(idx.expression) ===
-          normalizeChExpression(candidate.name)
-        );
-      });
-
-      if (hasArrayTextIndex) {
-        lookup.set(parsed.mapColumn, {
-          kvItemsColumn: candidate.name,
-          separator: parsed.separator,
-        });
-      }
-    }
-
-    return lookup;
+    return this.metadata.getKvItemsLookup({
+      databaseName: this.databaseName,
+      tableName: this.tableName,
+      connectionId: this.connectionId,
+    });
   }
 
   /**

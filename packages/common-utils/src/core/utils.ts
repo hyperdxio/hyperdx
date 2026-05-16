@@ -779,6 +779,21 @@ export function extractSettingsClauseFromEnd(
   return [remaining, settingsClause] as const;
 }
 
+/**
+ * Returns SQL safe for node-sql-parser when extracting SELECT aliases.
+ * Drops WHERE/GROUP BY/HAVING/ORDER BY/LIMIT/OFFSET — those clauses may contain
+ * ClickHouse-only functions (has, hasAny, array(...)) that the parser rejects.
+ */
+export function sqlForAliasMapParser(sql: string): string {
+  const clauseStart =
+    /\s+(?:WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|OFFSET)\s+/i;
+  const match = clauseStart.exec(sql);
+  if (match?.index != null) {
+    return sql.slice(0, match.index).trim();
+  }
+  return sql.trim();
+}
+
 export function parseToNumber(input: string): number | undefined {
   const trimmed = input.trim();
 

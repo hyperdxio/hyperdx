@@ -203,6 +203,32 @@ describe('chSqlToAliasMap - alias unit test', () => {
     expect(res).toEqual(aliasMap);
   });
 
+  it('parses SELECT aliases when WHERE has hasAny(array(...)) from KV rewrite', () => {
+    const chSqlInput: ChSql = {
+      sql: "SELECT Timestamp as ts, Body as body FROM {HYPERDX_PARAM_1:Identifier}.{HYPERDX_PARAM_2:Identifier} WHERE (has(`ResourceAttributeTokens`, concat('facility', '=', 'local0')) OR hasAny(`ResourceAttributeTokens`, array('cloud.availability_zone=zone-a', 'cloud.availability_zone=zone-b'))) ORDER BY Timestamp DESC LIMIT {HYPERDX_PARAM_3:Int32}",
+      params: {
+        HYPERDX_PARAM_1: 'otel',
+        HYPERDX_PARAM_2: 'otel_logs',
+        HYPERDX_PARAM_3: 200,
+      },
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      ts: 'Timestamp',
+      body: 'Body',
+    });
+  });
+
+  it('parses SELECT aliases when WHERE has legacy hasAny bracket arrays', () => {
+    const chSqlInput: ChSql = {
+      sql: "SELECT Timestamp as ts FROM {HYPERDX_PARAM_1:Identifier}.{HYPERDX_PARAM_2:Identifier} WHERE hasAny(`ResourceAttributeTokens`, ['facility=local0', 'facility=local1']) ORDER BY Timestamp DESC",
+      params: {
+        HYPERDX_PARAM_1: 'otel',
+        HYPERDX_PARAM_2: 'otel_logs',
+      },
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({ ts: 'Timestamp' });
+  });
+
   it('Alias, with JSON expressions', () => {
     const chSqlInput: ChSql = {
       sql: "SELECT Timestamp as ts,ResourceAttributes.service.name as service,toStartOfDay(LogAttributes.start.`time`) as start_time,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) AND (`ResourceAttributes`.`service`.`name` = 'serviceName') ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",

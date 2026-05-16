@@ -17,7 +17,11 @@ import {
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
 import { replaceMacros } from '@/macros';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import {
+  CustomSchemaSQLSerializerV2,
+  type KvItemsLookup,
+  SearchQueryBuilder,
+} from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
@@ -800,6 +804,330 @@ function renderFrom({
   );
 }
 
+const MAP_SUBSCRIPT_EXPR_RE = /^(\w+)\['([^']+)'\]$/;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** SQL string literal body: '' inside quotes becomes a single apostrophe. */
+function unescapeSqlStringLiteral(body: string): string {
+  return body.replace(/''/g, "'");
+}
+
+/**
+ * Parse a single-quoted SQL string literal starting at `start` (must be `').
+ * Returns unescaped value and index after the closing quote.
+ */
+function parseSqlSingleQuotedLiteralAt(
+  s: string,
+  start: number,
+): { value: string; end: number } | undefined {
+  if (s[start] !== "'") {
+    return undefined;
+  }
+
+  let i = start + 1;
+  let body = '';
+  while (i < s.length) {
+    if (s[i] === "'") {
+      if (s[i + 1] === "'") {
+        body += "'";
+        i += 2;
+        continue;
+      }
+      return { value: unescapeSqlStringLiteral(body), end: i + 1 };
+    }
+    body += s[i];
+    i++;
+  }
+
+  return undefined;
+}
+
+/**
+ * Parse the inside of IN (...): comma-separated single-quoted string literals only.
+ * Returns undefined if the list is malformed or contains non-literals.
+ */
+function parseSqlInStringLiteralList(listBody: string): string[] | undefined {
+  const values: string[] = [];
+  let i = 0;
+  const n = listBody.length;
+
+  while (i < n) {
+    while (i < n && /\s/.test(listBody[i]!)) {
+      i++;
+    }
+    if (i >= n) {
+      break;
+    }
+
+    const parsed = parseSqlSingleQuotedLiteralAt(listBody, i);
+    if (!parsed) {
+      return undefined;
+    }
+    values.push(parsed.value);
+    i = parsed.end;
+
+    while (i < n && /\s/.test(listBody[i]!)) {
+      i++;
+    }
+    if (i >= n) {
+      break;
+    }
+    if (listBody[i] !== ',') {
+      return undefined;
+    }
+    i++;
+  }
+
+  return values.length > 0 ? values : undefined;
+}
+
+/**
+ * Index of the closing `)` for `(` at openParenIndex, ignoring `)` inside quotes.
+ */
+function findClosingParenIndex(
+  s: string,
+  openParenIndex: number,
+): number | undefined {
+  if (s[openParenIndex] !== '(') {
+    return undefined;
+  }
+
+  let depth = 0;
+  let i = openParenIndex;
+
+  while (i < s.length) {
+    if (s[i] === "'") {
+      const parsed = parseSqlSingleQuotedLiteralAt(s, i);
+      if (!parsed) {
+        return undefined;
+      }
+      i = parsed.end;
+      continue;
+    }
+
+    if (s[i] === '(') {
+      depth++;
+      i++;
+      continue;
+    }
+
+    if (s[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return undefined;
+}
+
+function isNotInMatch(condition: string, inKeywordIndex: number): boolean {
+  const before = condition.slice(
+    Math.max(0, inKeywordIndex - 5),
+    inKeywordIndex,
+  );
+  return /\bNOT\s*$/i.test(before);
+}
+
+type MapKeyRewriteFn = (
+  mapCol: string,
+  key: string,
+  values: string[],
+) => string | undefined;
+
+function rewriteSqlInClauses(
+  condition: string,
+  inPrefixRe: RegExp,
+  getMapKey: (match: RegExpExecArray) => { mapCol: string; key: string } | null,
+  rewrite: MapKeyRewriteFn,
+): string {
+  let result = '';
+  let lastIndex = 0;
+  const re = new RegExp(inPrefixRe.source, inPrefixRe.flags);
+
+  for (
+    let match = re.exec(condition);
+    match != null;
+    match = re.exec(condition)
+  ) {
+    const inIndex = match.index + match[0].lastIndexOf('IN');
+    if (isNotInMatch(condition, inIndex)) {
+      continue;
+    }
+
+    const openParenIndex = match.index + match[0].length - 1;
+    const closeParenIndex = findClosingParenIndex(condition, openParenIndex);
+    if (closeParenIndex === undefined) {
+      continue;
+    }
+
+    const mapKey = getMapKey(match);
+    if (mapKey == null) {
+      result += condition.slice(lastIndex, closeParenIndex + 1);
+      lastIndex = closeParenIndex + 1;
+      re.lastIndex = lastIndex;
+      continue;
+    }
+
+    const listBody = condition.slice(openParenIndex + 1, closeParenIndex);
+    const values = parseSqlInStringLiteralList(listBody);
+    const { mapCol, key } = mapKey;
+    const rewritten = values != null ? rewrite(mapCol, key, values) : undefined;
+
+    result += condition.slice(lastIndex, match.index);
+    if (rewritten != null) {
+      result += rewritten;
+    } else {
+      result += condition.slice(match.index, closeParenIndex + 1);
+    }
+    lastIndex = closeParenIndex + 1;
+    re.lastIndex = lastIndex;
+  }
+
+  return result + condition.slice(lastIndex);
+}
+
+function buildMaterializedMapKeyLookup(
+  materializedFields: Map<string, string> | undefined,
+): Map<string, { mapColumn: string; key: string }> {
+  const lookup = new Map<string, { mapColumn: string; key: string }>();
+  if (materializedFields == null) {
+    return lookup;
+  }
+
+  for (const [expr, materializedColumn] of materializedFields) {
+    const match = MAP_SUBSCRIPT_EXPR_RE.exec(expr);
+    if (match) {
+      lookup.set(materializedColumn, { mapColumn: match[1], key: match[2] });
+    }
+  }
+
+  return lookup;
+}
+
+function renderKvItemsHasExpr(
+  kvInfo: { kvItemsColumn: string; separator: string },
+  key: string,
+  values: string[],
+): string {
+  if (values.length === 1) {
+    return SqlString.format(`has(??, concat(?, ?, ?))`, [
+      kvInfo.kvItemsColumn,
+      key,
+      kvInfo.separator,
+      values[0],
+    ]);
+  }
+
+  const tokens = values.map(v => `${key}${kvInfo.separator}${v}`);
+  // Use array(...) instead of [...] so node-sql-parser can parse the WHERE
+  // when building alias maps (bracket literals fail with "O" in values).
+  return SqlString.format(
+    `hasAny(??, array(${tokens.map(() => '?').join(', ')}))`,
+    [kvInfo.kvItemsColumn, ...tokens],
+  );
+}
+
+/**
+ * Rewrites SQL filter conditions containing Map['key'] IN ('v1', 'v2', ...)
+ * to use has()/hasAny() on a KV items column when a text(tokenizer=array)
+ * index exists. This enables direct read from the inverted index.
+ *
+ * Patterns handled:
+ *   MapCol['key'] IN ('v1')           -> has(KvCol, concat('key', '=', 'v1'))
+ *   MapCol['key'] IN ('v1', 'v2')     -> hasAny(KvCol, array('key=v1', 'key=v2'))
+ *   MapCol['key'] = 'v1'              -> has(KvCol, concat('key', '=', 'v1'))
+ *   materialized_col IN ('v1', ...)   -> same, when col maps to MapCol['key']
+ *   MapCol['key'] NOT IN ('v1', ...) and MapCol['key'] != 'v1' are NOT
+ *   rewritten (negation semantics differ when the key is absent).
+ */
+export function rewriteSqlWithKvItems(
+  condition: string,
+  kvItemsLookup: KvItemsLookup,
+  materializedFields?: Map<string, string>,
+): string {
+  if (kvItemsLookup.size === 0) return condition;
+
+  const MAP_IN_PREFIX_RE = /(?:(\w+)\.)?(\w+)\['([^']+)'\]\s+IN\s+\(/gi;
+  const MAP_EQ_RE =
+    /(?:(\w+)\.)?(\w+)\['([^']+)'\]\s*(?<!!)=\s*'((?:[^']|'')*)'/gi;
+
+  const rewriteMapKeyPredicate: MapKeyRewriteFn = (mapCol, key, values) => {
+    const kvInfo = kvItemsLookup.get(mapCol);
+    if (!kvInfo) return undefined;
+    return renderKvItemsHasExpr(kvInfo, key, values);
+  };
+
+  const mapKeyFromSubscriptMatch = (
+    match: RegExpExecArray,
+  ): { mapCol: string; key: string } | null => {
+    if (match[1]) {
+      return null;
+    }
+    return { mapCol: match[2]!, key: match[3]! };
+  };
+
+  let result = rewriteSqlInClauses(
+    condition,
+    MAP_IN_PREFIX_RE,
+    mapKeyFromSubscriptMatch,
+    rewriteMapKeyPredicate,
+  );
+
+  result = result.replace(
+    MAP_EQ_RE,
+    (match, tableAlias, mapCol, key, rawValue) => {
+      if (tableAlias) {
+        return match;
+      }
+      const value = unescapeSqlStringLiteral(rawValue);
+      return rewriteMapKeyPredicate(mapCol, key, [value]) ?? match;
+    },
+  );
+
+  const materializedMapKeyLookup =
+    buildMaterializedMapKeyLookup(materializedFields);
+  for (const [
+    materializedColumn,
+    { mapColumn, key },
+  ] of materializedMapKeyLookup) {
+    const escapedColumn = escapeRegExp(materializedColumn);
+    const matInPrefixRe = new RegExp(
+      `(?<![.\`'])(?:(\\w+)\\.)?${escapedColumn}\\s+IN\\s+\\(`,
+      'gi',
+    );
+    const matEqRe = new RegExp(
+      `(?<![.\`'])(?:(\\w+)\\.)?${escapedColumn}\\s*(?<!!)=\\s*'((?:[^']|'')*)'`,
+      'gi',
+    );
+
+    result = rewriteSqlInClauses(
+      result,
+      matInPrefixRe,
+      match => (match[1] ? null : { mapCol: mapColumn, key }),
+      rewriteMapKeyPredicate,
+    );
+
+    result = result.replace(matEqRe, (match, tableAlias, _col, rawValue) => {
+      if (tableAlias) {
+        return match;
+      }
+      const value = unescapeSqlStringLiteral(rawValue);
+      return rewriteMapKeyPredicate(mapColumn, key, [value]) ?? match;
+    });
+  }
+
+  return result;
+}
+
 async function renderWhereExpressionStr({
   condition,
   language,
@@ -848,6 +1176,25 @@ async function renderWhereExpressionStr({
           });
   } catch {
     // ignore
+  }
+
+  // Rewrite Map['key'] IN/= (and materialized map columns) before fastifySQL
+  // substitutes Map subscripts to column names, which would skip KV index use.
+  if (language === 'sql' && from.databaseName && from.tableName) {
+    try {
+      const kvItemsLookup = await metadata.getKvItemsLookup({
+        databaseName: from.databaseName,
+        tableName: from.tableName,
+        connectionId,
+      });
+      _condition = rewriteSqlWithKvItems(
+        _condition,
+        kvItemsLookup,
+        materializedFields,
+      );
+    } catch (error) {
+      console.warn('Error fetching KV items lookup for SQL rewrite:', error);
+    }
   }
 
   const _sqlPrefix = 'SELECT * FROM `t` WHERE ';

@@ -31,6 +31,7 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  sqlForAliasMapParser,
 } from '../core/utils';
 
 describe('utils', () => {
@@ -1913,6 +1914,29 @@ describe('utils', () => {
         expect(extractedSettingsClause).toBe(settingsClause);
       },
     );
+  });
+
+  describe('sqlForAliasMapParser', () => {
+    it('strips WHERE with ClickHouse has/hasAny', () => {
+      expect(
+        sqlForAliasMapParser(
+          "SELECT Timestamp as ts FROM otel.otel_logs WHERE hasAny(`ResourceAttributeTokens`, ['a=b']) ORDER BY ts DESC",
+        ),
+      ).toBe('SELECT Timestamp as ts FROM otel.otel_logs');
+    });
+
+    it('strips GROUP BY ORDER BY LIMIT and OFFSET', () => {
+      expect(
+        sqlForAliasMapParser(
+          'SELECT a FROM t GROUP BY a ORDER BY a LIMIT 10 OFFSET 5',
+        ),
+      ).toBe('SELECT a FROM t');
+    });
+
+    it('leaves SELECT without trailing clauses unchanged', () => {
+      const sql = 'SELECT Timestamp as ts, Body FROM otel.otel_logs';
+      expect(sqlForAliasMapParser(sql)).toBe(sql);
+    });
   });
 
   describe('parseToNumber', () => {

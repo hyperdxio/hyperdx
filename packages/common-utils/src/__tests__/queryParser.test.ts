@@ -1745,6 +1745,14 @@ describe('parseKvItemsCastExpression', () => {
     ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
   });
 
+  it('parses CAST KV items expression with bare lambda param (ClickHouse form)', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap(arr -> concat(arr.1, '=', arr.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
   it('parses CAST form without spaces in type', () => {
     expect(
       parseKvItemsCastExpression(

@@ -1,3 +1,4 @@
+import { ColumnMeta } from '../clickhouse';
 import { ClickhouseClient } from '../clickhouse/node';
 import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
@@ -413,6 +414,116 @@ describe('Metadata', () => {
         .calls[1][0].query;
       expect(secondQuery).not.toContain('cluster(');
       expect(secondQuery).toContain('system.data_skipping_indices');
+    });
+  });
+
+  describe('getKvItemsLookup', () => {
+    const otelKvExpression =
+      "arrayMap(arr -> concat(arr.1, '=', arr.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))";
+
+    const otelColumns: ColumnMeta[] = [
+      {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+        codec_expression: '',
+        comment: '',
+        ttl_expression: '',
+      },
+      {
+        name: 'ResourceAttributeTokens',
+        type: 'Array(String)',
+        default_type: 'MATERIALIZED',
+        default_expression: otelKvExpression,
+        codec_expression: '',
+        comment: '',
+        ttl_expression: '',
+      },
+    ];
+
+    const otelTokensTextIndex = {
+      name: 'idx_res_attr_tokens_text',
+      type: 'text',
+      typeFull: 'text(tokenizer = array)',
+      expression: 'ResourceAttributeTokens',
+      granularity: 1,
+    };
+
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((_key, queryFn) => queryFn());
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue(otelColumns);
+      jest
+        .spyOn(metadata, 'getSkipIndices')
+        .mockResolvedValue([otelTokensTextIndex]);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('registers ResourceAttributes when KV column and array text index exist', async () => {
+      const lookup = await metadata.getKvItemsLookup({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'test_connection',
+      });
+
+      expect(lookup.get('ResourceAttributes')).toEqual({
+        kvItemsColumn: 'ResourceAttributeTokens',
+        separator: '=',
+      });
+    });
+
+    it('returns empty lookup when text index tokenizer is not array', async () => {
+      jest.spyOn(metadata, 'getSkipIndices').mockResolvedValue([
+        {
+          ...otelTokensTextIndex,
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+        },
+      ]);
+
+      const lookup = await metadata.getKvItemsLookup({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'test_connection',
+      });
+
+      expect(lookup.size).toBe(0);
+    });
+
+    it('returns empty lookup when text index expression does not match KV column', async () => {
+      jest.spyOn(metadata, 'getSkipIndices').mockResolvedValue([
+        {
+          ...otelTokensTextIndex,
+          expression: 'mapKeys(ResourceAttributes)',
+        },
+      ]);
+
+      const lookup = await metadata.getKvItemsLookup({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'test_connection',
+      });
+
+      expect(lookup.size).toBe(0);
+    });
+
+    it('returns empty lookup when default_expression is not a KV items pattern', async () => {
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
+        {
+          ...otelColumns[1],
+          default_expression: 'toString(ResourceAttributes)',
+        },
+      ]);
+
+      const lookup = await metadata.getKvItemsLookup({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'test_connection',
+      });
+
+      expect(lookup.size).toBe(0);
     });
   });
 

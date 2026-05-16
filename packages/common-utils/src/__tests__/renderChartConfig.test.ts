@@ -1,17 +1,28 @@
-import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
+import {
+  chSql,
+  chSqlToAliasMap,
+  ColumnMeta,
+  parameterizedQueryToSql,
+} from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
+import { filtersToQuery } from '@/filters';
+import type { KvItemsLookup } from '@/queryParser';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
   QuerySettings,
+  SourceKind,
+  TSource,
 } from '@/types';
 
 import {
   ChartConfigWithOptDateRangeEx,
   renderChartConfig,
+  rewriteSqlWithKvItems,
   timeFilterExpr,
 } from '../core/renderChartConfig';
+import { buildSearchChartConfig } from '../core/searchChartConfig';
 
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
@@ -2719,5 +2730,641 @@ describe('renderChartConfig', () => {
       expect(actual).toContain('count()');
       expect(actual).not.toContain('SampleRate');
     });
+  });
+});
+
+describe('rewriteSqlWithKvItems', () => {
+  const resourceAttributesLookup: KvItemsLookup = new Map([
+    [
+      'ResourceAttributes',
+      { kvItemsColumn: 'ResourceAttributeTokens', separator: '=' },
+    ],
+    ['LogAttributes', { kvItemsColumn: 'LogAttributeItems', separator: '=' }],
+  ]);
+
+  it('rewrites single-value IN to has()', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "ResourceAttributes['host.ip'] IN ('192.168.1.1')",
+        resourceAttributesLookup,
+      ),
+    ).toBe(
+      "has(`ResourceAttributeTokens`, concat('host.ip', '=', '192.168.1.1'))",
+    );
+  });
+
+  it('rewrites multi-value IN to hasAny()', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "ResourceAttributes['facility'] IN ('local0', 'local1')",
+        resourceAttributesLookup,
+      ),
+    ).toBe(
+      "hasAny(`ResourceAttributeTokens`, array('facility=local0', 'facility=local1'))",
+    );
+  });
+
+  it('uses array() for hasAny so node-sql-parser can parse the expression', () => {
+    const result = rewriteSqlWithKvItems(
+      "ResourceAttributes['facility'] IN ('local0', 'local1')",
+      resourceAttributesLookup,
+    );
+    expect(result).toContain('hasAny(`ResourceAttributeTokens`, array(');
+    expect(result).not.toMatch(/hasAny\([^)]+\[/);
+  });
+
+  it('rewrites equality to has()', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "ResourceAttributes['facility'] = 'local0'",
+        resourceAttributesLookup,
+      ),
+    ).toBe("has(`ResourceAttributeTokens`, concat('facility', '=', 'local0'))");
+  });
+
+  it('does not rewrite NOT IN', () => {
+    const condition = "ResourceAttributes['facility'] NOT IN ('local0')";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('does not rewrite !=', () => {
+    const condition = "ResourceAttributes['facility'] != 'local0'";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('leaves unknown map columns unchanged', () => {
+    const condition = "ScopeAttributes['env'] IN ('prod')";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('returns condition unchanged when lookup is empty', () => {
+    const condition = "ResourceAttributes['host.ip'] IN ('192.168.1.1')";
+    expect(rewriteSqlWithKvItems(condition, new Map())).toBe(condition);
+  });
+
+  it('rewrites only mapped columns in compound conditions', () => {
+    const result = rewriteSqlWithKvItems(
+      "ResourceAttributes['k'] IN ('v') AND ServiceName IN ('api')",
+      resourceAttributesLookup,
+    );
+    expect(result).toContain(
+      "has(`ResourceAttributeTokens`, concat('k', '=', 'v'))",
+    );
+    expect(result).toContain("ServiceName IN ('api')");
+  });
+
+  it('rewrites LogAttributes when present in lookup', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "LogAttributes['error.message'] IN ('timeout')",
+        resourceAttributesLookup,
+      ),
+    ).toBe("has(`LogAttributeItems`, concat('error.message', '=', 'timeout'))");
+  });
+
+  it('rewrites materialized column names when materializedFields is provided', () => {
+    const materializedFields = new Map<string, string>([
+      ["ResourceAttributes['facility']", 'facility'],
+    ]);
+    expect(
+      rewriteSqlWithKvItems(
+        "facility IN ('local0')",
+        resourceAttributesLookup,
+        materializedFields,
+      ),
+    ).toBe("has(`ResourceAttributeTokens`, concat('facility', '=', 'local0'))");
+  });
+
+  it('preserves commas inside quoted IN values', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "ResourceAttributes['k'] IN ('a,b', 'c')",
+        resourceAttributesLookup,
+      ),
+    ).toBe("hasAny(`ResourceAttributeTokens`, array('k=a,b', 'k=c'))");
+  });
+
+  it('parses SQL-escaped apostrophes in equality values', () => {
+    const result = rewriteSqlWithKvItems(
+      "ResourceAttributes['name'] = 'O''Brien'",
+      resourceAttributesLookup,
+    );
+    expect(result).toContain('has(`ResourceAttributeTokens`');
+    expect(result).not.toContain("= 'O')");
+    expect(result).toMatch(/concat\('name', '=', '.+Brien'\)/);
+  });
+
+  it('does not rewrite IN when list is not all string literals', () => {
+    const condition = "ResourceAttributes['k'] IN (1, 2)";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('handles closing paren inside a quoted IN value', () => {
+    expect(
+      rewriteSqlWithKvItems(
+        "ResourceAttributes['k'] IN ('a)b')",
+        resourceAttributesLookup,
+      ),
+    ).toBe("has(`ResourceAttributeTokens`, concat('k', '=', 'a)b'))");
+  });
+
+  it('does not rewrite IN with a subquery', () => {
+    const condition =
+      "ResourceAttributes['k'] IN (SELECT v FROM t WHERE id = 1)";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('does not rewrite when a table alias prefixes the map column', () => {
+    const condition = "t.ResourceAttributes['k'] IN ('v')";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('does not rewrite equality when a table alias prefixes the map column', () => {
+    const condition = "t.ResourceAttributes['k'] = 'v'";
+    expect(rewriteSqlWithKvItems(condition, resourceAttributesLookup)).toBe(
+      condition,
+    );
+  });
+
+  it('does not rewrite materialized column IN when a table alias is present', () => {
+    const materializedFields = new Map<string, string>([
+      ["ResourceAttributes['facility']", 'facility'],
+    ]);
+    const condition = "t.facility IN ('local0')";
+    expect(
+      rewriteSqlWithKvItems(
+        condition,
+        resourceAttributesLookup,
+        materializedFields,
+      ),
+    ).toBe(condition);
+  });
+
+  it('rewrites dotted materialized column names (k8s.namespace)', () => {
+    const materializedFields = new Map<string, string>([
+      ["ResourceAttributes['k8s.namespace']", 'k8s.namespace'],
+    ]);
+    expect(
+      rewriteSqlWithKvItems(
+        "k8s.namespace IN ('default', 'production')",
+        resourceAttributesLookup,
+        materializedFields,
+      ),
+    ).toBe(
+      "hasAny(`ResourceAttributeTokens`, array('k8s.namespace=default', 'k8s.namespace=production'))",
+    );
+  });
+});
+
+describe('renderChartConfig SQL filter KV items rewrite', () => {
+  let mockMetadata: jest.Mocked<Metadata>;
+  const start = new Date('2025-01-01');
+  const end = new Date('2025-01-02');
+
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    mockMetadata = {
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(new Map()),
+      getColumn: jest.fn().mockResolvedValue(undefined),
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'timestamp' }),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
+      getKvItemsLookup: jest.fn().mockResolvedValue(
+        new Map([
+          [
+            'ResourceAttributes',
+            {
+              kvItemsColumn: 'ResourceAttributeTokens',
+              separator: '=',
+            },
+          ],
+        ]),
+      ),
+    } as unknown as jest.Mocked<Metadata>;
+  });
+
+  it('rewrites sql filters in $__filters via getKvItemsLookup', async () => {
+    const result = await renderChartConfig(
+      {
+        configType: 'sql',
+        sqlTemplate: 'SELECT * FROM otel_logs WHERE $__filters',
+        connection: 'conn-1',
+        dateRange: [start, end],
+        source: 'source-1',
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        filters: [
+          {
+            type: 'sql',
+            condition: "ResourceAttributes['host.ip'] IN ('192.168.1.1')",
+          },
+        ],
+      },
+      mockMetadata,
+      undefined,
+    );
+
+    expect(mockMetadata.getKvItemsLookup).toHaveBeenCalledWith({
+      databaseName: 'otel',
+      tableName: 'otel_logs',
+      connectionId: 'conn-1',
+    });
+    expect(result.sql).toContain(
+      "has(`ResourceAttributeTokens`, concat('host.ip', '=', '192.168.1.1'))",
+    );
+    expect(result.sql).not.toContain("ResourceAttributes['host.ip'] IN");
+  });
+
+  it('does not apply KV SQL rewrite to lucene filters (language guard)', async () => {
+    mockMetadata.getColumn = jest
+      .fn()
+      .mockImplementation(async ({ column }) => {
+        if (column === 'ServiceName') {
+          return { name: 'ServiceName', type: 'String' };
+        }
+        return undefined;
+      });
+
+    const result = await renderChartConfig(
+      {
+        configType: 'sql',
+        sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+        connection: 'conn-1',
+        dateRange: [start, end],
+        source: 'source-1',
+        from: { databaseName: 'default', tableName: 'logs' },
+        implicitColumnExpression: 'Body',
+        filters: [{ type: 'lucene', condition: 'ServiceName:api' }],
+      },
+      mockMetadata,
+      undefined,
+    );
+
+    expect(result.sql).toContain("ServiceName ILIKE '%api%'");
+    expect(result.sql).not.toMatch(/has\(`ResourceAttributeTokens`/);
+  });
+
+  it('rewrites chart where when whereLanguage is sql', async () => {
+    const condition = "ResourceAttributes['host.ip'] IN ('192.168.1.1')";
+
+    const result = await renderChartConfig(
+      {
+        displayType: DisplayType.Table,
+        connection: 'conn-1',
+        dateRange: [start, end],
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        timestampValueExpression: 'TimestampTime',
+        where: condition,
+        whereLanguage: 'sql',
+        select: [{ valueExpression: 'count()', alias: 'count' }],
+      },
+      mockMetadata,
+      undefined,
+    );
+
+    expect(result.sql).toContain(
+      "has(`ResourceAttributeTokens`, concat('host.ip', '=', '192.168.1.1'))",
+    );
+    expect(result.sql).not.toContain(condition);
+  });
+
+  it('falls through with original condition when getKvItemsLookup throws', async () => {
+    mockMetadata.getKvItemsLookup = jest
+      .fn()
+      .mockRejectedValue(new Error('boom'));
+    const condition = "ResourceAttributes['host.ip'] IN ('192.168.1.1')";
+
+    const result = await renderChartConfig(
+      {
+        configType: 'sql',
+        sqlTemplate: 'SELECT * FROM otel_logs WHERE $__filters',
+        connection: 'conn-1',
+        dateRange: [start, end],
+        source: 'source-1',
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        filters: [{ type: 'sql', condition }],
+      },
+      mockMetadata,
+      undefined,
+    );
+
+    expect(console.warn).toHaveBeenCalledWith(
+      'Error fetching KV items lookup for SQL rewrite:',
+      expect.any(Error),
+    );
+    expect(result.sql).toContain(condition);
+    expect(result.sql).not.toContain('ResourceAttributeTokens');
+  });
+});
+
+describe('facet SQL filter KV items rewrite (search page hypothesis)', () => {
+  const start = new Date('2025-01-01');
+  const end = new Date('2025-01-02');
+
+  const kvItemsLookup: KvItemsLookup = new Map([
+    [
+      'ResourceAttributes',
+      { kvItemsColumn: 'ResourceAttributeTokens', separator: '=' },
+    ],
+  ]);
+
+  const logSource = {
+    id: 'log-source-1',
+    kind: SourceKind.Log,
+    name: 'logs',
+    connection: 'conn-1',
+    from: { databaseName: 'otel', tableName: 'otel_logs' },
+    timestampValueExpression: 'TimestampTime',
+    defaultTableSelectExpression: 'Timestamp, ServiceName, SeverityText, Body',
+    implicitColumnExpression: 'Body',
+  } as unknown as TSource;
+
+  function makeMetadata(
+    materializedFields: Map<string, string> = new Map(),
+  ): jest.Mocked<Metadata> {
+    return {
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMaterializedColumnsLookupTable: jest
+        .fn()
+        .mockResolvedValue(materializedFields),
+      getColumn: jest.fn().mockResolvedValue(undefined),
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'TimestampTime' }),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
+      getKvItemsLookup: jest.fn().mockResolvedValue(kvItemsLookup),
+    } as unknown as jest.Mocked<Metadata>;
+  }
+
+  /** Mirrors /search URL: filters=[sql ServiceName, sql ResourceAttributes['key'] IN (...)] */
+  function facetFiltersFromUrl() {
+    return [
+      { type: 'sql' as const, condition: "ServiceName IN ('api')" },
+      {
+        type: 'sql' as const,
+        condition:
+          "ResourceAttributes['cloud.availability_zone'] IN ('zone-a')",
+      },
+    ];
+  }
+
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('filtersToQuery emits bracket notation for map facet keys', () => {
+    const filters = filtersToQuery({
+      "ResourceAttributes['cloud.availability_zone']": {
+        included: new Set(['zone-a']),
+        excluded: new Set(),
+      },
+    });
+
+    expect(filters).toEqual([
+      {
+        type: 'sql',
+        condition:
+          "ResourceAttributes['cloud.availability_zone'] IN ('zone-a')",
+      },
+    ]);
+  });
+
+  it('Search chart rewrites facet sql filters when materialized lookup is empty', async () => {
+    const mockMetadata = makeMetadata(new Map());
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: facetFiltersFromUrl(),
+      dateRange: [start, end],
+    });
+
+    const result = await renderChartConfig(
+      chartConfig,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(result);
+
+    expect(sql).toContain(
+      "has(`ResourceAttributeTokens`, concat('cloud.availability_zone', '=', 'zone-a'))",
+    );
+    expect(sql).not.toContain(
+      "ResourceAttributes['cloud.availability_zone'] IN",
+    );
+    expect(sql).toContain("ServiceName IN ('api')");
+  });
+
+  it('Search chart rewrites map facet keys that have no materialized column', async () => {
+    // Only bracket Map['key'] form exists for this attribute.
+    const mockMetadata = makeMetadata(new Map());
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: facetFiltersFromUrl(),
+      dateRange: [start, end],
+    });
+
+    const result = await renderChartConfig(
+      chartConfig,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(result);
+
+    expect(sql).toContain(
+      "has(`ResourceAttributeTokens`, concat('cloud.availability_zone', '=', 'zone-a'))",
+    );
+    expect(sql).not.toContain(
+      "ResourceAttributes['cloud.availability_zone'] IN",
+    );
+  });
+
+  it('Search chart rewrites materialized k8s.namespace facets via KV index', async () => {
+    const materializedFields = new Map<string, string>([
+      ["ResourceAttributes['k8s.namespace']", 'k8s.namespace'],
+    ]);
+    const mockMetadata = makeMetadata(materializedFields);
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: [
+        {
+          type: 'sql',
+          condition: "ResourceAttributes['k8s.namespace'] IN ('default')",
+        },
+      ],
+      dateRange: [start, end],
+    });
+
+    const result = await renderChartConfig(
+      chartConfig,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(result);
+
+    expect(sql).toContain(
+      "has(`ResourceAttributeTokens`, concat('k8s.namespace', '=', 'default'))",
+    );
+    expect(sql).not.toContain('k8s.namespace IN');
+  });
+
+  it('dot-notation facet keys are not rewritten (regex expects bracket notation)', () => {
+    const lookup = kvItemsLookup;
+    const condition =
+      "ResourceAttributes.cloud.availability_zone IN ('zone-a')";
+
+    expect(rewriteSqlWithKvItems(condition, lookup)).toBe(condition);
+  });
+
+  it('facility materialized column still rewrites to has() before fastifySQL', async () => {
+    const materializedFields = new Map<string, string>([
+      ["ResourceAttributes['facility']", 'facility'],
+    ]);
+    const mockMetadata = makeMetadata(materializedFields);
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: [
+        {
+          type: 'sql',
+          condition: "ResourceAttributes['facility'] IN ('local0', 'local1')",
+        },
+      ],
+      dateRange: [start, end],
+    });
+
+    const result = await renderChartConfig(
+      chartConfig,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(result);
+
+    expect(sql).toContain(
+      "hasAny(`ResourceAttributeTokens`, array('facility=local0', 'facility=local1'))",
+    );
+    expect(sql).not.toContain("facility IN ('local0'");
+  });
+
+  it('does not rewrite sql filters when getKvItemsLookup is empty', async () => {
+    const mockMetadata = makeMetadata(new Map());
+    mockMetadata.getKvItemsLookup = jest.fn().mockResolvedValue(new Map());
+
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: facetFiltersFromUrl(),
+      dateRange: [start, end],
+    });
+
+    const result = await renderChartConfig(
+      chartConfig,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(result);
+
+    expect(sql).toContain(
+      "ResourceAttributes['cloud.availability_zone'] IN ('zone-a')",
+    );
+    expect(sql).not.toContain('has(`ResourceAttributeTokens`');
+  });
+});
+
+describe('alias map with KV filter rewrite', () => {
+  const start = new Date('2025-01-01');
+  const end = new Date('2025-01-02');
+
+  const kvItemsLookup: KvItemsLookup = new Map([
+    [
+      'ResourceAttributes',
+      { kvItemsColumn: 'ResourceAttributeTokens', separator: '=' },
+    ],
+  ]);
+
+  const logSource = {
+    id: 'log-source-1',
+    kind: SourceKind.Log,
+    name: 'logs',
+    connection: 'conn-1',
+    from: { databaseName: 'otel', tableName: 'otel_logs' },
+    timestampValueExpression: 'TimestampTime',
+    defaultTableSelectExpression: 'Timestamp, ServiceName, SeverityText, Body',
+    implicitColumnExpression: 'Body',
+  } as unknown as TSource;
+
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('chSqlToAliasMap tolerates search SQL with has/hasAny filters in WHERE', async () => {
+    const mockMetadata = {
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(new Map()),
+      getColumn: jest.fn().mockResolvedValue(undefined),
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'TimestampTime' }),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
+      getKvItemsLookup: jest.fn().mockResolvedValue(kvItemsLookup),
+    } as unknown as jest.Mocked<Metadata>;
+
+    const chartConfig = buildSearchChartConfig(logSource, {
+      where: '',
+      whereLanguage: 'lucene',
+      filters: [
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+        {
+          type: 'sql',
+          condition: "ResourceAttributes['facility'] IN ('local0', 'local1')",
+        },
+      ],
+      dateRange: [start, end],
+    });
+
+    const query = await renderChartConfig(chartConfig, mockMetadata, undefined);
+    const sql = parameterizedQueryToSql(query);
+
+    // Default search SELECT has no `AS` aliases; parser must not throw on has/hasAny WHERE.
+    expect(chSqlToAliasMap(query)).toEqual({});
+    expect(sql).toContain(
+      "hasAny(`ResourceAttributeTokens`, array('facility=local0', 'facility=local1'))",
+    );
+    expect(sql).not.toMatch(/hasAny\([^)]+\[/);
   });
 });

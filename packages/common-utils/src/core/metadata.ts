@@ -13,6 +13,12 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
+import {
+  KV_ITEMS_STRATEGIES,
+  type KvItemsInfo,
+  type KvItemsLookup,
+  normalizeChExpression,
+} from '@/queryParser';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
@@ -29,6 +35,7 @@ import {
   getAlignedDateRange,
   getDistributedTableArgs,
   objectHash,
+  parseTokenizerFromTextIndex,
 } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
@@ -946,6 +953,61 @@ export class Metadata {
 
           throw e;
         }
+      },
+    );
+  }
+
+  async getKvItemsLookup({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<KvItemsLookup> {
+    return this.cache.getOrFetch<KvItemsLookup>(
+      `${connectionId}.${databaseName}.${tableName}.kvItemsLookup`,
+      async () => {
+        const [columns, skipIndices] = await Promise.all([
+          this.getColumns({ databaseName, tableName, connectionId }),
+          this.getSkipIndices({ databaseName, tableName, connectionId }),
+        ]);
+
+        const lookup: KvItemsLookup = new Map();
+        const candidates = columns.filter(
+          c =>
+            (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
+            c.default_expression,
+        );
+
+        for (const candidate of candidates) {
+          let parsed: { mapColumn: string; separator: string } | undefined;
+          for (const strategy of KV_ITEMS_STRATEGIES) {
+            parsed = strategy(candidate.default_expression);
+            if (parsed) break;
+          }
+          if (!parsed) continue;
+
+          const hasArrayTextIndex = skipIndices.some(idx => {
+            if (idx.type !== 'text') return false;
+            const tokenizer = parseTokenizerFromTextIndex(idx);
+            if (tokenizer?.type !== 'array') return false;
+            return (
+              normalizeChExpression(idx.expression) ===
+              normalizeChExpression(candidate.name)
+            );
+          });
+
+          if (hasArrayTextIndex) {
+            lookup.set(parsed.mapColumn, {
+              kvItemsColumn: candidate.name,
+              separator: parsed.separator,
+            });
+          }
+        }
+
+        return lookup;
       },
     );
   }
