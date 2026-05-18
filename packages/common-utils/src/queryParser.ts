@@ -31,7 +31,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-function decodeSpecialTokens(query: string): string {
+export function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')

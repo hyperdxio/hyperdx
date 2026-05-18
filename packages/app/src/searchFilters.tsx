@@ -3,6 +3,7 @@ import produce from 'immer';
 import {
   type FilterState,
   filtersToQuery,
+  parseLuceneFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -307,6 +308,21 @@ export const parseQuery = (
     }
   >();
   for (const filter of q) {
+    if (filter.type === 'lucene') {
+      const parsedFields = parseLuceneFilter(filter.condition);
+      if (parsedFields) {
+        for (const { key, included, excluded } of parsedFields) {
+          if (!state.has(key)) {
+            state.set(key, { included: new Set(), excluded: new Set() });
+          }
+          const sets = state.get(key)!;
+          for (const v of included) sets.included.add(v);
+          for (const v of excluded) sets.excluded.add(v);
+        }
+      }
+      continue;
+    }
+
     if (filter.type !== 'sql') continue;
 
     // Check for BETWEEN condition (only when BETWEEN appears outside quotes)

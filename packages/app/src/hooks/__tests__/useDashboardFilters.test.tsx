@@ -90,7 +90,7 @@ describe('useDashboardFilters', () => {
     );
   });
 
-  it('should generate IN clause for multi-select values', () => {
+  it('should generate lucene condition for multi-select values', () => {
     const { result } = renderHook(() => useDashboardFilters(mockFilters));
 
     act(() => {
@@ -105,7 +105,7 @@ describe('useDashboardFilters', () => {
     const query = result2.current.filterQueries[0];
     const condition = 'condition' in query ? query.condition : '';
     expect(condition).toEqual(
-      "toString(environment) IN ('production', 'staging')",
+      '(environment:"production" OR environment:"staging")',
     );
   });
 
