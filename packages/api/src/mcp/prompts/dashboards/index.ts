@@ -104,13 +104,13 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
       title: 'Dashboard Examples',
       description:
         'Get copy-paste-ready dashboard examples for common observability patterns: ' +
-        'service_overview, error_tracking, latency, log_analysis, infrastructure_sql.',
+        'service_overview, error_tracking, latency, log_analysis, drilldown_links, infrastructure_sql.',
       argsSchema: {
         pattern: z
           .string()
           .optional()
           .describe(
-            'Filter to a specific pattern: service_overview, error_tracking, latency, log_analysis, infrastructure_sql',
+            'Filter to a specific pattern: service_overview, error_tracking, latency, log_analysis, drilldown_links, infrastructure_sql',
           ),
       },
     },

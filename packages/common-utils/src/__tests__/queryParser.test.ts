@@ -4,6 +4,7 @@ import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
   genEnglishExplanation,
+  parseKvItemsCastExpression,
   parseKvItemsExpression,
   SearchQueryBuilder,
 } from '@/queryParser';
@@ -1714,6 +1715,64 @@ describe('parseKvItemsExpression', () => {
     expect(
       parseKvItemsExpression(
         "arrayMap((arr) -> concat(arr.1, '=', arr.2), Log@Attributes::Array(Tuple(String, String)))",
+      ),
+    ).toBeUndefined();
+  });
+
+  it('parses bare lambda param (no parens)', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap(x -> concat(x.1, '=', x.2), ResourceAttributes::Array(Tuple(String, String)))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+});
+
+describe('parseKvItemsCastExpression', () => {
+  it('parses CAST form with parenthesized lambda', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((x) -> concat(x.1, '=', x.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
+  it('parses CAST form with bare lambda param', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap(x -> concat(x.1, '=', x.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
+  it('parses CAST form without spaces in type', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr)->concat(arr.1,'=',arr.2),CAST(LogAttributes,'Array(Tuple(String,String))'))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
+  });
+
+  it('parses CAST form with custom separator', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, ':', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: ':' });
+  });
+
+  it('returns undefined for non-CAST expressions', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for wrong CAST type', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(String)'))",
       ),
     ).toBeUndefined();
   });

@@ -149,12 +149,7 @@ function AIAssistant({
   return (
     <Box mb="sm">
       <Group gap="md" align="center" mb="sm">
-        <Button
-          onClick={() => setOpened(o => !o)}
-          size="xs"
-          variant="subtle"
-          color="gray"
-        >
+        <Button onClick={() => setOpened(o => !o)} size="xs" variant="subtle">
           <Group gap="xs">
             {opened ? (
               <IconChevronUp size={14} />
