@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryState } from 'nuqs';
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -79,6 +79,20 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       ignoredExpressions: ignored,
     };
   }, [filterQueries, filters]);
+
+  // Migrate legacy SQL filters in the URL to Lucene on load
+  const hasMigratedRef = useRef(false);
+  useEffect(() => {
+    if (hasMigratedRef.current || !filterQueries) return;
+    const hasSqlFilters = filterQueries.some(
+      f => 'condition' in f && f.type === 'sql',
+    );
+    if (hasSqlFilters) {
+      hasMigratedRef.current = true;
+      const { filters: parsed } = parseQuery(filterQueries);
+      setFilterQueries(filtersToQuery(parsed));
+    }
+  }, [filterQueries, setFilterQueries]);
 
   return {
     filterValues: valuesForExistingFilters,

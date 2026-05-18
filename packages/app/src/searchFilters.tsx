@@ -314,7 +314,12 @@ export const parseQuery = (
   for (const filter of q) {
     if (filter.type === 'lucene') {
       const parsedFields = parseLuceneFilter(filter.condition);
-      if (parsedFields) {
+      if (parsedFields === undefined) {
+        // Parse failure — preserve so it isn't silently lost
+        if (filter.condition.trim()) {
+          passthroughFilters.push(filter);
+        }
+      } else {
         for (const { key, included, excluded, range } of parsedFields) {
           if (!state.has(key)) {
             state.set(key, { included: new Set(), excluded: new Set() });
@@ -324,9 +329,6 @@ export const parseQuery = (
           for (const v of excluded) sets.excluded.add(v);
           if (range) sets.range = range;
         }
-      } else if (filter.condition.trim()) {
-        // Preserve unparseable Lucene conditions so they aren't silently lost
-        passthroughFilters.push(filter);
       }
       continue;
     }
@@ -404,6 +406,22 @@ export const useSearchPageFilterState = ({
     // only react to changes in parsed query
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
+
+  // Migrate legacy SQL filters to Lucene on load so URLs become canonical
+  const hasMigratedRef = useRef(false);
+  useEffect(() => {
+    if (hasMigratedRef.current) return;
+    const hasSqlFilters = searchQuery?.some(
+      f => 'condition' in f && f.type === 'sql',
+    );
+    if (hasSqlFilters && Object.keys(parsedQuery.filters).length > 0) {
+      hasMigratedRef.current = true;
+      onFilterChange([
+        ...filtersToQuery(parsedQuery.filters),
+        ...parsedQuery.passthroughFilters,
+      ]);
+    }
+  }, [searchQuery, parsedQuery, onFilterChange]);
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {

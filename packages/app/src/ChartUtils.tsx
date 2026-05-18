@@ -17,7 +17,10 @@ import {
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
+import {
+  type FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
@@ -924,10 +927,7 @@ export function buildEventsSearchUrl({
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {
-    const filterState: Record<
-      string,
-      { included: Set<string | boolean>; excluded: Set<string | boolean> }
-    > = {};
+    const filterState: FilterState = {};
     for (const { column, value } of groupFilters) {
       if (column && value != null) {
         if (!filterState[column]) {

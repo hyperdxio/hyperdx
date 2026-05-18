@@ -195,12 +195,12 @@ describe('filters', () => {
   });
 
   describe('parseLuceneFilter', () => {
-    it('should return undefined for empty string', () => {
-      expect(parseLuceneFilter('')).toBeUndefined();
+    it('should return empty array for empty string', () => {
+      expect(parseLuceneFilter('')).toEqual([]);
     });
 
-    it('should return undefined for unquoted terms', () => {
-      expect(parseLuceneFilter('service:foo')).toBeUndefined();
+    it('should return empty array for unquoted terms', () => {
+      expect(parseLuceneFilter('service:foo')).toEqual([]);
     });
 
     it('should parse a single included term', () => {

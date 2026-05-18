@@ -1,7 +1,14 @@
 import lucene from '@hyperdx/lucene';
 
 import { parseKeyPath } from '@/core/metadata';
-import { decodeSpecialTokens, parse } from '@/queryParser';
+import {
+  decodeSpecialTokens,
+  isBinaryAST,
+  isLeftOnlyAST,
+  isNodeRangedTerm,
+  isNodeTerm,
+  parse,
+} from '@/queryParser';
 import { Filter } from '@/types';
 
 export type FilterState = {
@@ -58,26 +65,6 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
     });
 };
 
-// Type guards for lucene AST
-function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
-  return 'term' in node && node.term != null;
-}
-function isNodeRangedTerm(
-  node: lucene.Node | lucene.AST,
-): node is lucene.NodeRangedTerm {
-  return 'inclusive' in node && node.inclusive != null;
-}
-function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
-  return 'right' in ast && ast.right != null;
-}
-function isLeftOnlyAST(
-  ast: lucene.AST | lucene.Node,
-): ast is lucene.LeftOnlyAST {
-  return (
-    'left' in ast && ast.left != null && !('right' in ast && ast.right != null)
-  );
-}
-
 type CollectedTerm = { field: string; value: string; negated: boolean };
 type CollectedRange = { field: string; min: number; max: number };
 
@@ -127,7 +114,9 @@ export type ParsedLuceneFilter = {
  * Parse a Lucene filter condition back into per-field included/excluded values
  * and optional ranges.
  *
- * Returns an array with one entry per distinct field, or undefined if parsing fails.
+ * Returns an array with one entry per distinct field (empty array if the input
+ * is valid Lucene but contains no quoted terms or ranges), or undefined if
+ * parsing fails entirely.
  */
 export function parseLuceneFilter(
   condition: string,
@@ -137,7 +126,6 @@ export function parseLuceneFilter(
     const terms: CollectedTerm[] = [];
     const ranges: CollectedRange[] = [];
     collectFromAst(ast, terms, ranges);
-    if (terms.length === 0 && ranges.length === 0) return undefined;
 
     // Group by field, coercing "true"/"false" back to booleans
     const byField = new Map<

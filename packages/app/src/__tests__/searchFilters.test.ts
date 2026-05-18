@@ -828,6 +828,28 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('preserves unparseable Lucene filters as passthrough', () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const parsed = parseQuery([
+        { type: 'lucene', condition: '((((' },
+        { type: 'lucene', condition: 'service:"app"' },
+      ]);
+      // Valid filter is parsed
+      expect(parsed.filters.service.included).toEqual(new Set(['app']));
+      // Invalid filter is preserved in passthroughFilters
+      expect(parsed.passthroughFilters).toEqual([
+        { type: 'lucene', condition: '((((' },
+      ]);
+      warnSpy.mockRestore();
+    });
+
+    it('returns empty array for valid but non-quoted Lucene (no passthrough)', () => {
+      const parsed = parseQuery([{ type: 'lucene', condition: 'service:foo' }]);
+      // Unquoted term — valid Lucene but not a filter, nothing extracted
+      expect(Object.keys(parsed.filters)).toHaveLength(0);
+      expect(parsed.passthroughFilters).toHaveLength(0);
+    });
   });
 
   describe('useSearchPageFilterState', () => {
@@ -947,6 +969,38 @@ describe('searchFilters', () => {
         { type: 'lucene', condition: 'service:"app"' },
         { type: 'lucene', condition: 'level:"info"' },
       ]);
+    });
+
+    it('migrates legacy SQL filters to Lucene on load', () => {
+      const onFilterChangeMigrate = jest.fn();
+      renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            { type: 'sql', condition: `service IN ('app')` },
+            { type: 'sql', condition: `level IN ('info', 'ok')` },
+          ],
+          onFilterChange: onFilterChangeMigrate,
+        }),
+      );
+
+      // Migration fires on mount, converting SQL to Lucene
+      expect(onFilterChangeMigrate).toHaveBeenCalledWith([
+        { type: 'lucene', condition: 'service:"app"' },
+        { type: 'lucene', condition: '(level:"info" OR level:"ok")' },
+      ]);
+    });
+
+    it('does not migrate when filters are already Lucene', () => {
+      const onFilterChangeNoMigrate = jest.fn();
+      renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [{ type: 'lucene', condition: 'service:"app"' }],
+          onFilterChange: onFilterChangeNoMigrate,
+        }),
+      );
+
+      // No migration needed — onFilterChange should not be called
+      expect(onFilterChangeNoMigrate).not.toHaveBeenCalled();
     });
   });
 

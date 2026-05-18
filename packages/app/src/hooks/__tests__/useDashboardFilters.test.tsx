@@ -303,4 +303,50 @@ describe('useDashboardFilters', () => {
     ).toEqual(new Set(['pod-1']));
     expect(result2.current.ignoredFilterExpressions).toEqual([]);
   });
+
+  it('should match dot-notation URL key to bracket-notation expression', () => {
+    const bracketFilters: DashboardFilter[] = [
+      {
+        id: 'filter-bracket',
+        type: 'QUERY_EXPRESSION',
+        name: 'Pod',
+        expression: "SpanAttributes['k8s.pod.name']",
+        source: 'traces',
+      },
+    ];
+
+    // Pre-seed URL state with a dot-notation Lucene filter (as would be
+    // stored after a round-trip through filtersToQuery → parseQuery).
+    mockState = [
+      {
+        type: 'lucene',
+        condition: 'SpanAttributes.k8s.pod.name:"pod-1"',
+      },
+    ];
+
+    const { result } = renderHook(() => useDashboardFilters(bracketFilters));
+
+    expect(
+      result.current.filterValues["SpanAttributes['k8s.pod.name']"]?.included,
+    ).toEqual(new Set(['pod-1']));
+    expect(result.current.ignoredFilterExpressions).toEqual([]);
+  });
+
+  it('should migrate legacy SQL filters to Lucene on load', () => {
+    // Pre-seed URL with old-format SQL filters
+    mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+
+    renderHook(() => useDashboardFilters(mockFilters));
+
+    // Migration should have called setFilterQueries with Lucene format
+    expect(mockSetState).toHaveBeenCalled();
+    const lastCall =
+      mockSetState.mock.calls[mockSetState.mock.calls.length - 1];
+    // setFilterQueries receives an updater or a value; resolve it
+    const result =
+      typeof lastCall[0] === 'function' ? lastCall[0](mockState) : lastCall[0];
+    expect(result).toEqual([
+      { type: 'lucene', condition: 'environment:"production"' },
+    ]);
+  });
 });
