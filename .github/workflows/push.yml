@@ -2,11 +2,14 @@ name: Push Downstream
 on:
   push:
     branches: [main]
-# NOTE: Intentionally no `concurrency` block. Each run is a single short
-# `createWorkflowDispatch` API call, so there is no benefit to cancelling
-# in-flight runs. A previous `cancel-in-progress: true` setting caused at
-# least one push (f6a1d02 / PR #2250) to be skipped entirely under load,
-# dropping the EE downstream port. See HDX-4235.
+# HDX-4235: cancel-in-progress must be false so every OSS main commit reliably
+# dispatches downstream in commit order. Setting to true silently drops pending
+# runs when commits land in quick succession — at least one push (f6a1d02 /
+# PR #2250) was skipped this way, losing the EE downstream port. Queueing
+# pending runs preserves order and prevents drops.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   push-downstream:
     timeout-minutes: 5
