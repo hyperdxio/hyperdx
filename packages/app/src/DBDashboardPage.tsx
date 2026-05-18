@@ -2044,7 +2044,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – {brandName}</title>
+        <title>
+          {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
+        </title>
       </Head>
       <OnboardingModal />
       <EditTileModal
