@@ -22,10 +22,13 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     (expression: string, values: string[]) => {
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
+        // Normalize the expression to dot notation so it matches the keys
+        // returned by parseQuery (which converts bracket notation to dots).
+        const key = parseKeyPath(expression).join('.');
         if (values.length === 0) {
-          delete filterValues[expression];
+          delete filterValues[key];
         } else {
-          filterValues[expression] = {
+          filterValues[key] = {
             included: new Set(values),
             excluded: new Set(),
           };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type FilterState,
   filtersToQuery,
@@ -410,14 +411,17 @@ export const useSearchPageFilterState = ({
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
+      // Normalize bracket notation to dot notation so the key matches
+      // what parseQuery returns after a Lucene round-trip.
+      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[key]) {
+            draft[key] = { included: new Set(), excluded: new Set() };
           }
 
           if (action === 'only') {
-            draft[property] = {
+            draft[key] = {
               included: new Set([value]),
               excluded: new Set(),
             };
@@ -426,22 +430,22 @@ export const useSearchPageFilterState = ({
 
           if (action === 'exclude') {
             // Remove from included if it was there
-            draft[property].included.delete(value);
+            draft[key].included.delete(value);
             // Toggle in excluded
-            if (draft[property].excluded.has(value)) {
-              draft[property].excluded.delete(value);
+            if (draft[key].excluded.has(value)) {
+              draft[key].excluded.delete(value);
             } else {
-              draft[property].excluded.add(value);
+              draft[key].excluded.add(value);
             }
             return;
           }
 
           // Regular toggle (include)
-          draft[property].excluded.delete(value);
-          if (draft[property].included.has(value)) {
-            draft[property].included.delete(value);
+          draft[key].excluded.delete(value);
+          if (draft[key].included.has(value)) {
+            draft[key].included.delete(value);
           } else {
-            draft[property].included.add(value);
+            draft[key].included.add(value);
           }
         });
         updateFilterQuery(newFilters);
@@ -453,12 +457,13 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
+      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[key]) {
+            draft[key] = { included: new Set(), excluded: new Set() };
           }
-          draft[property].range = range;
+          draft[key].range = range;
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -469,9 +474,10 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
+      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          delete draft[property];
+          delete draft[key];
         });
         updateFilterQuery(newFilters);
         return newFilters;
