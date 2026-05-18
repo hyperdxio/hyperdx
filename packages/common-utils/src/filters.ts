@@ -48,9 +48,10 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
       }
 
       if (values.range != null) {
+        // Lucene range syntax: field:[min TO max]
         conditions.push({
-          type: 'sql' as const,
-          condition: `${key} BETWEEN ${values.range.min} AND ${values.range.max}`,
+          type: 'lucene' as const,
+          condition: `${luceneField}:[${values.range.min} TO ${values.range.max}]`,
         });
       }
       return conditions;
@@ -60,6 +61,11 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
 // Type guards for lucene AST
 function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
+}
+function isNodeRangedTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeRangedTerm {
+  return 'inclusive' in node && node.inclusive != null;
 }
 function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
@@ -72,33 +78,37 @@ function isLeftOnlyAST(
   );
 }
 
-/**
- * Collect all quoted terms from a Lucene AST into flat {field, value, negated} tuples.
- */
-function collectTerms(
-  ast: lucene.AST | lucene.Node,
-): { field: string; value: string; negated: boolean }[] {
-  if (isNodeTerm(ast)) {
-    if (!ast.quoted) return [];
-    const negated = ast.field.startsWith('-');
-    const field = negated ? ast.field.slice(1) : ast.field;
-    return [{ field, value: decodeSpecialTokens(ast.term), negated }];
-  }
-  if (isBinaryAST(ast)) {
-    return [...collectTerms(ast.left), ...collectTerms(ast.right)];
-  }
-  if (isLeftOnlyAST(ast)) {
-    return collectTerms(ast.left);
-  }
-  return [];
-}
+type CollectedTerm = { field: string; value: string; negated: boolean };
+type CollectedRange = { field: string; min: number; max: number };
 
 /**
- * Parse a Lucene filter condition back into per-field included/excluded values.
- * Handles mixed conditions like `-service:"bingo" level:"info" (service:"foo" OR service:"bar")`.
- *
- * Returns an array with one entry per distinct field, or undefined if parsing fails.
+ * Collect quoted terms and range terms from a Lucene AST.
  */
+function collectFromAst(
+  ast: lucene.AST | lucene.Node,
+  terms: CollectedTerm[],
+  ranges: CollectedRange[],
+): void {
+  if (isNodeTerm(ast)) {
+    if (!ast.quoted) return;
+    const negated = ast.field.startsWith('-');
+    const field = negated ? ast.field.slice(1) : ast.field;
+    terms.push({ field, value: decodeSpecialTokens(ast.term), negated });
+  } else if (isNodeRangedTerm(ast)) {
+    const field = ast.field;
+    const min = parseFloat(ast.term_min);
+    const max = parseFloat(ast.term_max);
+    if (!isNaN(min) && !isNaN(max)) {
+      ranges.push({ field, min, max });
+    }
+  } else if (isBinaryAST(ast)) {
+    collectFromAst(ast.left, terms, ranges);
+    collectFromAst(ast.right, terms, ranges);
+  } else if (isLeftOnlyAST(ast)) {
+    collectFromAst(ast.left, terms, ranges);
+  }
+}
+
 /** Coerce "true"/"false" strings back to booleans, pass through otherwise */
 function coerceBooleanValue(v: string): string | boolean {
   if (v === 'true') return true;
@@ -106,34 +116,59 @@ function coerceBooleanValue(v: string): string | boolean {
   return v;
 }
 
-export function parseLuceneFilter(condition: string):
-  | {
-      key: string;
-      included: (string | boolean)[];
-      excluded: (string | boolean)[];
-    }[]
-  | undefined {
+export type ParsedLuceneFilter = {
+  key: string;
+  included: (string | boolean)[];
+  excluded: (string | boolean)[];
+  range?: { min: number; max: number };
+};
+
+/**
+ * Parse a Lucene filter condition back into per-field included/excluded values
+ * and optional ranges.
+ *
+ * Returns an array with one entry per distinct field, or undefined if parsing fails.
+ */
+export function parseLuceneFilter(
+  condition: string,
+): ParsedLuceneFilter[] | undefined {
   try {
     const ast = parse(condition);
-    const terms = collectTerms(ast);
-    if (terms.length === 0) return undefined;
+    const terms: CollectedTerm[] = [];
+    const ranges: CollectedRange[] = [];
+    collectFromAst(ast, terms, ranges);
+    if (terms.length === 0 && ranges.length === 0) return undefined;
 
     // Group by field, coercing "true"/"false" back to booleans
     const byField = new Map<
       string,
-      { included: (string | boolean)[]; excluded: (string | boolean)[] }
-    >();
-    for (const t of terms) {
-      if (!byField.has(t.field)) {
-        byField.set(t.field, { included: [], excluded: [] });
+      {
+        included: (string | boolean)[];
+        excluded: (string | boolean)[];
+        range?: { min: number; max: number };
       }
-      const entry = byField.get(t.field)!;
+    >();
+
+    const getEntry = (field: string) => {
+      if (!byField.has(field)) {
+        byField.set(field, { included: [], excluded: [] });
+      }
+      return byField.get(field)!;
+    };
+
+    for (const t of terms) {
+      const entry = getEntry(t.field);
       const value = coerceBooleanValue(t.value);
       if (t.negated) {
         entry.excluded.push(value);
       } else {
         entry.included.push(value);
       }
+    }
+
+    for (const r of ranges) {
+      const entry = getEntry(r.field);
+      entry.range = { min: r.min, max: r.max };
     }
 
     return Array.from(byField.entries()).map(([key, vals]) => ({

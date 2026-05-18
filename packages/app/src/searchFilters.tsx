@@ -312,14 +312,20 @@ export const parseQuery = (
     if (filter.type === 'lucene') {
       const parsedFields = parseLuceneFilter(filter.condition);
       if (parsedFields) {
-        for (const { key, included, excluded } of parsedFields) {
+        for (const { key, included, excluded, range } of parsedFields) {
           if (!state.has(key)) {
             state.set(key, { included: new Set(), excluded: new Set() });
           }
           const sets = state.get(key)!;
           for (const v of included) sets.included.add(v);
           for (const v of excluded) sets.excluded.add(v);
+          if (range) sets.range = range;
         }
+      } else if (filter.condition.trim()) {
+        console.warn(
+          'parseLuceneFilter: could not parse filter condition, filter will be dropped:',
+          filter.condition,
+        );
       }
       continue;
     }

@@ -766,6 +766,53 @@ describe('searchFilters', () => {
       expect(parsed.filters.isRootSpan.included.has('true')).toBe(false);
     });
 
+    it('round-trips empty string values', () => {
+      const filters = {
+        tag: {
+          included: new Set<string | boolean>(['']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const query = filtersToQuery(filters);
+      const parsed = parseQuery(query);
+      expect(parsed.filters.tag.included).toEqual(new Set(['']));
+    });
+
+    it('round-trips values with Lucene reserved characters', () => {
+      const filters = {
+        query: {
+          included: new Set<string | boolean>(['(foo) AND [bar]']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const query = filtersToQuery(filters);
+      const parsed = parseQuery(query);
+      expect(parsed.filters.query.included).toEqual(
+        new Set(['(foo) AND [bar]']),
+      );
+    });
+
+    it('round-trips range filters through Lucene', () => {
+      const filters = {
+        duration: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(),
+          range: { min: 10, max: 500 },
+        },
+      };
+      const query = filtersToQuery(filters);
+      const parsed = parseQuery(query);
+      expect(parsed.filters.duration.range).toEqual({ min: 10, max: 500 });
+    });
+
+    it('merges mixed sql and lucene filters for the same key', () => {
+      const parsed = parseQuery([
+        { type: 'sql', condition: `service IN ('app')` },
+        { type: 'lucene', condition: 'service:"web"' },
+      ]);
+      expect(parsed.filters.service.included).toEqual(new Set(['app', 'web']));
+    });
+
     it('parses existing lucene filter from URL/API', () => {
       const parsed = parseQuery([
         {

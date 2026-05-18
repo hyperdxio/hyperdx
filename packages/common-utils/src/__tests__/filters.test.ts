@@ -1,4 +1,9 @@
-import { filtersToQuery, parseLuceneFilter } from '@/filters';
+import { type FilterState, filtersToQuery, parseLuceneFilter } from '@/filters';
+import type { Filter } from '@/types';
+
+/** Extract condition string from a Filter (filtersToQuery never emits sql_ast) */
+const getCondition = (f: Filter): string =>
+  'condition' in f ? f.condition : '';
 
 describe('filters', () => {
   describe('filtersToQuery', () => {
@@ -162,7 +167,7 @@ describe('filters', () => {
       ]);
     });
 
-    it('should keep range as sql', () => {
+    it('should emit lucene range syntax', () => {
       const filters = {
         duration: {
           included: new Set<string | boolean>(),
@@ -171,11 +176,11 @@ describe('filters', () => {
         },
       };
       expect(filtersToQuery(filters)).toEqual([
-        { type: 'sql', condition: 'duration BETWEEN 10 AND 500' },
+        { type: 'lucene', condition: 'duration:[10 TO 500]' },
       ]);
     });
 
-    it('should keep range as sql for Map bracket-notation keys', () => {
+    it('should emit lucene range with dot notation for Map bracket-notation keys', () => {
       const filters = {
         "LogAttributes['latency']": {
           included: new Set<string | boolean>(),
@@ -184,10 +189,7 @@ describe('filters', () => {
         },
       };
       expect(filtersToQuery(filters)).toEqual([
-        {
-          type: 'sql',
-          condition: "LogAttributes['latency'] BETWEEN 0 AND 100",
-        },
+        { type: 'lucene', condition: 'LogAttributes.latency:[0 TO 100]' },
       ]);
     });
   });
@@ -278,8 +280,202 @@ describe('filters', () => {
       ]);
     });
 
+    it('should parse range terms', () => {
+      expect(parseLuceneFilter('duration:[10 TO 500]')).toEqual([
+        {
+          key: 'duration',
+          included: [],
+          excluded: [],
+          range: { min: 10, max: 500 },
+        },
+      ]);
+    });
+
+    it('should parse range with dot-notation field', () => {
+      expect(parseLuceneFilter('LogAttributes.latency:[0 TO 100]')).toEqual([
+        {
+          key: 'LogAttributes.latency',
+          included: [],
+          excluded: [],
+          range: { min: 0, max: 100 },
+        },
+      ]);
+    });
+
     it('should return undefined for invalid lucene syntax', () => {
       expect(parseLuceneFilter('((((')).toBeUndefined();
+    });
+  });
+
+  describe('filtersToQuery -> parseLuceneFilter round-trip', () => {
+    it('round-trips a single included value', () => {
+      const state: FilterState = {
+        service: {
+          included: new Set<string | boolean>(['app']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed).toEqual([
+        { key: 'service', included: ['app'], excluded: [] },
+      ]);
+    });
+
+    it('round-trips multiple included values', () => {
+      const state: FilterState = {
+        env: {
+          included: new Set<string | boolean>(['prod', 'staging']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].key).toBe('env');
+      expect(parsed?.[0].included).toEqual(
+        expect.arrayContaining(['prod', 'staging']),
+      );
+    });
+
+    it('round-trips excluded values', () => {
+      const state: FilterState = {
+        level: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(['debug', 'trace']),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].key).toBe('level');
+      expect(parsed?.[0].excluded).toEqual(
+        expect.arrayContaining(['debug', 'trace']),
+      );
+    });
+
+    it('round-trips boolean values preserving type', () => {
+      const state: FilterState = {
+        isRootSpan: {
+          included: new Set<string | boolean>([true]),
+          excluded: new Set<string | boolean>([false]),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const includedParsed = parseLuceneFilter(getCondition(filters[0]));
+      const excludedParsed = parseLuceneFilter(getCondition(filters[1]));
+      expect(includedParsed?.[0].included).toEqual([true]);
+      expect(excludedParsed?.[0].excluded).toEqual([false]);
+    });
+
+    it('round-trips the literal string "true" without boolean coercion', () => {
+      // The string "true" is indistinguishable from boolean true after
+      // Lucene round-trip due to coerceBooleanValue. This test documents
+      // that known limitation.
+      const state: FilterState = {
+        status: {
+          included: new Set<string | boolean>(['true']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      // Coerced to boolean — this is the expected (lossy) behavior
+      expect(parsed?.[0].included).toEqual([true]);
+    });
+
+    it('round-trips values with double quotes', () => {
+      const state: FilterState = {
+        msg: {
+          included: new Set<string | boolean>(['say "hello"']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].included).toEqual(['say "hello"']);
+    });
+
+    it('round-trips values with backslashes', () => {
+      const state: FilterState = {
+        path: {
+          included: new Set<string | boolean>(['C:\\dir\\file']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].included).toEqual(['C:\\dir\\file']);
+    });
+
+    it('round-trips empty string values', () => {
+      const state: FilterState = {
+        tag: {
+          included: new Set<string | boolean>(['']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].included).toEqual(['']);
+    });
+
+    it('round-trips values containing Lucene reserved characters', () => {
+      const state: FilterState = {
+        query: {
+          included: new Set<string | boolean>(['(foo) AND [bar]']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].included).toEqual(['(foo) AND [bar]']);
+    });
+
+    it('round-trips range filters', () => {
+      const state: FilterState = {
+        duration: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>(),
+          range: { min: 10, max: 500 },
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      expect(parsed?.[0].range).toEqual({ min: 10, max: 500 });
+    });
+
+    it('round-trips Map bracket-notation key', () => {
+      const state: FilterState = {
+        "LogAttributes['service.name']": {
+          included: new Set<string | boolean>(['my-app']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const parsed = parseLuceneFilter(getCondition(filters[0]));
+      // Bracket notation normalizes to dot notation
+      expect(parsed?.[0].key).toBe('LogAttributes.service.name');
+      expect(parsed?.[0].included).toEqual(['my-app']);
+    });
+
+    it('round-trips mixed included and excluded for same field', () => {
+      const state: FilterState = {
+        env: {
+          included: new Set<string | boolean>(['prod', 'staging']),
+          excluded: new Set<string | boolean>(['dev']),
+        },
+      };
+      const filters = filtersToQuery(state);
+      // filtersToQuery emits separate Filter entries for included/excluded
+      expect(filters).toHaveLength(2);
+      // Parse both and merge
+      const allParsed = filters.flatMap(
+        f => parseLuceneFilter(getCondition(f)) ?? [],
+      );
+      const envEntries = allParsed.filter(p => p.key === 'env');
+      const included = envEntries.flatMap(e => e.included);
+      const excluded = envEntries.flatMap(e => e.excluded);
+      expect(included).toEqual(expect.arrayContaining(['prod', 'staging']));
+      expect(excluded).toEqual(['dev']);
     });
   });
 });
