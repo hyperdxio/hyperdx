@@ -746,6 +746,26 @@ describe('searchFilters', () => {
       });
     });
 
+    it('round-trips boolean filter values', () => {
+      const filters = {
+        isRootSpan: {
+          included: new Set<string | boolean>([true]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const query = filtersToQuery(filters);
+      const parsed = parseQuery(query);
+      expect(parsed.filters).toEqual({
+        isRootSpan: {
+          included: new Set([true]),
+          excluded: new Set(),
+        },
+      });
+      // Verify .has(true) works (boolean, not string)
+      expect(parsed.filters.isRootSpan.included.has(true)).toBe(true);
+      expect(parsed.filters.isRootSpan.included.has('true')).toBe(false);
+    });
+
     it('parses existing lucene filter from URL/API', () => {
       const parsed = parseQuery([
         {

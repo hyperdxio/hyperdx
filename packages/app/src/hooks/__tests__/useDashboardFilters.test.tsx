@@ -272,4 +272,35 @@ describe('useDashboardFilters', () => {
       expect(result.current.ignoredFilterExpressions).toEqual([]);
     });
   });
+
+  it('should match bracket-notation expressions after Lucene round-trip', () => {
+    const bracketFilters: DashboardFilter[] = [
+      {
+        id: 'filter-bracket',
+        type: 'QUERY_EXPRESSION',
+        name: 'Pod',
+        expression: "SpanAttributes['k8s.pod.name']",
+        source: 'traces',
+      },
+    ];
+
+    const { result } = renderHook(() => useDashboardFilters(bracketFilters));
+
+    act(() => {
+      result.current.setFilterValue("SpanAttributes['k8s.pod.name']", [
+        'pod-1',
+      ]);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(bracketFilters),
+    );
+
+    // The bracket-notation expression should still match after the Lucene
+    // round-trip converts the key to dot notation internally.
+    expect(
+      result2.current.filterValues["SpanAttributes['k8s.pod.name']"]?.included,
+    ).toEqual(new Set(['pod-1']));
+    expect(result2.current.ignoredFilterExpressions).toEqual([]);
+  });
 });

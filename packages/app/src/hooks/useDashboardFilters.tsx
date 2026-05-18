@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
@@ -43,16 +44,28 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
-    const knownExpressions = new Set(filters.map(f => f.expression));
     const ignored: string[] = [];
 
+    // Build a normalized lookup so bracket-notation expressions
+    // (e.g. SpanAttributes['k8s.pod.name']) match the dot-notation keys
+    // returned by parseLuceneFilter (e.g. SpanAttributes.k8s.pod.name).
+    const normalizeKey = (k: string) => parseKeyPath(k).join('.');
+    const normalizedParsed = new Map(
+      Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
+    );
+    const knownNormalized = new Set(
+      filters.map(f => normalizeKey(f.expression)),
+    );
+
     for (const { expression } of filters) {
-      if (expression in parsedFilters) {
-        valuesForExistingFilters[expression] = parsedFilters[expression];
+      const norm = normalizeKey(expression);
+      const match = normalizedParsed.get(norm);
+      if (match) {
+        valuesForExistingFilters[expression] = match;
       }
     }
     for (const key of Object.keys(parsedFilters)) {
-      if (!knownExpressions.has(key)) {
+      if (!knownNormalized.has(normalizeKey(key))) {
         ignored.push(key);
       }
     }

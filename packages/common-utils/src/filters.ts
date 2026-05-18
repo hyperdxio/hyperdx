@@ -99,11 +99,18 @@ function collectTerms(
  *
  * Returns an array with one entry per distinct field, or undefined if parsing fails.
  */
+/** Coerce "true"/"false" strings back to booleans, pass through otherwise */
+function coerceBooleanValue(v: string): string | boolean {
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  return v;
+}
+
 export function parseLuceneFilter(condition: string):
   | {
       key: string;
-      included: string[];
-      excluded: string[];
+      included: (string | boolean)[];
+      excluded: (string | boolean)[];
     }[]
   | undefined {
   try {
@@ -111,20 +118,21 @@ export function parseLuceneFilter(condition: string):
     const terms = collectTerms(ast);
     if (terms.length === 0) return undefined;
 
-    // Group by field
+    // Group by field, coercing "true"/"false" back to booleans
     const byField = new Map<
       string,
-      { included: string[]; excluded: string[] }
+      { included: (string | boolean)[]; excluded: (string | boolean)[] }
     >();
     for (const t of terms) {
       if (!byField.has(t.field)) {
         byField.set(t.field, { included: [], excluded: [] });
       }
       const entry = byField.get(t.field)!;
+      const value = coerceBooleanValue(t.value);
       if (t.negated) {
-        entry.excluded.push(t.value);
+        entry.excluded.push(value);
       } else {
-        entry.included.push(t.value);
+        entry.included.push(value);
       }
     }
 

@@ -269,6 +269,15 @@ describe('filters', () => {
       ]);
     });
 
+    it('should coerce "true"/"false" back to booleans', () => {
+      expect(parseLuceneFilter('isRootSpan:"true"')).toEqual([
+        { key: 'isRootSpan', included: [true], excluded: [] },
+      ]);
+      expect(parseLuceneFilter('-col:"true" AND -col:"false"')).toEqual([
+        { key: 'col', included: [], excluded: [true, false] },
+      ]);
+    });
+
     it('should return undefined for invalid lucene syntax', () => {
       expect(parseLuceneFilter('((((')).toBeUndefined();
     });
