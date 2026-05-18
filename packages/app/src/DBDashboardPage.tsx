@@ -1329,10 +1329,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const watchedGranularity = useWatch({ control, name: 'granularity' });
 
   useEffect(() => {
-    if (watchedGranularity && watchedGranularity !== granularity) {
+    if (
+      router.isReady &&
+      watchedGranularity &&
+      watchedGranularity !== granularity
+    ) {
       setGranularity(watchedGranularity as SQLInterval);
     }
-  }, [watchedGranularity, granularity, setGranularity]);
+  }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');
