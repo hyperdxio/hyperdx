@@ -17,6 +17,7 @@ import {
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
@@ -923,13 +924,22 @@ export function buildEventsSearchUrl({
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {
-    groupFilters.forEach(({ column, value }) => {
+    const filterState: Record<
+      string,
+      { included: Set<string | boolean>; excluded: Set<string | boolean> }
+    > = {};
+    for (const { column, value } of groupFilters) {
       if (column && value != null) {
-        // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
-        const condition = `${column} IN (${SqlString.escape(value)})`;
-        additionalFilters.push({ type: 'sql', condition });
+        if (!filterState[column]) {
+          filterState[column] = {
+            included: new Set(),
+            excluded: new Set(),
+          };
+        }
+        filterState[column].included.add(String(value));
       }
-    });
+    }
+    additionalFilters.push(...filtersToQuery(filterState));
   }
 
   // Add Y-axis value range filter (±threshold) for charts
