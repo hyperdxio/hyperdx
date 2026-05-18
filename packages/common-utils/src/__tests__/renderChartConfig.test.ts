@@ -1736,6 +1736,45 @@ describe('renderChartConfig', () => {
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
     });
+
+    it('wraps Date-type column in toDate() when a subquery CTE is present and FROM is a base table', async () => {
+      // Repro for HDX-4247: when a subquery CTE is added to the outer chart
+      // config (e.g. sampling CTE in the Event Patterns panel) but the outer
+      // query still selects from a real base table, the time-filter must still
+      // detect that the partition column is Date-typed and wrap the bounds in
+      // toDate(). Otherwise ClickHouse promotes Date -> DateTime at midnight
+      // and the entire day's rows are excluded.
+      const dateRange: [Date, Date] = [
+        new Date('2025-02-12 03:53:38Z'),
+        new Date('2025-02-12 04:08:38Z'),
+      ];
+
+      const actual = await timeFilterExpr({
+        timestampValueExpression: 'date',
+        dateRangeEndInclusive: true,
+        dateRangeStartInclusive: true,
+        dateRange,
+        connectionId: 'test-connection',
+        databaseName: 'default',
+        tableName: 'target_table',
+        metadata: mockMetadata,
+        with: [
+          {
+            name: 'tableStats',
+            sql: {
+              sql: 'SELECT count() as total FROM target_table',
+              params: {},
+            },
+            // isSubquery defaults to true -> exercises the subquery-CTE path
+          },
+        ],
+      });
+
+      const actualSql = parameterizedQueryToSql(actual);
+      expect(actualSql).toBe(
+        `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+      );
+    });
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
