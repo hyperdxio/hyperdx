@@ -299,6 +299,8 @@ export const parseQuery = (
   q: Filter[],
 ): {
   filters: FilterState;
+  /** Filters that could not be parsed into FilterState (preserved for re-emission) */
+  passthroughFilters: Filter[];
 } => {
   const state = new Map<
     string,
@@ -308,6 +310,7 @@ export const parseQuery = (
       range?: { min: number; max: number };
     }
   >();
+  const passthroughFilters: Filter[] = [];
   for (const filter of q) {
     if (filter.type === 'lucene') {
       const parsedFields = parseLuceneFilter(filter.condition);
@@ -322,10 +325,8 @@ export const parseQuery = (
           if (range) sets.range = range;
         }
       } else if (filter.condition.trim()) {
-        console.warn(
-          'parseLuceneFilter: could not parse filter condition, filter will be dropped:',
-          filter.condition,
-        );
+        // Preserve unparseable Lucene conditions so they aren't silently lost
+        passthroughFilters.push(filter);
       }
       continue;
     }
@@ -375,7 +376,7 @@ export const parseQuery = (
       });
     }
   }
-  return { filters: Object.fromEntries(state) };
+  return { filters: Object.fromEntries(state), passthroughFilters };
 };
 
 export const useSearchPageFilterState = ({
@@ -390,7 +391,7 @@ export const useSearchPageFilterState = ({
       return parseQuery(searchQuery);
     } catch (e) {
       console.error(e);
-      return { filters: {} };
+      return { filters: {}, passthroughFilters: [] };
     }
   }, [searchQuery]);
 
@@ -406,9 +407,14 @@ export const useSearchPageFilterState = ({
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
-      onFilterChange(filtersToQuery(newFilters));
+      // Preserve unparseable filters so they aren't silently lost when
+      // the user toggles a sidebar facet.
+      onFilterChange([
+        ...filtersToQuery(newFilters),
+        ...parsedQuery.passthroughFilters,
+      ]);
     },
-    [onFilterChange],
+    [onFilterChange, parsedQuery.passthroughFilters],
   );
 
   const setFilterValue = useCallback(
