@@ -13,10 +13,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import {
-  externalDashboardFilterSchemaWithId,
-  externalQuantileLevelSchema,
-} from '@/utils/zod';
+import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 const mcpNumberFormatSchema = z
@@ -632,32 +629,83 @@ export const mcpTilesParam = z
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
   );
 
-// Dashboard-level filters. Reuses the canonical external API filter schema
-// (`externalDashboardFilterSchemaWithId` in `packages/api/src/utils/zod.ts`)
-// so the MCP and REST surfaces stay in lockstep, and so the underlying
-// `convertExternalFiltersToInternal` helper that saveDashboard already calls
-// works without translation. `id` is optional at this layer because the same
-// inputSchema serves both create (no id, generated on save) and update
-// (preserved id) flows; per-flow strictness is enforced by
-// `createDashboardBodySchema` / `updateDashboardBodySchema`.
-export const mcpFiltersParam = z
-  .array(externalDashboardFilterSchemaWithId.partial({ id: true }))
+const mcpDashboardFilterSchema = z
+  .object({
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Filter identity. ' +
+          'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
+          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'you are keeping (so saved values bound to it stay attached), and generate ' +
+          'a fresh random hex/ObjectId string for any filter you are adding in this ' +
+          'update. Omitting `id` on an existing filter would orphan its saved values; ' +
+          'reusing an existing id for a new filter would silently overwrite the old ' +
+          'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
+          'be omitted and one will be generated server-side.',
+      ),
+    type: DashboardFilterType.describe(
+      'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
+    ),
+    name: z
+      .string()
+      .min(1)
+      .describe(
+        'Human-readable filter label shown in the dashboard filter bar dropdown.',
+      ),
+    expression: z
+      .string()
+      .min(1)
+      .describe(
+        'Column or SQL expression this filter binds to. Example: "ServiceName" ' +
+          'or "SpanAttributes[\'http.method\']". ' +
+          'IMPORTANT: This is the key that table-tile onClick filters match against ' +
+          'when a row click navigates here — an onClick filter whose `expression` is ' +
+          "not declared in any of this dashboard's filters is silently dropped at click time. " +
+          'Declare an expression here for every column you plan to drive via row-click.',
+      ),
+    sourceId: objectIdSchema.describe(
+      'Source the filter values are pulled from (for the dropdown). ' +
+        'Get IDs from hyperdx_list_sources.',
+    ),
+    sourceMetricType: z
+      .nativeEnum(MetricsDataType)
+      .optional()
+      .describe(
+        'Required only when `sourceId` is a Metric source — picks which metric table the ' +
+          'dropdown values come from.',
+      ),
+    where: z
+      .string()
+      .optional()
+      .describe(
+        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.describe(
+      'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
+    ),
+  })
   .describe(
-    'Dashboard-level filters. Each filter declares a dropdown in the dashboard ' +
-      'header that scopes every tile referencing the same source. Use this for ' +
-      'focused per-dimension dashboards (per-service, per-tenant, per-endpoint) ' +
-      "instead of hardcoding the dimension into every tile's where clause.\n\n" +
-      'Filter shape: { type, name, expression, sourceId, where?, whereLanguage? }.\n' +
-      '- type: "QUERY_EXPRESSION" (the only currently supported type).\n' +
-      '- name: human label shown in the filter dropdown (e.g. "Service").\n' +
-      '- expression: column or attribute path the filter scopes (e.g. "ServiceName" ' +
-      'or "SpanAttributes[\'tenant.id\']").\n' +
-      '- sourceId: which source the expression resolves against. Tiles on a ' +
-      'different source are not scoped by the filter.\n' +
-      '- where / whereLanguage: optional pre-filter that narrows the set of ' +
-      'distinct values offered in the dropdown.\n\n' +
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'Each filter binds a label/name to a column expression on a source. ' +
+      "Filters are also the contract for row-click navigation: a table tile's " +
+      'onClick.filters[i].expression must match a filter declared here for the value to land.',
+  );
+
+export const mcpFiltersParam = z
+  .array(mcpDashboardFilterSchema)
+  .describe(
+    'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
+      'bar AND the expressions that table-tile row-click navigation can populate. ' +
+      'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
+      'this array MUST declare a filter whose `expression` is "X" — otherwise the value is ' +
+      'dropped on arrival and the destination opens unfiltered.\n\n' +
       'Example:\n' +
-      '[ { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName", "sourceId": "<trace-source-id>" } ]',
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']',
   );
 
 export const mcpContainersParam = z
