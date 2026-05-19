@@ -33,6 +33,9 @@ export function parseTimeRange(
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
     };
   }
+  if (startDate > endDate) {
+    return { error: 'startTime must not be after endTime' };
+  }
   return { startDate, endDate };
 }
 
