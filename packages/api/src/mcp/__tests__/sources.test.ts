@@ -300,7 +300,10 @@ describe('MCP Source Tools', () => {
     });
 
     it('should not allow access to another team source', async () => {
-      const otherResult = await getLoggedInAgent(server);
+      const otherResult = await getLoggedInAgent(server, {
+        email: 'other-team@test.com',
+        password: 'OtherPass!2#4X',
+      });
       const otherConnection = await Connection.create({
         team: otherResult.team._id,
         name: 'Other Connection',
