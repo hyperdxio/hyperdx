@@ -1,4 +1,5 @@
 import React from 'react';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -25,14 +26,14 @@ jest.mock('../PropertyComparisonChart', () => ({
 
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
 
-const baseConfig: any = {
+const baseConfig: BuilderChartConfigWithDateRange = {
   dateRange: [new Date(0), new Date(1000)],
   from: { databaseName: 'otel', tableName: 'otel_traces' },
   timestampValueExpression: 'Timestamp',
   connection: 'conn',
   select: '',
   where: '',
-  whereLanguage: 'sql' as const,
+  whereLanguage: 'sql',
 };
 
 function renderChart(
@@ -97,9 +98,36 @@ describe('DBDeltaChart', () => {
       // default to 0 and produce dead SQL that mirrors the inlier branch.
       renderChart();
 
-      const allSpansCall = mockUseQueriedChartConfig.mock.calls[2];
-      const allSpansConfig = allSpansCall[0];
+      const calls = mockUseQueriedChartConfig.mock.calls;
+      expect(calls).toHaveLength(3);
+      const allSpansConfig = calls[2][0];
       expect(allSpansConfig.filters).toBeUndefined();
+    });
+  });
+
+  describe('partial-null selection coordinates', () => {
+    // The four-null conditional that originally gated <DBDeltaChart>
+    // used `&&` across xMin/xMax/yMin/yMax. A regression weakening the
+    // conjunction to `||` would let selection mode activate with any
+    // single coord set, which is wrong. These cases lock the conjunction
+    // in: any null coord must keep distribution mode active.
+    it.each([
+      ['only xMin set', { xMin: 1 }],
+      ['only xMax set', { xMax: 2 }],
+      ['only yMin set', { yMin: 1 }],
+      ['only yMax set', { yMax: 2 }],
+      ['three set, yMax null', { xMin: 1, xMax: 2, yMin: 1 }],
+      ['three set, xMin null', { xMax: 2, yMin: 1, yMax: 2 }],
+    ])('stays in distribution mode when %s', (_label, coords) => {
+      renderChart(coords);
+
+      expect(screen.getByText('All spans')).toBeInTheDocument();
+      expect(screen.queryByText('Selection')).not.toBeInTheDocument();
+
+      const calls = mockUseQueriedChartConfig.mock.calls;
+      expect(calls[2][1]).toMatchObject({ enabled: true });
+      expect(calls[0][1]).toMatchObject({ enabled: false });
+      expect(calls[1][1]).toMatchObject({ enabled: false });
     });
   });
 
@@ -129,20 +157,32 @@ describe('DBDeltaChart', () => {
   });
 
   describe('legendPrefix prop', () => {
+    // The divider is a vertical separator rendered immediately after the
+    // legendPrefix to visually divide it from the comparison legend. It's
+    // a `<Box h={12}>` with a `borderLeft` style. We assert its presence
+    // via the unique border style so the test is decoupled from Mantine's
+    // class hashing.
+    const dividerStyle = '1px solid var(--mantine-color-default-border)';
+
+    function queryDivider(container: HTMLElement) {
+      return Array.from(container.querySelectorAll<HTMLElement>('div')).find(
+        el => el.style.borderLeft === dividerStyle,
+      );
+    }
+
     it('renders inside the legend flex when provided', () => {
-      renderChart({
+      const { container } = renderChart({
         legendPrefix: <div data-testid="prefix">color scale</div>,
       });
 
       expect(screen.getByTestId('prefix')).toBeInTheDocument();
+      expect(queryDivider(container)).toBeDefined();
     });
 
-    it('omits the divider when no legendPrefix is provided', () => {
-      // Without a prefix the divider should not render. We rely on the
-      // distribution-mode renderer above for shape; the absence assertion
-      // here is just "no prefix testid wrapper".
-      renderChart();
+    it('omits the prefix and divider when no legendPrefix is provided', () => {
+      const { container } = renderChart();
       expect(screen.queryByTestId('prefix')).not.toBeInTheDocument();
+      expect(queryDivider(container)).toBeUndefined();
     });
   });
 });

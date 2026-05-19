@@ -1,11 +1,38 @@
 import React from 'react';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
+import type DBDeltaChartType from '../../DBDeltaChart';
 import { DBSearchHeatmapChart } from '../DBSearchHeatmapChart';
 
+type FieldsState = {
+  value: string;
+  count: string;
+  scaleType: string;
+  xMin: number | null;
+  xMax: number | null;
+  yMin: number | null;
+  yMax: number | null;
+};
+
+function freshFieldsState(): FieldsState {
+  return {
+    value: 'Duration',
+    count: 'count()',
+    scaleType: 'log',
+    xMin: null,
+    xMax: null,
+    yMin: null,
+    yMax: null,
+  };
+}
+
 // Controls the values returned by useQueryStates each render.
-let mockFieldsState: Record<string, any> = {};
+let mockFieldsState: FieldsState = freshFieldsState();
 
 jest.mock('nuqs', () => ({
   parseAsFloat: { withDefault: jest.fn(() => 'parseAsFloat') },
@@ -27,7 +54,7 @@ jest.mock('@/components/HeatmapSettingsDrawer', () =>
 
 jest.mock('../../DBHeatmapChart', () => ({
   __esModule: true,
-  default: jest.fn((props: any) => (
+  default: jest.fn((props: { enabled?: boolean }) => (
     <div
       data-testid="db-heatmap-chart"
       data-enabled={String(!!props.enabled)}
@@ -40,45 +67,44 @@ jest.mock('../../DBHeatmapChart', () => ({
 }));
 
 // Capture props passed to DBDeltaChart so we can assert URL coords forward.
-const deltaChartPropsLog: any[] = [];
+type DBDeltaChartProps = React.ComponentProps<typeof DBDeltaChartType>;
+const deltaChartPropsLog: DBDeltaChartProps[] = [];
 jest.mock('../../DBDeltaChart', () => ({
   __esModule: true,
-  default: jest.fn((props: any) => {
+  default: jest.fn((props: DBDeltaChartProps) => {
     deltaChartPropsLog.push(props);
     return <div data-testid="db-delta-chart" />;
   }),
 }));
 
-const baseSource: any = {
+// Re-import the mocked ColorLegend so we can assert that it's specifically
+// the heatmap color scale being passed as legendPrefix (not any truthy node).
+const { ColorLegend: MockedColorLegend } = jest.requireMock(
+  '../../DBHeatmapChart',
+);
+
+const baseSource = {
   id: 'trace-source',
   kind: SourceKind.Trace,
   name: 'Trace Source',
   durationExpression: 'Duration',
   spanIdExpression: 'SpanId',
-};
+} as unknown as TTraceSource;
 
-const baseChartConfig: any = {
+const baseChartConfig = {
   dateRange: [new Date(0), new Date(1000)],
   from: { databaseName: 'otel', tableName: 'otel_traces' },
   timestampValueExpression: 'Timestamp',
   connection: 'conn',
   select: '',
   where: '',
-};
+} as unknown as BuilderChartConfigWithDateRange;
 
 describe('DBSearchHeatmapChart', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     deltaChartPropsLog.length = 0;
-    mockFieldsState = {
-      value: 'Duration',
-      count: 'count()',
-      scaleType: 'log',
-      xMin: null,
-      xMax: null,
-      yMin: null,
-      yMax: null,
-    };
+    mockFieldsState = freshFieldsState();
   });
 
   it('renders DBDeltaChart unconditionally when no heatmap selection exists', () => {
@@ -134,7 +160,8 @@ describe('DBSearchHeatmapChart', () => {
     // Regression test: the parent must keep passing a ColorLegend as
     // legendPrefix so the heatmap color scale appears above the
     // distribution charts. DBDeltaChart renders this prop in its
-    // legend Flex.
+    // legend Flex. Truthiness alone would not catch a regression that
+    // swaps ColorLegend for any other element; pin the element type.
     renderWithMantine(
       <DBSearchHeatmapChart
         chartConfig={baseChartConfig}
@@ -144,7 +171,10 @@ describe('DBSearchHeatmapChart', () => {
     );
 
     const lastProps = deltaChartPropsLog[deltaChartPropsLog.length - 1];
-    expect(lastProps).toHaveProperty('legendPrefix');
     expect(lastProps.legendPrefix).toBeTruthy();
+    expect(React.isValidElement(lastProps.legendPrefix)).toBe(true);
+    expect((lastProps.legendPrefix as React.ReactElement).type).toBe(
+      MockedColorLegend,
+    );
   });
 });
