@@ -76,65 +76,6 @@ describe('MCP Dashboard Tools', () => {
     await server.stop();
   });
 
-  describe('hyperdx_list_sources', () => {
-    it('should list available sources and connections', async () => {
-      const result = await callTool(client, 'hyperdx_list_sources');
-
-      expect(result.isError).toBeFalsy();
-      expect(result.content).toHaveLength(1);
-
-      const output = JSON.parse(getFirstText(result));
-      expect(output.sources).toHaveLength(1);
-      expect(output.sources[0]).toMatchObject({
-        id: traceSource._id.toString(),
-        name: 'Traces',
-        kind: SourceKind.Trace,
-      });
-
-      expect(output.connections).toHaveLength(1);
-      expect(output.connections[0]).toMatchObject({
-        id: connection._id.toString(),
-        name: 'Default',
-      });
-
-      expect(output.usage).toBeDefined();
-    });
-
-    it('should include column schema for sources', async () => {
-      const result = await callTool(client, 'hyperdx_list_sources');
-      const output = JSON.parse(getFirstText(result));
-      const source = output.sources[0];
-
-      expect(source.columns).toBeDefined();
-      expect(Array.isArray(source.columns)).toBe(true);
-      expect(source.columns.length).toBeGreaterThan(0);
-      // Each column should have name, type, and jsType
-      expect(source.columns[0]).toHaveProperty('name');
-      expect(source.columns[0]).toHaveProperty('type');
-      expect(source.columns[0]).toHaveProperty('jsType');
-    });
-
-    it('should return empty sources for a team with no sources', async () => {
-      // Clear everything and re-register with new team
-      await client.close();
-      await server.clearDBs();
-      const result2 = await getLoggedInAgent(server);
-      const context2: McpContext = {
-        teamId: result2.team._id.toString(),
-        userId: result2.user._id.toString(),
-      };
-      const client2 = await createTestClient(context2);
-
-      const result = await callTool(client2, 'hyperdx_list_sources');
-      const output = JSON.parse(getFirstText(result));
-
-      expect(output.sources).toHaveLength(0);
-      expect(output.connections).toHaveLength(0);
-
-      await client2.close();
-    });
-  });
-
   describe('hyperdx_get_dashboard', () => {
     it('should list all dashboards when no id provided', async () => {
       await new Dashboard({

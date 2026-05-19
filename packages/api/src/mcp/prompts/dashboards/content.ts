@@ -20,14 +20,15 @@ export function buildCreateDashboardPrompt(
 ${userContext}
 ${sourceSummary}
 
-IMPORTANT: Call hyperdx_list_sources first to get the full column schema and attribute keys for each source. The source IDs above are correct, but you need the schema details to write accurate queries.
+IMPORTANT: Call hyperdx_list_sources first to get source IDs, then hyperdx_describe_source for each source you plan to query — this gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
 
 == WORKFLOW ==
 
-1. Call hyperdx_list_sources — get source IDs, column schemas, and attribute keys
-2. Design tiles — pick tile types that match the monitoring goal
-3. Call hyperdx_save_dashboard — create the dashboard with all tiles
-4. Call hyperdx_query_tile on each tile — validate queries return data
+1. Call hyperdx_list_sources — get source IDs and connection IDs
+2. Call hyperdx_describe_source for each source you plan to query — get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.)
+3. Design tiles — pick tile types that match the monitoring goal, using real column names and values from step 2
+4. Call hyperdx_save_dashboard — create the dashboard with all tiles
+5. Call hyperdx_query_tile on each tile — validate queries return data
 
 == UPDATING AN EXISTING DASHBOARD ==
 
@@ -75,12 +76,12 @@ Use RAW SQL tiles (with connectionId) only for advanced queries:
 
 - Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may use different names.
-  Always call hyperdx_list_sources to get the real column names and keyColumns for each source.
+  Always call hyperdx_describe_source to get the real column names, keyColumns, and sampled values for each source.
 - Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name']
   NEVER use dot notation for Map columns (SpanAttributes.http.method) — always use brackets.
 - JSON-type columns use dot notation: JsonColumn.key.subkey
-  Check the jsType returned by hyperdx_list_sources to determine whether a column is Map or JSON.
-- Call hyperdx_list_sources to discover the exact column names, types, and attribute keys
+  Check the jsType returned by hyperdx_describe_source to determine whether a column is Map or JSON.
+- Call hyperdx_describe_source to discover the exact column names, types, and attribute keys
 
 == LAYOUT GRID ==
 
@@ -298,7 +299,7 @@ dashboard's hyperdx_save_dashboard call as a top-level \`filters\` array.
 
 IMPORTANT: The exact values for StatusCode and SeverityText vary by deployment.
 Do NOT assume values like "STATUS_CODE_ERROR", "Ok", "error", or "fatal".
-Always call hyperdx_list_sources first and inspect the keyValues / mapAttributeKeys
+Always call hyperdx_describe_source first and inspect the lowCardinalityValues
 returned for each source to discover the real values used in your data.
 
 == COMMON MISTAKES TO AVOID ==
@@ -306,7 +307,7 @@ returned for each source to discover the real values used in your data.
 - Using valueExpression with aggFn "count" — count does not take a valueExpression
 - Forgetting valueExpression for non-count aggFns — avg, sum, min, max, quantile all require it
 - Using dot notation for Map-type attributes — always use SpanAttributes['key'] bracket syntax for Map columns
-- Not calling hyperdx_list_sources first — you need real source IDs, not placeholders
+- Not calling hyperdx_list_sources + hyperdx_describe_source first — you need real source IDs, column names, and values
 - Not validating with hyperdx_query_tile after saving — tiles can silently fail
 - Number and Pie tiles accept exactly 1 select item — not multiple
 - Missing level for quantile aggFn — must specify 0.5, 0.9, 0.95, or 0.99
@@ -790,7 +791,7 @@ Top-level columns (PascalCase defaults — use directly in valueExpression and g
   Duration, StatusCode, SpanName, ServiceName, Body, SeverityText,
   Timestamp, TraceId, SpanId, SpanKind, ParentSpanId
   NOTE: These are the defaults for the standard HyperDX schema. Custom sources may
-  use different column names. Always verify with hyperdx_list_sources, which returns
+  use different column names. Always verify with hyperdx_describe_source, which returns
   the real column names and keyColumns expressions for each source.
 
 Map-type columns (bracket syntax — access keys via ['key']):
@@ -806,7 +807,7 @@ IMPORTANT: Always use bracket syntax for Map-type columns. Never use dot notatio
 
 JSON-type columns (dot notation — access nested keys via dot path):
   JsonColumn.key.subkey
-  NOTE: Check the jsType field returned by hyperdx_list_sources to determine
+  NOTE: Check the jsType field returned by hyperdx_describe_source to determine
   whether a column is Map (use brackets) or JSON (use dots).
 
 == LUCENE FILTER SYNTAX ==
@@ -1147,7 +1148,7 @@ Example: find top patterns for production services over the last 4 hours:
 3. Using dot notation for Map-type attributes in valueExpression/groupBy
    Wrong:   groupBy: "SpanAttributes.http.method"
    Correct: groupBy: "SpanAttributes['http.method']"
-   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
+   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_describe_source.
 
 4. Multiple select items on number/pie tiles (dashboard tiles)
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
@@ -1167,7 +1168,7 @@ Example: find top patterns for production services over the last 4 hours:
 
 8. Assuming StatusCode or SeverityText values
    Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
-   Always call hyperdx_list_sources and inspect real keyValues from the source
+   Always call hyperdx_describe_source and inspect the lowCardinalityValues
    before writing filters that depend on these columns.
 
 9. Heatmap tile on a non-Trace source
