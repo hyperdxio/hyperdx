@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  coerceBooleanValue,
   type FilterState,
   filtersToQuery,
   parseLuceneFilter,
@@ -444,6 +445,9 @@ export const useSearchPageFilterState = ({
       // Normalize bracket notation to dot notation so the key matches
       // what parseQuery returns after a Lucene round-trip.
       const key = parseKeyPath(property).join('.');
+      // Normalize "true"/"false" strings to booleans so the value matches
+      // what parseLuceneFilter returns after a Lucene round-trip.
+      const normalizedValue = coerceBooleanValue(value);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[key]) {
@@ -452,7 +456,7 @@ export const useSearchPageFilterState = ({
 
           if (action === 'only') {
             draft[key] = {
-              included: new Set([value]),
+              included: new Set([normalizedValue]),
               excluded: new Set(),
             };
             return;
@@ -460,22 +464,22 @@ export const useSearchPageFilterState = ({
 
           if (action === 'exclude') {
             // Remove from included if it was there
-            draft[key].included.delete(value);
+            draft[key].included.delete(normalizedValue);
             // Toggle in excluded
-            if (draft[key].excluded.has(value)) {
-              draft[key].excluded.delete(value);
+            if (draft[key].excluded.has(normalizedValue)) {
+              draft[key].excluded.delete(normalizedValue);
             } else {
-              draft[key].excluded.add(value);
+              draft[key].excluded.add(normalizedValue);
             }
             return;
           }
 
           // Regular toggle (include)
-          draft[key].excluded.delete(value);
-          if (draft[key].included.has(value)) {
-            draft[key].included.delete(value);
+          draft[key].excluded.delete(normalizedValue);
+          if (draft[key].included.has(normalizedValue)) {
+            draft[key].included.delete(normalizedValue);
           } else {
-            draft[key].included.add(value);
+            draft[key].included.add(normalizedValue);
           }
         });
         updateFilterQuery(newFilters);

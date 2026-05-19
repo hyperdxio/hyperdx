@@ -97,7 +97,8 @@ function collectFromAst(
 }
 
 /** Coerce "true"/"false" strings back to booleans, pass through otherwise */
-function coerceBooleanValue(v: string): string | boolean {
+export function coerceBooleanValue(v: string | boolean): string | boolean {
+  if (typeof v === 'boolean') return v;
   if (v === 'true') return true;
   if (v === 'false') return false;
   return v;

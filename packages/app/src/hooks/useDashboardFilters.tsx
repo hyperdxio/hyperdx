@@ -89,8 +89,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     );
     if (hasSqlFilters) {
       hasMigratedRef.current = true;
-      const { filters: parsed } = parseQuery(filterQueries);
-      setFilterQueries(filtersToQuery(parsed));
+      const { filters: parsed, passthroughFilters } = parseQuery(filterQueries);
+      setFilterQueries([...filtersToQuery(parsed), ...passthroughFilters]);
     }
   }, [filterQueries, setFilterQueries]);
 
