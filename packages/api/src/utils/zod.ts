@@ -367,6 +367,17 @@ const externalDashboardSearchChartConfigSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
+// Extended schema for the /api/v2/search endpoint — adds orderBy which is not
+// applicable to dashboard tiles.
+export const externalDashboardSearchRequestSchema =
+  externalDashboardSearchChartConfigSchema.extend({
+    orderBy: z.string().max(1024).optional(),
+  });
+
+export type ExternalDashboardSearchRequestConfig = z.infer<
+  typeof externalDashboardSearchRequestSchema
+>;
+
 const externalDashboardMarkdownChartConfigSchema = z.object({
   displayType: z.literal('markdown'),
   markdown: z.string().max(50000).optional(),

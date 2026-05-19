@@ -40,6 +40,11 @@ export const swaggerOptions = {
         name: 'Webhooks',
         description: 'Endpoints for managing webhooks',
       },
+      {
+        name: 'Search',
+        description:
+          'Endpoints for querying raw data from log and trace sources',
+      },
     ],
     components: {
       securitySchemes: {
