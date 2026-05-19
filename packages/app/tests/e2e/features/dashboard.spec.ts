@@ -1310,4 +1310,74 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test(
+    'should isolate the fullscreen tile time picker from the dashboard time range',
+    { tag: ['@full-stack', '@dashboard'] },
+    async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `Fullscreen TP Test ${ts}`;
+
+      await test.step('Create a new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a basic chart tile', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.createBasicChart(chartName);
+
+        const dashboardTiles = dashboardPage.getTiles();
+        await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+      });
+
+      let mainTimePickerValueBefore = '';
+      await test.step('Set the dashboard time range to "Last 1 hour"', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 1 hour');
+        mainTimePickerValueBefore =
+          await dashboardPage.timePicker.input.inputValue();
+        console.log(
+          'Main time picker value before opening fullscreen:',
+          mainTimePickerValueBefore,
+        );
+      });
+
+      await test.step('Open the tile in fullscreen and verify the modal appears', async () => {
+        await dashboardPage.openFullscreenForTile(0);
+        await expect(dashboardPage.fullscreenTimePickerInput).toBeVisible();
+      });
+
+      await test.step('Verify the fullscreen TimePicker is initialized with a non-empty value', async () => {
+        // The fullscreen picker is seeded with dateRangeToString — an absolute
+        // date-range string — not the "Last 1 hour" relative label.
+        const fullscreenValue =
+          await dashboardPage.fullscreenTimePickerInput.inputValue();
+        expect(fullscreenValue.length).toBeGreaterThan(0);
+      });
+
+      await test.step('Change the fullscreen time range to "Last 15 minutes"', async () => {
+        await dashboardPage.selectFullscreenRelativeTime('Last 15 minutes');
+        // Verify the chart inside the modal re-renders with the new range
+        await expect(
+          dashboardPage.fullscreenModalBody.locator(
+            '.recharts-responsive-container',
+          ),
+        ).toBeVisible({ timeout: 15000 });
+      });
+
+      await test.step('Close the fullscreen modal', async () => {
+        await dashboardPage.closeFullscreen();
+      });
+
+      await test.step('Verify the dashboard main time picker is unchanged', async () => {
+        // The fullscreen time-range change must NOT have propagated to the
+        // dashboard-level time picker.
+        await expect(dashboardPage.timePicker.input).toHaveValue(
+          mainTimePickerValueBefore,
+        );
+      });
+    },
+  );
 });
