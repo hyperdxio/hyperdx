@@ -272,7 +272,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -529,7 +529,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,

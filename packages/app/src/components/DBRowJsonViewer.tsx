@@ -29,6 +29,10 @@ import {
 
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 type JSONExtractFn =
   | 'JSONExtractString'
@@ -219,12 +223,19 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
     <Group>
       {rowData != null && (
         <UnstyledButton
-          onClick={() => {
-            window.navigator.clipboard.writeText(
+          onClick={async () => {
+            const copied = await copyTextToClipboard(
               typeof rowData === 'string'
                 ? rowData
                 : JSON.stringify(rowData, null, 2),
             );
+            if (!copied) {
+              notifications.show({
+                color: 'red',
+                message: CLIPBOARD_ERROR_MESSAGE,
+              });
+              return;
+            }
             notifications.show({
               color: 'green',
               message: `Value copied to clipboard`,
@@ -547,7 +558,7 @@ export function DBRowJsonViewer({
         });
       }
 
-      const handleCopyObject = () => {
+      const handleCopyObject = async () => {
         let copiedObj;
 
         // When in parsed JSON context (e.g., expanded stringified JSON),
@@ -559,9 +570,16 @@ export function DBRowJsonViewer({
           copiedObj = keyPath.length === 0 ? rowData : get(rowData, keyPath);
         }
 
-        window.navigator.clipboard.writeText(
+        const copied = await copyTextToClipboard(
           JSON.stringify(copiedObj, null, 2),
         );
+        if (!copied) {
+          notifications.show({
+            color: 'red',
+            message: CLIPBOARD_ERROR_MESSAGE,
+          });
+          return;
+        }
         notifications.show({
           color: 'green',
           message: `Copied object to clipboard`,
@@ -583,12 +601,19 @@ export function DBRowJsonViewer({
               Copy Value
             </Group>
           ),
-          onClick: () => {
-            window.navigator.clipboard.writeText(
+          onClick: async () => {
+            const copied = await copyTextToClipboard(
               typeof value === 'string'
                 ? value
                 : JSON.stringify(value, null, 2),
             );
+            if (!copied) {
+              notifications.show({
+                color: 'red',
+                message: CLIPBOARD_ERROR_MESSAGE,
+              });
+              return;
+            }
             notifications.show({
               color: 'green',
               message: `Value copied to clipboard`,
