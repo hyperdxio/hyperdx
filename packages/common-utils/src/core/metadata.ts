@@ -1365,34 +1365,39 @@ export class Metadata {
         total_count: number;
       };
 
-      const batchResults = await this.cache.getOrFetch(cacheKey, async () => {
-        const sql = chSql`
-            SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
-            FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
-            WHERE (ColumnIdentifier, Key) IN (${tupleParams})
-              AND Value != ''
-              ${timeFilter}
-            GROUP BY ColumnIdentifier, Key, Value
-            ORDER BY ColumnIdentifier, Key, total_count DESC
-            LIMIT ${{ Int32: maxValuesPerKey }} BY ColumnIdentifier, Key
-          `;
+      let batchResults: BatchRow[] = [];
+      try {
+        batchResults = await this.cache.getOrFetch(cacheKey, async () => {
+          const sql = chSql`
+              SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
+              FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+              WHERE (ColumnIdentifier, Key) IN (${tupleParams})
+                AND Value != ''
+                ${timeFilter}
+              GROUP BY ColumnIdentifier, Key, Value
+              ORDER BY ColumnIdentifier, Key, total_count DESC
+              LIMIT ${{ Int32: maxValuesPerKey }} BY ColumnIdentifier, Key
+            `;
 
-        return await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              ...this.getClickHouseSettings(),
-              timeout_overflow_mode: 'break',
-              max_execution_time: 15,
-              max_rows_to_read: '0',
-            },
-            abort_signal: signal,
-          })
-          .then(res => res.json<BatchRow>())
-          .then(d => d.data);
-      });
+          return await this.clickhouseClient
+            .query<'JSON'>({
+              query: sql.sql,
+              query_params: sql.params,
+              connectionId,
+              clickhouse_settings: {
+                ...this.getClickHouseSettings(),
+                timeout_overflow_mode: 'break',
+                max_execution_time: 15,
+                max_rows_to_read: '0',
+              },
+              abort_signal: signal,
+            })
+            .then(res => res.json<BatchRow>())
+            .then(d => d.data);
+        });
+      } catch (e) {
+        console.warn('Batched rollup query failed, falling back to per-key', e);
+      }
 
       // Group results by (ColumnIdentifier, Key) and apply per-key limit
       const resultMap = new Map<string, string[]>();
