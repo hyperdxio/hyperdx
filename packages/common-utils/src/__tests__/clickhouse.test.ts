@@ -472,6 +472,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -504,6 +505,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -531,6 +533,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
       clickhouse_settings: {
         max_rows_to_read: '1000000',
       },
@@ -582,6 +585,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -602,8 +606,16 @@ describe('processClickhouseSettings - optimization settings', () => {
     setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
 
     // Run two queries
-    await client.query({ query: 'SELECT 1', format: 'JSON' });
-    await client.query({ query: 'SELECT 2', format: 'JSON' });
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+      connectionId: 'test-conn',
+    });
+    await client.query({
+      query: 'SELECT 2',
+      format: 'JSON',
+      connectionId: 'test-conn',
+    });
 
     // Should only fetch settings once
     const settingsCalls = mockQueryMethod.mock.calls.filter(

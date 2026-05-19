@@ -68,7 +68,7 @@ import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
 import {
   getDurationMsExpression,
-  getTraceDurationNumberFormat,
+  getFirstSeriesNumberFormat,
   useSource,
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
@@ -232,11 +232,11 @@ export default function EditTimeChartForm({
 
   const autoDetectedNumberFormat = useMemo(
     () =>
-      getTraceDurationNumberFormat(
-        tableSource,
-        Array.isArray(select) ? select : undefined,
-      ),
-    [tableSource, select],
+      numberFormat ??
+      (Array.isArray(select)
+        ? getFirstSeriesNumberFormat(select, tableSource)
+        : undefined),
+    [numberFormat, select, tableSource],
   );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
@@ -782,6 +782,7 @@ export default function EditTimeChartForm({
         configType={configType}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
+        isPerSeriesNumberFormatAllowed={configType !== 'sql'}
       />
       <HeatmapSettingsDrawer
         opened={heatmapSettingsOpened}

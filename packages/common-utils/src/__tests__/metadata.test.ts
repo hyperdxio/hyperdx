@@ -1,5 +1,5 @@
 import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache } from '../core/metadata';
+import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
 import { isBuilderChartConfig } from '../guards';
 import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
@@ -740,7 +740,7 @@ describe('Metadata', () => {
 
       const fields = await md.getAllFields({
         databaseName: 'otel',
-        tableName: 'otel_logs',
+        tableName: 'test_logs',
         connectionId: 'conn-1',
       });
 
@@ -819,7 +819,7 @@ describe('Metadata', () => {
 
       const fields = await md.getAllFields({
         databaseName: 'otel',
-        tableName: 'otel_logs',
+        tableName: 'test_logs',
         connectionId: 'conn-1',
       });
 
@@ -1119,5 +1119,42 @@ describe('Metadata', () => {
 
       expect(result).toBeNull();
     });
+  });
+});
+
+describe('parseKeyPath', () => {
+  it('parses single-quoted bracket notation', () => {
+    expect(parseKeyPath("ResourceAttributes['service.name']")).toEqual([
+      'ResourceAttributes',
+      'service.name',
+    ]);
+  });
+
+  it('parses double-quoted bracket notation', () => {
+    expect(parseKeyPath('ResourceAttributes["service.name"]')).toEqual([
+      'ResourceAttributes',
+      'service.name',
+    ]);
+  });
+
+  it('returns single-element path for native columns', () => {
+    expect(parseKeyPath('ServiceName')).toEqual(['ServiceName']);
+  });
+
+  it('handles keys with dots in the map key', () => {
+    expect(parseKeyPath("SpanAttributes['http.request.method']")).toEqual([
+      'SpanAttributes',
+      'http.request.method',
+    ]);
+  });
+
+  it('returns single-element path for empty string', () => {
+    expect(parseKeyPath('')).toEqual(['']);
+  });
+
+  it('does not parse incomplete bracket notation', () => {
+    expect(parseKeyPath("ResourceAttributes['service.name")).toEqual([
+      "ResourceAttributes['service.name",
+    ]);
   });
 });

@@ -9,7 +9,12 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
-import { Metadata, SkipIndexMetadata, TableConnection } from '@/core/metadata';
+import {
+  Metadata,
+  parseKeyPath,
+  SkipIndexMetadata,
+  TableConnection,
+} from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
@@ -41,18 +46,14 @@ export function parse(query: string): lucene.AST {
 }
 
 function buildMapContains(mapField: string) {
-  const splitMapKey = (
-    field: string,
-  ): { map: string; key: string } | undefined => {
-    const bracketIndex = field.indexOf("['");
-    if (bracketIndex === -1) return undefined;
-    const map = field.slice(0, bracketIndex);
-    const key = field.slice(bracketIndex + 2, -2);
-    return { map, key };
-  };
-  const val = splitMapKey(mapField);
-  if (!val) return undefined;
-  return SqlString.format('mapContains(??, ?)', [val.map, val.key]);
+  const path = parseKeyPath(mapField);
+  if (path.length < 2) return undefined;
+  return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
+}
+
+/** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
+function normalizeChExpression(expr: string): string {
+  return expr.replace(/\s+/g, '').replace(/`/g, '');
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -398,6 +399,7 @@ export abstract class SQLSerializer implements Serializer {
     found: boolean;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
+    kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
   }>;
 
   operator(op: lucene.Operator) {
@@ -436,6 +438,7 @@ export abstract class SQLSerializer implements Serializer {
       isArray,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
+      kvItemsExpression,
     } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
@@ -450,6 +453,29 @@ export abstract class SQLSerializer implements Serializer {
         isNegatedField,
         exactMatch: true,
       });
+    }
+
+    // KV items index optimization: use has(KvItemsColumn, concat('key','<sep>','value'))
+    // instead of Map['key'] = 'value' when a text(tokenizer=array) index exists.
+    // For empty-term equality we also match absent keys (Map subscript returns default ''),
+    // so we emit: has(arr, 'key<sep>') OR NOT mapContains(Map, 'key')
+    if (kvItemsExpression && propertyType === JSDataType.String) {
+      const hasExpr = SqlString.format(`has(??, concat(?, ?, ?))`, [
+        kvItemsExpression.kvItemsColumn,
+        kvItemsExpression.mapKey,
+        kvItemsExpression.separator,
+        term,
+      ]);
+      if (term === '') {
+        const notContains = SqlString.format(`NOT mapContains(??, ?)`, [
+          kvItemsExpression.mapColumn,
+          kvItemsExpression.mapKey,
+        ]);
+        return isNegatedField
+          ? `(NOT ${hasExpr} AND ${SqlString.format(`mapContains(??, ?)`, [kvItemsExpression.mapColumn, kvItemsExpression.mapKey])})`
+          : `(${hasExpr} OR ${notContains})`;
+      }
+      return `(${isNegatedField ? 'NOT ' : ''}${hasExpr})`;
     }
 
     const expressionPostfix =
@@ -705,6 +731,8 @@ type CustomSchemaSQLColumnExpression = {
   };
   mapKeyIndexExpression?: string;
   arrayMapKeyExpression?: string;
+  /** When a KV items index exists for a Map column, carries the info needed for the has() optimization */
+  kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
 };
 
 export type CustomSchemaConfig = {
@@ -803,6 +831,228 @@ function renderArrayFieldExpression({
         );
 }
 
+/** Describes a KV items column and its concat separator */
+export type KvItemsInfo = {
+  kvItemsColumn: string;
+  separator: string;
+};
+
+/** Map from map column name to its KV items info */
+export type KvItemsLookup = Map<string, KvItemsInfo>;
+
+/**
+ * Tokenizes a ClickHouse expression into meaningful tokens (identifiers, parens,
+ * commas, arrows, quoted strings, operators). Whitespace is skipped.
+ * Returns null if the expression contains unrecognized characters.
+ */
+function tokenizeExpression(expr: string): string[] | null {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    // Skip whitespace
+    if (/\s/.test(expr[i])) {
+      i++;
+      continue;
+    }
+    // Arrow operator ->
+    if (expr[i] === '-' && expr[i + 1] === '>') {
+      tokens.push('->');
+      i += 2;
+      continue;
+    }
+    // Cast operator ::
+    if (expr[i] === ':' && expr[i + 1] === ':') {
+      tokens.push('::');
+      i += 2;
+      continue;
+    }
+    // Single-char tokens
+    if ('(),.'.includes(expr[i])) {
+      tokens.push(expr[i]);
+      i++;
+      continue;
+    }
+    // Quoted string (single or double)
+    if (expr[i] === "'" || expr[i] === '"') {
+      const quote = expr[i];
+      let str = '';
+      i++; // skip opening quote
+      while (i < expr.length && expr[i] !== quote) {
+        if (expr[i] === '\\') {
+          str += expr[i + 1] ?? '';
+          i += 2;
+        } else {
+          str += expr[i];
+          i++;
+        }
+      }
+      i++; // skip closing quote
+      tokens.push(`'${str}'`); // normalize to single-quote wrapper
+      continue;
+    }
+    // Identifier or keyword (word chars)
+    if (/\w/.test(expr[i])) {
+      let ident = '';
+      while (i < expr.length && /\w/.test(expr[i])) {
+        ident += expr[i];
+        i++;
+      }
+      tokens.push(ident);
+      continue;
+    }
+    // Unknown character — return null to signal unparseable expression
+    return null;
+  }
+  return tokens;
+}
+
+/**
+ * Helper: parses the common arrayMap lambda prefix and concat body, returning the
+ * lambda variable name, separator, and remaining token position.
+ * Handles both parenthesized `(x) ->` and bare `x ->` lambda parameter forms.
+ */
+function parseArrayMapConcatPrefix(
+  tokens: string[],
+): { lambdaVar: string; separator: string; pos: number } | undefined {
+  let pos = 0;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  if (!expect('arrayMap') || !expect('(')) return undefined;
+
+  // Lambda param: either (x) -> or x ->
+  let lambdaVar: string | undefined;
+  if (tokens[pos] === '(') {
+    pos++; // skip (
+    lambdaVar = read();
+    if (!lambdaVar || !expect(')')) return undefined;
+  } else {
+    lambdaVar = read();
+    if (!lambdaVar) return undefined;
+  }
+  if (!expect('->')) return undefined;
+
+  // concat(lambdaVar.1, '<sep>', lambdaVar.2)
+  if (!expect('concat') || !expect('(')) return undefined;
+  if (!expect(lambdaVar) || !expect('.') || !expect('1') || !expect(','))
+    return undefined;
+
+  const sepToken = read();
+  if (!sepToken || !sepToken.startsWith("'") || !expect(',')) return undefined;
+  const separator = sepToken.slice(1, -1);
+
+  if (
+    !expect(lambdaVar) ||
+    !expect('.') ||
+    !expect('2') ||
+    !expect(')') ||
+    !expect(',')
+  )
+    return undefined;
+
+  return { lambdaVar, separator, pos };
+}
+
+/**
+ * Parses a KV items column's default_expression to extract the source map column name
+ * and the constant separator string used in the concat.
+ * Matches the inline-cast form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), X::Array(Tuple(String, String)))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  // X::Array(Tuple(String, String))
+  const mapColumn = read();
+  if (!mapColumn) return undefined;
+  if (
+    !expect('::') ||
+    !expect('Array') ||
+    !expect('(') ||
+    !expect('Tuple') ||
+    !expect('(') ||
+    !expect('String') ||
+    !expect(',') ||
+    !expect('String') ||
+    !expect(')') ||
+    !expect(')') ||
+    !expect(')')
+  )
+    return undefined;
+
+  if (pos !== tokens.length) return undefined;
+
+  return { mapColumn, separator: prefix.separator };
+}
+
+/**
+ * Parses a KV items column's default_expression using the CAST function form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(X, 'Array(Tuple(String, String))'))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsCastExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  // CAST(X, 'Array(Tuple(String, String))')
+  if (!expect('CAST') || !expect('(')) return undefined;
+  const mapColumn = read();
+  if (!mapColumn || !expect(',')) return undefined;
+
+  // The type argument is a quoted string like 'Array(Tuple(String, String))'
+  const typeToken = read();
+  if (!typeToken || !typeToken.startsWith("'")) return undefined;
+  const typeStr = typeToken.slice(1, -1); // strip quotes
+  const normalizedType = typeStr.replace(/\s+/g, '');
+  if (normalizedType !== 'Array(Tuple(String,String))') return undefined;
+
+  if (!expect(')') || !expect(')')) return undefined;
+
+  if (pos !== tokens.length) return undefined;
+
+  return { mapColumn, separator: prefix.separator };
+}
+
+// To add another known KV items parsing strategy, simply define another function with the same signature and add the strategy to this array
+const KV_ITEMS_STRATEGIES = [
+  parseKvItemsExpression,
+  parseKvItemsCastExpression,
+] as const;
+
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
@@ -811,6 +1061,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private connectionId: string;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
+  private kvItemsLookupPromise?: Promise<KvItemsLookup>;
 
   constructor({
     metadata,
@@ -846,9 +1097,74 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })
       .then(value => value === '1')
       .catch(error => {
-        console.error('Error fetching enable_full_text_index setting:', error);
+        console.warn('Error fetching enable_full_text_index setting:', error);
         return false;
       });
+
+    // Pre-fetch KV items lookup (map column -> KV items column with text(tokenizer=array) index)
+    this.kvItemsLookupPromise = this.buildKvItemsLookup().catch(error => {
+      console.warn('Error building KV items lookup:', error);
+      return new Map();
+    });
+  }
+
+  /**
+   * Builds a lookup from map column name to KV items column name.
+   * A KV items column is an ALIAS/MATERIALIZED column whose expression is
+   * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
+   * a text(tokenizer=array) skip index.
+   */
+  private async buildKvItemsLookup(): Promise<KvItemsLookup> {
+    const [columns, skipIndices] = await Promise.all([
+      this.metadata.getColumns({
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        connectionId: this.connectionId,
+      }),
+      this.skipIndicesPromise ?? Promise.resolve([]),
+    ]);
+
+    const lookup: KvItemsLookup = new Map();
+
+    // Find columns that are ALIAS or MATERIALIZED with KV items expressions
+    const kvItemsCandidates = columns.filter(
+      c =>
+        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
+        c.default_expression,
+    );
+
+    for (const candidate of kvItemsCandidates) {
+      const parsed = (() => {
+        let parsed: { mapColumn: string; separator: string } | undefined;
+        for (const strategy of KV_ITEMS_STRATEGIES) {
+          parsed = strategy(candidate.default_expression);
+          if (parsed) break;
+        }
+        return parsed;
+      })();
+      if (!parsed) continue;
+
+      // Check if this column has a text(tokenizer=array) skip index
+      const hasArrayTextIndex = skipIndices.some(idx => {
+        if (idx.type !== 'text') return false;
+        const tokenizer = parseTokenizerFromTextIndex(idx);
+        if (tokenizer?.type !== 'array') return false;
+        // Require exact match: has() won't benefit from a transformed index like lower(col)
+        return (
+          normalizeChExpression(idx.expression) ===
+          normalizeChExpression(candidate.name)
+        );
+      });
+
+      if (hasArrayTextIndex) {
+        lookup.set(parsed.mapColumn, {
+          kvItemsColumn: candidate.name,
+          separator: parsed.separator,
+        });
+      }
+    }
+
+    return lookup;
   }
 
   /**
@@ -1112,6 +1428,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
       if (prefixMatch.type.startsWith('Map')) {
         const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
+
+        // Check if a KV items index exists for this map column
+        const kvItemsLookup = await this.kvItemsLookupPromise;
+        const kvItemsInfo = kvItemsLookup?.get(prefixMatch.name);
+
         return {
           found: true,
           columnExpression: SqlString.format(`??[?]`, [
@@ -1120,6 +1441,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ]),
           mapKeyIndexExpression: `indexHint(${buildMapContains(`${prefixMatch.name}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
+          ...(kvItemsInfo
+            ? {
+                kvItemsExpression: {
+                  kvItemsColumn: kvItemsInfo.kvItemsColumn,
+                  mapColumn: prefixMatch.name,
+                  mapKey: fieldPostfix,
+                  separator: kvItemsInfo.separator,
+                },
+              }
+            : {}),
         };
       } else if (prefixMatch.type.startsWith('JSON')) {
         // ignore original column expression at here
@@ -1245,12 +1576,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * Handles cases where index expression may have transformations like lower(Body) vs Body.
    */
   indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
-    // Normalize expressions for comparison
-    const normalize = (expr: string) =>
-      expr.replace(/\s+/g, '').replace(/`/g, '');
-
-    const normalizedIndex = normalize(indexExpression);
-    const normalizedSearch = normalize(searchColumn);
+    const normalizedIndex = normalizeChExpression(indexExpression);
+    const normalizedSearch = normalizeChExpression(searchColumn);
 
     // Direct match
     if (normalizedIndex === normalizedSearch) {
@@ -1320,6 +1647,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression
         : undefined,
+      kvItemsExpression: expression.kvItemsExpression,
     };
   }
 }

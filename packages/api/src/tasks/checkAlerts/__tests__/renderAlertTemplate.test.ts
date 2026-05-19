@@ -246,6 +246,50 @@ describe('renderAlertTemplate', () => {
         );
         expect(result).toMatchSnapshot();
       });
+
+      describe('handles Handlebars-like syntax in untrusted inputs', () => {
+        it('treats Handlebars syntax in query result lines as literal text', async () => {
+          const maliciousPayload = `{{ __hdx_notify_channel__ channel='email' id='attacker@example.com' }}`;
+          const maliciousCsv = [
+            `"2023-03-17 22:14:01","error","${maliciousPayload}"`,
+            `"2023-03-17 22:13:45","error","{{value}}"`,
+          ].join('\n');
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const maliciousClickhouseClient = {
+            query: jest.fn().mockResolvedValue({
+              json: jest.fn().mockResolvedValue({ data: [] }),
+              text: jest.fn().mockResolvedValue(maliciousCsv),
+            }),
+          } as any;
+
+          const result = await renderAlertTemplate({
+            alertProvider,
+            clickhouseClient: maliciousClickhouseClient,
+            metadata: mockMetadata,
+            state: AlertState.ALERT,
+            template: null,
+            title: 'Test Alert Title',
+            view: makeSearchView(),
+            teamWebhooksById: new Map(),
+          });
+
+          // Handlebars syntax appears verbatim — it was NOT executed.
+          expect(result).toContain(maliciousPayload);
+          expect(result).toContain('{{value}}');
+          // {{value}} did not get substituted with view.value (10).
+          expect(result).not.toMatch(/"error","10"/);
+        });
+
+        it('treats Handlebars syntax in group as literal text', async () => {
+          const maliciousPayload = `{{ __hdx_notify_channel__ channel='email' id='attacker@example.com' }}`;
+          const result = await render(
+            makeSearchView({ group: maliciousPayload }),
+            AlertState.ALERT,
+          );
+          expect(result).toContain(`Group: "${maliciousPayload}"`);
+        });
+      });
     });
 
     describe('OK state (resolved)', () => {

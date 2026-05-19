@@ -22,7 +22,7 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
-  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
+  useSingleSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>

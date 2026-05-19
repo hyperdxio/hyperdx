@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
   packages: write
@@ -26,6 +27,11 @@ jobs:
           cache: 'yarn'
           # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
           # that conflicts with npm OIDC trusted publishing
+      # npm OIDC trusted publishing requires npm >= 11.5.1 client-side. Node 22
+      # LTS ships npm 10.x, which has no OIDC code path and falls back to
+      # NODE_AUTH_TOKEN, failing ENEEDAUTH.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Configure npm registry
         run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
@@ -39,7 +45,6 @@ jobs:
         run: make ci-build
       - name: Create Release Pull Request or Publish to npm
         if: always()
-        continue-on-error: true
         id: changesets
         uses: changesets/action@v1
         with:
@@ -687,6 +692,86 @@ jobs:
               }
             });
 
+  # ---------------------------------------------------------------------------
+  # Failure notification
+  # ---------------------------------------------------------------------------
+  slack-notify-failure:
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+        release-cli,
+        notify_helm_charts,
+        notify_ch,
+        notify_clickhouse_clickstack,
+      ]
+    runs-on: ubuntu-24.04
+    if: failure()
+    steps:
+      - name: Get failed steps
+        id: get_failed_steps
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+
+            const failedSteps = data.jobs
+              .filter(job => job.conclusion === 'failure')
+              .flatMap(job => {
+                const stepNames = (job.steps ?? [])
+                  .filter(step => step.conclusion === 'failure')
+                  .map(step => `${job.name} → ${step.name}`);
+                return stepNames.length > 0 ? stepNames : [`${job.name} → (unknown step)`];
+              })
+              .join(', ');
+
+            core.setOutput('failed_steps', failedSteps || 'unknown');
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: repo,workflow
+          custom_payload: |
+            {
+              "text": "Release workflow failed!",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {
+                    "title": "Failed step(s)",
+                    "value": "${{ steps.get_failed_steps.outputs.failed_steps }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>",
+                    "short": false
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Run",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_ENG_NOTIFS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   otel-cicd-action:
     if: always()
     name: OpenTelemetry Export Trace
@@ -702,6 +787,7 @@ jobs:
         notify_helm_charts,
         notify_ch,
         notify_clickhouse_clickstack,
+        slack-notify-failure,
       ]
     steps:
       - name: Export workflow

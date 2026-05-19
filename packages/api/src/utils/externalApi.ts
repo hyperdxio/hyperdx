@@ -34,7 +34,7 @@ const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
 export function translateExternalChartToTileConfig(
   chart: SeriesTile,
 ): DashboardDocument['tiles'][number] {
-  const { id, name, x, y, w, h, series, asRatio } = chart;
+  const { id, name, x, y, w, h, series, asRatio, containerId, tabId } = chart;
 
   if (series.length === 0) {
     throw new Error('Chart must have at least one series');
@@ -203,6 +203,8 @@ export function translateExternalChartToTileConfig(
     w,
     h,
     config,
+    ...(containerId !== undefined ? { containerId } : {}),
+    ...(tabId !== undefined ? { tabId } : {}),
   };
 }
 
@@ -229,6 +231,7 @@ export type ExternalAlert = {
   id: string;
   name?: string | null;
   message?: string | null;
+  note?: string | null;
   threshold: number;
   thresholdMax?: number;
   interval: AlertInterval;
@@ -327,6 +330,7 @@ export function translateAlertDocumentToExternalAlert(
     id: alertObj._id.toString(),
     name: alertObj.name,
     message: alertObj.message,
+    note: alertObj.note ?? null,
     threshold: alertObj.threshold,
     thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,
