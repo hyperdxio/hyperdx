@@ -211,10 +211,11 @@ export default function EditTimeChartForm({
     }
   }, [configType, displayType, previousDisplayType, setValue]);
 
-  const showGeneratedSql = TABS_WITH_GENERATED_SQL.has(activeTab);
+  const showGeneratedSql =
+    TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;
 
   const showSampleEvents =
-    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
+    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput && !isPromqlInput;
 
   const [
     alignDateRangeToGranularity,

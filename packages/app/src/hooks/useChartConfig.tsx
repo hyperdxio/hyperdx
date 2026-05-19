@@ -485,7 +485,11 @@ export function useRenderedSqlChartConfig(
       return format(sql);
     },
     ...options,
-    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
+    enabled:
+      enabled &&
+      !isLoadingMVOptimization &&
+      !isSourceLoading &&
+      !isPromqlChartConfig(config),
   });
 
   return {
