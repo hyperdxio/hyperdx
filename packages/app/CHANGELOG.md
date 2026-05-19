@@ -1,5 +1,30 @@
 # @hyperdx/app
 
+## 2.26.0
+
+### Patch Changes
+
+- 3becf06e: feat: Minor dashboard improvements
+- e2db2efe: Tune HyperDX theme tokens for sidenav active states, field backgrounds, borders, and hover grays; remove redundant color prop from chart assistant button
+- b1004b73: Fall back when the browser Clipboard API is unavailable and show a clear error
+  if copying still fails.
+- 4e32e9c8: Fix `href interpolation failed` error when loading a dashboard page directly without query params by guarding the granularity URL sync until the router is ready.
+- e268f6aa: Fix label color for red `Menu.Item` rows (for example Logout) by overriding `--menu-item-color` in global CSS. `Menu.extend` item styles do not apply when the menu dropdown is portaled outside the Menu root.
+- d2b6dde0: fix: Persist heatmap drag-select rectangle on Event Deltas and Search heatmaps so the dashed selection stays visible after mouseup
+- 6c55978b: feat(alerts): include tileId in Slack alert URLs
+- 3feaa013: chore: Remove the 'saved searches and dashboards have moved' callout
+- df208247: fix: Fix missing bar chart bar when there is only one bar
+- Updated dependencies [4c2c3f37]
+- Updated dependencies [84117a7a]
+- Updated dependencies [51abe987]
+- Updated dependencies [46fe675b]
+- Updated dependencies [7386f14b]
+- Updated dependencies [6c55978b]
+- Updated dependencies [46c1459b]
+- Updated dependencies [40336e9e]
+  - @hyperdx/api@2.26.0
+  - @hyperdx/common-utils@0.19.1
+
 ## 2.25.0
 
 ### Minor Changes

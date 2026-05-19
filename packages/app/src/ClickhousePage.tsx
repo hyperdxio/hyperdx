@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import {
   parseAsFloat,
@@ -43,6 +44,7 @@ import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { clickhouseSql } from './utils/codeMirror';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
@@ -489,6 +491,7 @@ function InsertsTab({
 }
 
 function ClickhousePage() {
+  const brandName = useBrandDisplayName();
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
   const [_connection, setConnection] = useQueryState('connection');
@@ -586,6 +589,9 @@ function ClickhousePage() {
 
   return (
     <Box p="sm" data-testid="clickhouse-dashboard-page">
+      <Head>
+        <title>ClickHouse Dashboard – {brandName}</title>
+      </Head>
       <Breadcrumbs mb="xs" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import {
   parseAsString,
@@ -88,6 +89,7 @@ import {
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import DisplaySwitcher from './components/charts/DisplaySwitcher';
@@ -1434,6 +1436,7 @@ const appliedConfigMap = {
 };
 
 function ServicesDashboardPage() {
+  const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -1578,6 +1581,9 @@ function ServicesDashboardPage() {
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">
+      <Head>
+        <title>Services Dashboard – {brandName}</title>
+      </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards
