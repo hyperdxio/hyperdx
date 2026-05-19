@@ -11,6 +11,7 @@ import type {
   PresetDashboardFilter,
   RotateApiKeyApiResponse,
   TeamApiResponse,
+  TeamClickHouseSettingsUpdate,
   TeamInvitationsApiResponse,
   TeamMembersApiResponse,
   TeamTagsApiResponse,
@@ -364,14 +365,7 @@ const api = {
     return useMutation<
       UpdateClickHouseSettingsApiResponse,
       HTTPError,
-      {
-        searchRowLimit?: number | null;
-        fieldMetadataDisabled?: boolean | null;
-        metadataMaxRowsToRead?: number | null;
-        queryTimeout?: number | null;
-        parallelizeWhenPossible?: boolean | null;
-        filterKeysFetchLimit?: number | null;
-      }
+      TeamClickHouseSettingsUpdate
     >({
       mutationFn: async settings =>
         hdxServer(`team/clickhouse-settings`, {

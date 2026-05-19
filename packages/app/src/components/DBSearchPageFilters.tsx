@@ -1125,7 +1125,10 @@ const DBSearchPageFiltersComponent = ({
     'hdx-shared-filters-expanded',
     true,
   );
-  const [showAllValues, setShowAllValues] = useState(true);
+  const [showAllValues, setShowAllValues] = useLocalStorage(
+    'hdx-show-all-filter-values',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: source } = useSource({ id: sourceId });
