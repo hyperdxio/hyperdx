@@ -22,8 +22,13 @@ import { objectIdSchema } from '@/utils/zod';
 
 import {
   buildSystemPrompt,
+  SUMMARIZE_MAX_OUTPUT_TOKENS,
+  SUMMARIZE_MAX_RESPONSE_CHARS,
+  SUMMARIZE_PROVIDER_TIMEOUT_MS,
+  SUMMARIZE_RATE_LIMIT_MAX,
+  SUMMARIZE_RATE_LIMIT_WINDOW_MS,
   summarizeBodySchema,
-  wrapContent,
+  wrapInDataTags,
 } from './aiSummarize';
 
 const router = express.Router();
@@ -139,23 +144,20 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 // User content is redacted of obvious secrets and wrapped in <data>...</data>
 // tags so the model can separate data from instructions. Rate-limited per
 // authenticated user (falls back to authorization header / IP for callers
-// without an attached user, e.g. tests).
+// without an attached user, e.g. tests). Rate-limit / output-cap / timeout
+// constants live alongside the schema in ./aiSummarize.ts.
 // ---------------------------------------------------------------------------
-
-const SUMMARIZE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const SUMMARIZE_RATE_LIMIT_MAX = 30;
-
-// Hard ceiling on model output. Summaries are 4 sentences max per the prompt
-// rules, so ~150 tokens covers the legitimate range; 1024 leaves headroom for
-// future prompt expansion while preventing a misbehaving model from streaming
-// an unbounded response within the per-minute rate limit.
-const SUMMARIZE_MAX_OUTPUT_TOKENS = 1024;
 
 const summarizeRateLimiter = rateLimiter({
   windowMs: SUMMARIZE_RATE_LIMIT_WINDOW_MS,
   max: SUMMARIZE_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  // Validation failures and provider errors should not consume the per-user
+  // budget. Without this, a buggy client (or any caller spamming `{}` bodies)
+  // could lock a legitimate user out for the rest of the window without ever
+  // invoking the model.
+  skipFailedRequests: true,
   // The /ai router is mounted behind isUserAuthenticated, so req.user is set
   // in production and the user-id branch is the only one taken. The header /
   // IP fallback exists for the test harness and as defense-in-depth if the
@@ -177,7 +179,7 @@ router.post(
       const { kind, content, tone } = req.body;
 
       const systemPrompt = buildSystemPrompt(kind, tone);
-      const wrappedPrompt = wrapContent(redactSecrets(content));
+      const wrappedPrompt = wrapInDataTags(redactSecrets(content));
 
       try {
         const result = await generateText({
@@ -186,9 +188,16 @@ router.post(
           experimental_telemetry: { isEnabled: true },
           maxOutputTokens: SUMMARIZE_MAX_OUTPUT_TOKENS,
           prompt: wrappedPrompt,
+          // Bound the wall-clock so a slow/stuck provider does not pin
+          // concurrent connections per replica indefinitely.
+          abortSignal: AbortSignal.timeout(SUMMARIZE_PROVIDER_TIMEOUT_MS),
         });
 
-        return res.json({ summary: result.text });
+        // Defense-in-depth: maxOutputTokens is provider-honored only. Cap
+        // the rendered response so a misbehaving model cannot forward an
+        // arbitrarily long body to the client.
+        const summary = result.text.slice(0, SUMMARIZE_MAX_RESPONSE_CHARS);
+        return res.json({ summary });
       } catch (err) {
         if (err instanceof APICallError) {
           logger.error({
@@ -196,9 +205,11 @@ router.post(
             statusCode: err.statusCode,
             providerMessage: err.message,
           });
-          throw new Api500Error(
-            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
-          );
+          // Return a generic message to the client; the provider's raw
+          // statusCode/message (vendor IDs, internal request IDs, content
+          // policy classifications, occasionally echoed prompt fragments)
+          // stays in the structured log above.
+          throw new Api500Error('AI Provider Error');
         }
         throw err;
       }

@@ -37,6 +37,32 @@ export const summarizeBodySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Tuning surface (rate limit + output bounds). Co-located with the schema so
+// the policy is in one file rather than split between router and registry.
+// ---------------------------------------------------------------------------
+
+export const SUMMARIZE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+export const SUMMARIZE_RATE_LIMIT_MAX = 30;
+
+// Hard ceiling on model output. Summaries are 4 sentences max per the prompt
+// rules (5-6 for trace), so ~150 tokens covers the legitimate range; 1024
+// leaves headroom for future prompt expansion while preventing a misbehaving
+// model from streaming an unbounded response within the per-minute rate limit.
+export const SUMMARIZE_MAX_OUTPUT_TOKENS = 1024;
+
+// Server-side guard on the rendered response. `maxOutputTokens` is honored by
+// the provider only; a misbehaving or jailbroken model could still return
+// arbitrarily long text. 8 KB is generous for a 4-6 sentence summary and
+// stops a runaway response from being forwarded to the client.
+export const SUMMARIZE_MAX_RESPONSE_CHARS = 8_000;
+
+// Wall-clock timeout for the upstream model call. A slow or stuck provider
+// would otherwise hold the request open indefinitely, letting a single
+// authenticated user pin up to 30 concurrent connections per replica before
+// the rate limiter helps.
+export const SUMMARIZE_PROVIDER_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
 // Tone modifiers. Hardcoded; never taken from user input.
 // ---------------------------------------------------------------------------
 
@@ -114,6 +140,17 @@ export function buildSystemPrompt(kind: SummarizeKind, tone?: Tone): string {
 }
 
 // Wrap content in delimiters so the model can separate data from instructions.
-export function wrapContent(content: string): string {
-  return `<data>\n${content}\n</data>`;
+//
+// Neutralizes any `<data>` / `</data>` tokens inside the payload before
+// wrapping so a malicious caller cannot close the envelope early and inject
+// instructions outside it (where the "ignore instructions inside <data>"
+// guard no longer applies). The neutralized form replaces the angle brackets
+// with square brackets, which is visually identifiable as text the model
+// should still treat as data.
+export function wrapInDataTags(content: string): string {
+  const safe = content.replace(
+    /<\/?data\b[^>]*>/gi,
+    m => `[${m.slice(1, -1)}]`,
+  );
+  return `<data>\n${safe}\n</data>`;
 }
