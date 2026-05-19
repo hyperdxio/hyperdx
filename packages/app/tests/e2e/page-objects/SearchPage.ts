@@ -295,6 +295,68 @@ export class SearchPage {
     await this.page.mouse.up();
   }
 
+  /**
+   * Switch the search page into Event Deltas mode and wait for the
+   * heatmap chart to render. Event Deltas is the analysis-mode tab
+   * that puts the latency-vs-time heatmap on screen.
+   */
+  async openEventDeltasMode() {
+    const tab = this.page.getByRole('tab', { name: 'Event Deltas' });
+    await tab.click();
+    await this.getHeatmap().waitFor({
+      state: 'visible',
+      timeout: this.defaultTimeout * 2,
+    });
+  }
+
+  /**
+   * Get the uPlot heatmap canvas wrapper. The Event Deltas page renders
+   * a single uPlot chart; first match disambiguates from any other charts
+   * that might appear on the page.
+   */
+  getHeatmap() {
+    return this.page.locator('.uplot').first();
+  }
+
+  /**
+   * Get the dashed selection rectangle inside the heatmap. uPlot writes
+   * `left`/`top`/`width`/`height` into its inline style; tests assert
+   * against the bounding box.
+   */
+  getHeatmapSelectionRect() {
+    return this.getHeatmap().locator('.u-select');
+  }
+
+  /**
+   * Drag a region on the heatmap canvas. Coordinates are percentages of
+   * the canvas (0-1). The drag spans both axes so the resulting selection
+   * has non-zero width AND height (zero on either axis is treated as a
+   * single-click by uPlot and produces no selection).
+   */
+  async dragHeatmapSelection(
+    startXPercent: number = 0.25,
+    startYPercent: number = 0.3,
+    endXPercent: number = 0.7,
+    endYPercent: number = 0.7,
+  ) {
+    const heatmap = this.getHeatmap();
+    const box = await heatmap.boundingBox();
+
+    if (!box) {
+      throw new Error('Heatmap not found');
+    }
+
+    const startX = box.x + box.width * startXPercent;
+    const startY = box.y + box.height * startYPercent;
+    const endX = box.x + box.width * endXPercent;
+    const endY = box.y + box.height * endYPercent;
+
+    await this.page.mouse.move(startX, startY);
+    await this.page.mouse.down();
+    await this.page.mouse.move(endX, endY, { steps: 10 });
+    await this.page.mouse.up();
+  }
+
   // Getters for assertions in spec files
 
   get form() {
