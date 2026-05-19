@@ -127,6 +127,69 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('round-trips note through create, update, and clear', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    // Create with a note
+    const alert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        note: 'initial note',
+      })
+      .expect(200);
+
+    // Verify note is returned in GET list
+    const listAfterCreate = await agent.get('/alerts').expect(200);
+    const created = listAfterCreate.body.data.find(
+      (a: { _id: string }) => a._id === alert.body.data._id,
+    );
+    expect(created.note).toBe('initial note');
+
+    // Verify note is returned in GET single
+    const single = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(single.body.data.note).toBe('initial note');
+
+    // Update the note
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...alert.body.data,
+        dashboardId: dashboard.body.id,
+        note: 'updated note',
+      })
+      .expect(200);
+
+    const afterUpdate = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(afterUpdate.body.data.note).toBe('updated note');
+
+    // Clear the note
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...alert.body.data,
+        dashboardId: dashboard.body.id,
+        note: null,
+      })
+      .expect(200);
+
+    const afterClear = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(afterClear.body.data.note).toBeNull();
+  });
+
   it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {
     const dashboard = await agent
       .post('/dashboards')

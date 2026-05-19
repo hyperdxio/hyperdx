@@ -9,6 +9,7 @@ export interface IDashboard extends z.infer<typeof DashboardSchema> {
   team: ObjectId;
   createdBy?: ObjectId;
   updatedBy?: ObjectId;
+  provisioned?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,10 +45,14 @@ export default mongoose.model<IDashboard>(
         ref: 'User',
         required: false,
       },
+      provisioned: { type: Boolean, default: false },
     },
     {
       timestamps: true,
       toJSON: { getters: true },
     },
+  ).index(
+    { name: 1, team: 1 },
+    { unique: true, partialFilterExpression: { provisioned: true } },
   ),
 );

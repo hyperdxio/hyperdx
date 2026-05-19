@@ -1,6 +1,7 @@
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  alertNoteSchema,
   AlertThresholdType,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
@@ -366,6 +367,17 @@ const externalDashboardSearchChartConfigSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
+// Extended schema for the /api/v2/search endpoint — adds orderBy which is not
+// applicable to dashboard tiles.
+export const externalDashboardSearchRequestSchema =
+  externalDashboardSearchChartConfigSchema.extend({
+    orderBy: z.string().max(1024).optional(),
+  });
+
+export type ExternalDashboardSearchRequestConfig = z.infer<
+  typeof externalDashboardSearchRequestSchema
+>;
+
 const externalDashboardMarkdownChartConfigSchema = z.object({
   displayType: z.literal('markdown'),
   markdown: z.string().max(50000).optional(),
@@ -582,6 +594,7 @@ export const alertSchema = z
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
+    note: alertNoteSchema,
   })
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertScheduleOffsetMinutes)

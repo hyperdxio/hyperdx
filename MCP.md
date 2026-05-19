@@ -106,11 +106,20 @@ with:
 
 ## Available Tools
 
-| Tool                       | Description                                                                                  |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| `hyperdx_list_sources`     | List all data sources and database connections, including column schemas and attribute keys  |
-| `hyperdx_query`            | Query observability data (logs, metrics, traces) using builder mode, search mode, or raw SQL |
-| `hyperdx_get_dashboard`    | List all dashboards or get full detail for a specific dashboard                              |
-| `hyperdx_save_dashboard`   | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
-| `hyperdx_delete_dashboard` | Permanently delete a dashboard and its attached alerts                                       |
-| `hyperdx_query_tile`       | Execute the query for a specific dashboard tile to validate results                          |
+| Tool                          | Description                                                                                  |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `hyperdx_list_sources`        | List all data sources and database connections, including column schemas and attribute keys   |
+| `hyperdx_timeseries`          | Plot metrics over time as a line or stacked bar chart                                        |
+| `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
+| `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |
+| `hyperdx_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
+| `hyperdx_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
+| `hyperdx_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
+| `hyperdx_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
+| `hyperdx_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
+| `hyperdx_query_tile`          | Execute the query for a specific dashboard tile to validate results                          |
+| `hyperdx_get_saved_search`    | List all saved searches or get full detail for a specific saved search                       |
+| `hyperdx_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
+| `hyperdx_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |
+| `hyperdx_save_alert`          | Create a new alert or update an existing one                                                 |
+| `hyperdx_get_webhook`         | List available webhook destinations for use as alert notification channels                    |

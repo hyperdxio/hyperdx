@@ -1,5 +1,131 @@
 # @hyperdx/common-utils
 
+## 0.19.1
+
+### Patch Changes
+
+- 84117a7a: fix: support CAST() form in KV items column expression parsing for direct_read optimization
+- 51abe987: fix: Event Patterns and other CTE-using queries now correctly detect Date-typed partition columns and wrap them in toDate(), fixing "No results found" against sources with a Date partition key (e.g. event_date / EventDate).
+
+## 0.19.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 143f7a79: feat: Add per-series number formats
+- 7d7269a7: feat: introducing rollup and source support for full autocomplete
+- d3a5a575: feat: add optional note field to alerts
+
+  Adds a freeform note/reason field to alerts that supports markdown formatting,
+  allowing on-call responders to document why an alert exists, threshold decision
+  history, and links to runbooks.
+
+  - New `note` field on the Alert model (optional, max 4096 chars, supports
+    markdown)
+  - Note textarea in both the saved-search alert modal and the dashboard tile
+    alert editor
+  - Notes displayed on the /alerts page in a collapsible section (hidden by
+    default) with full markdown rendering
+  - Alert tabs in the saved-search modal show a red bell firing indicator
+    alongside the webhook channel icon, matching the AlertStatusIcon pattern
+    used on dashboard tiles and the app nav
+  - The Alerts button on the search page shows a red bell icon when at least one
+    alert in the saved search is firing
+  - External API v2 updated with `note` field in OpenAPI docs
+
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+### Patch Changes
+
+- a5294f8d: fix: prevent false "data source not set" error on markdown dashboard tiles
+- 24699cde: fix: Infer singular quantileXXX() from MV quantilesXXXState()
+- f6a1d021: Add support for event patterns in MCP server, reduce code duplication
+- aa1a8523: feat: adds optimization for lucene rendering based on a keyvalue concatenated Array(String)
+- 022fe893: Fix issue with incorrect cache key being set in settings queries in nodejs
+- 41395ca7: External Dashboards API: tighten validation around container/tab references
+  on the v2 dashboards routes.
+
+  - Cap tile `containerId` and `tabId` at 256 characters to mirror the
+    internal `DashboardContainer` schema and the `DASHBOARD_CONTAINER_ID_MAX`
+    constant, now exported from `@hyperdx/common-utils`.
+  - Cap a single dashboard payload at 500 tiles via the new
+    `DASHBOARD_MAX_TILES` constant to keep one request from pushing tens of
+    MB into Mongo.
+  - Treat empty-string `containerId` / `tabId` on legacy Mongo docs as
+    absent on read, so dashboards predating the containers feature still
+    round-trip through the external schema's `min(1)` cap.
+  - Extract the cross-tile container/tab consistency check into a shared
+    `validateDashboardContainersConsistency` helper so the canonical
+    schema and the request body schema agree on what a valid payload is.
+  - OpenAPI now publishes the matching `maxLength` and `maxItems` bounds
+    on `DashboardContainer.id`, `DashboardContainerTab.id`, the
+    `containers` array, and the request `tiles` array.
+
+- 41395ca7: External Dashboards API: fix `PUT` round-trip when the request body omits
+  `containers`, and self-heal orphan `containerId` / `tabId` references on
+  read.
+
+  - Move tile-level container/tab reference resolution out of the request
+    body schema and into the `POST` and `PUT` handlers, so a `PUT` whose
+    body omits `containers` validates tile refs against the existing
+    dashboard's containers (the documented "preserve on omit" branch)
+    rather than against an empty fallback. Without this, a `PUT` that
+    changes only `tiles` while keeping a tile homed in a real preserved
+    container was rejected with `Tile references unknown containerId`.
+  - Split the shared validation helper into a structure-only pass
+    (`validateDashboardContainersStructure`) and a tile-ref pass
+    (`validateDashboardTileContainerRefs`) on
+    `@hyperdx/common-utils`. The composite
+    `validateDashboardContainersConsistency` now wraps both, so existing
+    callers keep their current behavior.
+  - On read, drop `tile.containerId` / `tile.tabId` when the ref does not
+    resolve to a container (or tab) in the same dashboard. A pre-existing
+    doc with an orphan ref now round-trips on `GET` as if the ref were
+    absent, so the next `PUT` validates instead of failing with
+    `Tile references unknown containerId`. Each drop is logged with the
+    dashboard id, tile id, and the offending ref.
+  - Document in the OpenAPI `PUT /api/v2/dashboards/{id}` description that
+    the endpoint does not support optimistic concurrency. Concurrent PUTs
+    may silently overwrite each other; clients should serialize edits to
+    a given dashboard.
+
+- 41395ca7: Internal refactor: move `validateDashboardContainersStructure` and
+  `validateDashboardTileContainerRefs` (and their two helper types) out
+  of `@hyperdx/common-utils/dist/types` into a new
+  `@hyperdx/common-utils/dist/dashboardValidation` module. The `types`
+  file now only contains types and type guards, matching the rest of the
+  codebase. The previously exported `validateDashboardContainersConsistency`
+  composite was only used by its own unit test and is dropped; production
+  code in the v2 dashboards router uses the two underlying helpers
+  directly. No behaviour change for callers of the external API.
+- ef571cc0: feat: heatmap charts in chart editor and dashboards
+
+  - Heatmap is now a selectable display type in the chart editor tabs
+  - Dashboard tiles render heatmaps via the shared `DBHeatmapChart` component
+  - Heatmap source picker restricted to trace sources; value/count expressions auto-populate from the source's duration expression
+  - Display Settings drawer (scale, value, count) shared across search Event Deltas, chart editor, and dashboards
+  - Click a dashboard heatmap tile to open Event Deltas with source, where clause, filters, and time range preserved
+  - Dynamic Y-axis sizing measures formatted tick labels so long labels (e.g. "1.67min") are not clipped
+
+- c2a9f96f: feat: Add more dashboard onClick linking options
+- a36c5b19: feat: Add filter templating to custom dashboard on-click
+- 9d5f14f3: feat: Add custom onClick field to external dashboards API
+- 401dff5a: feat: Support import/export for dashboard onClicks
+
 ## 0.18.1
 
 ### Patch Changes

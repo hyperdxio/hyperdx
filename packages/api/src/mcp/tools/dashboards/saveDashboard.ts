@@ -16,16 +16,21 @@ import {
   fetchSourcesForValidation,
   filterChangedHeatmapTiles,
   getHeatmapTilesWithIncompatibleSources,
+  getInvalidOnClickSearchSources,
   getMissingConnections,
+  getMissingOnClickDashboards,
   getMissingSources,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from '@/routers/external-api/v2/utils/dashboards';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import type {
+  ExternalDashboardFilter,
+  ExternalDashboardTileWithId,
+} from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { mcpContainersParam, mcpTilesParam } from './schemas';
+import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -55,6 +60,7 @@ export function registerSaveDashboard(
         tiles: mcpTilesParam,
         tags: z.array(z.string()).optional().describe('Dashboard tags'),
         containers: mcpContainersParam.optional(),
+        filters: mcpFiltersParam.optional(),
       }),
     },
     withToolTracing(
@@ -66,6 +72,7 @@ export function registerSaveDashboard(
         tiles: inputTiles,
         tags,
         containers,
+        filters,
       }) => {
         if (!dashboardId) {
           return createDashboard({
@@ -75,6 +82,7 @@ export function registerSaveDashboard(
             inputTiles,
             tags,
             containers,
+            inputFilters: filters,
           });
         }
         return updateDashboard({
@@ -85,6 +93,7 @@ export function registerSaveDashboard(
           inputTiles,
           tags,
           containers,
+          inputFilters: filters,
         });
       },
     ),
@@ -100,6 +109,7 @@ async function createDashboard({
   inputTiles,
   tags,
   containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -107,12 +117,14 @@ async function createDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
+  inputFilters: ExternalDashboardFilter[] | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
     tags,
     containers,
+    filters: inputFilters,
   });
   if (!parsed.success) {
     return {
@@ -151,9 +163,16 @@ async function createDashboard({
 
   // Hoist the source fetch so missing-source and heatmap-source-kind
   // checks share a single DB round-trip, mirroring the REST POST path.
-  const [sources, missingConnections] = await Promise.all([
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+  ] = await Promise.all([
     fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
+    getMissingOnClickDashboards(teamId, tilesWithId),
+    getInvalidOnClickSearchSources(teamId, tilesWithId),
   ]);
 
   const missingSources = getMissingSources(sources, tilesWithId, filters);
@@ -199,6 +218,31 @@ async function createDashboard({
     };
   }
 
+  // Validate that a table tile's row-click will not land on a
+  // missing dashboard or a non-log/trace source.
+  if (missingOnClickDashboards.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`,
+        },
+      ],
+    };
+  }
+
   const internalTiles = convertExternalTilesToInternal(tilesWithId);
   const filtersWithIds = convertExternalFiltersToInternal(filters ?? []);
 
@@ -228,7 +272,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -248,6 +292,7 @@ async function updateDashboard({
   inputTiles,
   tags,
   containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -256,6 +301,7 @@ async function updateDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
+  inputFilters: ExternalDashboardFilter[] | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
@@ -269,6 +315,7 @@ async function updateDashboard({
     tiles: inputTiles,
     tags,
     containers,
+    filters: inputFilters,
   });
   if (!parsed.success) {
     return {
@@ -292,9 +339,17 @@ async function updateDashboard({
   // the REST PUT path. `containers` is in the projection so the
   // container/tab ref check can fall back to the persisted containers
   // when the payload omits them.
-  const [sources, missingConnections, existingDashboard] = await Promise.all([
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+    existingDashboard,
+  ] = await Promise.all([
     fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
+    getMissingOnClickDashboards(teamId, tilesWithId),
+    getInvalidOnClickSearchSources(teamId, tilesWithId),
     Dashboard.findOne(
       { _id: dashboardId, team: teamId },
       { tiles: 1, filters: 1, containers: 1 },
@@ -369,6 +424,31 @@ async function updateDashboard({
         {
           type: 'text' as const,
           text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  // Validate that a table tile's row-click will not land on a
+  // missing dashboard or a non-log/trace source.
+  if (missingOnClickDashboards.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`,
         },
       ],
     };
@@ -449,7 +529,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
