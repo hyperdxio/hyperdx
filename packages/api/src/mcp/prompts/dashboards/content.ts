@@ -31,14 +31,14 @@ IMPORTANT: Call hyperdx_list_sources first to get the full column schema and att
 == UPDATING AN EXISTING DASHBOARD ==
 
 When updating a dashboard (passing the top-level \`id\` to hyperdx_save_dashboard),
-the \`filters\` array must be fully self-describing — every filter needs an \`id\`:
+the \`filters\` array must be fully self-describing: every filter needs an \`id\`:
 
   - Existing filter you are KEEPING: copy its \`id\` verbatim from the
     hyperdx_get_dashboard response. The same applies if you are renaming
     or tweaking it. This preserves any savedFilterValues bound to that id.
   - New filter you are ADDING in this update: generate a fresh random
     24-character hex string (a Mongo-style ObjectId) and set it as \`id\`.
-    Do not reuse an existing filter's id and do not leave \`id\` blank —
+    Do not reuse an existing filter's id and do not leave \`id\` blank.
     omitting it would force the server to generate one and obscure the
     new filter's identity from your own bookkeeping.
   - Existing filter you are REMOVING: drop it from the array entirely.
@@ -1147,9 +1147,9 @@ Required parameters:
   - startTime / endTime for the time window
 
 Optional parameters:
-  - where — filter to specific services or severity levels before mining
-  - sampleSize — increase for more accurate patterns (default 10000, max 25000)
-  - bodyExpression — column to mine (auto-detected: Body for logs, SpanName for traces)
+  - where: filter to specific services or severity levels before mining
+  - sampleSize: increase for more accurate patterns (default 10000, max 25000)
+  - bodyExpression: column to mine (auto-detected: Body for logs, SpanName for traces)
 
 Example: find top patterns for production services over the last 4 hours:
   hyperdx_event_patterns({
