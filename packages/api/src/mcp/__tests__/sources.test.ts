@@ -270,10 +270,13 @@ describe('MCP Source Tools', () => {
         kind: SourceKind.Metric,
       });
 
-      // Metric sources have metricTables but no column schema
+      // Metric sources have metricTables but no column schema or value samples
       expect(output.source.metricTables).toBeDefined();
       expect(output.source.metricTables).toHaveProperty('gauge');
       expect(output.source.columns).toBeUndefined();
+      expect(output.source.lowCardinalityValues).toBeUndefined();
+      expect(output.source.mapAttributeKeys).toBeUndefined();
+      expect(output.source.mapAttributeValues).toBeUndefined();
     });
 
     it('should include usage guidance and nextSteps', async () => {
