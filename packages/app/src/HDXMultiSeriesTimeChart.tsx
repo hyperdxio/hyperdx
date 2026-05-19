@@ -36,6 +36,10 @@ import styles from '../styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
 
+const Y_AXIS_WIDTH = 40;
+const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
+const SINGLE_POINT_BAR_WIDTH_RATIO = 0.8;
+
 type TooltipPayload = {
   dataKey: string;
   name: string;
@@ -473,6 +477,26 @@ export const MemoChart = memo(function MemoChart({
   }, [graphResults, lineData, selectedSeriesNames]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Recharts computes bar width from the smallest gap between ticks on a
+  // numerical XAxis. With a single data point there are no gaps, so the
+  // computed width is 0 and bars become invisible. Provide an explicit
+  // barSize for that case, sized to most of the drawable width (the
+  // xAxisDomain already spans exactly one granularity for StackedBar charts).
+  const singlePointBarSize = useMemo(() => {
+    if (displayType !== DisplayType.StackedBar) return undefined;
+    if (graphResults.length !== 1) return undefined;
+    const drawableWidth = Math.max(
+      0,
+      containerWidth - Y_AXIS_WIDTH - SINGLE_POINT_BAR_RIGHT_PADDING,
+    );
+    if (drawableWidth <= 0) return undefined;
+    return Math.max(
+      1,
+      Math.floor(drawableWidth * SINGLE_POINT_BAR_WIDTH_RATIO),
+    );
+  }, [displayType, graphResults.length, containerWidth]);
 
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
@@ -541,7 +565,9 @@ export const MemoChart = memo(function MemoChart({
       height="100%"
       minWidth={0}
       onResize={(width, height) => {
-        sizeRef.current = [width ?? 1, height ?? 1];
+        const w = width ?? 1;
+        sizeRef.current = [w, height ?? 1];
+        setContainerWidth(prev => (prev === w ? prev : w));
       }}
       className={isLoading ? 'effect-pulse' : ''}
     >
@@ -551,6 +577,7 @@ export const MemoChart = memo(function MemoChart({
         data={graphResults}
         syncId="hdx"
         syncMethod="value"
+        barSize={singlePointBarSize}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => {
           setIsHovered(false);
@@ -678,7 +705,7 @@ export const MemoChart = memo(function MemoChart({
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <YAxis
-          width={40}
+          width={Y_AXIS_WIDTH}
           minTickGap={25}
           tickFormatter={tickFormatter}
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}

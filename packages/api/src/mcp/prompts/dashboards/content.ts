@@ -760,7 +760,7 @@ SQL TEMPLATE REFERENCE:
 }
 
 export function buildQueryGuidePrompt(): string {
-  return `Reference guide for writing queries with HyperDX MCP tools (hyperdx_query and hyperdx_save_dashboard).
+  return `Reference guide for writing queries with HyperDX MCP tools (hyperdx_timeseries, hyperdx_table, hyperdx_search, hyperdx_event_patterns, hyperdx_sql, and hyperdx_save_dashboard).
 
 == AGGREGATION FUNCTIONS (aggFn) ==
 
@@ -1106,10 +1106,10 @@ containers[i].tabs[j].id). Read the path to know which input to fix.
 
 == EVENT PATTERN MINING ==
 
-Use displayType "event_patterns" on hyperdx_query when asked to find common log
-messages, recurring patterns, noisy services, or top event types. This is the
-right choice whenever the question is about "most common logs", "top patterns",
-"what is generating the most log volume", or similar pattern-discovery questions.
+Use hyperdx_event_patterns when asked to find common log messages, recurring
+patterns, noisy services, or top event types. This is the right choice whenever
+the question is about "most common logs", "top patterns", "what is generating
+the most log volume", or similar pattern-discovery questions.
 
 It samples random events and clusters them with the Drain algorithm, returning:
   - pattern templates (with <*> wildcards for variable parts)
@@ -1127,8 +1127,7 @@ Optional parameters:
   - bodyExpression — column to mine (auto-detected: Body for logs, SpanName for traces)
 
 Example: find top patterns for production services over the last 4 hours:
-  hyperdx_query({
-    displayType: "event_patterns",
+  hyperdx_event_patterns({
     sourceId: "<log-source-id>",
     startTime: "<4 hours ago ISO>",
     endTime: "<now ISO>",
@@ -1150,9 +1149,10 @@ Example: find top patterns for production services over the last 4 hours:
    Correct: groupBy: "SpanAttributes['http.method']"
    NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
 
-4. Multiple select items on number/pie tiles
+4. Multiple select items on number/pie tiles (dashboard tiles)
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
    Correct: displayType: "number", select: [{ aggFn: "count" }]
+   Note: hyperdx_table auto-upgrades shape:"number" to "table" when select has >1 item.
 
 5. Missing level for quantile
    Wrong:   { aggFn: "quantile", valueExpression: "Duration" }

@@ -109,7 +109,11 @@ with:
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `hyperdx_list_sources`        | List all data sources and database connections, including column schemas and attribute keys   |
-| `hyperdx_query`               | Query observability data (logs, metrics, traces) using builder mode, search mode, or raw SQL |
+| `hyperdx_timeseries`          | Plot metrics over time as a line or stacked bar chart                                        |
+| `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
+| `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |
+| `hyperdx_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
+| `hyperdx_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `hyperdx_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `hyperdx_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
 | `hyperdx_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
