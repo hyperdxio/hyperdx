@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
+import { notifications } from '@mantine/notifications';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
@@ -53,31 +58,42 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       );
 
       const rowData = JSON.stringify(parsedRow, null, 2);
-      await navigator.clipboard.writeText(rowData);
+      const copied = await copyTextToClipboard(rowData);
+      if (!copied) {
+        notifications.show({
+          color: 'red',
+          message: CLIPBOARD_ERROR_MESSAGE,
+        });
+        return;
+      }
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy row data to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    } catch {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
     }
   };
 
   const copyRowUrl = async () => {
-    try {
-      const rowWhereResult = getRowWhere(row);
-      const currentUrl = new URL(window.location.href);
-      // Add the row identifier as query parameters
-      currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
-      if (sourceId) {
-        currentUrl.searchParams.set('rowSource', sourceId);
-      }
-      await navigator.clipboard.writeText(currentUrl.toString());
-      setIsUrlCopied(true);
-      setTimeout(() => setIsUrlCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy URL to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const rowWhereResult = getRowWhere(row);
+    const currentUrl = new URL(window.location.href);
+    // Add the row identifier as query parameters
+    currentUrl.searchParams.set('rowWhere', rowWhereResult.where);
+    if (sourceId) {
+      currentUrl.searchParams.set('rowSource', sourceId);
     }
+    const copied = await copyTextToClipboard(currentUrl.toString());
+    if (!copied) {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+      return;
+    }
+    setIsUrlCopied(true);
+    setTimeout(() => setIsUrlCopied(false), 2000);
   };
 
   return (
