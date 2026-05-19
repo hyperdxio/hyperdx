@@ -138,7 +138,7 @@ export function registerDescribeSource(
                     {
                       source: meta,
                       nextSteps: {
-                        query: `Use hyperdx_query with sourceId "${sourceId}" and the metric tables above.`,
+                        query: `Use hyperdx_timeseries, hyperdx_table, or hyperdx_search with sourceId "${sourceId}" and the metric tables above.`,
                       },
                     },
                     null,
@@ -324,7 +324,7 @@ export function registerDescribeSource(
                 'Example: where: "SeverityText:error" (if \'error\' appears in the sampled values above).',
             },
             nextSteps: {
-              query: `Use hyperdx_query with sourceId "${sourceId}" and the columns/attributes above.`,
+              query: `Use hyperdx_timeseries, hyperdx_table, or hyperdx_search with sourceId "${sourceId}" and the columns/attributes above.`,
               mapAttributeAccess:
                 "Use bracket syntax for map columns: ResourceAttributes['service.name'], SpanAttributes['http.method']",
             },
