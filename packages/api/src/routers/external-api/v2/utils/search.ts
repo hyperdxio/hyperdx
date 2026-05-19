@@ -40,7 +40,7 @@ type SearchResults = {
 // pick up extra timestamp-like columns from the table's sort key. We skip that
 // step here to avoid an extra CH round-trip on the critical path. Sources that
 // need the full sorting-key-aware behaviour should set `orderByExpression`.
-export function resolveSearchOrderBy(source: TSource): string {
+function resolveSearchOrderBy(source: TSource): string {
   const explicit =
     isLogSource(source) || isTraceSource(source)
       ? source.orderByExpression?.trim()

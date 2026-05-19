@@ -73,6 +73,7 @@ const CH_USER_INPUT_ERRORS = new Set([
  *         whereLanguage:
  *           type: string
  *           enum: [lucene, sql]
+ *           example: lucene
  *           default: lucene
  *           description: Language used for the where filter. Default is lucene.
  *         select:
@@ -129,6 +130,7 @@ const CH_USER_INPUT_ERRORS = new Set([
  *       properties:
  *         data:
  *           type: array
+ *           description: Array of result rows. Each row is an object with keys corresponding to the requested columns.
  *           items:
  *             $ref: '#/components/schemas/SearchRow'
  *         rows:

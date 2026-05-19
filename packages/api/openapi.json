@@ -2648,6 +2648,7 @@
               "lucene",
               "sql"
             ],
+            "example": "lucene",
             "default": "lucene",
             "description": "Language used for the where filter. Default is lucene."
           },
@@ -2690,6 +2691,7 @@
         "properties": {
           "data": {
             "type": "array",
+            "description": "Array of result rows. Each row is an object with keys corresponding to the requested columns.",
             "items": {
               "$ref": "#/components/schemas/SearchRow"
             }

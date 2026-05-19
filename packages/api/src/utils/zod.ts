@@ -359,17 +359,13 @@ const externalDashboardHeatmapChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
-export const externalDashboardSearchChartConfigSchema = z.object({
+const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
   select: z.string().max(10000),
   where: z.string().max(10000).optional().default(''),
   whereLanguage: whereLanguageSchema,
 });
-
-export type ExternalDashboardSearchChartConfig = z.infer<
-  typeof externalDashboardSearchChartConfigSchema
->;
 
 // Extended schema for the /api/v2/search endpoint — adds orderBy which is not
 // applicable to dashboard tiles.
