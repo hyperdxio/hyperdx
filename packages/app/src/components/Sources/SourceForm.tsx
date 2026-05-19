@@ -36,6 +36,7 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -558,6 +559,96 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
             </Group>
           </Button>
         </Stack>
+      </FormRow>
+    </Stack>
+  );
+}
+
+/** Component for configuring metadata materialized views (key + KV rollups) */
+function MetadataMaterializedViewsFormSection({
+  control,
+  setValue,
+}: TableModelProps) {
+  const databaseName = useWatch({
+    control,
+    name: `from.databaseName`,
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const connection = useWatch({ control, name: `connection` });
+
+  const metadataMVs = useWatch({
+    control,
+    name: 'metadataMaterializedViews',
+  });
+
+  const hasMetadataMVs = !!metadataMVs;
+
+  return (
+    <Stack gap="md">
+      <FormRow
+        label="Metadata Materialized Views"
+        helpText="Configure materialized views for fast field discovery and value autocomplete. These pre-aggregated tables speed up filter loading and search suggestions."
+      >
+        {hasMetadataMVs ? (
+          <Stack gap="sm">
+            <Group justify="flex-end">
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                onClick={() => setValue('metadataMaterializedViews', undefined)}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Group>
+            <Grid>
+              <Grid.Col span={6}>
+                <Text size="xs" mb={4}>
+                  Key Rollup Table
+                </Text>
+                <DBTableSelectControlled
+                  name={'metadataMaterializedViews.keyRollupTable'}
+                  control={control}
+                  database={databaseName}
+                  connectionId={connection}
+                />
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" mb={4}>
+                  KV Rollup Table
+                </Text>
+                <DBTableSelectControlled
+                  name={'metadataMaterializedViews.kvRollupTable'}
+                  control={control}
+                  database={databaseName}
+                  connectionId={connection}
+                />
+              </Grid.Col>
+            </Grid>
+            <SelectControlled
+              name={'metadataMaterializedViews.granularity'}
+              control={control}
+              label="Granularity"
+              data={MV_GRANULARITY_OPTIONS}
+              placeholder="Select rollup granularity"
+            />
+          </Stack>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              setValue('metadataMaterializedViews', {
+                keyRollupTable: '',
+                kvRollupTable: '',
+                granularity: '',
+              })
+            }
+          >
+            <Group>
+              <IconCirclePlus size={16} />
+              Add Metadata Materialized Views
+            </Group>
+          </Button>
+        )}
       </FormRow>
     </Stack>
   );
@@ -1256,21 +1347,6 @@ function LogTableModelForm(props: TableModelProps) {
         </FormRow>
 
         <Divider />
-        {/* <FormRow
-          label={'Unique Row ID Expression'}
-          helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
-        >
-          <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="uniqueRowIdExpression"
-            placeholder="Timestamp, ServiceName, Body"
-          />
-        </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
             tableConnection={{
@@ -1313,6 +1389,8 @@ function LogTableModelForm(props: TableModelProps) {
         />
         <Divider />
         <MaterializedViewsFormSection {...props} />
+        <Divider />
+        <MetadataMaterializedViewsFormSection {...props} />
         <Divider />
         <OrderByFormRow
           control={control}
@@ -1623,6 +1701,8 @@ function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <MaterializedViewsFormSection {...props} />
       <Divider />
+      <MetadataMaterializedViewsFormSection {...props} />
+      <Divider />
       <OrderByFormRow
         control={control}
         databaseName={databaseName}
@@ -1891,6 +1971,10 @@ export function TableSourceForm({
               });
             }
             Object.entries(config).forEach(([key, value]) => {
+              if (value && typeof value === 'object' && !Array.isArray(value)) {
+                setValue(key as any, value);
+                return;
+              }
               resetField(key as any, {
                 keepDirty: true,
                 defaultValue: value,
@@ -1909,6 +1993,7 @@ export function TableSourceForm({
     watchedKind,
     resetField,
     metadata,
+    setValue,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -2217,7 +2302,23 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Text mb="lg">Source Settings</Text>
+        <Flex justify="space-between" align="center" mb="lg">
+          <Text>Source Settings</Text>
+          {!isNew && (
+            <Controller
+              control={control}
+              name="disabled"
+              render={({ field: { value, onChange } }) => (
+                <Switch
+                  size="sm"
+                  checked={!value}
+                  onChange={event => onChange(!event.currentTarget.checked)}
+                  label={value ? 'Disabled' : 'Enabled'}
+                />
+              )}
+            />
+          )}
+        </Flex>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}

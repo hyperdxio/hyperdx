@@ -54,6 +54,27 @@ const nextConfig = {
   ) => {
     if (isServer) {
       config.ignoreWarnings = [{ module: /opentelemetry/ }];
+
+      // Outside of Vercel preview deployments, the `/api/[...all]` catch-all
+      // proxies to a separately-deployed API service and never imports the
+      // `@hyperdx/api` package at runtime. Mark it (and its subpaths) as a
+      // CommonJS external so production app builds (Docker fullstack image,
+      // standalone Next output) stay byte-for-byte equivalent to today and
+      // do not pull in passport-saml, mongoose, AWS SDK, etc.
+      if (process.env.HDX_PREVIEW_INLINE_API !== 'true') {
+        config.externals = [
+          ...(config.externals ?? []),
+          ({ request }, callback) => {
+            if (
+              request === '@hyperdx/api' ||
+              request?.startsWith?.('@hyperdx/api/')
+            ) {
+              return callback(null, `commonjs ${request}`);
+            }
+            return callback();
+          },
+        ];
+      }
     }
     return config;
   },

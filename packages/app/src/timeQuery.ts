@@ -16,14 +16,12 @@ import {
   sub,
   subMilliseconds,
 } from 'date-fns';
-import { parseAsFloat, useQueryStates } from 'nuqs';
 import {
-  NumberParam,
-  StringParam,
-  useQueryParam,
-  useQueryParams,
-  withDefault,
-} from 'use-query-params';
+  parseAsFloat,
+  parseAsString,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
@@ -34,7 +32,7 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
+export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], {
     isUTC,
     format: 'normal',
@@ -96,14 +94,10 @@ export function useTimeQuery({
     undefined | string
   >(undefined);
 
-  const [_timeRangeQuery, setTimeRangeQuery] = useQueryParams(
+  const [_timeRangeQuery, setTimeRangeQuery] = useQueryStates(
+    timeRangeQueryStateMap,
     {
-      from: withDefault(NumberParam, undefined),
-      to: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
+      history: 'push',
     },
   );
 
@@ -116,14 +110,10 @@ export function useTimeQuery({
   );
 
   // Allow browser back/fwd button to modify the displayed time input value
-  const [inputTimeQuery, setInputTimeQuery] = useQueryParam(
-    'tq',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
-  );
+  const [inputTimeQuery, setInputTimeQuery] = useQueryState('tq', {
+    ...parseAsString.withDefault(''),
+    history: 'push',
+  });
   const prevInputTimeQuery = usePrevious(inputTimeQuery);
 
   useEffect(() => {
@@ -321,7 +311,7 @@ export function useTimeQuery({
     (newIsLive: boolean) => {
       if (isLive === false && newIsLive) {
         setTempLiveTailTimeRange(undefined);
-        setTimeRangeQuery({ from: undefined, to: undefined });
+        setTimeRangeQuery({ from: null, to: null });
         setDisplayedTimeInputValue(LIVE_TAIL_TIME_QUERY);
         setInputTimeQuery(LIVE_TAIL_TIME_QUERY);
         refreshLiveTailTimeRange();

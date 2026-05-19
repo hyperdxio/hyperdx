@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import {
   parseAsString,
@@ -88,6 +89,7 @@ import {
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import DisplaySwitcher from './components/charts/DisplaySwitcher';
@@ -646,7 +648,7 @@ function HttpTab({
             <DBListBarChart
               title="Top 20 Most Time Consuming Endpoints"
               groupColumn="Endpoint"
-              valueColumn="Total (ms)"
+              valueColumn="Total"
               getRowSearchLink={getRowSearchLink}
               hiddenSeries={[
                 'duration_ns',
@@ -674,9 +676,10 @@ function HttpTab({
                     aggCondition: '',
                   },
                   {
-                    alias: 'Total (ms)',
+                    alias: 'Total',
                     valueExpression: `duration_ns / ${expressions.durationDivisorForMillis}`,
                     aggCondition: '',
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'total_requests',
@@ -697,8 +700,9 @@ function HttpTab({
                     aggCondition: '',
                   },
                   {
-                    alias: 'P95 (ms)',
+                    alias: 'P95',
                     valueExpression: `duration_p95_ns / ${expressions.durationDivisorForMillis}`,
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'duration_p50_ns',
@@ -708,8 +712,9 @@ function HttpTab({
                     aggCondition: '',
                   },
                   {
-                    alias: 'Median (ms)',
+                    alias: 'Median',
                     valueExpression: `duration_p50_ns / ${expressions.durationDivisorForMillis}`,
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'error_requests',
@@ -726,10 +731,10 @@ function HttpTab({
                 ],
                 selectGroupBy: false,
                 groupBy: expressions.endpoint,
-                orderBy: '"Total (ms)" DESC',
+                orderBy: '"Total" DESC',
                 filters: [...getScopedFilters({ appliedConfig, expressions })],
                 dateRange: searchedTimeRange,
-                numberFormat: MS_NUMBER_FORMAT,
+                numberFormat: INTEGER_NUMBER_FORMAT,
                 limit: { limit: 20 },
               }}
             />
@@ -813,8 +818,9 @@ function HttpTab({
                     level: 0.95,
                   },
                   {
-                    alias: 'P95 (ms)',
+                    alias: 'P95',
                     valueExpression: `round(p95_duration_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'p50_duration_ns',
@@ -823,8 +829,9 @@ function HttpTab({
                     level: 0.5,
                   },
                   {
-                    alias: 'Median (ms)',
+                    alias: 'Median',
                     valueExpression: `round(p50_duration_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'duration_sum_ns',
@@ -832,8 +839,9 @@ function HttpTab({
                     aggFn: 'sum',
                   },
                   {
-                    alias: 'Total (ms)',
+                    alias: 'Total',
                     valueExpression: `round(duration_sum_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                    numberFormat: MS_NUMBER_FORMAT,
                   },
                   {
                     alias: 'error_count',
@@ -846,6 +854,7 @@ function HttpTab({
                     alias: 'Errors/Min',
                     valueExpression: `round(error_count /
                       age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000})), 1)`,
+                    numberFormat: INTEGER_NUMBER_FORMAT,
                   },
                 ],
                 filters: getScopedFilters({
@@ -858,9 +867,10 @@ function HttpTab({
                 dateRange: searchedTimeRange,
                 orderBy:
                   topEndpointsChartType === 'time'
-                    ? '"Total (ms)" DESC'
+                    ? '"Total" DESC'
                     : '"Errors/Min" DESC',
                 limit: { limit: 20 },
+                numberFormat: INTEGER_NUMBER_FORMAT,
               }}
             />
           )}
@@ -1218,6 +1228,7 @@ function DatabaseTab({
                     {
                       alias: 'Total',
                       valueExpression: `total_duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                     {
                       alias: 'total_queries',
@@ -1227,6 +1238,7 @@ function DatabaseTab({
                     {
                       alias: 'Queries/Min',
                       valueExpression: `total_queries / age('mi', toDateTime(${searchedTimeRange[0].getTime() / 1000}), toDateTime(${searchedTimeRange[1].getTime() / 1000}))`,
+                      numberFormat: INTEGER_NUMBER_FORMAT,
                     },
                     {
                       alias: 'p95_duration_ns',
@@ -1236,8 +1248,9 @@ function DatabaseTab({
                       aggCondition: '',
                     },
                     {
-                      alias: 'P95 (ms)',
+                      alias: 'P95',
                       valueExpression: `p95_duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                     {
                       alias: 'p50_duration_ns',
@@ -1247,8 +1260,9 @@ function DatabaseTab({
                       aggCondition: '',
                     },
                     {
-                      alias: 'Median (ms)',
+                      alias: 'Median',
                       valueExpression: `p50_duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                   ],
                   filters: [
@@ -1260,6 +1274,7 @@ function DatabaseTab({
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
                   limit: { limit: 20 },
+                  numberFormat: INTEGER_NUMBER_FORMAT,
                 }}
               />
             ) : (
@@ -1298,6 +1313,7 @@ function DatabaseTab({
                     {
                       alias: 'Total',
                       valueExpression: `duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                     {
                       alias: 'total_count',
@@ -1316,8 +1332,9 @@ function DatabaseTab({
                       level: 0.95,
                     },
                     {
-                      alias: 'P95 (ms)',
+                      alias: 'P95',
                       valueExpression: `p95_duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                     {
                       alias: 'p50_duration_ns',
@@ -1327,8 +1344,9 @@ function DatabaseTab({
                       level: 0.5,
                     },
                     {
-                      alias: 'Median (ms)',
+                      alias: 'Median',
                       valueExpression: `p50_duration_ns / ${expressions.durationDivisorForMillis}`,
+                      numberFormat: MS_NUMBER_FORMAT,
                     },
                   ],
                   filters: [
@@ -1340,6 +1358,7 @@ function DatabaseTab({
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
                   limit: { limit: 20 },
+                  numberFormat: INTEGER_NUMBER_FORMAT,
                 }}
               />
             ))}
@@ -1417,6 +1436,7 @@ const appliedConfigMap = {
 };
 
 function ServicesDashboardPage() {
+  const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -1433,7 +1453,9 @@ function ServicesDashboardPage() {
   const appliedConfigWithoutFilters = useMemo(() => {
     if (!sources?.length) return appliedConfigParams;
 
-    const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
+    const traceSources = sources?.filter(
+      s => s.kind === SourceKind.Trace && !s.disabled,
+    );
     const paramsSourceIdIsTraceSource = traceSources?.find(
       s => s.id === appliedConfigParams.source,
     );
@@ -1559,6 +1581,9 @@ function ServicesDashboardPage() {
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">
+      <Head>
+        <title>Services Dashboard – {brandName}</title>
+      </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards

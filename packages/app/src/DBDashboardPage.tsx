@@ -23,8 +23,10 @@ import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
   isRawSqlChartConfig,
@@ -49,6 +51,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
   Breadcrumbs,
@@ -68,6 +71,7 @@ import {
 import { useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
@@ -107,10 +111,12 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import { TimePicker } from '@/components/TimePicker';
+import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
   Dashboard,
   type Tile,
   useCreateDashboard,
+  useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
 import useDashboardContainers, {
@@ -144,7 +150,10 @@ import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
 import { EditablePageName } from './EditablePageName';
-import { GranularityPickerControlled } from './GranularityPicker';
+import {
+  GranularityPicker,
+  GranularityPickerControlled,
+} from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import {
@@ -152,9 +161,14 @@ import {
   useSource,
   useSources,
 } from './source';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import {
+  dateRangeToString,
+  parseTimeQuery,
+  useNewTimeQuery,
+} from './timeQuery';
 import { useConfirm } from './useConfirm';
 import { FormatTime } from './useFormatTime';
+import { useUserPreferences } from './useUserPreferences';
 import { getMetricTableName } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
@@ -373,6 +387,42 @@ const Tile = forwardRef(
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
 
+    const {
+      userPreferences: { isUTC },
+    } = useUserPreferences();
+
+    // Date range and granularity state local to the fullscreen view so that
+    // changing them does not propagate up to the dashboard.
+    const [fullscreenDateRange, setFullscreenDateRange] =
+      useState<[Date, Date]>(dateRange);
+    const [fullscreenInputValue, setFullscreenInputValue] = useState<string>(
+      () => dateRangeToString(dateRange, isUTC),
+    );
+    const [fullscreenGranularity, setFullscreenGranularity] = useState<
+      Granularity | 'auto' | undefined
+    >(() => (granularity as Granularity | undefined) ?? 'auto');
+
+    const openFullscreen = useCallback(() => {
+      // Reinitialize to the dashboard's current date range and granularity
+      // each time the fullscreen view is opened.
+      setFullscreenDateRange(dateRange);
+      setFullscreenInputValue(dateRangeToString(dateRange, isUTC));
+      setFullscreenGranularity(
+        (granularity as Granularity | undefined) ?? 'auto',
+      );
+      setIsFullscreen(true);
+    }, [dateRange, granularity, isUTC]);
+
+    const handleFullscreenSearch = useCallback(
+      (value: string) => {
+        const [start, end] = parseTimeRangeInput(value, isUTC);
+        if (start != null && end != null) {
+          setFullscreenDateRange([start, end]);
+        }
+      },
+      [isUTC],
+    );
+
     useEffect(() => {
       if (isHighlighted) {
         document
@@ -382,7 +432,19 @@ const Tile = forwardRef(
     }, [chart.id, isHighlighted]);
 
     // YouTube-style 'f' key shortcut for fullscreen toggle
-    useHotkeys([['f', () => isFocused && setIsFullscreen(prev => !prev)]]);
+    useHotkeys([
+      [
+        'f',
+        () => {
+          if (!isFocused) return;
+          if (isFullscreen) {
+            setIsFullscreen(false);
+          } else {
+            openFullscreen();
+          }
+        },
+      ],
+    ]);
 
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
@@ -397,6 +459,7 @@ const Tile = forwardRef(
     const isSourceUnset =
       !!chart.config &&
       isBuilderSavedChartConfig(chart.config) &&
+      displayTypeRequiresSource(chart.config.displayType) &&
       !chart.config.source;
 
     useEffect(() => {
@@ -581,7 +644,7 @@ const Tile = forwardRef(
             size="sm"
             onClick={e => {
               e.stopPropagation();
-              setIsFullscreen(true);
+              openFullscreen();
             }}
             title="View Fullscreen (f)"
           >
@@ -689,6 +752,7 @@ const Tile = forwardRef(
       onDuplicateClick,
       onEditClick,
       onMoveToGroup,
+      openFullscreen,
     ]);
 
     const title = useMemo(
@@ -708,8 +772,25 @@ const Tile = forwardRef(
           : [hoverToolbar, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
+        // Use the fullscreen-local date range and granularity when rendering
+        // inside the fullscreen modal so that changing them does not affect
+        // the dashboard.
+        const effectiveDateRange = isFullscreenView
+          ? fullscreenDateRange
+          : dateRange;
+        const effectiveGranularity = isFullscreenView
+          ? fullscreenGranularity
+          : queriedConfig?.granularity;
+        const effectiveQueriedConfig = queriedConfig
+          ? {
+              ...queriedConfig,
+              dateRange: effectiveDateRange,
+              granularity: effectiveGranularity,
+            }
+          : undefined;
+
         // Markdown charts may not have queriedConfig, if config.source is not set
-        const effectiveMarkdownConfig = queriedConfig ?? chart.config;
+        const effectiveMarkdownConfig = effectiveQueriedConfig ?? chart.config;
 
         return (
           <ErrorBoundary
@@ -740,16 +821,21 @@ const Tile = forwardRef(
               </ChartContainer>
             ) : (
               <>
-                {(queriedConfig?.displayType === DisplayType.Line ||
-                  queriedConfig?.displayType === DisplayType.StackedBar) && (
+                {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
+                  effectiveQueriedConfig?.displayType ===
+                    DisplayType.StackedBar) && (
                   <DBTimeChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
                     sourceId={chart.config.source}
                     showDisplaySwitcher={true}
-                    config={queriedConfig}
-                    onTimeRangeSelect={onTimeRangeSelect}
+                    config={effectiveQueriedConfig}
+                    onTimeRangeSelect={
+                      isFullscreenView
+                        ? (start, end) => setFullscreenDateRange([start, end])
+                        : onTimeRangeSelect
+                    }
                     setDisplayType={displayType => {
                       onUpdateChart?.({
                         ...chart,
@@ -761,54 +847,54 @@ const Tile = forwardRef(
                     }}
                   />
                 )}
-                {queriedConfig?.displayType === DisplayType.Table && (
+                {effectiveQueriedConfig?.displayType === DisplayType.Table && (
                   <Box p="xs" h="100%">
                     <DBTableChart
                       key={`${keyPrefix}-${chart.id}`}
                       title={title}
                       toolbarPrefix={toolbar}
-                      config={queriedConfig}
+                      config={effectiveQueriedConfig}
                       variant="muted"
                       getRowSearchLink={
-                        isBuilderChartConfig(queriedConfig)
+                        isBuilderChartConfig(effectiveQueriedConfig)
                           ? row =>
                               buildTableRowSearchUrl({
                                 row,
                                 source,
-                                config: queriedConfig,
-                                dateRange: dateRange,
+                                config: effectiveQueriedConfig,
+                                dateRange: effectiveDateRange,
                               })
                           : undefined
                       }
                     />
                   </Box>
                 )}
-                {queriedConfig?.displayType === DisplayType.Number && (
+                {effectiveQueriedConfig?.displayType === DisplayType.Number && (
                   <DBNumberChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
-                    config={queriedConfig}
+                    config={effectiveQueriedConfig}
                   />
                 )}
-                {queriedConfig?.displayType === DisplayType.Pie && (
+                {effectiveQueriedConfig?.displayType === DisplayType.Pie && (
                   <DBPieChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
-                    config={queriedConfig}
+                    config={effectiveQueriedConfig}
                   />
                 )}
-                {queriedConfig?.displayType === DisplayType.Heatmap &&
-                  isBuilderChartConfig(queriedConfig) && (
+                {effectiveQueriedConfig?.displayType === DisplayType.Heatmap &&
+                  isBuilderChartConfig(effectiveQueriedConfig) && (
                     <HeatmapTile
                       keyPrefix={keyPrefix}
                       chartId={chart.id}
                       title={title}
                       toolbar={toolbar}
-                      queriedConfig={queriedConfig}
+                      queriedConfig={effectiveQueriedConfig}
                       source={source}
-                      dateRange={dateRange}
+                      dateRange={effectiveDateRange}
                     />
                   )}
                 {effectiveMarkdownConfig?.displayType ===
@@ -821,8 +907,8 @@ const Tile = forwardRef(
                       config={effectiveMarkdownConfig}
                     />
                   )}
-                {queriedConfig?.displayType === DisplayType.Search &&
-                  isBuilderChartConfig(queriedConfig) &&
+                {effectiveQueriedConfig?.displayType === DisplayType.Search &&
+                  isBuilderChartConfig(effectiveQueriedConfig) &&
                   isBuilderSavedChartConfig(chart.config) && (
                     <ChartContainer
                       title={title}
@@ -834,18 +920,18 @@ const Tile = forwardRef(
                         enabled
                         sourceId={chart.config.source}
                         config={{
-                          ...queriedConfig,
+                          ...effectiveQueriedConfig,
                           orderBy: [
                             {
                               ordering: 'DESC',
                               valueExpression: getFirstTimestampValueExpression(
-                                queriedConfig.timestampValueExpression,
+                                effectiveQueriedConfig.timestampValueExpression,
                               ),
                             },
                           ],
-                          dateRange,
+                          dateRange: effectiveDateRange,
                           select:
-                            queriedConfig.select ||
+                            effectiveQueriedConfig.select ||
                             (source?.kind === SourceKind.Log ||
                             source?.kind === SourceKind.Trace
                               ? source.defaultTableSelectExpression
@@ -874,6 +960,8 @@ const Tile = forwardRef(
         onUpdateChart,
         source,
         dateRange,
+        fullscreenDateRange,
+        fullscreenGranularity,
         filterWarning,
         isSourceMissing,
         isSourceUnset,
@@ -947,7 +1035,24 @@ const Tile = forwardRef(
           opened={isFullscreen}
           onClose={() => setIsFullscreen(false)}
         >
-          {isFullscreen && renderChartContent(true, true)}
+          {isFullscreen && (
+            <Flex direction="column" gap="sm" h="100%" w="100%">
+              <Flex justify="flex-end" gap="sm">
+                <TimePicker
+                  inputValue={fullscreenInputValue}
+                  setInputValue={setFullscreenInputValue}
+                  onSearch={handleFullscreenSearch}
+                />
+                <GranularityPicker
+                  value={fullscreenGranularity}
+                  onChange={setFullscreenGranularity}
+                />
+              </Flex>
+              <Box style={{ flex: 1, minHeight: 0 }}>
+                {renderChartContent(true, true)}
+              </Box>
+            </Flex>
+          )}
         </FullscreenPanelModal>
       </>
     );
@@ -1191,6 +1296,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
+  const { data: allDashboards } = useDashboards();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
   const tableConnections = useMemo(() => {
@@ -1242,8 +1348,41 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
-    useDashboardFilters(filters);
+  const {
+    filterValues,
+    setFilterValue,
+    filterQueries,
+    setFilterQueries,
+    ignoredFilterExpressions,
+  } = useDashboardFilters(filters);
+
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
+
+  // Warn when the URL has filter values that don't correspond to any declared
+  // dashboard filter — they'd otherwise be silently dropped, and users who
+  // arrive via a shared link, bookmark, or onClick action might not notice.
+  // Only consider URL filters ignored once the dashboard has finished loading
+  // so we don't flash the banner before `dashboard.filters` is available.
+  //
+  // Latched on dashboard load only — not on every URL change — so the banner
+  // doesn't flash while navigating between dashboards due to nuqs state changing
+  // before the next router state. Known limitation - when navigating to the current
+  // dashboard with new and invalid filters in the URL, the banner will not show up.
+  const [shouldShowIgnoredFiltersBanner, setShouldShowIgnoredFiltersBanner] =
+    useState<boolean>(false);
+  // dashboardReady will toggle when fetching dashboard due to a dashboard save -
+  // in this case we don't want to show the banner again.
+  const lastLoadedIdForBannerRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!dashboardReady || lastLoadedIdForBannerRef.current === dashboard?.id)
+      return;
+    setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    lastLoadedIdForBannerRef.current = dashboard?.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.id, dashboardReady]);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
@@ -1290,10 +1429,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const watchedGranularity = useWatch({ control, name: 'granularity' });
 
   useEffect(() => {
-    if (watchedGranularity && watchedGranularity !== granularity) {
+    if (
+      router.isReady &&
+      watchedGranularity &&
+      watchedGranularity !== granularity
+    ) {
       setGranularity(watchedGranularity as SQLInterval);
     }
-  }, [watchedGranularity, granularity, setGranularity]);
+  }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');
@@ -1517,6 +1660,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     },
     [setUrlActiveTabs],
   );
+
+  // When arriving via ?highlightedTileId, switch to the tile's tab if it
+  // isn't already active so the tile is in the DOM for the Tile-level
+  // scroll/highlight effect to take effect. Guard with a ref keyed on the
+  // highlighted id so a user manually switching tabs afterwards doesn't
+  // get reverted on the next render.
+  const handledHighlightRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlightedTileId || !dashboard) return;
+    if (handledHighlightRef.current === highlightedTileId) return;
+    handledHighlightRef.current = highlightedTileId;
+    const tile = dashboard.tiles.find(t => t.id === highlightedTileId);
+    if (!tile?.containerId || !tile.tabId) return;
+    const container = containers.find(c => c.id === tile.containerId);
+    if (!container || getActiveTabId(container) === tile.tabId) return;
+    setUrlActiveTabs(prev => ({
+      ...(prev ?? {}),
+      [container.id]: tile.tabId!,
+    }));
+  }, [
+    highlightedTileId,
+    dashboard,
+    containers,
+    getActiveTabId,
+    setUrlActiveTabs,
+  ]);
 
   // Valid move targets: groups and individual tabs within groups
   const moveTargetContainers = useMemo<MoveTarget[]>(() => {
@@ -1975,7 +2144,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – {brandName}</title>
+        <title>
+          {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
+        </title>
       </Head>
       <OnboardingModal />
       <EditTileModal
@@ -2141,9 +2312,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       downloadObjectAsJson(
                         convertToDashboardTemplate(
                           dashboard,
-                          // TODO: fix this type issue
                           sources,
                           connections,
+                          allDashboards ?? [],
                         ),
                         dashboard?.name,
                       );
@@ -2291,6 +2462,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           Run
         </Button>
       </Flex>
+      {shouldShowIgnoredFiltersBanner &&
+        ignoredFilterExpressions.length > 0 && (
+          <Alert
+            mt="sm"
+            color="yellow"
+            icon={<IconAlertTriangle size={16} />}
+            title="Some filters could not be applied"
+            data-testid="ignored-url-filters-banner"
+            withCloseButton
+            closeButtonLabel="Dismiss"
+            onClose={() => setShouldShowIgnoredFiltersBanner(false)}
+          >
+            No dashboard filter(s) found for{' '}
+            {ignoredFilterExpressions.length === 1
+              ? 'expression'
+              : 'expressions'}{' '}
+            in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with
+            a matching expression to apply these filters.
+          </Alert>
+        )}
       <DashboardFilters
         filters={filters}
         filterValues={filterValues}

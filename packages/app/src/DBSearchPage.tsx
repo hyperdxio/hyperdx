@@ -80,6 +80,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -185,17 +186,22 @@ const QUERY_KEY_PREFIX = 'search';
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
-  sources: { id: string }[] | undefined,
+  sources: { id: string; disabled?: boolean }[] | undefined,
   lastSelectedSourceId: string | undefined,
 ): string {
   if (!sources || sources.length === 0) return '';
+
+  // Filter out disabled sources
+  const enabledSources = sources.filter(s => !s.disabled);
+  if (enabledSources.length === 0) return '';
+
   if (
     lastSelectedSourceId &&
-    sources.some(s => s.id === lastSelectedSourceId)
+    enabledSources.some(s => s.id === lastSelectedSourceId)
   ) {
     return lastSelectedSourceId;
   }
-  return sources[0].id;
+  return enabledSources[0].id;
 }
 
 function SourceEditModal({
@@ -1452,7 +1458,9 @@ export function DBSearchPage() {
       return undefined;
     }
 
-    const variableConfig: any = {};
+    const variableConfig: Partial<
+      Pick<BuilderChartConfigWithDateRange, 'groupBy'>
+    > = {};
     switch (searchedSource?.kind) {
       case SourceKind.Log:
         variableConfig.groupBy = searchedSource?.severityTextExpression;
@@ -1477,19 +1485,24 @@ export function DBSearchPage() {
       displayType: DisplayType.StackedBar,
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
-      eventTableSelect: searchedConfig.select,
-      // In live mode, when the end date is aligned to the granularity, the end date does
-      // not change on every query, resulting in cached data being re-used.
-      alignDateRangeToGranularity: !isLive,
+      eventTableSelect: searchedConfig.select ?? undefined,
+      // Never align to granularity boundaries on the search page: the histogram
+      // and total count must reflect the user's exact selected range so they
+      // match the rows shown in the results table. Aligning to bucket
+      // boundaries (e.g. expanding a 2s selection to a 15s bucket) inflates
+      // the count beyond what the table shows. In live mode this also avoids
+      // stale cached data from an unchanging aligned end date.
+      alignDateRangeToGranularity: false,
+      // Make sure the end date is inclusive so that the histogram and table counts match
+      dateRangeEndInclusive: true,
       ...variableConfig,
-    };
+    } satisfies BuilderChartConfigWithDateRange;
   }, [
     chartConfig,
     searchedSource,
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
-    isLive,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -1825,6 +1838,7 @@ export function DBSearchPage() {
               label="SELECT"
               size="xs"
               allowMultiline
+              dateRange={searchedTimeRange}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1836,6 +1850,7 @@ export function DBSearchPage() {
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
+              dateRange={searchedTimeRange}
             />
           </Box>
           <>
@@ -1870,7 +1885,10 @@ export function DBSearchPage() {
                 onClick={openAlertModal}
                 style={{ flexShrink: 0 }}
               >
-                Alerts
+                <Group gap={4}>
+                  Alerts
+                  <AlertStatusIcon alerts={savedSearch?.alerts} />
+                </Group>
               </Button>
             )}
           </>
@@ -1896,6 +1914,7 @@ export function DBSearchPage() {
             enableHotkey
             data-testid="search-input"
             minWidth="min(600px, 100%)"
+            dateRange={searchedTimeRange}
           />
           <Flex
             gap="sm"

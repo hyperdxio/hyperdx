@@ -532,8 +532,13 @@ export abstract class BaseClickhouseClient {
       output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
     };
 
-    const metadata = getMetadata(this);
-    const serverSettings = await metadata.getSettings({ connectionId });
+    // Only look up server-specific optimization settings when we have a
+    // connectionId to scope the cache key. Without one the cache key would
+    // be "undefined.availableSettings", which can collide across different
+    // ClickHouse instances sharing the same MetadataCache singleton.
+    const serverSettings = connectionId
+      ? await getMetadata(this).getSettings({ connectionId })
+      : undefined;
 
     const applySettingIfAvailable = (name: string, value: string) => {
       if (!serverSettings || !serverSettings.has(name)) return;
@@ -667,8 +672,17 @@ export abstract class BaseClickhouseClient {
     else if (isBuilderChartConfig(config) && resultSets.length > 1) {
       const metaSet = new Map<string, { name: string; type: string }>();
       const tsBucketMap = new Map<string, Record<string, string | number>>();
+      // Seed metaSet with each split's value column in resultSet order, so the
+      // joined meta is [value0, value1, ..., non-value columns]. This matches the
+      // order of config.select that useChartNumberFormats indexes into.
       for (const resultSet of resultSets) {
-        // set up the meta data
+        const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
+        if (valueColumn && !metaSet.has(valueColumn.name)) {
+          metaSet.set(valueColumn.name, valueColumn);
+        }
+      }
+      // Add other (non-value) columns to metaSet
+      for (const resultSet of resultSets) {
         if (Array.isArray(resultSet.meta)) {
           for (const meta of resultSet.meta) {
             const key = meta.name;

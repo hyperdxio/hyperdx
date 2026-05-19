@@ -720,6 +720,165 @@ func TestTTLToClickHouseInterval(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// supportsFullTextSearch
+// ---------------------------------------------------------------------------
+
+func TestSupportsFullTextSearch(t *testing.T) {
+	tests := []struct {
+		name     string
+		major    int
+		minor    int
+		expected bool
+	}{
+		{"26.2 exact threshold", 26, 2, true},
+		{"26.3 above minor", 26, 3, true},
+		{"27.0 above major", 27, 0, true},
+		{"27.1 above both", 27, 1, true},
+		{"26.1 below minor", 26, 1, false},
+		{"26.0 below minor", 26, 0, false},
+		{"25.9 below major", 25, 9, false},
+		{"24.8 old version", 24, 8, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := supportsFullTextSearch(tt.major, tt.minor)
+			if got != tt.expected {
+				t.Errorf("supportsFullTextSearch(%d, %d) = %v, want %v", tt.major, tt.minor, got, tt.expected)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// swapLogsSchemaForCompat
+// ---------------------------------------------------------------------------
+
+func TestSwapLogsSchemaForCompat(t *testing.T) {
+	t.Run("swaps compat over full text", func(t *testing.T) {
+		dir := t.TempDir()
+		fullTextPath := filepath.Join(dir, "00002_otel_logs.sql")
+		compatPath := filepath.Join(dir, "00002_otel_logs_compat.sql")
+
+		if err := os.WriteFile(fullTextPath, []byte("FULL TEXT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(compatPath, []byte("COMPAT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := swapLogsSchemaForCompat(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// The full text path should now contain the compat content
+		got, err := os.ReadFile(fullTextPath)
+		if err != nil {
+			t.Fatalf("failed to read swapped file: %v", err)
+		}
+		if string(got) != "COMPAT SCHEMA" {
+			t.Errorf("expected compat content, got %q", string(got))
+		}
+
+		// The compat file should no longer exist
+		if _, err := os.Stat(compatPath); !os.IsNotExist(err) {
+			t.Error("compat file should have been renamed away")
+		}
+	})
+
+	t.Run("works when full text file is missing", func(t *testing.T) {
+		dir := t.TempDir()
+		compatPath := filepath.Join(dir, "00002_otel_logs_compat.sql")
+
+		if err := os.WriteFile(compatPath, []byte("COMPAT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := swapLogsSchemaForCompat(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := os.ReadFile(filepath.Join(dir, "00002_otel_logs.sql"))
+		if err != nil {
+			t.Fatalf("failed to read swapped file: %v", err)
+		}
+		if string(got) != "COMPAT SCHEMA" {
+			t.Errorf("expected compat content, got %q", string(got))
+		}
+	})
+
+	t.Run("errors when compat file is missing", func(t *testing.T) {
+		dir := t.TempDir()
+		fullTextPath := filepath.Join(dir, "00002_otel_logs.sql")
+
+		if err := os.WriteFile(fullTextPath, []byte("FULL TEXT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := swapLogsSchemaForCompat(dir)
+		if err == nil {
+			t.Fatal("expected error when compat file is missing")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// removeCompatLogsSchema
+// ---------------------------------------------------------------------------
+
+func TestRemoveCompatLogsSchema(t *testing.T) {
+	t.Run("removes existing compat file", func(t *testing.T) {
+		dir := t.TempDir()
+		compatPath := filepath.Join(dir, "00002_otel_logs_compat.sql")
+
+		if err := os.WriteFile(compatPath, []byte("COMPAT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := removeCompatLogsSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := os.Stat(compatPath); !os.IsNotExist(err) {
+			t.Error("compat file should have been removed")
+		}
+	})
+
+	t.Run("no error when compat file does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+
+		if err := removeCompatLogsSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("preserves other files", func(t *testing.T) {
+		dir := t.TempDir()
+		otherPath := filepath.Join(dir, "00001_other.sql")
+		compatPath := filepath.Join(dir, "00002_otel_logs_compat.sql")
+
+		if err := os.WriteFile(otherPath, []byte("OTHER"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(compatPath, []byte("COMPAT"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := removeCompatLogsSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := os.Stat(otherPath); err != nil {
+			t.Error("other file should still exist")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// processSchemaDir
+// ---------------------------------------------------------------------------
+
 func TestProcessSchemaDir(t *testing.T) {
 	// Create a temp schema directory with a test SQL file
 	schemaDir := t.TempDir()

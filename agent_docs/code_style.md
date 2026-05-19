@@ -137,6 +137,8 @@ The UI is built with **Mantine components**, but **colors and surfaces** should 
 
 Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale to our palette; that does not replace using **`var(--color-...)`** in new styling where you need explicit color control.
 
+**Chart and visualization colors are a separate, more specific contract** — they have their own categorical, semantic, and heatmap palettes wired through `packages/app/src/utils.ts` helpers. Don't hard-code series colors or reuse `--color-text-*` for charts. See [`data_viz_colors.md`](./data_viz_colors.md) before touching anything that renders data.
+
 ## Refactoring
 
 - Edit files directly - don't create `component-v2.tsx` copies

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
@@ -54,6 +55,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useJsonColumns } from './hooks/useMetadata';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -954,7 +956,8 @@ const findSource = (
     s =>
       (kind === undefined || s.kind === kind) &&
       (id === undefined || s.id === id) &&
-      (connection === undefined || s.connection === connection),
+      (connection === undefined || s.connection === connection) &&
+      !s.disabled,
   );
 };
 
@@ -1007,7 +1010,8 @@ export const resolveSourceIds = (
     (s): s is TLogSource =>
       s.kind === SourceKind.Log &&
       !!s.metricSourceId &&
-      !!findSource(sources, { id: s.metricSourceId }),
+      !!findSource(sources, { id: s.metricSourceId }) &&
+      !s.disabled,
   );
 
   if (logSourceWithMetricSource) {
@@ -1041,6 +1045,7 @@ export const resolveSourceIds = (
 };
 
 function KubernetesDashboardPage() {
+  const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
 
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
@@ -1246,6 +1251,9 @@ function KubernetesDashboardPage() {
 
   return (
     <Box data-testid="kubernetes-dashboard-page" p="sm">
+      <Head>
+        <title>Kubernetes Dashboard – {brandName}</title>
+      </Head>
       <Breadcrumbs mb="xs" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards

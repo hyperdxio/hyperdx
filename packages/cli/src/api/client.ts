@@ -33,12 +33,20 @@ import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 
 interface ApiClientOptions {
   appUrl: string;
+  /**
+   * Active team ID. When set, the client sends an `x-hdx-team` header on
+   * every REST and ClickHouse-proxy request so the server scopes data
+   * to that team. If not provided, the client picks up `activeTeamId`
+   * from the saved session (if any).
+   */
+  activeTeamId?: string;
 }
 
 export class ApiClient {
   private appUrl: string;
   private apiUrl: string;
   private cookies: string[] = [];
+  private activeTeamId: string | undefined;
 
   constructor(opts: ApiClientOptions) {
     this.appUrl = opts.appUrl.replace(/\/+$/, '');
@@ -47,6 +55,12 @@ export class ApiClient {
     const saved = loadSession();
     if (saved && saved.appUrl === this.appUrl) {
       this.cookies = saved.cookies;
+      this.activeTeamId = saved.activeTeamId;
+    }
+
+    // Explicit option overrides the saved session.
+    if (opts.activeTeamId !== undefined) {
+      this.activeTeamId = opts.activeTeamId;
     }
   }
 
@@ -62,9 +76,28 @@ export class ApiClient {
     return this.cookies.join('; ');
   }
 
+  getActiveTeamId(): string | undefined {
+    return this.activeTeamId;
+  }
+
+  /**
+   * Update the active team for subsequent requests.
+   *
+   * NOTE: this only updates the in-memory client. Use
+   * `setActiveTeam()` from `@/utils/config` to persist the choice
+   * across CLI invocations.
+   */
+  setActiveTeamId(teamId: string | undefined): void {
+    this.activeTeamId = teamId;
+  }
+
   // ---- Auth --------------------------------------------------------
 
-  async login(email: string, password: string): Promise<boolean> {
+  /**
+   * Attempt to log in.  Returns `null` on success or a human-readable
+   * error string on failure so callers can display a meaningful message.
+   */
+  async login(email: string, password: string): Promise<string | null> {
     try {
       const res = await fetch(`${this.apiUrl}/login/password`, {
         method: 'POST',
@@ -73,22 +106,54 @@ export class ApiClient {
         redirect: 'manual',
       });
 
-      if (res.status === 302 || res.status === 200) {
+      if (res.status === 200 || res.status === 302 || res.status === 303) {
         this.extractCookies(res);
 
         // Verify the session is actually valid — some servers return
         // 302/200 without setting a real session (e.g. SSO redirects).
         if (!(await this.checkSession())) {
-          return false;
+          return 'Login succeeded but the session is not valid. The server may require SSO.';
         }
 
-        saveSession({ appUrl: this.appUrl, cookies: this.cookies });
-        return true;
+        // Reset active team on a fresh login — the previous selection
+        // may not apply to the newly authenticated user.
+        this.activeTeamId = undefined;
+        saveSession({
+          appUrl: this.appUrl,
+          cookies: this.cookies,
+          activeTeamId: undefined,
+        });
+        return null; // success
       }
 
-      return false;
-    } catch {
-      return false;
+      if (res.status === 401 || res.status === 403) {
+        return 'Invalid email or password.';
+      }
+
+      // Try to extract a message from the response body
+      let detail = '';
+      try {
+        const body = await res.text();
+        if (body) {
+          try {
+            const json = JSON.parse(body);
+            detail = json.message || json.error || '';
+          } catch {
+            // Not JSON — use raw body if short enough
+            if (body.length < 200) detail = body;
+          }
+        }
+      } catch {
+        // ignore body read errors
+      }
+
+      return detail
+        ? `Login failed (HTTP ${res.status}): ${detail}`
+        : `Login failed (HTTP ${res.status}). Check your server URL and credentials.`;
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : 'Unknown network error';
+      return `Could not reach the server: ${msg}`;
     }
   }
 
@@ -130,6 +195,22 @@ export class ApiClient {
     const res = await this.get('/me');
     if (!res.ok) throw new Error(`GET /me failed: ${res.status}`);
     return res.json() as Promise<MeResponse>;
+  }
+
+  /**
+   * Returns all teams the authenticated user belongs to.
+   *
+   * On multi-team deployments (HyperDX Cloud / EE) `/api/me` returns a
+   * `teams` array; we normalize it here. On single-team OSS deployments
+   * `teams` is absent, so we fall back to a single-element array
+   * containing the user's only team.
+   */
+  async getUserTeams(): Promise<MeTeam[]> {
+    const me = await this.getMe();
+    if (me.teams && me.teams.length > 0) {
+      return me.teams.map(t => ({ id: t.id, name: t.name }));
+    }
+    return [{ id: me.team.id, name: me.team.name }];
   }
 
   async getSources(): Promise<SourceResponse[]> {
@@ -181,6 +262,12 @@ export class ApiClient {
     if (this.cookies.length > 0) {
       h['cookie'] = this.cookies.join('; ');
     }
+    if (this.activeTeamId) {
+      // Multi-team scoping: validated by the EE auth middleware. OSS
+      // ignores the header (single-team only), so it's safe to send
+      // unconditionally when the user has picked a team.
+      h['x-hdx-team'] = this.activeTeamId;
+    }
     return h;
   }
 
@@ -222,6 +309,18 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
     const basePath = apiUrlObj.pathname.replace(/\/+$/, '');
     const chProxyPath = `${basePath}/clickhouse-proxy`;
 
+    const baseHeaders: Record<string, string> = {
+      cookie: apiClient.getCookieHeader(),
+      // Force text/plain so Express's body parsers keep req.body as a
+      // string. Without this, the proxy's proxyReq.write(req.body) fails
+      // because express.json() parses the body into an Object.
+      'content-type': 'text/plain',
+    };
+    const activeTeamId = apiClient.getActiveTeamId();
+    if (activeTeamId) {
+      baseHeaders['x-hdx-team'] = activeTeamId;
+    }
+
     this.client = createClient({
       url: apiUrlObj.origin,
       pathname: chProxyPath,
@@ -235,13 +334,7 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
       set_basic_auth_header: false,
       request_timeout: this.requestTimeout,
       application: 'hyperdx-tui',
-      http_headers: {
-        cookie: apiClient.getCookieHeader(),
-        // Force text/plain so Express's body parsers keep req.body as a
-        // string. Without this, the proxy's proxyReq.write(req.body) fails
-        // because express.json() parses the body into an Object.
-        'content-type': 'text/plain',
-      },
+      http_headers: baseHeaders,
       keep_alive: { enabled: false },
     });
   }
@@ -273,6 +366,13 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
     if (connectionId && connectionId !== 'local') {
       httpHeaders['x-hyperdx-connection-id'] = connectionId;
     }
+    // Re-send the active team header per-query so a mid-session team
+    // change on the apiClient is picked up immediately. (The constructor-
+    // level http_headers above only reflect the team at client creation.)
+    const activeTeamId = this.apiClient.getActiveTeamId();
+    if (activeTeamId) {
+      httpHeaders['x-hdx-team'] = activeTeamId;
+    }
 
     return this.getClient().query({
       query,
@@ -290,17 +390,24 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
 // Response types (matching the internal API shapes)
 // ------------------------------------------------------------------
 
+export interface MeTeam {
+  id: string;
+  name: string;
+}
+
 interface MeResponse {
   accessKey: string;
   createdAt: string;
   email: string;
   id: string;
   name: string;
-  team: {
-    id: string;
-    name: string;
-    apiKey: string;
-  };
+  team: MeTeam & { apiKey: string };
+  /**
+   * All teams the user belongs to. Present on multi-team deployments
+   * (HyperDX Cloud / EE). Absent on OSS, where the user always belongs
+   * to a single team — callers should fall back to `[team]`.
+   */
+  teams?: MeTeam[];
 }
 
 export interface SourceResponse {

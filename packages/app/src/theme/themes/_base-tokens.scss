@@ -20,3 +20,14 @@
 [data-mantine-color-scheme='light'] {
   @include hyperdx-tokens.light-mode-tokens;
 }
+
+/*
+ * Menu.Item + color="red": Mantine inlines --menu-item-color as red-6 while
+ * --menu-item-hover uses red-light-hover. `Menu.extend` styles do not reach items
+ * because Popover defaults to withinPortal — the dropdown is outside the Menu
+ * root, so component-scoped theme CSS never matches. Global rule + !important
+ * beats inline vars; substring matches Mantine red light hover token.
+ */
+[data-menu-item][style*='red-light-hover'] {
+  --menu-item-color: var(--mantine-color-red-light-color) !important;
+}

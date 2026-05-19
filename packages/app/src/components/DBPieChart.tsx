@@ -5,7 +5,7 @@ import {
   BuilderChartConfigWithOptTimestamp,
   RawSqlConfigWithDateRange,
 } from '@hyperdx/common-utils/dist/types';
-import { Flex } from '@mantine/core';
+import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
 import {
   buildMVDateRangeIndicator,
@@ -14,9 +14,9 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { getColorProps } from '@/utils';
+import { formatNumber, getColorProps, truncateMiddle } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -51,6 +51,54 @@ const PieChartTooltip = memo(
   },
 );
 
+const PieChartLegend = memo(
+  ({
+    data,
+    numberFormat,
+  }: {
+    data: { label: string; value: number; color: string }[];
+    numberFormat?: NumberFormat;
+  }) => {
+    if (!data.length) return null;
+    return (
+      <ScrollArea
+        data-testid="pie-chart-legend"
+        type="auto"
+        style={{ flexShrink: 0, maxWidth: '40%', alignSelf: 'stretch' }}
+        px="sm"
+      >
+        <Flex direction="column" gap={4}>
+          {data.map(entry => (
+            <Flex key={entry.label} align="center" gap={6} wrap="nowrap">
+              <Box
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  backgroundColor: entry.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed" truncate="end" title={entry.label}>
+                {truncateMiddle(entry.label, 40)}
+              </Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ flexShrink: 0, marginLeft: 'auto' }}
+              >
+                {numberFormat
+                  ? formatNumber(entry.value, numberFormat)
+                  : entry.value}
+              </Text>
+            </Flex>
+          ))}
+        </Flex>
+      </ScrollArea>
+    );
+  },
+);
+
 export const DBPieChart = ({
   config,
   title,
@@ -74,13 +122,13 @@ export const DBPieChart = ({
     id: config.source,
   });
 
-  const resolvedNumberFormat = useResolvedNumberFormat(config);
-
   const queriedConfig = useMemo(() => {
     return isBuilderChartConfig(config)
       ? convertToPieChartConfig(config)
       : config;
   }, [config]);
+
+  const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -168,7 +216,7 @@ export const DBPieChart = ({
           align="center"
           justify="center"
           h="100%"
-          style={{ flexGrow: 1 }}
+          style={{ flexGrow: 1, overflow: 'hidden' }}
         >
           <ResponsiveContainer
             height="100%"
@@ -183,7 +231,6 @@ export const DBPieChart = ({
                 dataKey="value"
                 fill="#8884d8"
                 nameKey="label"
-                legendType="none"
               >
                 {pieChartData.map(entry => (
                   <Cell key={entry.label} fill={entry.color} stroke="none" />
@@ -196,6 +243,10 @@ export const DBPieChart = ({
               />
             </PieChart>
           </ResponsiveContainer>
+          <PieChartLegend
+            data={pieChartData}
+            numberFormat={resolvedNumberFormat}
+          />
         </Flex>
       )}
     </ChartContainer>

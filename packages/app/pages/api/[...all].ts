@@ -10,7 +10,23 @@ export const config = {
   },
 };
 
+// In Vercel preview deployments we inline the entire Express API into the
+// Next.js serverless function so a single deployment serves both the app and
+// the API. In all other environments (Docker fullstack, standalone production)
+// we proxy `/api/*` to a separately-deployed API service as before.
+const isInlineApi = process.env.HDX_PREVIEW_INLINE_API === 'true';
+
 export default (req: NextApiRequest, res: NextApiResponse) => {
+  if (isInlineApi) {
+    // Lazy require so non-preview production builds — where the webpack
+    // externals hook in next.config.mjs marks @hyperdx/api as external —
+    // never attempt to resolve a module that isn't bundled.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const inlineApi = require('@hyperdx/api/build/serverless');
+    const handler = inlineApi.default ?? inlineApi;
+    return handler(req, res);
+  }
+
   const proxy = createProxyMiddleware({
     changeOrigin: true,
     // logger: console, // DEBUG

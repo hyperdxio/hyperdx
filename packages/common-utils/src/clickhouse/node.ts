@@ -34,6 +34,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     query_params = {},
     abort_signal,
     clickhouse_settings: externalClickhouseSettings,
+    connectionId,
     queryId,
     shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
@@ -44,6 +45,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     if (!shouldSkipApplySettings) {
       clickhouseSettings = await this.processClickhouseSettings({
         externalClickhouseSettings,
+        connectionId,
       });
     }
 

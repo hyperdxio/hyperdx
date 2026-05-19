@@ -318,11 +318,13 @@ export default class DefaultAlertProvider implements AlertProvider {
     endTime,
     granularity,
     startTime,
+    tileId,
   }: {
     dashboardId: string;
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string {
     const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
     // extend both start and end time by 7x granularity
@@ -333,6 +335,9 @@ export default class DefaultAlertProvider implements AlertProvider {
       granularity: convertMsToGranularityString(ms(granularity)),
       to,
     });
+    if (tileId) {
+      queryParams.set('highlightedTileId', tileId);
+    }
     url.search = queryParams.toString();
     return url.toString();
   }

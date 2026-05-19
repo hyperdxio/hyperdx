@@ -211,6 +211,31 @@ export class DashboardPage {
   }
 
   /**
+   * Rename a dashboard from a known current name to a new name. Use when the
+   * heading is no longer the "My Dashboard" default (e.g. already renamed
+   * earlier in the same test).
+   */
+  async renameDashboard(currentName: string, newName: string) {
+    const currentHeading = this.page.getByRole('heading', {
+      name: currentName,
+      level: 3,
+    });
+    await currentHeading.waitFor({ state: 'visible', timeout: 10000 });
+
+    await currentHeading.dblclick();
+
+    const nameInput = this.page.locator('input[placeholder="Name"]');
+    await nameInput.fill(newName);
+    await this.page.keyboard.press('Enter');
+
+    const updatedHeading = this.page.getByRole('heading', {
+      name: newName,
+      level: 3,
+    });
+    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  /**
    * Add a new tile to the dashboard
    */
   async addTile() {
@@ -641,6 +666,29 @@ export class DashboardPage {
   }
 
   /**
+   * Return the trimmed text of every td at `columnIndex` across all visible
+   * data rows of the given tile's first table. Scopes to `tr[data-index]` so
+   * the row virtualizer's padding rows (which contain a single colSpan td)
+   * are skipped. Waits for at least one data row before reading.
+   */
+  async getTileTableCellTexts(
+    tileIndex: number,
+    columnIndex: number,
+  ): Promise<string[]> {
+    const tile = this.getTile(tileIndex);
+    const table = tile.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    await table
+      .locator('tbody tr[data-index]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+    const cells = await table
+      .locator(`tbody tr[data-index] td:nth-child(${columnIndex + 1})`)
+      .allTextContents();
+    return cells.map(c => c.trim());
+  }
+
+  /**
    * Click the first row's first cell of a table tile. Each cell contains a
    * div[role="link"] that owns the onRowClick handler — click that directly
    * to trigger the configured action.
@@ -662,6 +710,25 @@ export class DashboardPage {
     return this.page
       .locator('.mantine-Notification-root')
       .filter({ hasText: 'Link error' });
+  }
+
+  /**
+   * Banner shown on the dashboard page when the URL's `filters=` param
+   * references expressions that don't correspond to any declared dashboard
+   * filter. Users can dismiss it with the close button.
+   */
+  get ignoredUrlFiltersBanner() {
+    return this.page.getByTestId('ignored-url-filters-banner');
+  }
+
+  /**
+   * Dismiss the ignored-URL-filters banner by clicking its close button.
+   * Mantine's Alert renders the close button with `aria-label="Dismiss"`.
+   */
+  async dismissIgnoredUrlFiltersBanner() {
+    await this.ignoredUrlFiltersBanner
+      .getByRole('button', { name: 'Dismiss' })
+      .click();
   }
 
   // Getters for assertions
@@ -708,5 +775,73 @@ export class DashboardPage {
 
   get unsavedChangesConfirmDiscardButton() {
     return this.confirmConfirmButton;
+  }
+
+  // ---- Fullscreen tile helpers ----
+
+  /**
+   * The Mantine Modal body that hosts the fullscreen tile view.
+   * Scoped by the presence of a time-picker-input so it stays unambiguous
+   * even when other modals (e.g. the chart editor) are open simultaneously.
+   */
+  get fullscreenModalBody() {
+    return this.page
+      .locator('.mantine-Modal-body')
+      .filter({ has: this.page.getByTestId('time-picker-input') });
+  }
+
+  /**
+   * The time-picker-input inside the fullscreen modal.
+   * Scoped to fullscreenModalBody so it never matches the dashboard's
+   * main time picker when both exist in the DOM.
+   */
+  get fullscreenTimePickerInput() {
+    return this.fullscreenModalBody.getByTestId('time-picker-input');
+  }
+
+  /**
+   * Hover over the tile at `index` and click its fullscreen button
+   * (`data-testid="tile-fullscreen-button-<chartId>"`).
+   * Waits for the fullscreen modal's TimePicker to appear before returning.
+   */
+  async openFullscreenForTile(index: number) {
+    await this.hoverOverTile(index);
+    const fullscreenBtn = this.page
+      .locator('[data-testid^="tile-fullscreen-button-"]')
+      .first();
+    await fullscreenBtn.click();
+    await this.fullscreenTimePickerInput.waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * Select a relative time interval from the TimePicker inside the fullscreen
+   * modal (e.g. "Last 15 minutes").
+   * Opens the picker popover first if it is not already visible.
+   */
+  async selectFullscreenRelativeTime(label: string) {
+    const input = this.fullscreenTimePickerInput;
+    const popover = this.page.getByTestId('time-picker-popover');
+    const isOpen = await popover.isVisible();
+    if (!isOpen) {
+      await input.click();
+      await popover.waitFor({ state: 'visible', timeout: 5000 });
+    }
+    const intervalButton = popover.getByRole('button', { name: label });
+    await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
+    await intervalButton.click({ timeout: 10000 });
+  }
+
+  /**
+   * Close the fullscreen modal by pressing Escape and wait for it to disappear.
+   */
+  async closeFullscreen() {
+    await this.page.keyboard.press('Escape');
+    await this.fullscreenTimePickerInput.waitFor({
+      state: 'hidden',
+      timeout: 5000,
+    });
   }
 }

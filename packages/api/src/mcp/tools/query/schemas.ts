@@ -91,7 +91,16 @@ function isBuilderDisplayType(dt: string): dt is BuilderDisplayType {
 export const hyperdxQuerySchema = z.object({
   // ── Shared fields (all display types) ──
   displayType: z
-    .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'search', 'sql'])
+    .enum([
+      'line',
+      'stacked_bar',
+      'table',
+      'number',
+      'pie',
+      'search',
+      'event_patterns',
+      'sql',
+    ])
     .describe(
       'How to query and visualize the data:\n' +
         '  line – time-series line chart (builder)\n' +
@@ -100,6 +109,9 @@ export const hyperdxQuerySchema = z.object({
         '  number – single aggregate scalar (builder)\n' +
         '  pie – pie chart, one metric grouped (builder)\n' +
         '  search – browse individual log/event rows\n' +
+        '  event_patterns – discover the most common log messages / event patterns. ' +
+        'Use this when asked about "top patterns", "common logs", "noisy services", or "recurring messages". ' +
+        'Returns message templates with estimated counts and time trends.\n' +
         '  sql – ADVANCED: raw ClickHouse SQL query',
     ),
   startTime: z
@@ -119,8 +131,8 @@ export const hyperdxQuerySchema = z.object({
     .string()
     .optional()
     .describe(
-      'Source ID — required for builder display types (line, stacked_bar, table, number, pie) ' +
-        'and for "search". Call hyperdx_list_sources to find available sources.',
+      'Source ID — required for builder display types (line, stacked_bar, table, number, pie), ' +
+        '"search", and "event_patterns". Call hyperdx_list_sources to find available sources.',
     ),
   select: z
     .array(mcpSelectItemSchema)
@@ -164,7 +176,7 @@ export const hyperdxQuerySchema = z.object({
     .optional()
     .default('')
     .describe(
-      'Row filter for "search" display type. ' +
+      'Row filter for "search" and "event_patterns" display types. ' +
         'Examples: "level:error", "service.name:api AND duration:>500"',
     ),
   whereLanguage: z
@@ -172,7 +184,7 @@ export const hyperdxQuerySchema = z.object({
     .optional()
     .default('lucene')
     .describe(
-      'Query language for the "where" filter ("search" display type only). Default: lucene',
+      'Query language for the "where" filter ("search" and "event_patterns" display types). Default: lucene',
     ),
   columns: z
     .string()
@@ -191,6 +203,26 @@ export const hyperdxQuerySchema = z.object({
     .describe(
       'Maximum number of rows to return for "search" display type (1–200). Default: 50. ' +
         'Use smaller values to reduce response size.',
+    ),
+
+  // ── Event patterns fields ──
+  // TODO: explore whether we can safely increase the max beyond 25_000
+  sampleSize: z
+    .number()
+    .min(1)
+    .max(25_000)
+    .optional()
+    .describe(
+      'Number of random rows to sample for pattern mining ("event_patterns" only). ' +
+        'Default: 10000. Higher values produce more accurate patterns but take longer.',
+    ),
+  bodyExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Column expression to mine patterns from ("event_patterns" only). ' +
+        'Auto-detected from the source if omitted (Body for logs, SpanName for traces). ' +
+        'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
     ),
 
   // ── SQL-only fields ──
@@ -256,12 +288,26 @@ export function validateQueryInput(
     if (!data.sourceId) {
       return 'sourceId is required when displayType is "search"';
     }
+  } else if (displayType === 'event_patterns') {
+    if (!data.sourceId) {
+      return 'sourceId is required when displayType is "event_patterns"';
+    }
   } else if (displayType === 'sql') {
     if (!data.connectionId) {
       return 'connectionId is required when displayType is "sql"';
     }
     if (!data.sql) {
       return 'sql is required when displayType is "sql"';
+    }
+  }
+
+  // Reject event_patterns-only fields on other display types
+  if (displayType !== 'event_patterns') {
+    if (data.sampleSize != null) {
+      return `sampleSize is only valid when displayType is "event_patterns"`;
+    }
+    if (data.bodyExpression != null) {
+      return `bodyExpression is only valid when displayType is "event_patterns"`;
     }
   }
 
