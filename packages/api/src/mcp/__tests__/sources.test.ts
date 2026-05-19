@@ -52,6 +52,14 @@ describe('MCP Source Tools', () => {
       timestampValueExpression: 'Timestamp',
       connection: connection._id,
       name: 'Traces',
+      spanNameExpression: 'SpanName',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      spanKindExpression: 'SpanKind',
+      statusCodeExpression: 'StatusCode',
+      serviceNameExpression: 'ServiceName',
     });
 
     logSource = await Source.create({
@@ -67,6 +75,7 @@ describe('MCP Source Tools', () => {
       bodyExpression: 'Body',
       serviceNameExpression: 'ServiceName',
       severityTextExpression: 'SeverityText',
+      traceIdExpression: 'TraceId',
       connection: connection._id,
       name: 'Logs',
     });
