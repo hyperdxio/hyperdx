@@ -1,13 +1,12 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
 import request from 'supertest';
 
 import * as config from '../../../config';
-import { findUserByEmail } from '../../../controllers/user';
 import {
   bulkInsertLogs,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
-  getAgent,
   getLoggedInAgent,
   getServer,
 } from '../../../fixtures';
@@ -52,6 +51,7 @@ describe('External API v2 Search', () => {
         databaseName: DEFAULT_DATABASE,
         tableName: DEFAULT_LOGS_TABLE,
       },
+      defaultTableSelectExpression: 'Timestamp, SeverityText, Body',
       timestampValueExpression: 'Timestamp',
       connection: connection._id,
       name: 'Logs',
@@ -528,32 +528,31 @@ describe('External API v2 Search', () => {
   // -------------------------------------------------------------------------
 
   it('returns 404 when sourceId belongs to a different team', async () => {
-    // Register and log in a second user under a separate team.
-    const agent2 = getAgent(server);
-    await agent2
-      .post('/register/password')
-      .send({
-        email: 'team2@example.com',
-        password: 'TacoCat!2#4X',
-        confirmPassword: 'TacoCat!2#4X',
-      })
-      .expect(200);
-    await agent2
-      .post('/login/password')
-      .send({ email: 'team2@example.com', password: 'TacoCat!2#4X' })
-      .expect(303);
+    // The /register/password endpoint only allows one team to register, so
+    // create a synthetic "other team" source directly in Mongo and verify
+    // the authenticated user (team 1) cannot access it.
+    const otherTeamId = new mongoose.Types.ObjectId();
+    const otherConnection = await Connection.create({
+      team: otherTeamId,
+      name: 'Other Team Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const otherSource = await Source.create({
+      kind: SourceKind.Log,
+      team: otherTeamId,
+      from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+      timestampValueExpression: 'Timestamp',
+      connection: otherConnection._id,
+      name: 'Other Team Source',
+    });
 
-    const user2 = await findUserByEmail('team2@example.com');
-
-    // Team 2 tries to query team 1's source.
-    const res = await agent2
-      .post('/api/v2/search')
-      .set('Authorization', `Bearer ${user2!.accessKey}`)
-      .send({
-        sourceId: logSource.id.toString(),
-        startTime: iso(DEFAULT_START_TIME),
-        endTime: iso(DEFAULT_END_TIME),
-      });
+    const res = await search({
+      sourceId: otherSource.id.toString(),
+      startTime: iso(DEFAULT_START_TIME),
+      endTime: iso(DEFAULT_END_TIME),
+    });
 
     expect(res.status).toBe(404);
     expect(res.body).toHaveProperty('message');
