@@ -163,6 +163,64 @@ services:
 For more complex configurations, you can use environment files or Docker secrets
 to manage these values.
 
+## Dashboard Provisioning
+
+HyperDX supports file-based dashboard provisioning, similar to Grafana's
+provisioning system. A scheduled task reads `.json` files from a directory
+and upserts dashboards into MongoDB, matched by name for idempotency.
+The task runs on the same schedule as other HyperDX tasks (every minute
+when using the built-in scheduler, or on your own schedule when running
+tasks externally).
+
+### Environment Variables
+
+| Variable                            | Required | Default | Description                                                     |
+| ----------------------------------- | -------- | ------- | --------------------------------------------------------------- |
+| `DASHBOARD_PROVISIONER_DIR`         | Yes      |         | Directory to watch for `.json` dashboard files                  |
+| `DASHBOARD_PROVISIONER_TEAM_ID`     | No\*     |         | Scope provisioning to a specific team ID                        |
+| `DASHBOARD_PROVISIONER_ALL_TEAMS`   | No\*     | `false` | Set to `true` to provision dashboards to all teams              |
+
+\*One of `DASHBOARD_PROVISIONER_TEAM_ID` or `DASHBOARD_PROVISIONER_ALL_TEAMS=true`
+is required when `DASHBOARD_PROVISIONER_DIR` is set.
+
+### Dashboard JSON Format
+
+Each `.json` file in the provisioner directory should contain a dashboard object
+with at minimum a `name` and `tiles` array:
+
+```json
+{
+  "name": "My Dashboard",
+  "tiles": [
+    {
+      "id": "tile-1",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Request Count",
+        "source": "Metrics",
+        "displayType": "line",
+        "select": [{ "aggFn": "count" }]
+      }
+    }
+  ],
+  "tags": ["provisioned"]
+}
+```
+
+### Behavior
+
+- Dashboards are matched by name and team for idempotency
+- Provisioned dashboards are flagged with `provisioned: true` so they never
+  overwrite user-created dashboards with the same name
+- Removing a file from the directory does **not** delete the dashboard from
+  MongoDB (safe by default)
+- Files are validated against the `DashboardWithoutIdSchema` Zod schema; invalid
+  files are skipped with a warning
+
+
 ## Note on Security
 
 While this feature is convenient for development and initial setup, be careful
