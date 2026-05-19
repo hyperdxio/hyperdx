@@ -405,7 +405,6 @@ export function useAllFieldsAndValues(
     connectionId,
     metadataMVs,
     dateRange,
-    timestampValueExpression,
     maxValuesPerKey,
     maxKeys,
   }: {
@@ -414,7 +413,6 @@ export function useAllFieldsAndValues(
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
-    timestampValueExpression?: string;
     maxValuesPerKey?: number;
     maxKeys?: number;
   },
@@ -447,7 +445,6 @@ export function useAllFieldsAndValues(
         connectionId,
         metadataMVs,
         dateRange,
-        timestampValueExpression,
         maxValuesPerKey,
         maxKeys,
         signal,

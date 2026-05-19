@@ -1133,8 +1133,11 @@ const DBSearchPageFiltersComponent = ({
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
   const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
 
+  const hasMVs = !!sourceTableConnection.metadataMVs;
+  const useExactPipeline = !hasMVs || filterMode === 'exact';
+
   const { data: me } = api.useMe();
-  const defaultLimit = sourceTableConnection.metadataMVs
+  const defaultLimit = hasMVs
     ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
     : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
   const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
@@ -1144,30 +1147,11 @@ const DBSearchPageFiltersComponent = ({
     chartConfig.dateRange,
   );
 
-  // 'all' mode: single combined query for keys + values
-  const {
-    data: allFieldsAndValues,
-    isLoading: isAllLoading,
-    isFetching: isAllFetching,
-    error: allError,
-  } = useAllFieldsAndValues(
-    {
-      databaseName: chartConfig.from.databaseName,
-      tableName: chartConfig.from.tableName,
-      connectionId: chartConfig.connection,
-      metadataMVs: sourceTableConnection.metadataMVs,
-      dateRange,
-      timestampValueExpression: chartConfig.timestampValueExpression,
-      maxKeys,
-    },
-    { enabled: filterMode === 'all' },
-  );
-
-  // 'exact' mode: separate key discovery + value fetching
+  // Exact pipeline step 1: discover keys from column metadata
   const {
     data: allFields,
-    isLoading: isExactFieldsLoading,
-    error: exactError,
+    isLoading: isFieldsLoading,
+    error: fieldsError,
   } = useAllFields(
     {
       databaseName: chartConfig.from.databaseName,
@@ -1178,9 +1162,30 @@ const DBSearchPageFiltersComponent = ({
     {
       dateRange,
       timestampValueExpression: chartConfig.timestampValueExpression,
-      enabled: filterMode === 'exact',
+      enabled: useExactPipeline,
     },
   );
+
+  // MV pipeline: combined key+value rollup query
+  const {
+    data: mvFieldsAndValues,
+    isLoading: isMVLoading,
+    isFetching: isMVFetching,
+    error: mvError,
+  } = useAllFieldsAndValues(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+      metadataMVs: sourceTableConnection.metadataMVs,
+      dateRange,
+      maxKeys,
+    },
+    { enabled: !useExactPipeline },
+  );
+
+  const isLoading = useExactPipeline ? isFieldsLoading : isMVLoading;
+  const error = useExactPipeline ? fieldsError : mvError;
 
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
@@ -1190,7 +1195,6 @@ const DBSearchPageFiltersComponent = ({
 
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
-  const error = filterMode === 'all' ? allError : exactError;
   useEffect(() => {
     if (error) {
       notifications.show({
@@ -1205,7 +1209,7 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
-    if (filterMode === 'all' || !allFields) {
+    if (!allFields) {
       return [];
     }
 
@@ -1246,7 +1250,6 @@ const DBSearchPageFiltersComponent = ({
     allFields,
     jsonColumns,
     filterState,
-    filterMode,
     showMoreFields,
     isFieldPinned,
     isSharedFieldPinned,
@@ -1266,28 +1269,36 @@ const DBSearchPageFiltersComponent = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
-  // 'exact' mode: fetch values for discovered keys
+  // In 'all' mode, strip WHERE/filters so we get all values regardless of
+  // the current search query. In 'exact' mode, keep the full chart config
+  // so values are scoped to the current query results.
+  const facetsChartConfig = useMemo(
+    () =>
+      filterMode === 'all'
+        ? { ...chartConfig, dateRange, where: '', filters: [] }
+        : { ...chartConfig, dateRange },
+    [chartConfig, dateRange, filterMode],
+  );
+
+  // Exact pipeline step 2: fetch values for discovered keys
   const {
     data: exactFacets,
     isLoading: isExactFacetsLoading,
     isFetching: isExactFacetsFetching,
   } = useGetKeyValues(
     {
-      chartConfig: { ...chartConfig, dateRange },
+      chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
       keys: keysToFetch,
     },
-    { enabled: filterMode === 'exact' },
+    { enabled: useExactPipeline },
   );
 
-  // Merge: in 'all' mode use combined query result; in 'exact' mode use two-step result
-  const facets = filterMode === 'all' ? allFieldsAndValues : exactFacets;
-  const isFacetsLoading =
-    filterMode === 'all'
-      ? isAllLoading
-      : isExactFieldsLoading || isExactFacetsLoading;
-  const isFacetsFetching =
-    filterMode === 'all' ? isAllFetching : isExactFacetsFetching;
+  const facets = useExactPipeline ? exactFacets : mvFieldsAndValues;
+  const isFacetsLoading = useExactPipeline ? isExactFacetsLoading : isMVLoading;
+  const isFacetsFetching = useExactPipeline
+    ? isExactFacetsFetching
+    : isMVFetching;
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
@@ -1320,7 +1331,7 @@ const DBSearchPageFiltersComponent = ({
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
         let newValues: string[];
-        if (filterMode === 'all') {
+        if (!useExactPipeline) {
           const results = await metadata.getAllKeyValues({
             databaseName: chartConfig.from.databaseName,
             tableName: chartConfig.from.tableName,
@@ -1367,7 +1378,7 @@ const DBSearchPageFiltersComponent = ({
       dateRange,
       metadata,
       source,
-      filterMode,
+      useExactPipeline,
       sourceTableConnection.metadataMVs,
     ],
   );
@@ -1985,7 +1996,7 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
-                {isFacetsLoading ? (
+                {isLoading || isFacetsLoading ? (
                   <Flex align="center" justify="center">
                     <Loader size="xs" color="gray" />
                   </Flex>
