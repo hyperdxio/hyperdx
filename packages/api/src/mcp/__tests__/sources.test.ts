@@ -11,6 +11,7 @@ import {
 } from '@/fixtures';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
+import Team from '@/models/team';
 
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -300,12 +301,9 @@ describe('MCP Source Tools', () => {
     });
 
     it('should not allow access to another team source', async () => {
-      const otherResult = await getLoggedInAgent(server, {
-        email: 'other-team@test.com',
-        password: 'OtherPass!2#4X',
-      });
+      const otherTeam = await Team.create({ name: 'Other Team' });
       const otherConnection = await Connection.create({
-        team: otherResult.team._id,
+        team: otherTeam._id,
         name: 'Other Connection',
         host: config.CLICKHOUSE_HOST,
         username: config.CLICKHOUSE_USER,
@@ -313,7 +311,7 @@ describe('MCP Source Tools', () => {
       });
       const otherSource = await Source.create({
         kind: SourceKind.Trace,
-        team: otherResult.team._id,
+        team: otherTeam._id,
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: DEFAULT_TRACES_TABLE,
