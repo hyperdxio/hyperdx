@@ -191,6 +191,11 @@ router.post(
         return res.json({ summary: result.text });
       } catch (err) {
         if (err instanceof APICallError) {
+          logger.error({
+            message: 'AI provider error during summarize',
+            statusCode: err.statusCode,
+            providerMessage: err.message,
+          });
           throw new Api500Error(
             `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
           );
