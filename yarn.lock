@@ -4571,7 +4571,7 @@ __metadata:
     tsx: "npm:^4.19.0"
     typescript: "npm:^5.9.3"
   bin:
-    hdx: ./dist/cli.js
+    hdx: dist/cli.js
   languageName: unknown
   linkType: soft
 
