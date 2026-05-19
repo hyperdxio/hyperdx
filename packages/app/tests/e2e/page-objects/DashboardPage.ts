@@ -1017,4 +1017,72 @@ export class DashboardPage {
   get unsavedChangesConfirmDiscardButton() {
     return this.confirmConfirmButton;
   }
+
+  // ---- Fullscreen tile helpers ----
+
+  /**
+   * The Mantine Modal body that hosts the fullscreen tile view.
+   * Scoped by the presence of a time-picker-input so it stays unambiguous
+   * even when other modals (e.g. the chart editor) are open simultaneously.
+   */
+  get fullscreenModalBody() {
+    return this.page
+      .locator('.mantine-Modal-body')
+      .filter({ has: this.page.getByTestId('time-picker-input') });
+  }
+
+  /**
+   * The time-picker-input inside the fullscreen modal.
+   * Scoped to fullscreenModalBody so it never matches the dashboard's
+   * main time picker when both exist in the DOM.
+   */
+  get fullscreenTimePickerInput() {
+    return this.fullscreenModalBody.getByTestId('time-picker-input');
+  }
+
+  /**
+   * Hover over the tile at `index` and click its fullscreen button
+   * (`data-testid="tile-fullscreen-button-<chartId>"`).
+   * Waits for the fullscreen modal's TimePicker to appear before returning.
+   */
+  async openFullscreenForTile(index: number) {
+    await this.hoverOverTile(index);
+    const fullscreenBtn = this.page
+      .locator('[data-testid^="tile-fullscreen-button-"]')
+      .first();
+    await fullscreenBtn.click();
+    await this.fullscreenTimePickerInput.waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * Select a relative time interval from the TimePicker inside the fullscreen
+   * modal (e.g. "Last 15 minutes").
+   * Opens the picker popover first if it is not already visible.
+   */
+  async selectFullscreenRelativeTime(label: string) {
+    const input = this.fullscreenTimePickerInput;
+    const popover = this.page.getByTestId('time-picker-popover');
+    const isOpen = await popover.isVisible();
+    if (!isOpen) {
+      await input.click();
+      await popover.waitFor({ state: 'visible', timeout: 5000 });
+    }
+    const intervalButton = popover.getByRole('button', { name: label });
+    await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
+    await intervalButton.click({ timeout: 10000 });
+  }
+
+  /**
+   * Close the fullscreen modal by pressing Escape and wait for it to disappear.
+   */
+  async closeFullscreen() {
+    await this.page.keyboard.press('Escape');
+    await this.fullscreenTimePickerInput.waitFor({
+      state: 'hidden',
+      timeout: 5000,
+    });
+  }
 }

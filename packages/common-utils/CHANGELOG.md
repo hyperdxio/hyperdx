@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.19.1
+
+### Patch Changes
+
+- 84117a7a: fix: support CAST() form in KV items column expression parsing for direct_read optimization
+- 51abe987: fix: Event Patterns and other CTE-using queries now correctly detect Date-typed partition columns and wrap them in toDate(), fixing "No results found" against sources with a Date partition key (e.g. event_date / EventDate).
+
 ## 0.19.0
 
 ### Minor Changes
