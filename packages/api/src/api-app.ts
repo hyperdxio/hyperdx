@@ -108,6 +108,7 @@ app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
+app.use('/v1/prometheus', isUserAuthenticated, routers.prometheusRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

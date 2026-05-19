@@ -550,3 +550,66 @@ const api = {
   },
 };
 export default api;
+
+// --------------------------
+// Prometheus API
+// --------------------------
+export type PrometheusMetric = Record<string, string>;
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+export type PrometheusQueryRangeResponse = {
+  status: 'success' | 'error';
+  data?: {
+    resultType: 'matrix';
+    result: PrometheusMatrixResult[];
+  };
+  error?: string;
+};
+export type PrometheusLabelValuesResponse = {
+  status: 'success' | 'error';
+  data?: string[];
+  error?: string;
+};
+
+export const prometheusApi = {
+  queryRange: (params: {
+    query: string;
+    start: number;
+    end: number;
+    step: string;
+    connectionId: string;
+    database: string;
+    table: string;
+  }): Promise<PrometheusQueryRangeResponse> =>
+    server
+      .post('v1/prometheus/query_range', {
+        searchParams: {
+          query: params.query,
+          start: String(params.start),
+          end: String(params.end),
+          step: params.step,
+          connectionId: params.connectionId,
+          database: params.database,
+          table: params.table,
+        },
+      })
+      .json(),
+
+  labelValues: (params: {
+    label: string;
+    connectionId: string;
+    database?: string;
+    table?: string;
+  }): Promise<PrometheusLabelValuesResponse> =>
+    server
+      .get(`v1/prometheus/label/${params.label}/values`, {
+        searchParams: {
+          connectionId: params.connectionId,
+          ...(params.database ? { database: params.database } : {}),
+          ...(params.table ? { table: params.table } : {}),
+        },
+      })
+      .json(),
+};

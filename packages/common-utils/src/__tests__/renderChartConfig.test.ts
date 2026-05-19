@@ -2761,7 +2761,7 @@ describe('renderChartConfig', () => {
   });
 
   describe('PromQL chart config', () => {
-    it('should generate SQL with prometheusQuery() table function', async () => {
+    it('should return empty SQL (PromQL is executed via Prometheus API)', async () => {
       const promqlConfig: ChartConfigWithOptDateRange = {
         configType: 'promql' as const,
         promqlExpression: 'rate(http_requests_total[5m])',
@@ -2780,40 +2780,9 @@ describe('renderChartConfig', () => {
         undefined,
       );
 
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('prometheusQuery(');
-      expect(actual).toContain('__hdx_time_bucket');
-      expect(actual).toContain('series_name');
-      expect(actual).toContain('allow_experimental_time_series_table');
-    });
-
-    it('should wrap expression as a range subquery', async () => {
-      const promqlConfig: ChartConfigWithOptDateRange = {
-        configType: 'promql' as const,
-        promqlExpression: 'up{job="api"}',
-        connection: 'test-connection',
-        dateRange: [
-          new Date('2025-01-01T00:00:00Z'),
-          new Date('2025-01-01T01:00:00Z'),
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        promqlConfig,
-        mockMetadata,
-        undefined,
-        undefined,
-      );
-
-      // Expression should be wrapped as (expr)[duration:step] range subquery
-      const rangeExprParam = Object.values(generatedSql.params).find(
-        v =>
-          typeof v === 'string' &&
-          v.includes('up{job="api"}') &&
-          v.includes('['),
-      );
-      expect(rangeExprParam).toBeDefined();
-      expect(rangeExprParam).toMatch(/\(up\{job="api"\}\)\[\d+s:\d+s\]/);
+      // PromQL configs return empty SQL — queries go through the Prometheus API route
+      expect(generatedSql.sql).toBe('');
+      expect(generatedSql.params).toEqual({});
     });
   });
 });

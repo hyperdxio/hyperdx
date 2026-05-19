@@ -23,8 +23,12 @@ import {
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { isBuilderChartConfig, isPromqlChartConfig } from '@/guards';
-import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
+import { isBuilderChartConfig } from '@/guards';
+import {
+  ChartConfigWithOptDateRange,
+  QuerySettings,
+  SourceFilters,
+} from '@/types';
 
 // export @clickhouse/client-common types
 export type {
@@ -651,12 +655,6 @@ export abstract class BaseClickhouseClient {
 
     const isTimeSeries = config.displayType === 'line';
 
-    const isPromql = isPromqlChartConfig(config);
-    const clickhouseSettings = {
-      ...opts?.clickhouse_settings,
-      ...(isPromql ? { allow_experimental_time_series_table: 1 } : undefined),
-    };
-
     const resultSets = await Promise.all(
       queries.map(async query => {
         const resp = await this.query<'JSON'>({
@@ -665,7 +663,7 @@ export abstract class BaseClickhouseClient {
           format: 'JSON',
           abort_signal: opts?.abort_signal,
           connectionId: config.connection,
-          clickhouse_settings: clickhouseSettings,
+          clickhouse_settings: opts?.clickhouse_settings,
         });
         return resp.json<any>();
       }),

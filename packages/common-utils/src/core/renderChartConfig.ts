@@ -1746,71 +1746,6 @@ async function renderFiltersToSql(
   return conditions.length > 0 ? `(${conditions.join(' AND ')})` : undefined;
 }
 
-export async function renderPromqlChartConfig(
-  chartConfig: PromqlChartConfig & Partial<DateRange>,
-): Promise<ChSql> {
-  const dateRange = chartConfig.dateRange;
-  const evalTime = dateRange ? dateRange[1] : new Date();
-
-  // Compute the lookback duration and step for the range subquery.
-  // prometheusQuery() with an instant query returns a single point;
-  // to get a time series we wrap the expression as `expr[duration:step]`
-  // which returns a matrix result with (tags, time_series) columns.
-  const startMs = dateRange ? dateRange[0].getTime() : Date.now() - 3600_000;
-  const endMs = evalTime.getTime();
-  const durationSec = Math.max(Math.floor((endMs - startMs) / 1000), 60);
-
-  let stepSec = 15;
-  if (chartConfig.step) {
-    const match = chartConfig.step.match(/^(\d+)(s|m|h)$/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      const unit = match[2];
-      stepSec = unit === 'h' ? num * 3600 : unit === 'm' ? num * 60 : num;
-    }
-  } else if (chartConfig.granularity && chartConfig.granularity !== 'auto') {
-    stepSec = convertGranularityToSeconds(chartConfig.granularity);
-  } else if (dateRange) {
-    const autoGranularity = convertDateRangeToGranularityString(dateRange);
-    stepSec = convertGranularityToSeconds(autoGranularity);
-  }
-
-  // Build the range subquery expression: `(expr)[duration:step]`
-  const rangeExpr = `(${chartConfig.promqlExpression})[${durationSec}s:${stepSec}s]`;
-
-  const database = chartConfig.from?.databaseName || 'default';
-  const table = chartConfig.from?.tableName || 'otel_metrics_ts';
-
-  // prometheusQuery returns matrix result as (tags, time_series) where
-  // time_series is Array(Tuple(DateTime64(3), Float64)).
-  // We unpack with arrayJoin and format legends Grafana-style:
-  // metric_name{only_distinguishing_labels} — shared labels are stripped.
-  return chSql`WITH raw AS (
-  SELECT tags, arrayJoin(time_series) AS point
-  FROM prometheusQuery(${{ String: database }}, ${{ String: table }}, ${{ String: rangeExpr }}, fromUnixTimestamp64Milli(${{ Int64: endMs }}))
-),
-distinct_tags AS (
-  SELECT tag.1 AS key, uniqExact(tag.2) AS cnt
-  FROM raw ARRAY JOIN tags AS tag
-  WHERE tag.1 != '__name__'
-  GROUP BY key
-)
-SELECT
-  point.1 AS __hdx_time_bucket,
-  point.2 AS value,
-  concat(
-    arrayFilter(x -> x.1 = '__name__', tags)[1].2,
-    if(
-      length(arrayFilter(x -> x.1 IN (SELECT key FROM distinct_tags WHERE cnt > 1), tags)) > 0,
-      concat('{', arrayStringConcat(arrayMap(x -> concat(x.1, '="', x.2, '"'), arrayFilter(x -> x.1 IN (SELECT key FROM distinct_tags WHERE cnt > 1), tags)), ', '), '}'),
-      ''
-    )
-  ) AS series_name
-FROM raw
-ORDER BY __hdx_time_bucket
-SETTINGS allow_experimental_time_series_table = 1`;
-}
-
 export async function renderRawSqlChartConfig(
   chartConfig: RawSqlChartConfig & Partial<DateRange>,
   metadata: Metadata,
@@ -1837,7 +1772,9 @@ export async function renderChartConfig(
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
   if (isPromqlChartConfig(rawChartConfig)) {
-    return renderPromqlChartConfig(rawChartConfig);
+    // PromQL queries are executed server-side via the Prometheus API route,
+    // not via SQL generation. Return empty SQL as a no-op.
+    return { sql: '', params: {} };
   }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
