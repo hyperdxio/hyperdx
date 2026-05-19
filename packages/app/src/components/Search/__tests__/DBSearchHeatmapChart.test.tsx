@@ -83,22 +83,35 @@ const { ColorLegend: MockedColorLegend } = jest.requireMock(
   '../../DBHeatmapChart',
 );
 
-const baseSource = {
+// Direct type annotations (no `as unknown as` casts) so adding a
+// required field to either schema fails this fixture at compile
+// time rather than silently passing.
+const baseSource: TTraceSource = {
   id: 'trace-source',
   kind: SourceKind.Trace,
   name: 'Trace Source',
+  connection: 'conn',
+  from: { databaseName: 'otel', tableName: 'otel_traces' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp',
   durationExpression: 'Duration',
+  durationPrecision: 3,
+  traceIdExpression: 'TraceId',
   spanIdExpression: 'SpanId',
-} as unknown as TTraceSource;
+  parentSpanIdExpression: 'ParentSpanId',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+};
 
-const baseChartConfig = {
+const baseChartConfig: BuilderChartConfigWithDateRange = {
   dateRange: [new Date(0), new Date(1000)],
   from: { databaseName: 'otel', tableName: 'otel_traces' },
   timestampValueExpression: 'Timestamp',
   connection: 'conn',
   select: '',
   where: '',
-} as unknown as BuilderChartConfigWithDateRange;
+  whereLanguage: 'sql',
+};
 
 describe('DBSearchHeatmapChart', () => {
   beforeEach(() => {

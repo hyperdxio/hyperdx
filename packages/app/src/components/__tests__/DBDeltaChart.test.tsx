@@ -1,5 +1,8 @@
 import React from 'react';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -26,6 +29,15 @@ jest.mock('../PropertyComparisonChart', () => ({
 
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
 
+// Sentinel filter on baseConfig so the allSpans assertion can prove
+// the branch passes user-supplied filters through unchanged. Without
+// it, `expect(filters).toBeUndefined()` passes for both "no override"
+// and "filters dropped on the floor", which are indistinguishable.
+const sentinelFilter: Filter = {
+  type: 'sql',
+  condition: 'tenant_id = 42',
+};
+
 const baseConfig: BuilderChartConfigWithDateRange = {
   dateRange: [new Date(0), new Date(1000)],
   from: { databaseName: 'otel', tableName: 'otel_traces' },
@@ -34,6 +46,7 @@ const baseConfig: BuilderChartConfigWithDateRange = {
   select: '',
   where: '',
   whereLanguage: 'sql',
+  filters: [sentinelFilter],
 };
 
 function renderChart(
@@ -92,16 +105,28 @@ describe('DBDeltaChart', () => {
       expect(allSpansCall[1]).toMatchObject({ enabled: true });
     });
 
-    it('does not apply a filters override on the allSpans query', () => {
-      // Regression guard: the allSpans branch must not reuse buildFilters,
-      // which is keyed on (xMin/xMax/yMin/yMax). With no selection those
-      // default to 0 and produce dead SQL that mirrors the inlier branch.
+    it('passes config.filters through to allSpans without selection filters', () => {
+      // Regression guard for two related failure modes:
+      //   1. allSpans reuses buildFilters() (keyed on xMin/xMax/yMin/yMax).
+      //      With no selection those default to 0 and produce dead SQL
+      //      mirroring the inlier branch. Length would grow past 1.
+      //   2. allSpans explicitly sets `filters: undefined` and drops the
+      //      user-supplied filters on the floor. Length would drop to 0.
+      // Both are caught by asserting allSpans receives exactly the
+      // sentinel filter array from config, no more and no fewer.
       renderChart();
 
       const calls = mockUseQueriedChartConfig.mock.calls;
       expect(calls).toHaveLength(3);
       const allSpansConfig = calls[2][0];
-      expect(allSpansConfig.filters).toBeUndefined();
+      expect(allSpansConfig.filters).toEqual([sentinelFilter]);
+
+      // Sanity: the outlier branch DOES inject extra filters built from
+      // the (defaulted-to-zero) coords, so its filters array is strictly
+      // longer than baseConfig.filters.
+      const outlierConfig = calls[0][0];
+      expect(outlierConfig.filters.length).toBeGreaterThan(1);
+      expect(outlierConfig.filters[0]).toEqual(sentinelFilter);
     });
   });
 
