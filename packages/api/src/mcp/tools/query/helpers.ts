@@ -7,6 +7,7 @@ import type {
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
 import { getConnectionById } from '@/controllers/connection';
@@ -17,6 +18,30 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+// ─── Tile construction ───────────────────────────────────────────────────────
+
+/**
+ * Build a validated tile envelope for MCP tool execution.
+ * Eliminates the repeated id/name/x/y/w/h boilerplate across tool handlers.
+ */
+export function buildTile(
+  name: string,
+  w: number,
+  h: number,
+  config: Record<string, unknown>,
+): ExternalDashboardTileWithId {
+  return externalDashboardTileSchemaWithId.parse({
+    id: new ObjectId().toString(),
+    name,
+    x: 0,
+    y: 0,
+    w,
+    h,
+    config,
+  });
+}
 
 // ─── Time range ──────────────────────────────────────────────────────────────
 
@@ -197,11 +222,25 @@ export async function runConfigTile(
     } satisfies ChartConfigWithDateRange;
 
     const metadata = getMetadata(clickhouseClient);
-    const result = await clickhouseClient.queryChartConfig({
-      config: chartConfig,
-      metadata,
-      querySettings: source.querySettings,
-    });
+    let result;
+    try {
+      result = await clickhouseClient.queryChartConfig({
+        config: chartConfig,
+        metadata,
+        querySettings: source.querySettings,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        isError: true as const,
+        content: [
+          {
+            type: 'text' as const,
+            text: `ClickHouse query failed: ${message}`,
+          },
+        ],
+      };
+    }
 
     return formatQueryResult(result);
   }
@@ -257,11 +296,25 @@ export async function runConfigTile(
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
-  const result = await clickhouseClient.queryChartConfig({
-    config: chartConfig,
-    metadata,
-    querySettings: undefined,
-  });
+  let result;
+  try {
+    result = await clickhouseClient.queryChartConfig({
+      config: chartConfig,
+      metadata,
+      querySettings: undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text: `ClickHouse query failed: ${message}`,
+        },
+      ],
+    };
+  }
 
   return formatQueryResult(result);
 }

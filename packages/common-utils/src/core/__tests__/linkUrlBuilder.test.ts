@@ -243,7 +243,7 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
+      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"MyService"' }]);
     }
   });
 
@@ -277,7 +277,9 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
+      ).toEqual([
+        { type: 'lucene', condition: '(ServiceName:"A" OR ServiceName:"B")' },
+      ]);
     }
   });
 
@@ -312,8 +314,8 @@ describe('renderOnClickSearch', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('MyService')" },
-        { type: 'sql', condition: "SeverityText IN ('error')" },
+        { type: 'lucene', condition: 'ServiceName:"MyService"' },
+        { type: 'lucene', condition: 'SeverityText:"error"' },
       ]);
     }
   });
@@ -343,7 +345,7 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"O\'Malley"' }]);
     }
   });
 
@@ -373,7 +375,7 @@ describe('renderOnClickSearch', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+        { type: 'lucene', condition: 'FilePath:"C:\\\\path\\\\to\\\\file"' },
       ]);
     }
   });
@@ -405,8 +407,8 @@ describe('renderOnClickSearch', () => {
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
         {
-          type: 'sql',
-          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+          type: 'lucene',
+          condition: 'SpanAttributes.url:"/users%2F42"',
         },
       ]);
     }
@@ -675,7 +677,7 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
+      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"MyService"' }]);
     }
   });
 
@@ -709,7 +711,9 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
+      ).toEqual([
+        { type: 'lucene', condition: '(ServiceName:"A" OR ServiceName:"B")' },
+      ]);
     }
   });
 
@@ -744,8 +748,8 @@ describe('renderOnClickDashboard', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('MyService')" },
-        { type: 'sql', condition: "SeverityText IN ('error')" },
+        { type: 'lucene', condition: 'ServiceName:"MyService"' },
+        { type: 'lucene', condition: 'SeverityText:"error"' },
       ]);
     }
   });
@@ -775,7 +779,7 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
+      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"O\'Malley"' }]);
     }
   });
 
@@ -805,7 +809,7 @@ describe('renderOnClickDashboard', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
+        { type: 'lucene', condition: 'FilePath:"C:\\\\path\\\\to\\\\file"' },
       ]);
     }
   });
@@ -837,8 +841,8 @@ describe('renderOnClickDashboard', () => {
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
         {
-          type: 'sql',
-          condition: "SpanAttributes['url'] IN ('/users%2F42')",
+          type: 'lucene',
+          condition: 'SpanAttributes.url:"/users%2F42"',
         },
       ]);
     }
