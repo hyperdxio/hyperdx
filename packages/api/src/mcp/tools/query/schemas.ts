@@ -6,18 +6,20 @@ const WHERE_DESCRIPTION =
   'Row filter.\n\n' +
   'FIRST: pick a language (whereLanguage):\n' +
   '  Lucene (default): Column:value          e.g. level:error\n' +
+  '  Lucene map attrs: Column.key:value      e.g. SpanAttributes.http.method:GET\n' +
   "  SQL:              Column = 'value'       e.g. StatusCode = 500\n" +
-  "  SQL map attrs:    SpanAttributes['key'] = 'value'\n" +
-  "  SQL DateTime64:   Timestamp >= parseDateTime64BestEffortOrNull('2024-01-01T00:00:00Z')\n\n" +
+  "  SQL map attrs:    SpanAttributes['key'] = 'value'\n\n" +
+  'MAP ATTRIBUTES:\n' +
+  '  Lucene uses DOT notation:    SpanAttributes.http.method:GET\n' +
+  "  SQL uses BRACKET notation:   SpanAttributes['http.method'] = 'GET'\n\n" +
   "WRONG: SpanAttributes['key']:value   (Lucene cannot parse bracket syntax)\n" +
-  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
-  'MAP ATTRIBUTE ACCESS requires whereLanguage:"sql" — the Lucene parser ' +
-  "does not accept SpanAttributes['key'] bracket syntax.";
+  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")';
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Query language for the "where" filter. Default: lucene.\n' +
-  'Use "sql" when filtering on map attributes (SpanAttributes[\'key\']) or ' +
-  'when you need SQL operators like >=, LIKE, IN, etc.';
+  'Lucene supports comparisons (>= > < <=), wildcards (field:val*), ranges ([1 TO 5]), ' +
+  'and map attributes via dot notation. ' +
+  'Use "sql" for IN(...) lists, complex expressions, or function calls.';
 
 // ─── Shared Zod schemas ──────────────────────────────────────────────────────
 
