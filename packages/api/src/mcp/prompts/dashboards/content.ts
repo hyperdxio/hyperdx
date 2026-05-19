@@ -991,7 +991,7 @@ Templating values come from the clicked row's columns. The column name in {{...}
 
   whereTemplate    Handlebars-style template. The rendered string is placed in the destination's \`where\` query param. Uses Lucene or SQL syntax matching \`whereLanguage\`. Example: "ServiceName = '{{service.name}}'".
 
-  filters          Array of { kind: "expressionTemplate", expression, template }. Each filter renders to an IN clause on the destination (\`expression IN ('rendered-value')\`). When multiple filters share an expression they are merged into one IN clause. The destination dashboard auto-populates its filter list (matched by expression), so prefer this shape over whereTemplate when the target dashboard already declares the same filter expressions.
+  filters          Array of { kind: "expressionTemplate", expression, template }. Each filter renders to an IN clause on the destination (\`expression IN ('rendered-value')\`). When multiple filters share an expression they are merged into one IN clause. The destination dashboard auto-populates its filter list (matched by expression), so prefer this shape over whereTemplate when the target dashboard already declares the same filter expressions. If the destination dashboard does not declare a top-level filter whose \`expression\` matches, that value is dropped at click time and the destination opens unfiltered for that expression.
 
 whereLanguage is optional, but set it to "sql" or "lucene" so the destination knows how to parse whereTemplate / filter values when a template is rendered.
 

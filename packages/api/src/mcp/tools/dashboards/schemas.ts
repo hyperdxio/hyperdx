@@ -269,7 +269,10 @@ const mcpOnClickDashboardSchema = z
         'Optional list of templated equality filters. The destination dashboard ' +
           'auto-populates its filter list with these (matched by expression), so prefer ' +
           'this over whereTemplate when the target dashboard already declares the same ' +
-          'filter expressions.',
+          'filter expressions. ' +
+          'If the destination dashboard does not declare a top-level filter whose ' +
+          '`expression` matches, that value is dropped at click time and the ' +
+          'destination opens unfiltered for that expression.',
       ),
   })
   .describe(
@@ -661,7 +664,7 @@ const mcpDashboardFilterSchema = z
         'Column or SQL expression this filter binds to. Example: "ServiceName" ' +
           'or "SpanAttributes[\'http.method\']". ' +
           'IMPORTANT: This is the key that table-tile onClick filters match against ' +
-          'when a row click navigates here — an onClick filter whose `expression` is ' +
+          'when a row click navigates here. An onClick filter whose `expression` is ' +
           "not declared in any of this dashboard's filters is silently dropped at click time. " +
           'Declare an expression here for every column you plan to drive via row-click.',
       ),
@@ -673,7 +676,7 @@ const mcpDashboardFilterSchema = z
       .nativeEnum(MetricsDataType)
       .optional()
       .describe(
-        'Required only when `sourceId` is a Metric source — picks which metric table the ' +
+        'Required only when `sourceId` is a Metric source; picks which metric table the ' +
           'dropdown values come from.',
       ),
     where: z
@@ -699,7 +702,7 @@ export const mcpFiltersParam = z
     'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
       'bar AND the expressions that table-tile row-click navigation can populate. ' +
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
-      'this array MUST declare a filter whose `expression` is "X" — otherwise the value is ' +
+      'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
       'Example:\n' +
       '[\n' +
