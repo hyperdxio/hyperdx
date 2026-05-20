@@ -212,27 +212,25 @@ async function describeSourceSchema(
   ];
 
   if (lcColumns.length > 0 && !signal.aborted) {
-    await Promise.all(
-      lcColumns.map(async col => {
-        try {
-          const values = await metadata.getAllKeyValues({
-            databaseName,
-            tableName,
-            keyExpression: col.name,
-            maxValues: MAX_LC_VALUES,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            signal,
-          });
-          if (values.length > 0) {
-            lowCardinalityValues[col.name] = values;
-          }
-        } catch {
-          // Skip columns where value sampling fails
+    try {
+      const results = await metadata.getAllKeyValues({
+        databaseName,
+        tableName,
+        keyExpressions: lcColumns.map(col => col.name),
+        maxValuesPerKey: MAX_LC_VALUES,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        signal,
+      });
+      for (const { key, value } of results) {
+        if (value.length > 0) {
+          lowCardinalityValues[key] = value;
         }
-      }),
-    );
+      }
+    } catch {
+      // Skip columns where value sampling fails
+    }
   }
 
   if (signal.aborted && Object.keys(lowCardinalityValues).length === 0) {
@@ -253,27 +251,25 @@ async function describeSourceSchema(
       }
     }
 
-    await Promise.all(
-      keyExprs.map(async expression => {
-        try {
-          const values = await metadata.getAllKeyValues({
-            databaseName,
-            tableName,
-            keyExpression: expression,
-            maxValues: MAX_MAP_KEY_VALUES,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            signal,
-          });
-          if (values.length > 0) {
-            mapAttributeValues[expression] = values;
-          }
-        } catch {
-          // Best-effort; skip on failure
+    try {
+      const results = await metadata.getAllKeyValues({
+        databaseName,
+        tableName,
+        keyExpressions: keyExprs,
+        maxValuesPerKey: MAX_MAP_KEY_VALUES,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        signal,
+      });
+      for (const { key, value } of results) {
+        if (value.length > 0) {
+          mapAttributeValues[key] = value;
         }
-      }),
-    );
+      }
+    } catch {
+      // Best-effort; skip on failure
+    }
 
     if (signal.aborted && Object.keys(mapAttributeValues).length === 0) {
       skippedStages.push('mapAttributeValues');
