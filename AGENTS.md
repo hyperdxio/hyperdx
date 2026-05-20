@@ -71,6 +71,19 @@ and lint issues across all packages. Pre-commit hooks handle this when
 committing, but if you finish edits without committing, run `yarn lint:fix`
 before stopping.
 
+## Before Writing New Utility Functions
+
+Before implementing a new parsing, formatting, or transformation function,
+search for existing functions that already do the same thing or something close.
+Common places to check:
+
+- `packages/common-utils/src/core/metadata.ts` — key/column parsing utilities
+  (e.g. `parseKeyPath`)
+- `packages/common-utils/src/queryParser.ts` — Lucene parsing (`parse`,
+  `decodeSpecialTokens`), AST type guards, serialization helpers
+- `packages/common-utils/src/filters.ts` — filter state serialization and
+  parsing (`filtersToQuery`, `parseLuceneFilter`)
+
 ## Key Principles
 
 1. **Multi-tenancy**: All data is scoped to `Team` - ensure proper filtering

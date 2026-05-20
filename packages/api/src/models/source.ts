@@ -7,6 +7,7 @@ import {
   SessionSourceSchema,
   SourceKind,
   TraceSourceSchema,
+  UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import z from 'zod';
@@ -137,6 +138,10 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
     /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
@@ -186,6 +191,10 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
     implicitColumnExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
     displayedTimestampValueExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,
