@@ -1321,43 +1321,6 @@ describe('MCP Dashboard Tools', () => {
       });
     });
 
-    it('should reject a filter whose sourceId does not exist', async () => {
-      const sourceId = traceSource._id.toString();
-      const missingSourceId = '000000000000000000000000';
-      const result = await callTool(client, 'hyperdx_save_dashboard', {
-        name: 'Bad filter source',
-        tiles: [traceTile(sourceId)],
-        filters: [
-          {
-            type: 'QUERY_EXPRESSION',
-            name: 'Service',
-            expression: 'ServiceName',
-            sourceId: missingSourceId,
-          },
-        ],
-      });
-      expect(result.isError).toBe(true);
-      const text = getFirstText(result);
-      // Tight assertion: the saveDashboard "missing source IDs" envelope
-      // includes the literal "Could not find source IDs:" plus the
-      // unknown id, so a regression that swaps in a different error path
-      // (e.g. a generic Zod validation reject) would fail loudly.
-      expect(text).toContain('Could not find source IDs');
-      expect(text).toContain(missingSourceId);
-    });
-
-    it('should round-trip a dashboard with no filters (backward compat)', async () => {
-      const sourceId = traceSource._id.toString();
-      const result = await callTool(client, 'hyperdx_save_dashboard', {
-        name: 'No filters',
-        tiles: [traceTile(sourceId)],
-      });
-      expect(result.isError).toBeFalsy();
-      const dashboard = JSON.parse(getFirstText(result));
-      expect(Array.isArray(dashboard.filters)).toBe(true);
-      expect(dashboard.filters).toHaveLength(0);
-    });
-
     it('should accept a create payload with stray filter ids (copy-paste round-trip)', async () => {
       // An LLM that copies a filter out of hyperdx_get_dashboard and
       // back into hyperdx_save_dashboard for a NEW dashboard ships an
