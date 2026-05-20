@@ -17,12 +17,12 @@ export function buildCreateDashboardPrompt(
 ${userContext}
 ${sourceSummary}
 
-IMPORTANT: Call hyperdx_list_sources first to get source IDs, then hyperdx_describe_source for each source you plan to query — this gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
+IMPORTANT: Call hyperdx_list_sources first to get source IDs, then hyperdx_describe_source for each source you plan to query. This gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
 
 == WORKFLOW ==
 
 1. Call hyperdx_list_sources to discover source IDs and connection IDs.
-2. Call hyperdx_describe_source for each source you plan to query — get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.).
+2. Call hyperdx_describe_source for each source you plan to query to get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.).
 3. Call hyperdx_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
 4. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
 5. Sketch tiles, THEN group them into 2-4 containers (Overview / Trends / Errors is a sane default for a service-health pattern) before assembling the save payload. Ungrouped tiles render as a flat sprawl that fails the readability test at five or more tiles.
