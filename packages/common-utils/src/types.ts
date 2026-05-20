@@ -11,6 +11,22 @@ export enum MetricsDataType {
 
 export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
 
+/**
+ * Controls whether lucene rendering uses ClickHouse text/skip indices
+ * (e.g. hasAllTokens()) when matching the implicit column.
+ *
+ * - `auto` (default): detect a covering text/bloom_filter index at query time
+ * - `enabled`: always emit hasAllTokens(), even when no index is detected
+ * - `disabled`: never use a text index; fall back to LIKE/hasToken
+ */
+export enum UseTextIndex {
+  Auto = 'auto',
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
+export const UseTextIndexSchema = z.nativeEnum(UseTextIndex);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -792,6 +808,7 @@ const SharedChartSettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
@@ -863,6 +880,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
 });
 
@@ -1148,6 +1166,19 @@ export const TeamClickHouseSettingsSchema = z.object({
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
 });
+
+/** Accepts null to unset (reset to default) a setting. */
+export const TeamClickHouseSettingsUpdateSchema = z.object({
+  fieldMetadataDisabled: z.boolean().nullish(),
+  searchRowLimit: z.number().nullish(),
+  queryTimeout: z.number().nullish(),
+  metadataMaxRowsToRead: z.number().nullish(),
+  parallelizeWhenPossible: z.boolean().nullish(),
+  filterKeysFetchLimit: z.number().nullish(),
+});
+export type TeamClickHouseSettingsUpdate = z.infer<
+  typeof TeamClickHouseSettingsUpdateSchema
+>;
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
@@ -1290,6 +1321,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
 });
 
 // Trace source form schema
@@ -1330,6 +1362,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
 });
 
 // Session source form schema

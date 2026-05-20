@@ -1,5 +1,27 @@
 # @hyperdx/api
 
+## 2.27.0
+
+### Minor Changes
+
+- fbe5a9a2: feat: Add POST /api/v2/search endpoint for querying raw log and trace rows programmatically
+
+### Patch Changes
+
+- f5ae0062: refactor(mcp): split hyperdx_query into 5 display-type-specific tools
+
+  Replace the monolithic `hyperdx_query` tool with five narrow tools:
+
+  - `hyperdx_timeseries` (line + stacked_bar)
+  - `hyperdx_table` (table + number + pie, with shape auto-upgrade)
+  - `hyperdx_search` (raw event browsing)
+  - `hyperdx_event_patterns` (Drain pattern mining)
+  - `hyperdx_sql` (raw ClickHouse SQL)
+
+  Each tool's schema contains only its relevant parameters — no displayType
+  discriminator, no fields from other modes, no conditional required fields.
+  `hyperdx_query` is removed from the tool surface.
+
 ## 2.26.0
 
 ### Minor Changes
