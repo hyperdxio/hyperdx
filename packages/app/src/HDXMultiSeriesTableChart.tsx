@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import cx from 'classnames';
-import { UnstyledButton } from '@mantine/core';
+import { HoverCard, Text, UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
@@ -20,10 +21,13 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { CsvExportButton } from './components/CsvExportButton';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
+import type { RowAction } from './hooks/useOnClickLinkBuilder';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
+
+import focusStyles from '../styles/focus.module.scss';
 
 export type TableVariant = 'default' | 'muted';
 
@@ -34,7 +38,8 @@ export const Table = ({
   data,
   groupColumnName,
   columns,
-  onRowClick,
+  getRowAction,
+  getRowSearchLink,
   tableBottom,
   enableClientSideSorting = false,
   sorting,
@@ -53,7 +58,18 @@ export const Table = ({
     sortingFn?: SortingFnOption<any>;
   }[];
   groupColumnName?: string;
-  onRowClick?: (row: any, e?: React.MouseEvent) => void;
+  // Returns the row click destination + a hover-hint description. When
+  // set, the cell becomes an <a> wrapped in a HoverCard. The resolved
+  // URL goes straight in the href so the browser handles cmd-click,
+  // middle-click, right-click, status bar preview, and keyboard
+  // activation natively. Rows whose templates fail (`url: null`) fall
+  // back to a click handler that fires a notification, preserving the
+  // pre-existing #2140 / #2141 / #2146 / #2148 behavior.
+  getRowAction?: (row: any) => RowAction;
+  // Legacy single-tile drilldown: bare URL, no hint, no HoverCard.
+  // Used outside the dashboard onClick path (event side panel, services
+  // dashboard, etc.). Only consulted when getRowAction is not provided.
+  getRowSearchLink?: (row: any) => string | null;
   tableBottom?: React.ReactNode;
   enableClientSideSorting?: boolean;
   sorting: SortingState;
@@ -146,38 +162,62 @@ export const Table = ({
                 'text-truncate': !wrapLinesEnabled,
               });
 
-              if (onRowClick) {
-                return (
-                  <div
-                    role="link"
-                    tabIndex={0}
-                    className={className}
-                    style={{ cursor: 'pointer' }}
-                    // Left-click: fires onClick with button === 0. The parent
-                    // handler detects meta/ctrl for cmd/ctrl-click → new tab.
-                    onClick={e => onRowClick(row.original, e)}
-                    // Middle-click (button === 1) fires onAuxClick but NOT
-                    // onClick on non-anchor elements.
-                    onAuxClick={e => {
-                      if (e.button === 1) {
-                        e.preventDefault();
-                        onRowClick(row.original, e);
-                      }
-                    }}
-                    // Suppress the browser's middle-click autoscroll cursor on non-anchor elements.
-                    onMouseDown={e => {
-                      if (e.button === 1) e.preventDefault();
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onRowClick(row.original);
-                      }
-                    }}
+              // Native <a href> covers cmd-click (new tab), middle-click
+              // (new tab), right-click ("Open in New Tab" / "Copy Link
+              // Address"), Enter key activation, and the browser status
+              // bar URL preview. No manual handlers required.
+              const linkClassName = cx(
+                className,
+                'd-block text-reset text-decoration-none',
+                focusStyles.focusRing,
+              );
+
+              if (getRowAction) {
+                const action = getRowAction(row.original);
+                const anchor = action.url ? (
+                  <Link href={action.url} className={linkClassName}>
+                    {formattedValue}
+                  </Link>
+                ) : (
+                  // Row's templates failed to resolve. Render a real anchor
+                  // so the hover hint still appears and the click fires the
+                  // existing error toast. preventDefault inside onClickError
+                  // stops navigation including for cmd-click / middle-click.
+                  // The proper "muted row + warning icon" preempt state is
+                  // tracked as AC8 in the discoverability outcome.
+                  <a
+                    href="#"
+                    className={linkClassName}
+                    onClick={action.onClickError}
                   >
                     {formattedValue}
-                  </div>
+                  </a>
                 );
+
+                return (
+                  <HoverCard
+                    withinPortal
+                    shadow="md"
+                    openDelay={250}
+                    position="top"
+                  >
+                    <HoverCard.Target>{anchor}</HoverCard.Target>
+                    <HoverCard.Dropdown py="xs" px="sm">
+                      <Text size="xs">{action.description}</Text>
+                    </HoverCard.Dropdown>
+                  </HoverCard>
+                );
+              }
+
+              if (getRowSearchLink) {
+                const url = getRowSearchLink(row.original);
+                if (url) {
+                  return (
+                    <Link href={url} className={linkClassName}>
+                      {formattedValue}
+                    </Link>
+                  );
+                }
               }
 
               return <div className={className}>{formattedValue}</div>;

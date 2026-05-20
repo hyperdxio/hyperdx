@@ -956,15 +956,16 @@ export class DashboardPage {
   }
 
   /**
-   * Click the first row's first cell of a table tile. Each cell contains a
-   * div[role="link"] that owns the onRowClick handler. Click that directly
-   * to trigger the configured action.
+   * Click the first row of a table tile. Clickable cells render as `<a>`
+   * (Next.js Link) for rows with a resolved onClick destination, or as a
+   * `<button>` for failure rows. The helper targets the first anchor so it
+   * always exercises the success path.
    */
   async clickFirstTableRow(tileIndex = 0) {
     await this.getTile(tileIndex)
       .locator('table tbody tr')
       .first()
-      .locator('div[role="link"]')
+      .locator('a[href]')
       .first()
       .click();
   }
