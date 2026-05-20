@@ -1,0 +1,162 @@
+{
+  "scenario": "latency-spike",
+  "agentPrompt": "p99 latency on api-server has jumped in the last 15 minutes. What's slow and why?",
+  "expected": {
+    "affectedService": "api-server",
+    "affectedOperation": "GET /api/orders/search",
+    "slowChildService": "database",
+    "slowChildOperation": "database.query",
+    "segmentAttribute": "tenant.tier",
+    "segmentValue": "enterprise",
+    "onsetMinutesAgo": 10,
+    "baselineP99Ms": 600,
+    "anomalyP99Ms": 2200,
+    "cacheHitRateInWindow": 0.2,
+    "endpointsInWorld": [
+      "GET /api/orders/search",
+      "GET /api/orders/{id}",
+      "POST /api/orders",
+      "GET /api/products/search",
+      "GET /api/inventory/{sku}"
+    ]
+  },
+  "distractors": [
+    {
+      "kind": "GC pause distractor",
+      "approxRate": 0.003,
+      "marker": "runtime.event=gc_pause",
+      "durationMs": [1500, 2200],
+      "whyNotRootCause": "Uniform across tenants and endpoints — not concentrated on enterprise GET /api/orders/search."
+    },
+    {
+      "kind": "Cold-start spike",
+      "windowMinutesAgo": [60, 55],
+      "marker": "runtime.event=cold_start",
+      "durationMs": [2000, 3000],
+      "whyNotRootCause": "Bounded to the first 5 minutes of the hour; not present in the recent window."
+    },
+    {
+      "kind": "cache.lookup latency tail",
+      "approxRate": 0.03,
+      "spanName": "cache.lookup",
+      "durationMs": [200, 400],
+      "whyNotRootCause": "Adds tail latency but cap is well below the 1500ms+ spike."
+    },
+    {
+      "kind": "products/search elasticsearch hot shard (concurrent)",
+      "endpoint": "GET /api/products/search",
+      "approxRate": 0.5,
+      "marker": "elasticsearch.shard.hot=true",
+      "windowMinutesAgo": [10, 0],
+      "durationMs": [1500, 2500],
+      "whyNotRootCause": "Real but unrelated incident on a different endpoint with a different root cause (hot shard, not missing index). Affects all tiers, not enterprise-specific."
+    },
+    {
+      "kind": "feature_flag.experiment_a confounder",
+      "marker": "feature_flag.experiment_a=enabled",
+      "tierCorrelation": { "enterprise": 0.8, "pro": 0.3, "free": 0.3 },
+      "whyNotRootCause": "Highly correlated with enterprise tier (because experiment was rolled out there first), so naive correlation analysis would suggest the flag causes the slowness. The flag is also enabled on many pro/free traces that are NOT slow — so it's a correlation, not a cause. The actual cause is the missing index on tenant_id."
+    }
+  ],
+  "anomalyAttributes": {
+    "spanAttributes": {
+      "db.system": "postgres",
+      "db.name": "orders",
+      "db.statement": "SELECT * FROM orders WHERE tenant_id = ?"
+    },
+    "rootCauseHint": "missing index on orders.tenant_id"
+  },
+  "rubric": {
+    "programmatic": [
+      {
+        "id": "names_affected_service",
+        "weight": 1,
+        "pattern": "api-server",
+        "flags": "i"
+      },
+      {
+        "id": "names_affected_endpoint",
+        "weight": 1,
+        "pattern": "(/api/orders/search|orders/search)",
+        "flags": "i"
+      },
+      {
+        "id": "names_slow_child",
+        "weight": 2,
+        "pattern": "(database\\.query|SELECT.*FROM\\s+orders)",
+        "flags": "i"
+      },
+      {
+        "id": "names_segment",
+        "weight": 2,
+        "pattern": "(enterprise|tenant\\.tier)",
+        "flags": "i"
+      },
+      {
+        "id": "names_index_or_query_root_cause",
+        "weight": 1,
+        "pattern": "(index|tenant_id|missing.*index)",
+        "flags": "i"
+      },
+      {
+        "id": "false_blame_hot_shard",
+        "weight": 2,
+        "negative": true,
+        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is|main issue)[^.\\n]{0,80}?\\b(hot.shard|elasticsearch.shard.hot|shard.{0,30}?hot)",
+        "flags": "i"
+      },
+      {
+        "id": "false_blame_products_search",
+        "weight": 2,
+        "negative": true,
+        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bproducts.search",
+        "flags": "i"
+      },
+      {
+        "id": "false_blame_feature_flag",
+        "weight": 2,
+        "negative": true,
+        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(feature.flag|experiment_a)",
+        "flags": "i"
+      },
+      {
+        "id": "false_blame_gc_pause",
+        "weight": 1,
+        "negative": true,
+        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bgc.pause",
+        "flags": "i"
+      },
+      {
+        "id": "false_blame_cold_start",
+        "weight": 1,
+        "negative": true,
+        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcold.start",
+        "flags": "i"
+      }
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer correctly identify GET /api/orders/search on api-server as affected AND localize the slow path to the database.query child for enterprise tenants? With 5 endpoints in play, naming the wrong endpoint is a correctness failure."
+        },
+        {
+          "id": "completeness",
+          "weight": 2,
+          "description": "Did it surface the segment (tenant.tier=enterprise), describe how p99 changes (only for enterprise on /api/orders/search, other tiers and endpoints unchanged), and propose a plausible root cause (missing index on tenant_id or equivalent)?"
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Did the answer avoid mistaking distractors for the cause? Specifically: (a) GC pauses are uniform across tiers and would not concentrate on enterprise. (b) cold starts only appear in the first 5 minutes of the window. (c) cache.lookup latency caps at 400ms, well below the 1500ms+ spike. (d) GET /api/products/search has its own concurrent slowness (hot shard, all tiers) — that is a SEPARATE incident from the enterprise orders/search issue, not the same cause. (e) feature_flag.experiment_a is correlated with enterprise tier (~80%) but is also enabled on many free/pro traces that are NOT slow — it is a confounder, not a cause. Blaming the flag, conflating products/search with orders/search, or claiming a single root cause for both endpoint spikes is a calibration failure."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and free of filler?"
+        }
+      ]
+    }
+  }
+}
