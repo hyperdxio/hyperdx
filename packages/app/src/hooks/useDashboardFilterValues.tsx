@@ -92,6 +92,10 @@ function useOptimizedKeyValuesCalls({
             isTraceSource(source) || isLogSource(source)
               ? source.implicitColumnExpression
               : undefined,
+          useTextIndexForImplicitColumn:
+            isTraceSource(source) || isLogSource(source)
+              ? source.useTextIndexForImplicitColumn
+              : undefined,
           dateRange,
           source: source.id,
           where,

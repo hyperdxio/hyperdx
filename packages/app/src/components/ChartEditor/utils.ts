@@ -136,6 +136,10 @@ export function convertFormStateToChartConfig(
         source && (isLogSource(source) || isTraceSource(source))
           ? source.implicitColumnExpression
           : undefined,
+      useTextIndexForImplicitColumn:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.useTextIndexForImplicitColumn
+          : undefined,
       metricTables:
         source && isMetricSource(source) ? source.metricTables : undefined,
     };
@@ -158,6 +162,10 @@ export function convertFormStateToChartConfig(
       implicitColumnExpression:
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
+          : undefined,
+      useTextIndexForImplicitColumn:
+        isLogSource(source) || isTraceSource(source)
+          ? source.useTextIndexForImplicitColumn
           : undefined,
       sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource(source) ? source.metricTables : undefined,

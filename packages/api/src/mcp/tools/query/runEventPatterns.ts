@@ -139,6 +139,10 @@ export async function runEventPatterns(
     'implicitColumnExpression' in source
       ? source.implicitColumnExpression
       : undefined;
+  const useTextIndexForImplicitColumn =
+    'useTextIndexForImplicitColumn' in source
+      ? source.useTextIndexForImplicitColumn
+      : undefined;
 
   // ── Query 1: Random sample of events ──
   const sampleConfig = {
@@ -154,6 +158,7 @@ export async function runEventPatterns(
     connection: source.connection.toString(),
     timestampValueExpression: source.timestampValueExpression,
     implicitColumnExpression: implicitColumn,
+    useTextIndexForImplicitColumn,
     orderBy: [{ ordering: 'DESC' as const, valueExpression: 'rand()' }],
     limit: { limit: sampleSize, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
@@ -173,6 +178,7 @@ export async function runEventPatterns(
     connection: source.connection.toString(),
     timestampValueExpression: source.timestampValueExpression,
     implicitColumnExpression: implicitColumn,
+    useTextIndexForImplicitColumn,
     limit: { limit: 1, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
   } satisfies ChartConfigWithDateRange;
