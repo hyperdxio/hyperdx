@@ -12,6 +12,8 @@ echo ""
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 
+node /etc/local/refresh-env.js
+
 # Use concurrently to run both the API and App servers
 ./node_modules/.bin/concurrently \
   "--kill-others-on-fail" \

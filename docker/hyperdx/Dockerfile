@@ -129,7 +129,8 @@ COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packa
 COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
 COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
 
-# Set up start script
+# Set up start scripts
+COPY --chown=node:node --from=hyperdx ./refresh-env.js /etc/local/refresh-env.js
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
@@ -197,6 +198,7 @@ ENV NODE_ENV=production
 
 # Set up App
 COPY --from=prod /app /app
+COPY --from=hyperdx ./refresh-env.js /etc/local/refresh-env.js
 COPY --from=hyperdx ./entry.local.base.sh /etc/local/entry.base.sh
 
 # Copy VEX exception files for Docker Scout vulnerability suppression
