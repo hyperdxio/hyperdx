@@ -25,7 +25,7 @@ import { useSources } from '@/source';
 export type RowAction = {
   url: string | null;
   description: string;
-  onClickError?: (e: React.MouseEvent) => void;
+  onClickError?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
 /**
@@ -91,7 +91,13 @@ export function useOnClickLinkBuilder({
       dashboardNamesById,
     });
 
-    return (row: Record<string, unknown>): RowAction => {
+    // Cache results by row reference so the same row producing N cells
+    // doesn't re-run handlebars rendering + URLSearchParams construction
+    // N times per render. The WeakMap is scoped to this closure, so a new
+    // memo (different onClick / sources / dashboards) starts fresh.
+    const cache = new WeakMap<Record<string, unknown>, RowAction>();
+
+    const compute = (row: Record<string, unknown>): RowAction => {
       const renderResult =
         onClick.type === 'search'
           ? renderOnClickSearch({
@@ -117,7 +123,7 @@ export function useOnClickLinkBuilder({
       return {
         url: null,
         description,
-        onClickError: (e: React.MouseEvent) => {
+        onClickError: (e: React.MouseEvent<HTMLButtonElement>) => {
           e.preventDefault();
           notifications.show({
             id: errorMessage,
@@ -127,6 +133,14 @@ export function useOnClickLinkBuilder({
           });
         },
       };
+    };
+
+    return (row: Record<string, unknown>): RowAction => {
+      const cached = cache.get(row);
+      if (cached) return cached;
+      const result = compute(row);
+      cache.set(row, result);
+      return result;
     };
   }, [
     onClick,

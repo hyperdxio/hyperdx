@@ -66,7 +66,9 @@ describe('useOnClickLinkBuilder', () => {
     expect(result.current).not.toBeNull();
     const action = result.current!({});
     expect(action.description).toBe('Search HyperDX Logs');
-    expect(action.url).toMatch(/^\/search\?source=src_1&/);
+    const params = new URLSearchParams(action.url!.split('?')[1]);
+    expect(action.url!.startsWith('/search?')).toBe(true);
+    expect(params.get('source')).toBe('src_1');
     expect(action.onClickError).toBeUndefined();
   });
 
@@ -81,7 +83,22 @@ describe('useOnClickLinkBuilder', () => {
     );
     const action = result.current!({});
     expect(action.description).toBe('Open dashboard "API Latency Drilldown"');
-    expect(action.url).toMatch(/^\/dashboards\/dash_1\?/);
+    expect(action.url!.startsWith('/dashboards/dash_1?')).toBe(true);
+  });
+
+  it('caches results per row reference so repeated calls share the same RowAction', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+    };
+    const { result } = renderHook(() =>
+      useOnClickLinkBuilder({ onClick, dateRange }),
+    );
+    const row = { ServiceName: 'web' };
+    const first = result.current!(row);
+    const second = result.current!(row);
+    expect(first).toBe(second);
   });
 
   it('encodes a row resolution failure as url: null with a click handler that fires a notification', () => {

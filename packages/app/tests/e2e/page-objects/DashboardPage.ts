@@ -956,16 +956,16 @@ export class DashboardPage {
   }
 
   /**
-   * Click the first row of a table tile. Clickable cells render as `<a>`
-   * (Next.js Link) for rows with a resolved onClick destination, or as a
-   * `<button>` for failure rows. The helper targets the first anchor so it
-   * always exercises the success path.
+   * Click the first row's first cell of a table tile. Each cell carries
+   * `data-testid="dashboard-table-row-action"` on either the success
+   * anchor (Next.js Link) or the failure button, so a single selector
+   * matches both branches.
    */
   async clickFirstTableRow(tileIndex = 0) {
     await this.getTile(tileIndex)
       .locator('table tbody tr')
       .first()
-      .locator('a[href]')
+      .locator('[data-testid="dashboard-table-row-action"]')
       .first()
       .click();
   }

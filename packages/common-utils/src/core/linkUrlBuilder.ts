@@ -271,12 +271,17 @@ export function describeOnClick({
     }
     return 'Open in search';
   }
-
-  if (onClick.target.mode === 'id') {
-    const name = dashboardNamesById.get(onClick.target.id);
-    if (name) return `Open dashboard "${name}"`;
+  if (onClick.type === 'dashboard') {
+    if (onClick.target.mode === 'id') {
+      const name = dashboardNamesById.get(onClick.target.id);
+      if (name) return `Open dashboard "${name}"`;
+    }
+    return 'Open dashboard';
   }
-  return 'Open dashboard';
+  // Exhaustiveness check: adding a new OnClickSchema variant must
+  // also extend describeOnClick.
+  const _exhaustive: never = onClick;
+  return _exhaustive;
 }
 
 /** Throws if the given OnClick includes a template with invalid syntax */

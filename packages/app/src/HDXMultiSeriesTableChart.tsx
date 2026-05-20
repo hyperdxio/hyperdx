@@ -166,46 +166,49 @@ export const Table = ({
               // (new tab), right-click ("Open in New Tab" / "Copy Link
               // Address"), Enter key activation, and the browser status
               // bar URL preview. No manual handlers required.
-              const linkClassName = cx(
+              const interactiveClassName = cx(
                 className,
-                'd-block text-reset text-decoration-none',
+                'd-block text-reset text-decoration-none w-100 text-start',
                 focusStyles.focusRing,
               );
 
               if (getRowAction) {
+                // The hook memoizes per-row results internally, so calling
+                // this once per cell is cheap and the row-level HoverCard
+                // in the <tbody> loop below sees the same identity.
                 const action = getRowAction(row.original);
-                const anchor = action.url ? (
-                  <Link href={action.url} className={linkClassName}>
-                    {formattedValue}
-                  </Link>
-                ) : (
-                  // Row's templates failed to resolve. Render a real anchor
-                  // so the hover hint still appears and the click fires the
-                  // existing error toast. preventDefault inside onClickError
-                  // stops navigation including for cmd-click / middle-click.
-                  // The proper "muted row + warning icon" preempt state is
-                  // tracked as AC8 in the discoverability outcome.
-                  <a
-                    href="#"
-                    className={linkClassName}
-                    onClick={action.onClickError}
-                  >
-                    {formattedValue}
-                  </a>
-                );
-
+                if (action.url) {
+                  // Use prefetch={false} so virtualization scroll doesn't
+                  // trigger an N-row prefetch storm against /search? and
+                  // /dashboards/ routes the user usually never opens.
+                  return (
+                    <Link
+                      href={action.url}
+                      prefetch={false}
+                      className={interactiveClassName}
+                      data-testid="dashboard-table-row-action"
+                    >
+                      {formattedValue}
+                    </Link>
+                  );
+                }
+                // Row's templates failed to resolve. Use a real <button> so
+                // cmd-click, middle-click, and right-click "Open Link in
+                // New Tab" stay disabled (a # anchor would silently open
+                // a meaningless new tab on auxclick before our onClick
+                // handler runs). The button still surfaces the existing
+                // notification toast on left-click; the proper "muted row
+                // + warning icon" preempt state is tracked as AC8.
                 return (
-                  <HoverCard
-                    withinPortal
-                    shadow="md"
-                    openDelay={250}
-                    position="top"
+                  <button
+                    type="button"
+                    className={interactiveClassName}
+                    onClick={action.onClickError}
+                    style={{ background: 'none', border: 'none' }}
+                    data-testid="dashboard-table-row-action"
                   >
-                    <HoverCard.Target>{anchor}</HoverCard.Target>
-                    <HoverCard.Dropdown py="xs" px="sm">
-                      <Text size="xs">{action.description}</Text>
-                    </HoverCard.Dropdown>
-                  </HoverCard>
+                    {formattedValue}
+                  </button>
                 );
               }
 
@@ -213,7 +216,12 @@ export const Table = ({
                 const url = getRowSearchLink(row.original);
                 if (url) {
                   return (
-                    <Link href={url} className={linkClassName}>
+                    <Link
+                      href={url}
+                      prefetch={false}
+                      className={interactiveClassName}
+                      data-testid="dashboard-table-row-action"
+                    >
                       {formattedValue}
                     </Link>
                   );
@@ -367,7 +375,11 @@ export const Table = ({
           )}
           {items.map(virtualRow => {
             const row = rows[virtualRow.index] as TableRow<any>;
-            return (
+            // Compute the action once per row so the row-level HoverCard
+            // sees the same description and per-cell renders share the
+            // memoized result from useOnClickLinkBuilder.
+            const rowAction = getRowAction ? getRowAction(row.original) : null;
+            const tr = (
               <tr
                 key={virtualRow.key}
                 className="bg-muted-hover"
@@ -386,6 +398,27 @@ export const Table = ({
                 })}
               </tr>
             );
+            // Row-level HoverCard so the hint position stays stable as the
+            // cursor moves between cells in the same row. Mantine's
+            // HoverCard.Target clones the <tr> and merges its hover ref
+            // with the virtualizer's measureElement ref.
+            if (rowAction) {
+              return (
+                <HoverCard
+                  key={virtualRow.key}
+                  withinPortal
+                  shadow="md"
+                  openDelay={250}
+                  position="top"
+                >
+                  <HoverCard.Target>{tr}</HoverCard.Target>
+                  <HoverCard.Dropdown py="xs" px="sm">
+                    <Text size="xs">{rowAction.description}</Text>
+                  </HoverCard.Dropdown>
+                </HoverCard>
+              );
+            }
+            return tr;
           })}
           {paddingBottom > 0 && (
             <tr>
