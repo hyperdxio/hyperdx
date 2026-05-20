@@ -14,6 +14,10 @@ jest.mock('../useMetadata', () => ({
   useGetKeyValues: jest.fn(),
 }));
 
+jest.mock('../../source', () => ({
+  useSource: jest.fn().mockReturnValue({ data: undefined }),
+}));
+
 const luceneFormatter = new LuceneLanguageFormatter();
 
 const mockFields: Field[] = [

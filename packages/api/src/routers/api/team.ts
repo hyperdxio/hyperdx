@@ -6,7 +6,7 @@ import type {
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
 } from '@hyperdx/common-utils/dist/types';
-import { TeamClickHouseSettingsSchema } from '@hyperdx/common-utils/dist/types';
+import { TeamClickHouseSettingsUpdateSchema } from '@hyperdx/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
@@ -105,7 +105,7 @@ router.patch(
 router.patch(
   '/clickhouse-settings',
   processRequest({
-    body: TeamClickHouseSettingsSchema,
+    body: TeamClickHouseSettingsUpdateSchema,
   }),
   async (
     req,

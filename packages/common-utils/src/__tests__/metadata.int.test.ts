@@ -776,4 +776,185 @@ describe('Metadata Integration Tests', () => {
       expect(parsed!.separator).toBe('=');
     });
   });
+
+  describe('getAllFieldsAndValues', () => {
+    let metadata: Metadata;
+    const kvRollupTableName = 'test_kv_rollup';
+
+    const metadataMVs = {
+      keyRollupTable: 'test_key_rollup', // not used by this method
+      kvRollupTable: kvRollupTableName,
+      granularity: '1 minute',
+    };
+
+    beforeAll(async () => {
+      // Create KV rollup table matching the schema getAllFieldsAndValues expects
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${kvRollupTableName} (
+            Timestamp DateTime CODEC(Delta, ZSTD(1)),
+            ColumnIdentifier String CODEC(ZSTD(1)),
+            Key String CODEC(ZSTD(1)),
+            Value String CODEC(ZSTD(1)),
+            count UInt64
+          )
+          ENGINE = SummingMergeTree()
+          ORDER BY (Timestamp, ColumnIdentifier, Key, Value)
+        `,
+      });
+
+      // Insert sample data: native columns + map sub-fields
+      await client.command({
+        query: `INSERT INTO default.${kvRollupTableName}
+          (Timestamp, ColumnIdentifier, Key, Value, count) VALUES
+          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'info', 10),
+          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'error', 5),
+          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'warning', 2),
+          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', '', 1),
+          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'api', 8),
+          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'web', 6),
+          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'prod', 12),
+          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'staging', 3),
+          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'us-east', 7),
+          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'eu-west', 4)
+        `,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${kvRollupTableName}`,
+      });
+    });
+
+    it('should return all keys and values from the KV rollup table', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+      });
+
+      // Should have 4 keys: SeverityText, ServiceName, ResourceAttributes['env'], ResourceAttributes['region']
+      expect(result).toHaveLength(4);
+
+      // Native columns use bare key names
+      const severity = result.find(r => r.key === 'SeverityText');
+      expect(severity).toBeDefined();
+      expect(severity!.value).toEqual(
+        expect.arrayContaining(['info', 'error', 'warning']),
+      );
+      // Empty values should be excluded
+      expect(severity!.value).not.toContain('');
+
+      const service = result.find(r => r.key === 'ServiceName');
+      expect(service).toBeDefined();
+      expect(service!.value).toEqual(expect.arrayContaining(['api', 'web']));
+
+      // Map sub-fields use bracket notation
+      const env = result.find(r => r.key === "ResourceAttributes['env']");
+      expect(env).toBeDefined();
+      expect(env!.value).toEqual(expect.arrayContaining(['prod', 'staging']));
+
+      const region = result.find(r => r.key === "ResourceAttributes['region']");
+      expect(region).toBeDefined();
+      expect(region!.value).toEqual(
+        expect.arrayContaining(['us-east', 'eu-west']),
+      );
+    });
+
+    it('should return native columns before map sub-fields', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+      });
+
+      // NativeColumn rows are ordered first by the ORDER BY clause
+      const nativeKeys = result
+        .filter(r => !r.key.includes('['))
+        .map(r => r.key);
+      const mapKeys = result.filter(r => r.key.includes('[')).map(r => r.key);
+
+      // All native keys should come before map keys
+      const lastNativeIdx = Math.max(
+        ...nativeKeys.map(k => result.findIndex(r => r.key === k)),
+      );
+      const firstMapIdx = Math.min(
+        ...mapKeys.map(k => result.findIndex(r => r.key === k)),
+      );
+      expect(lastNativeIdx).toBeLessThan(firstMapIdx);
+    });
+
+    it('should respect maxKeys limit', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+        maxKeys: 2,
+      });
+
+      expect(result).toHaveLength(2);
+    });
+
+    it('should respect maxValuesPerKey limit', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+        maxValuesPerKey: 1,
+      });
+
+      // Each key should have at most 1 value
+      for (const entry of result) {
+        expect(entry.value.length).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it('should return empty array when metadataMVs is undefined', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs: undefined,
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when dateRange is undefined', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: undefined,
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when date range has no matching data', async () => {
+      const result = await metadata.getAllFieldsAndValues({
+        databaseName: 'default',
+        tableName: 'unused_base_table',
+        connectionId: 'test_connection',
+        metadataMVs,
+        dateRange: [new Date('2025-06-01'), new Date('2025-06-30')],
+      });
+
+      expect(result).toEqual([]);
+    });
+  });
 });

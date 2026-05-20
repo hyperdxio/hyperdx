@@ -25,7 +25,10 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
@@ -424,6 +427,7 @@ export interface SourceResponse {
   displayedTimestampValueExpression?: string;
   defaultTableSelectExpression?: string;
   implicitColumnExpression?: string;
+  useTextIndexForImplicitColumn?: UseTextIndex;
   orderByExpression?: string;
   querySettings?: Array<{ setting: string; value: string }>;
 

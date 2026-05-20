@@ -21,6 +21,7 @@ import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
@@ -38,6 +39,7 @@ interface ClickhouseSettingFormProps {
   min?: number;
   max?: number;
   displayValue?: (value: any, defaultValue?: any) => string;
+  description?: string;
 }
 
 function getFieldErrorMessage(error: unknown): string | undefined {
@@ -59,6 +61,7 @@ function ClickhouseSettingForm({
   min,
   max,
   displayValue,
+  description,
 }: ClickhouseSettingFormProps) {
   const { data: me, refetch: refetchMe } = api.useMe();
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
@@ -119,6 +122,39 @@ function ClickhouseSettingForm({
     ],
   );
 
+  const handleReset = useCallback(() => {
+    if (defaultValue == null) return;
+    updateClickhouseSettings.mutate(
+      { [settingKey]: null },
+      {
+        onError: () => {
+          notifications.show({
+            color: 'red',
+            message: `Failed to reset ${label}`,
+          });
+        },
+        onSuccess: () => {
+          notifications.show({
+            color: 'green',
+            message: `Reset ${label} to default`,
+          });
+          form.reset({ value: defaultValue });
+          refetchMe();
+          setIsEditing(false);
+        },
+      },
+    );
+  }, [
+    refetchMe,
+    updateClickhouseSettings,
+    settingKey,
+    label,
+    defaultValue,
+    form,
+  ]);
+
+  const isCustomValue = currentValue !== undefined;
+
   return (
     <Stack gap="xs" mb="md">
       <Group gap="xs">
@@ -131,6 +167,11 @@ function ClickhouseSettingForm({
           </Tooltip>
         )}
       </Group>
+      {description && (
+        <Text size="xs" c="dimmed">
+          {description}
+        </Text>
+      )}
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
@@ -213,6 +254,16 @@ function ClickhouseSettingForm({
               Change
             </Button>
           )}
+          {hasAdminAccess && isCustomValue && defaultValue != null && (
+            <Button
+              size="xs"
+              variant="subtle"
+              loading={updateClickhouseSettings.isPending}
+              onClick={handleReset}
+            >
+              Reset to default
+            </Button>
+          )}
         </Group>
       )}
     </Stack>
@@ -224,7 +275,7 @@ export default function TeamQueryConfigSection() {
   const displayValueWithUnit =
     (unit: string) => (value: any, defaultValue?: any) =>
       value === undefined || value === defaultValue
-        ? `${defaultValue.toLocaleString()} ${unit} (System Default)`
+        ? `${defaultValue.toLocaleString()} ${unit}`
         : value === 0
           ? 'Unlimited'
           : `${value.toLocaleString()} ${unit}`;
@@ -276,6 +327,7 @@ export default function TeamQueryConfigSection() {
             min={1}
             max={1000}
             displayValue={displayValueWithUnit('keys')}
+            description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT} keys, or ${DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS} when metadata materialized views are enabled.`}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"

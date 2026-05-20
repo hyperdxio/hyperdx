@@ -25,6 +25,7 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import type {
   ExternalDashboardFilter,
+  ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
 } from '@/utils/zod';
 
@@ -72,7 +73,7 @@ export function registerSaveDashboard(
         tiles: inputTiles,
         tags,
         containers,
-        filters,
+        filters: inputFilters,
       }) => {
         if (!dashboardId) {
           return createDashboard({
@@ -82,7 +83,7 @@ export function registerSaveDashboard(
             inputTiles,
             tags,
             containers,
-            inputFilters: filters,
+            inputFilters,
           });
         }
         return updateDashboard({
@@ -93,7 +94,7 @@ export function registerSaveDashboard(
           inputTiles,
           tags,
           containers,
-          inputFilters: filters,
+          inputFilters,
         });
       },
     ),
@@ -101,6 +102,42 @@ export function registerSaveDashboard(
 }
 
 // ─── Create helper ────────────────────────────────────────────────────────────
+
+// The MCP input schema marks filter `id` as optional so the same shape
+// serves both create (no id, generated on save) and update (preserved
+// id) flows. The underlying body schemas are stricter: create uses
+// `externalDashboardFilterSchema` which rejects any `id` field, update
+// uses `externalDashboardFilterSchemaWithId` which requires it. Normalize
+// the input here so an LLM can copy a filter from the get-dashboard
+// response into a create payload (or omit the id on a new filter added
+// during update) without hitting a confusing strict-validation rejection.
+function stripFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilter[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const { id: _id, ...rest } = filter as ExternalDashboardFilterWithId;
+    return rest as ExternalDashboardFilter;
+  });
+}
+
+function assignFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilterWithId[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const withId = filter as ExternalDashboardFilterWithId;
+    if (typeof withId.id === 'string' && withId.id.length > 0) return withId;
+    return {
+      ...filter,
+      id: new mongoose.Types.ObjectId().toString(),
+    } as ExternalDashboardFilterWithId;
+  });
+}
 
 async function createDashboard({
   teamId,
@@ -117,14 +154,16 @@ async function createDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters: ExternalDashboardFilter[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
     tags,
     containers,
-    filters: inputFilters,
+    filters: stripFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -272,7 +311,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -301,7 +340,9 @@ async function updateDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters: ExternalDashboardFilter[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
@@ -315,7 +356,7 @@ async function updateDashboard({
     tiles: inputTiles,
     tags,
     containers,
-    filters: inputFilters,
+    filters: assignFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -529,7 +570,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,

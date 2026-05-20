@@ -541,6 +541,8 @@ async function renderSelectList(
         from: chartConfig.from,
         language: select.aggConditionLanguage ?? 'lucene',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        useTextIndexForImplicitColumn:
+          chartConfig.useTextIndexForImplicitColumn,
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
@@ -555,6 +557,8 @@ async function renderSelectList(
                 from: chartConfig.from,
                 language: 'lucene',
                 implicitColumnExpression: chartConfig.implicitColumnExpression,
+                useTextIndexForImplicitColumn:
+                  chartConfig.useTextIndexForImplicitColumn,
                 metadata,
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
@@ -700,26 +704,31 @@ export async function timeFilterExpr({
       // Detect toDate(...) wrapper expressions
       const isToDateExpr = /^toDate\s*\(/.test(col);
 
-      const columnMeta =
-        hasSubqueryCte(withClauses) || toStartOf || isToDateExpr
-          ? null
-          : await metadata.getColumn({
-              databaseName,
-              tableName,
-              column: col,
-              connectionId,
-            });
+      // Skip the column-metadata lookup when:
+      //   - the FROM references a CTE alias (no real base table to DESCRIBE), or
+      //   - the expression isn't a bare column name (wrapped in toStartOf/toDate).
+      // A subquery CTE alone is not enough — when `databaseName` is set, `col` still
+      // references a real base-table column whose type (e.g. Date) we need to know
+      // to generate a correct time filter.
+      const skipColumnLookup =
+        (hasSubqueryCte(withClauses) && !databaseName) ||
+        !!toStartOf ||
+        isToDateExpr;
+
+      const columnMeta = skipColumnLookup
+        ? null
+        : await metadata.getColumn({
+            databaseName,
+            tableName,
+            column: col,
+            connectionId,
+          });
 
       const unsafeTimestampValueExpression = {
         UNSAFE_RAW_SQL: col,
       };
 
-      if (
-        columnMeta == null &&
-        hasSubqueryCte(withClauses) &&
-        !toStartOf &&
-        !isToDateExpr
-      ) {
+      if (columnMeta == null && !skipColumnLookup) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
@@ -806,6 +815,7 @@ async function renderWhereExpressionStr({
   metadata,
   from,
   implicitColumnExpression,
+  useTextIndexForImplicitColumn,
   connectionId,
   with: withClauses,
 }: {
@@ -814,6 +824,7 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
+  useTextIndexForImplicitColumn?: ChartConfigWithOptDateRangeEx['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<string> {
@@ -824,6 +835,7 @@ async function renderWhereExpressionStr({
       databaseName: from.databaseName,
       tableName: from.tableName,
       implicitColumnExpression,
+      useTextIndexForImplicitColumn,
       connectionId: connectionId,
     });
     const builder = new SearchQueryBuilder(condition, serializer);
@@ -882,6 +894,8 @@ async function renderWhere(
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        useTextIndexForImplicitColumn:
+          chartConfig.useTextIndexForImplicitColumn,
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
@@ -907,6 +921,8 @@ async function renderWhere(
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
+              useTextIndexForImplicitColumn:
+                chartConfig.useTextIndexForImplicitColumn,
               metadata,
               connectionId: chartConfig.connection,
               with: chartConfig.with,
@@ -933,6 +949,8 @@ async function renderWhere(
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
@@ -1009,6 +1027,7 @@ async function renderHaving(
     from: chartConfig.from,
     language: chartConfig.havingLanguage ?? 'sql',
     implicitColumnExpression: chartConfig.implicitColumnExpression,
+    useTextIndexForImplicitColumn: chartConfig.useTextIndexForImplicitColumn,
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
@@ -1699,6 +1718,8 @@ async function renderFiltersToSql(
             from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
           });
