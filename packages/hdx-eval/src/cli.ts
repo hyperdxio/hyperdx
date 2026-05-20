@@ -15,7 +15,27 @@ import { batchDirName } from './runs/path';
 import { writeRun } from './runs/store';
 import { listBatches, listRunsInBatch, readRun } from './runs/store';
 import { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
-import { seedScenario } from './scenarios/seedScenario';
+import { type SeedProgress, seedScenario } from './scenarios/seedScenario';
+
+if (!process.env.ANTHROPIC_API_KEY && process.env.AI_API_KEY) {
+  process.env.ANTHROPIC_API_KEY = process.env.AI_API_KEY;
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function logSeedProgress(prefix: string, startMs: number) {
+  return (p: SeedProgress) => {
+    const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
+    const total = p.tracesInserted + p.logsInserted;
+    process.stdout.write(
+      `\r${prefix}${formatCount(total)} rows (${formatCount(p.tracesInserted)} traces, ${formatCount(p.logsInserted)} logs) · ${elapsed}s`,
+    );
+  };
+}
 
 type GlobalOpts = {
   chUrl?: string;
@@ -125,19 +145,24 @@ program
 
       const client = buildClient(opts);
       try {
+        const seedStart = Date.now();
         const result = await seedScenario({
           client,
           scenarioName: scenario.name,
           seed: seedNum,
           nowMs,
           volumeFactor,
+          onProgress: logSeedProgress('  seeding: ', seedStart),
         });
+        const seedSecs = ((Date.now() - seedStart) / 1000).toFixed(1);
+        process.stdout.write('\n');
         console.log(
           `Inserted ${result.tracesInserted} trace rows → default.${result.tables.traces}`,
         );
         console.log(
           `Inserted ${result.logsInserted} log rows    → default.${result.tables.logs}`,
         );
+        console.log(`Done in ${seedSecs}s`);
       } finally {
         await client.close();
       }
@@ -378,6 +403,10 @@ program
       // Re-seed once before running so timestamps are anchored to the chosen
       // "now". Skip if --no-reseed was passed (e.g. shared-anchor batch seed).
       if (cmdOpts.reseed !== false) {
+        console.log(
+          `Seeding ${scenario.name} (seed=${seedNum}, now=${new Date(anchorMs).toISOString()})...`,
+        );
+        const seedStart = Date.now();
         const client = buildClientFromConfig(config, opts);
         try {
           const r = await seedScenario({
@@ -385,9 +414,12 @@ program
             scenarioName: scenario.name,
             seed: seedNum,
             nowMs: anchorMs,
+            onProgress: logSeedProgress('  ', seedStart),
           });
+          const seedSecs = ((Date.now() - seedStart) / 1000).toFixed(1);
+          process.stdout.write('\n');
           console.log(
-            `Re-seeded ${scenario.name}: ${r.tracesInserted} traces, ${r.logsInserted} logs (now=${new Date(anchorMs).toISOString()})`,
+            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs in ${seedSecs}s`,
           );
         } finally {
           await client.close();

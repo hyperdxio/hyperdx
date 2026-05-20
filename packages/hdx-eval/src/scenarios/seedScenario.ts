@@ -8,6 +8,12 @@ import {
 import { mulberry32 } from '../rng/seeded';
 import { getScenario } from './index';
 
+export type SeedProgress = {
+  tracesInserted: number;
+  logsInserted: number;
+  batchesCompleted: number;
+};
+
 export type SeedResult = {
   tracesInserted: number;
   logsInserted: number;
@@ -20,6 +26,7 @@ export async function seedScenario(args: {
   seed: number;
   nowMs: number;
   volumeFactor?: number;
+  onProgress?: (progress: SeedProgress) => void;
 }): Promise<SeedResult> {
   const scenario = getScenario(args.scenarioName);
   const tables = await ensureScenarioTables(args.client, scenario.name);
@@ -28,6 +35,7 @@ export async function seedScenario(args: {
 
   let tracesInserted = 0;
   let logsInserted = 0;
+  let batchesCompleted = 0;
   for (const batch of scenario.generate({
     rng,
     nowMs: args.nowMs,
@@ -43,6 +51,8 @@ export async function seedScenario(args: {
     if (batch.logs.length > 0) {
       logsInserted += await insertLogRows(args.client, tables.logs, batch.logs);
     }
+    batchesCompleted++;
+    args.onProgress?.({ tracesInserted, logsInserted, batchesCompleted });
   }
   return { tracesInserted, logsInserted, tables };
 }
