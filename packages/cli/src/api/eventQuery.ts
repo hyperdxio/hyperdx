@@ -337,9 +337,12 @@ export async function buildFullRowQuery(
     /** Column metadata from the table query response */
     tableMeta: ColumnMetaType[];
     metadata: Metadata;
+    /** When provided, only these columns are used in the row WHERE clause */
+    primaryKeyColumns?: Set<string>;
   },
 ): Promise<FullRowQueryResult> {
-  const { source, row, tableChSql, tableMeta, metadata } = opts;
+  const { source, row, tableChSql, tableMeta, metadata, primaryKeyColumns } =
+    opts;
 
   // Parse the rendered table SQL to get alias → expression mapping
   const aliasMap = chSqlToAliasMap(tableChSql);
@@ -352,6 +355,7 @@ export async function buildFullRowQuery(
     row as Record<string, unknown>,
     columnMap,
     aliasMap,
+    primaryKeyColumns,
   );
 
   const selectList = buildRowDataSelectList(source);

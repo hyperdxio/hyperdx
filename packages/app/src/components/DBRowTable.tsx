@@ -1368,9 +1368,20 @@ export function appendSelectWithAdditionalKeys(
   partitionKey: string,
   extraKeys: string[] = [],
 ): { select: SelectList; additionalKeysLength: number } {
+  // Include both the raw key expressions (e.g. toStartOfFiveMinutes(Timestamp))
+  // and the extracted column references (e.g. Timestamp). The raw expressions
+  // are needed so the row WHERE clause can filter on PK expressions directly.
   const partitionKeyArr = extractColumnReferencesFromKey(partitionKey);
   const primaryKeyArr = extractColumnReferencesFromKey(primaryKeys);
-  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr, ...extraKeys]);
+  const rawPartitionExprs = splitAndTrimWithBracket(partitionKey);
+  const rawPrimaryExprs = splitAndTrimWithBracket(primaryKeys);
+  const allKeys = new Set([
+    ...partitionKeyArr,
+    ...primaryKeyArr,
+    ...rawPartitionExprs,
+    ...rawPrimaryExprs,
+    ...extraKeys,
+  ]);
   if (typeof select === 'string') {
     const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
@@ -1448,7 +1459,27 @@ export function useConfigWithAdditionalSelect(
       extraKeys,
     );
 
-    return { ...config, select, additionalKeysLength };
+    // When block columns are available, the PK + partition + block columns
+    // uniquely identify a row. Compute the full set of key column names
+    // (both raw expressions like toStartOfFiveMinutes(Timestamp) and bare
+    // column references like Timestamp, ServiceName) so the row WHERE clause
+    // can use only these, avoiding expensive index loading on large columns
+    // like Body.
+    const hasBlockColumns =
+      extraKeys.includes('_block_number') &&
+      extraKeys.includes('_block_offset');
+
+    const rowKeyColumns = hasBlockColumns
+      ? new Set([
+          ...splitAndTrimWithBracket(partitionKey),
+          ...splitAndTrimWithBracket(primaryKey),
+          ...extractColumnReferencesFromKey(partitionKey),
+          ...extractColumnReferencesFromKey(primaryKey),
+          ...extraKeys,
+        ])
+      : undefined;
+
+    return { ...config, select, additionalKeysLength, rowKeyColumns };
   }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
 }
 
@@ -1674,7 +1705,11 @@ function DBSqlRowTableComponent({
     [data],
   );
 
-  const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
+  const getRowWhere = useRowWhere({
+    meta: data?.meta,
+    aliasMap,
+    primaryKeyColumns: mergedConfig?.rowKeyColumns,
+  });
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
