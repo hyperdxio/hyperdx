@@ -14,7 +14,7 @@ export function buildSourceSummary(
     lines.push('AVAILABLE SOURCES (use sourceId with builder tiles):');
     for (const s of sources) {
       lines.push(
-        `  - "${s.name}" (${s.kind}) — sourceId: "${s._id}", connectionId: "${s.connection}"`,
+        `  - "${s.name}" (${s.kind}): sourceId "${s._id}", connectionId "${s.connection}"`,
       );
     }
   }
@@ -25,7 +25,7 @@ export function buildSourceSummary(
       'AVAILABLE CONNECTIONS (use connectionId with raw SQL tiles only):',
     );
     for (const c of connections) {
-      lines.push(`  - "${c.name}" — connectionId: "${c._id}"`);
+      lines.push(`  - "${c.name}": connectionId "${c._id}"`);
     }
   }
 

@@ -142,6 +142,10 @@ export function buildSearchChartConfig(
     isLogSource(source) || isTraceSource(source)
       ? source.implicitColumnExpression
       : undefined;
+  const useTextIndexForImplicitColumn =
+    isLogSource(source) || isTraceSource(source)
+      ? source.useTextIndexForImplicitColumn
+      : undefined;
 
   const config: SearchChartConfig = {
     connection: input.connection ?? source.connection,
@@ -153,6 +157,9 @@ export function buildSearchChartConfig(
     whereLanguage: input.whereLanguage ?? 'sql',
     timestampValueExpression: source.timestampValueExpression,
     ...(implicitColumnExpression != null ? { implicitColumnExpression } : {}),
+    ...(useTextIndexForImplicitColumn != null
+      ? { useTextIndexForImplicitColumn }
+      : {}),
     ...pickSampleWeightExpressionProps(source),
     ...(mergedFilters.length > 0 ? { filters: mergedFilters } : {}),
     ...(input.groupBy != null ? { groupBy: input.groupBy } : {}),

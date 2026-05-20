@@ -1,5 +1,13 @@
 # @hyperdx/app
 
+## 2.27.0
+
+### Patch Changes
+
+- Updated dependencies [f5ae0062]
+- Updated dependencies [fbe5a9a2]
+  - @hyperdx/api@2.27.0
+
 ## 2.26.0
 
 ### Patch Changes
