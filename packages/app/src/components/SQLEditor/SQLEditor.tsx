@@ -29,6 +29,7 @@ type SQLEditorProps = {
   tableConnections?: TableConnection[];
   additionalCompletions?: SQLCompletion[];
   dateRange?: [Date, Date];
+  timestampValueExpression?: string;
 };
 
 export default function SQLEditor({
@@ -40,6 +41,7 @@ export default function SQLEditor({
   tableConnections,
   additionalCompletions,
   dateRange,
+  timestampValueExpression,
 }: SQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -47,6 +49,7 @@ export default function SQLEditor({
 
   const { data: fields } = useMultipleAllFields(tableConnections ?? [], {
     dateRange,
+    timestampValueExpression,
   });
 
   const updateAutocompleteColumns = useCallback(
