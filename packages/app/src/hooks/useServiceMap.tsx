@@ -22,12 +22,16 @@ async function getServiceMapQuery({
   traceId,
   metadata,
   samplingFactor,
+  where,
+  whereLanguage,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   metadata: Metadata;
   samplingFactor: number;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
 }) {
   // Don't sample if we're looking for a specific trace
   const effectiveSamplingLevel = traceId ? 1 : samplingFactor;
@@ -37,6 +41,11 @@ async function getServiceMapQuery({
     connection: source.connection,
     dateRange,
     timestampValueExpression: source.timestampValueExpression,
+    ...(source.implicitColumnExpression != null
+      ? { implicitColumnExpression: source.implicitColumnExpression }
+      : {}),
+    where: where || '',
+    whereLanguage: (whereLanguage ?? 'lucene') as 'sql' | 'lucene',
     filters: [
       // Sample a subset of traces, for performance in the following join
       {
@@ -91,7 +100,6 @@ async function getServiceMapQuery({
             condition: `${source.spanKindExpression} IN ('Server', 'Consumer', 'SPAN_KIND_SERVER', 'SPAN_KIND_CONSUMER')`,
           },
         ],
-        where: '',
       },
       metadata,
       source.querySettings,
@@ -106,7 +114,6 @@ async function getServiceMapQuery({
             condition: `${source.spanKindExpression} IN ('Client', 'Producer', 'SPAN_KIND_CLIENT', 'SPAN_KIND_PRODUCER')`,
           },
         ],
-        where: '',
       },
       metadata,
       source.querySettings,
@@ -246,17 +253,29 @@ export default function useServiceMap({
   dateRange,
   traceId,
   samplingFactor,
+  where,
+  whereLanguage,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   samplingFactor: number;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
 }) {
   const client = useClickhouseClient();
   const metadata = useMetadataWithSettings();
 
   return useQuery({
-    queryKey: ['serviceMapData', traceId, source, dateRange, samplingFactor],
+    queryKey: [
+      'serviceMapData',
+      traceId,
+      source,
+      dateRange,
+      samplingFactor,
+      where,
+      whereLanguage,
+    ],
     queryFn: async ({ signal }) => {
       const query = await getServiceMapQuery({
         source,
@@ -264,6 +283,8 @@ export default function useServiceMap({
         traceId,
         metadata,
         samplingFactor,
+        where,
+        whereLanguage,
       });
 
       const data = await client

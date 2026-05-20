@@ -1,15 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { parseAsInteger, useQueryState } from 'nuqs';
+import {
+  parseAsInteger,
+  parseAsStringEnum,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Modal, Slider, Text } from '@mantine/core';
 import { IconConnection } from '@tabler/icons-react';
 
 import EmptyState from '@/components/EmptyState';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { IS_LOCAL_MODE } from '@/config';
 import { withAppNav } from '@/layout';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import OnboardingModal from './components/OnboardingModal';
 import ServiceMap from './components/ServiceMap/ServiceMap';
@@ -51,12 +61,20 @@ const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
   Date,
 ];
 
+const searchQueryStateMap = {
+  where: parseAsStringEncoded,
+  whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
+};
+
 function DBServiceMapPage() {
   const brandName = useBrandDisplayName();
 
   const { data: sources } = useSources();
   const [sourceId, setSourceId] = useQueryState('source');
   const [isCreateSourceModalOpen, setIsCreateSourceModalOpen] = useState(false);
+
+  const [searchedConfig, setSearchedConfig] =
+    useQueryStates(searchQueryStateMap);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
@@ -78,9 +96,12 @@ function DBServiceMapPage() {
         ) ?? defaultSource)
       : defaultSource;
 
-  const { control } = useForm({
+  const { control, handleSubmit, setValue } = useForm({
     values: {
       source: source?.id,
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
     },
   });
 
@@ -91,6 +112,15 @@ function DBServiceMapPage() {
       setSourceId(watchedSource ?? null);
     }
   }, [watchedSource, sourceId, setSourceId]);
+
+  const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
+
+  const onSubmit = useCallback(() => {
+    onSearch(displayedTimeInputValue);
+    handleSubmit(({ where, whereLanguage }) => {
+      setSearchedConfig({ where, whereLanguage });
+    })();
+  }, [handleSubmit, setSearchedConfig, displayedTimeInputValue, onSearch]);
 
   const [samplingFactor, setSamplingFactor] = useQueryState(
     'samplingFactor',
@@ -179,7 +209,7 @@ function DBServiceMapPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
     >
       {head}
-      <Group mb="md" justify="space-between">
+      <Group mb="xs" justify="space-between">
         <Group>
           <Text size="xl">Service Map</Text>
           <SourceSelectControlled
@@ -215,10 +245,30 @@ function DBServiceMapPage() {
           />
         </Group>
       </Group>
+      <Box mb="sm">
+        <SearchWhereInput
+          tableConnection={sourceTableConnection}
+          control={control}
+          name="where"
+          onSubmit={onSubmit}
+          onLanguageChange={lang =>
+            setValue('whereLanguage', lang, { shouldDirty: true })
+          }
+          enableHotkey
+          size="xs"
+          data-testid="service-map-search-input"
+          dateRange={searchedTimeRange}
+          sourceId={source?.id}
+          lucenePlaceholder="Filter spans w/ Lucene (ex. ServiceName:my-service)"
+          sqlPlaceholder="SQL WHERE to filter spans (ex. ServiceName = 'my-service')"
+        />
+      </Box>
       <ServiceMap
         traceTableSource={source}
         dateRange={searchedTimeRange}
         samplingFactor={samplingFactor}
+        where={searchedConfig.where ?? undefined}
+        whereLanguage={searchedConfig.whereLanguage ?? undefined}
       />
     </Box>
   ) : null;
