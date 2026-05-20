@@ -6,7 +6,11 @@ import type {
   ChartConfigWithDateRange,
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  SourceKind,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
@@ -191,6 +195,10 @@ export async function runConfigTile(
       'implicitColumnExpression' in source
         ? source.implicitColumnExpression
         : undefined;
+    const useTextIndexForImplicitColumn =
+      'useTextIndexForImplicitColumn' in source
+        ? source.useTextIndexForImplicitColumn
+        : undefined;
     const searchOverrides = isSearch
       ? {
           select: builderConfig.select || defaultTableSelect || '*',
@@ -218,6 +226,7 @@ export async function runConfigTile(
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
+      useTextIndexForImplicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
     } satisfies ChartConfigWithDateRange;
 
@@ -249,6 +258,7 @@ export async function runConfigTile(
   let sourceFields: {
     from?: { databaseName: string; tableName: string };
     implicitColumnExpression?: string;
+    useTextIndexForImplicitColumn?: UseTextIndex;
     metricTables?: MetricTable;
   } = {};
   if (savedConfig.source) {
@@ -259,6 +269,10 @@ export async function runConfigTile(
         implicitColumnExpression:
           'implicitColumnExpression' in source
             ? source.implicitColumnExpression
+            : undefined,
+        useTextIndexForImplicitColumn:
+          'useTextIndexForImplicitColumn' in source
+            ? source.useTextIndexForImplicitColumn
             : undefined,
         metricTables:
           source.kind === SourceKind.Metric ? source.metricTables : undefined,

@@ -19,6 +19,7 @@ import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { UseTextIndex } from '@/types';
 
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
@@ -744,6 +745,13 @@ export type CustomSchemaConfig = {
   implicitColumnExpression?: string;
   tableName: string;
   connectionId: string;
+  /**
+   * Source-level override for whether to use a ClickHouse text index when
+   * rendering implicit-field lucene matches. When `undefined` (or
+   * `UseTextIndex.Auto`), the renderer detects a covering index from table
+   * metadata; otherwise, it forces the chosen behavior.
+   */
+  useTextIndexForImplicitColumn?: UseTextIndex;
 };
 
 function renderArrayFieldExpression({
@@ -1063,6 +1071,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private databaseName: string;
   private implicitColumnExpression?: string;
   private connectionId: string;
+  private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
   private kvItemsLookupPromise?: Promise<KvItemsLookup>;
@@ -1073,6 +1082,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
     this.metadata = metadata;
@@ -1080,6 +1090,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
+    this.useTextIndexForImplicitColumn =
+      useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
 
     // Pre-fetch skip indices for potential bloom filter optimization
     this.skipIndicesPromise = this.metadata
@@ -1256,43 +1268,54 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
-        // First check for a text index, and use it if possible
-        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
-        const isTextIndexEnabled = await this.enableTextIndexPromise;
-        const textIndex = isTextIndexEnabled
-          ? await this.findTextIndex(column)
-          : undefined;
+        // Source preference for the text index:
+        //   - auto (default): detect a covering text index from skip-index metadata
+        //   - enabled: force hasAllTokens(), even if no text index is detected
+        //   - disabled: skip the text-index branch entirely
+        let useHasAllTokens = false;
+        if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
+          useHasAllTokens = true;
+        } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
+          // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+          const isTextIndexEnabled = await this.enableTextIndexPromise;
+          const textIndex = isTextIndexEnabled
+            ? await this.findTextIndex(column)
+            : undefined;
 
-        if (textIndex) {
-          const tokenizer = parseTokenizerFromTextIndex(textIndex);
-
-          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
-          if (tokenizer?.type === 'splitByNonAlpha') {
-            const tokens = this.tokenizeTerm(term);
-            const hasSeparators = this.termHasSeparators(term);
-
-            // Batch tokens to avoid exceeding hasAllTokens limit (64)
-            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
-            const hasAllTokensExpressions = tokenBatches.map(batch =>
-              SqlString.format(`hasAllTokens(?, ?)`, [
-                SqlString.raw(column),
-                batch.join(' '),
-              ]),
-            );
-
-            if (hasSeparators || tokenBatches.length > 1) {
-              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
-              return `(${isNegatedField ? 'NOT (' : ''}${[
-                ...hasAllTokensExpressions,
-                SqlString.format(`(lower(?) LIKE lower(?))`, [
-                  SqlString.raw(column),
-                  `%${term}%`,
-                ]),
-              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-            } else {
-              // Single token, without token separators: hasAllTokens(..., 'term')
-              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+          if (textIndex) {
+            const tokenizer = parseTokenizerFromTextIndex(textIndex);
+            // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+            if (tokenizer?.type === 'splitByNonAlpha') {
+              useHasAllTokens = true;
             }
+          }
+        }
+
+        if (useHasAllTokens) {
+          const tokens = this.tokenizeTerm(term);
+          const hasSeparators = this.termHasSeparators(term);
+
+          // Batch tokens to avoid exceeding hasAllTokens limit (64)
+          const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
+          const hasAllTokensExpressions = tokenBatches.map(batch =>
+            SqlString.format(`hasAllTokens(?, ?)`, [
+              SqlString.raw(column),
+              batch.join(' '),
+            ]),
+          );
+
+          if (hasSeparators || tokenBatches.length > 1) {
+            // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              ...hasAllTokensExpressions,
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single token, without token separators: hasAllTokens(..., 'term')
+            return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
           }
         }
 
