@@ -71,7 +71,7 @@ async function getServiceMapQuery({
         ? [
             {
               type: 'sql' as const,
-              condition: SqlString.format('?? IN (?)', [
+              condition: SqlString.format('? IN (?)', [
                 SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
                 serviceNames,
               ]),
