@@ -1273,7 +1273,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         //   - enabled: force hasAllTokens(), even if no text index is detected
         //   - disabled: skip the text-index branch entirely
         let useHasAllTokens = false;
-        let indexHasLower = false;
+        let textIndexHasLower = false;
         if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
           useHasAllTokens = true;
         } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
@@ -1290,7 +1290,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
             if (tokenizer?.type === 'splitByNonAlpha') {
               useHasAllTokens = true;
-              indexHasLower = textIndexResult.indexHasLower;
+              textIndexHasLower = textIndexResult.indexHasLower;
             }
           }
         }
@@ -1301,14 +1301,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
           // When the text index is on lower(column), we must pass lower(column)
           // as the first argument and wrap the tokens in lower() to match.
-          const hasAllTokensColumn = indexHasLower
+          const hasAllTokensColumn = textIndexHasLower
             ? `lower(${column})`
             : column;
 
           // Batch tokens to avoid exceeding hasAllTokens limit (64)
           const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
           const hasAllTokensExpressions = tokenBatches.map(batch =>
-            indexHasLower
+            textIndexHasLower
               ? SqlString.format(`hasAllTokens(?, lower(?))`, [
                   SqlString.raw(hasAllTokensColumn),
                   batch.join(' '),
