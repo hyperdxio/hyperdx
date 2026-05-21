@@ -153,8 +153,9 @@ describe('appendSelectWithAdditionalKeys', () => {
       ' toStartOfInterval(timestamp, toIntervalDay(3))',
     );
     expect(result).toEqual({
-      additionalKeysLength: 3,
-      select: 'col1,col2,timestamp,id,created_at',
+      additionalKeysLength: 4,
+      select:
+        'col1,col2,timestamp,id,created_at,toStartOfInterval(timestamp, toIntervalDay(3))',
     });
   });
 
@@ -173,8 +174,9 @@ describe('appendSelectWithAdditionalKeys', () => {
       "toStartOfInterval(timestamp, toIntervalDay(3)), date_diff('DAY', col3, col4), now(), toDate(col5 + INTERVAL 1 DAY)",
     );
     expect(result).toEqual({
-      additionalKeysLength: 6,
-      select: 'col1,col2,timestamp,col3,col4,col5,id,timestamp2',
+      additionalKeysLength: 11,
+      select:
+        "col1,col2,timestamp,col3,col4,col5,id,timestamp2,toStartOfInterval(timestamp, toIntervalDay(3)),date_diff('DAY', col3, col4),now(),toDate(col5 + INTERVAL 1 DAY),toStartOfInterval(timestamp2, toIntervalDay(3))",
     });
   });
 
@@ -221,8 +223,8 @@ describe('appendSelectWithAdditionalKeys', () => {
       `json.a, json.b.c, toStartOfDay(timestamp, json_2.d)`,
     );
     expect(result).toEqual({
-      additionalKeysLength: 5,
-      select: `col1,col2,json.a,json.b.c,timestamp,json_2.d,json.b`,
+      additionalKeysLength: 6,
+      select: `col1,col2,json.a,json.b.c,timestamp,json_2.d,json.b,toStartOfDay(timestamp, json_2.d)`,
     });
   });
 
@@ -233,8 +235,8 @@ describe('appendSelectWithAdditionalKeys', () => {
       `toStartOfDay(json.a.b.:DateTime)`,
     );
     expect(result).toEqual({
-      additionalKeysLength: 2,
-      select: `col1,col2,json.a.b,json.b`,
+      additionalKeysLength: 4,
+      select: `col1,col2,json.a.b,json.b,toStartOfDay(json.a.b.:DateTime),json.b.:Int64`,
     });
   });
 
@@ -245,8 +247,8 @@ describe('appendSelectWithAdditionalKeys', () => {
       ``,
     );
     expect(result).toEqual({
-      additionalKeysLength: 1,
-      select: `col1,col2,col3`,
+      additionalKeysLength: 2,
+      select: `col1,col2,col3,json.b.:Array(String)`,
     });
   });
 
@@ -257,8 +259,8 @@ describe('appendSelectWithAdditionalKeys', () => {
       ``,
     );
     expect(result).toEqual({
-      additionalKeysLength: 1,
-      select: `col1,col2,col3`,
+      additionalKeysLength: 2,
+      select: `col1,col2,col3,map['key']['key2']`,
     });
   });
 
@@ -308,6 +310,55 @@ describe('appendSelectWithAdditionalKeys', () => {
         { valueExpression: 'id' },
         { valueExpression: '__hdx_id' },
       ],
+    });
+  });
+
+  // Tests matching the actual ClickHouse schemas in docker/otel-collector/schema/seed/
+
+  it('otel_logs schema: ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp), PARTITION BY toDate(Timestamp)', () => {
+    const result = appendSelectWithAdditionalKeys(
+      'Timestamp, ServiceName, SeverityText, Body',
+      'toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp',
+      'toDate(Timestamp)',
+      ['_block_number', '_block_offset'],
+    );
+    // Raw expressions (toStartOfFiveMinutes(Timestamp), toDate(Timestamp)) are
+    // appended alongside bare column references so the row WHERE clause can
+    // filter on PK expressions directly.
+    // Timestamp and ServiceName are already in select so they aren't added again.
+    expect(result).toEqual({
+      additionalKeysLength: 4,
+      select:
+        'Timestamp,ServiceName,SeverityText,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number,_block_offset',
+    });
+  });
+
+  it('otel_traces schema: ORDER BY (ServiceName, SpanName, toDateTime(Timestamp)), PARTITION BY toDate(Timestamp)', () => {
+    const result = appendSelectWithAdditionalKeys(
+      'Timestamp, ServiceName, SpanName, Duration',
+      'ServiceName, SpanName, toDateTime(Timestamp)',
+      'toDate(Timestamp)',
+      ['_block_number', '_block_offset'],
+    );
+    expect(result).toEqual({
+      additionalKeysLength: 4,
+      select:
+        'Timestamp,ServiceName,SpanName,Duration,toDate(Timestamp),toDateTime(Timestamp),_block_number,_block_offset',
+    });
+  });
+
+  it('otel_logs schema with __hdx_id after ServiceName in PK', () => {
+    // represents some potential hash
+    const result = appendSelectWithAdditionalKeys(
+      'Timestamp, ServiceName, Body',
+      'toStartOfFiveMinutes(Timestamp), ServiceName, __hdx_id, Timestamp',
+      'toDate(Timestamp)',
+      ['_block_number', '_block_offset'],
+    );
+    expect(result).toEqual({
+      additionalKeysLength: 5,
+      select:
+        'Timestamp,ServiceName,Body,__hdx_id,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number,_block_offset',
     });
   });
 });
