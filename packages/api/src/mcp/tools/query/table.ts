@@ -54,7 +54,7 @@ export function registerTable(server: McpServer, context: McpContext) {
         'Compute aggregated metrics as a table, single number, or pie chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first.\n\n' +
+        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
         'Each select item can have its own "where" filter, which compiles to ' +
         '<aggFn>If(...) for multi-cohort comparison in one call ' +
         '(e.g. p99_before + p99_after side-by-side).\n\n' +
