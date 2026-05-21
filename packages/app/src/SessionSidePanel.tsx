@@ -68,15 +68,18 @@ export default function SessionSidePanel({
     }
 
     isSharingSessionRef.current = true;
+    let copied = false;
     try {
-      const copied = await copyTextToClipboard(window.location.href);
-      notifications.show({
-        color: copied ? 'green' : 'red',
-        message: copied ? 'Copied link to clipboard' : CLIPBOARD_ERROR_MESSAGE,
-      });
+      copied = await copyTextToClipboard(window.location.href);
+    } catch {
+      copied = false;
     } finally {
       isSharingSessionRef.current = false;
     }
+    notifications.show({
+      color: copied ? 'green' : 'red',
+      message: copied ? 'Copied link to clipboard' : CLIPBOARD_ERROR_MESSAGE,
+    });
   }, []);
 
   useHotkeys(

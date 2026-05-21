@@ -110,6 +110,33 @@ describe('SessionSidePanel', () => {
     });
   });
 
+  it('shows an error notification when the clipboard helper rejects', async () => {
+    copyTextToClipboardMock
+      .mockRejectedValueOnce(new Error('copy failed'))
+      .mockResolvedValueOnce(true);
+    renderPanel();
+
+    const shareButton = screen.getByRole('button', { name: /share session/i });
+    fireEvent.click(shareButton);
+
+    await waitFor(() => {
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+    });
+
+    fireEvent.click(shareButton);
+
+    await waitFor(() => {
+      expect(copyTextToClipboardMock).toHaveBeenCalledTimes(2);
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'green',
+        message: 'Copied link to clipboard',
+      });
+    });
+  });
+
   it('ignores duplicate share clicks while copying is still pending', async () => {
     let finishCopy: (copied: boolean) => void = (_copied: boolean): void => {
       throw new Error('copy promise was not created');
@@ -136,6 +163,16 @@ describe('SessionSidePanel', () => {
         color: 'green',
         message: 'Copied link to clipboard',
       });
+    });
+
+    fireEvent.click(shareButton);
+
+    expect(copyTextToClipboardMock).toHaveBeenCalledTimes(2);
+
+    finishCopy(true);
+
+    await waitFor(() => {
+      expect(notificationsShowSpy).toHaveBeenCalledTimes(2);
     });
   });
 });
