@@ -1,7 +1,11 @@
+import { notifications } from '@mantine/notifications';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import SessionSidePanel from '../SessionSidePanel';
-import { copyTextToClipboard } from '../utils/clipboard';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '../utils/clipboard';
 
 jest.mock(
   '../SessionSubpanel',
@@ -21,11 +25,14 @@ jest.mock('@/hooks/useResizable', () => ({
 }));
 
 jest.mock('../utils/clipboard', () => ({
-  CLIPBOARD_ERROR_MESSAGE: 'Could not access the clipboard.',
+  ...jest.requireActual('../utils/clipboard'),
   copyTextToClipboard: jest.fn(),
 }));
 
 const copyTextToClipboardMock = copyTextToClipboard as jest.Mock;
+const notificationsShowSpy = jest
+  .spyOn(notifications, 'show')
+  .mockImplementation(jest.fn());
 
 function renderPanel() {
   return renderWithMantine(
@@ -79,6 +86,27 @@ describe('SessionSidePanel', () => {
       expect(copyTextToClipboardMock).toHaveBeenCalledWith(
         'http://localhost/sessions?sessionSource=source-1&from=1&to=2&sid=session-1&sfrom=10&sto=20',
       );
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'green',
+        message: 'Copied link to clipboard',
+      });
+    });
+  });
+
+  it('shows an error notification when copying the session URL fails', async () => {
+    copyTextToClipboardMock.mockResolvedValue(false);
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /share session/i }));
+
+    await waitFor(() => {
+      expect(copyTextToClipboardMock).toHaveBeenCalledWith(
+        'http://localhost/sessions?sessionSource=source-1&from=1&to=2',
+      );
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
     });
   });
 });
