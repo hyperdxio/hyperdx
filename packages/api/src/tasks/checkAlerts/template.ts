@@ -512,7 +512,7 @@ export const renderAlertTemplate = async ({
   state,
   template,
   title,
-  view,
+  view: inputView,
   teamWebhooksById,
 }: {
   alertProvider: AlertProvider;
@@ -524,6 +524,16 @@ export const renderAlertTemplate = async ({
   view: AlertMessageTemplateDefaultView;
   teamWebhooksById: Map<string, IWebhook>;
 }) => {
+  // Internal mutable view with __hdx_query_results__ populated on the
+  // saved-search path. Untrusted values must flow through the view so
+  // Handlebars treats them as literal data, never as template syntax.
+  const view: AlertMessageTemplateDefaultView & {
+    __hdx_query_results__: string;
+  } = {
+    ...inputView,
+    __hdx_query_results__: '',
+  };
+
   const {
     alert,
     dashboard,
@@ -624,7 +634,7 @@ export const renderAlertTemplate = async ({
 
   // For resolved alerts, use a simple message instead of fetching data
   if (isAlertResolved(state)) {
-    rawTemplateBody = `${group ? `Group: "${group}" - ` : ''}The alert has been resolved.\n${timeRangeMessage}
+    rawTemplateBody = `{{#if group}}Group: "{{{group}}}" - {{/if}}The alert has been resolved.\n${timeRangeMessage}
 ${targetTemplate}`;
   }
   // TODO: support advanced routing with template engine
@@ -654,6 +664,7 @@ ${targetTemplate}`;
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
+      useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
       ...pickSampleWeightExpressionProps(source),
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
@@ -703,18 +714,22 @@ ${targetTemplate}`;
       );
     }
 
-    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
+    // Pass query results through the view so Handlebars syntax in log lines
+    // is treated as literal text rather than parsed as template source.
+    view.__hdx_query_results__ = truncatedResults;
+
+    rawTemplateBody = `{{#if group}}Group: "{{{group}}}"{{/if}}
 ${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
-${truncatedResults}
+{{{__hdx_query_results__}}}
 \`\`\``;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
+    rawTemplateBody = `{{#if group}}Group: "{{{group}}}"{{/if}}
 ${formattedValue} ${
       doesExceedThreshold(alert, value)
         ? describeThresholdViolation(alert.thresholdType)

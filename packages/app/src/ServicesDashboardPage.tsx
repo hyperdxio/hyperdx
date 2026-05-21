@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import {
   parseAsString,
@@ -33,7 +34,10 @@ function pickSourceConfigFields(source: TSource) {
     connection: source.connection,
     from: source.from,
     ...(isLogSource(source) || isTraceSource(source)
-      ? { implicitColumnExpression: source.implicitColumnExpression }
+      ? {
+          implicitColumnExpression: source.implicitColumnExpression,
+          useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
+        }
       : {}),
     ...pickSampleWeightExpressionProps(source),
   };
@@ -88,6 +92,7 @@ import {
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import DisplaySwitcher from './components/charts/DisplaySwitcher';
@@ -442,6 +447,10 @@ function HttpTab({
           isLogSource(source) || isTraceSource(source)
             ? source.implicitColumnExpression
             : undefined,
+        useTextIndexForImplicitColumn:
+          isLogSource(source) || isTraceSource(source)
+            ? source.useTextIndexForImplicitColumn
+            : undefined,
         connection: source.connection,
         source: source.id,
         with: [
@@ -453,6 +462,10 @@ function HttpTab({
                 isLogSource(source) || isTraceSource(source)
                   ? source?.implicitColumnExpression || ''
                   : '',
+              useTextIndexForImplicitColumn:
+                isLogSource(source) || isTraceSource(source)
+                  ? source?.useTextIndexForImplicitColumn
+                  : undefined,
               connection: source?.connection ?? '',
               from: source?.from ?? {
                 databaseName: '',
@@ -1434,6 +1447,7 @@ const appliedConfigMap = {
 };
 
 function ServicesDashboardPage() {
+  const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -1578,6 +1592,9 @@ function ServicesDashboardPage() {
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">
+      <Head>
+        <title>Services Dashboard – {brandName}</title>
+      </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards

@@ -1,5 +1,6 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import mongoose from 'mongoose';
 
 import * as config from '@/config';
 import {
@@ -13,7 +14,12 @@ import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
-import { buildQueryGuidePrompt } from '../prompts/dashboards/content';
+import {
+  buildCreateDashboardPrompt,
+  buildDashboardExamplesPrompt,
+  buildQueryGuidePrompt,
+} from '../prompts/dashboards/content';
+import { buildSourceSummary } from '../prompts/dashboards/helpers';
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -1209,6 +1215,664 @@ describe('MCP Dashboard Tools', () => {
     });
   });
 
+  describe('hyperdx_save_dashboard - dashboard filters', () => {
+    // The MCP input schema delegates to createDashboardBodySchema /
+    // updateDashboardBodySchema for the filter shape. These tests guard
+    // that the MCP path lights up the same filter round-trip the v2 REST
+    // path already covers: filters are saved verbatim, get back with an
+    // assigned id, survive an update, and reject obvious bad inputs.
+
+    const traceTile = (sourceId: string) => ({
+      name: 'Volume',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, where: '' }],
+      },
+    });
+
+    it('should round-trip filters on create, get, and update', async () => {
+      const sourceId = traceSource._id.toString();
+
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Service Detail (MCP filter round-trip)',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment',
+            expression: 'deployment.environment',
+            sourceId,
+            where: "deployment.environment = 'production'",
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(Array.isArray(created.filters)).toBe(true);
+      expect(created.filters).toHaveLength(2);
+      // The body schema assigns an id to each filter on create. Capture
+      // them so the update payload can include the same ids and the
+      // filter array round-trips identically (instead of being treated
+      // as wholesale replacement with new ids).
+      const [serviceFilter, envFilter] = created.filters;
+      expect(serviceFilter).toMatchObject({
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+      });
+      expect(typeof serviceFilter.id).toBe('string');
+      expect(serviceFilter.id.length).toBeGreaterThan(0);
+      expect(envFilter).toMatchObject({
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'deployment.environment',
+        sourceId,
+        where: "deployment.environment = 'production'",
+        whereLanguage: 'sql',
+      });
+
+      // Fetch and assert the same shape.
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.filters).toEqual(created.filters);
+
+      // Update: rename the first filter and drop the second. The first
+      // filter keeps its id, the second is dropped (not preserved).
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Service Detail (MCP filter round-trip)',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            id: serviceFilter.id,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (renamed)',
+            expression: 'ServiceName',
+            sourceId,
+          },
+        ],
+      });
+
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.filters).toHaveLength(1);
+      expect(updated.filters[0]).toMatchObject({
+        id: serviceFilter.id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Service (renamed)',
+        expression: 'ServiceName',
+        sourceId,
+      });
+    });
+
+    it('should accept a create payload with stray filter ids (copy-paste round-trip)', async () => {
+      // An LLM that copies a filter out of hyperdx_get_dashboard and
+      // back into hyperdx_save_dashboard for a NEW dashboard ships an
+      // `id` on the filter. The body schema for create is
+      // `.strict()` and rejects `id`, so saveDashboard normalizes by
+      // stripping ids before validation. Without that normalization
+      // this payload would 4xx with a confusing strict-validation
+      // error.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Create with stray filter id',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            id: '999999999999999999999999', // simulates a copied id
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+        ],
+      });
+      expect(result.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(result));
+      expect(dashboard.filters).toHaveLength(1);
+      // The new dashboard gets a fresh id; the copied one is discarded.
+      expect(dashboard.filters[0].id).not.toBe('999999999999999999999999');
+      expect(dashboard.filters[0]).toMatchObject({
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+      });
+    });
+
+    it('should assign ids to new filters added during update (no-id round-trip)', async () => {
+      // An LLM updating a dashboard to ADD a brand-new filter ships
+      // a filter without an `id`. The body schema for update requires
+      // id, so saveDashboard fills one in. Without that normalization
+      // this payload would 4xx complaining that id is missing.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Update adds new filter',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+        ],
+      });
+      const created = JSON.parse(getFirstText(createResult));
+      const existingFilterId = created.filters[0].id;
+
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Update adds new filter',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          // Existing filter, preserved by id.
+          {
+            id: existingFilterId,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+          },
+          // Brand-new filter, no id. saveDashboard assigns one.
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment',
+            expression: 'deployment.environment',
+            sourceId,
+          },
+        ],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.filters).toHaveLength(2);
+      const envFilter = updated.filters.find(
+        (f: { name: string }) => f.name === 'Environment',
+      );
+      expect(envFilter).toBeDefined();
+      expect(typeof envFilter.id).toBe('string');
+      expect(envFilter.id.length).toBeGreaterThan(0);
+      expect(envFilter.id).not.toBe(existingFilterId);
+    });
+
+    it('should round-trip a table tile that uses a having clause', async () => {
+      // mcpTableTileSchema exposes `having` so the service_detail
+      // example's "Top Error Messages" pattern (groupBy StatusMessage
+      // with having: "StatusMessage != ''") survives MCP authoring.
+      // Without `having` on the schema, Zod would strip it and the
+      // saved tile would include empty-message rows instead of the
+      // filtered set the prompt promises.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Top Error Messages',
+        tiles: [
+          {
+            name: 'Top Error Messages',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count', alias: 'Count' }],
+              groupBy: 'StatusMessage',
+              having: "StatusMessage != ''",
+              orderBy: 'Count DESC',
+              groupByColumnsOnLeft: true,
+            },
+          },
+        ],
+      });
+      expect(result.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(result));
+      expect(dashboard.tiles[0].config.having).toBe("StatusMessage != ''");
+    });
+  });
+
+  describe('hyperdx_save_dashboard - table onClick linking', () => {
+    // Mirrors the v2 external-API onClick tests so the MCP path
+    // enforces the same drill-down rules: row-click can target /search
+    // for a log/trace source or another dashboard, by concrete ID or
+    // by templated name, with optional whereTemplate/filters.
+    it('should round-trip a table tile with a search onClick by ID', async () => {
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick search by id',
+        tiles: [
+          {
+            name: 'Errors by Service',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: "{{ResourceAttributes['service.name']}}",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.tiles[0].config.onClick).toEqual({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: "{{ResourceAttributes['service.name']}}",
+          },
+        ],
+      });
+
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config.onClick).toEqual(
+        created.tiles[0].config.onClick,
+      );
+    });
+
+    it('should round-trip a table tile with a dashboard onClick by ID', async () => {
+      const sourceId = traceSource._id.toString();
+      // Create the target dashboard the onClick will link to so the
+      // server-side `getMissingOnClickDashboards` check resolves.
+      const targetDashboard = await new Dashboard({
+        name: 'Service Detail',
+        tiles: [],
+        team: team._id,
+      }).save();
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick dashboard by id',
+        tiles: [
+          {
+            name: 'Top Services',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: {
+                  mode: 'id',
+                  id: targetDashboard._id.toString(),
+                },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: "{{ResourceAttributes['service.name']}}",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'dashboard',
+        target: { mode: 'id', id: targetDashboard._id.toString() },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: "{{ResourceAttributes['service.name']}}",
+          },
+        ],
+      });
+    });
+
+    it('should round-trip a templated dashboard onClick (mode=template)', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick dashboard by template',
+        tiles: [
+          {
+            name: 'Service Picker',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: 'SpanName',
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: {
+                  mode: 'template',
+                  template: '{{TargetDashboard}}',
+                },
+                whereLanguage: 'lucene',
+                whereTemplate:
+                  "service.name:{{ResourceAttributes['service.name']}}",
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'dashboard',
+        target: { mode: 'template', template: '{{TargetDashboard}}' },
+        whereLanguage: 'lucene',
+        whereTemplate: "service.name:{{ResourceAttributes['service.name']}}",
+      });
+    });
+
+    it('should round-trip onClick on a raw SQL table tile', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'SQL onClick',
+        tiles: [
+          {
+            name: 'Raw SQL Table',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM otel_traces GROUP BY ServiceName LIMIT 50',
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+                filters: [
+                  {
+                    kind: 'expressionTemplate',
+                    expression: 'ServiceName',
+                    template: '{{ServiceName}}',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+        whereLanguage: 'sql',
+        filters: [
+          {
+            kind: 'expressionTemplate',
+            expression: 'ServiceName',
+            template: '{{ServiceName}}',
+          },
+        ],
+      });
+    });
+
+    it('should reject a table tile onClick referencing a non-existent dashboard', async () => {
+      const sourceId = traceSource._id.toString();
+      const ghostDashboardId = new mongoose.Types.ObjectId().toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick missing dashboard',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: ghostDashboardId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('onClick dashboard');
+      expect(text).toContain(ghostDashboardId);
+    });
+
+    it('should reject a table tile onClick search target with a non-log/trace source', async () => {
+      // /search only renders log/trace sources; targeting a metric
+      // source must be rejected at save time, matching the REST POST
+      // path. Create the metric source inline so this test is
+      // self-contained.
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics',
+      });
+      const sourceId = traceSource._id.toString();
+
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick metric source',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: {
+                  mode: 'id',
+                  id: metricSource._id.toString(),
+                },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('log or trace');
+      expect(text).toContain(metricSource._id.toString());
+    });
+
+    it('should reject a table tile onClick with an invalid target.id', async () => {
+      // target.id must be a valid ObjectId. Bad shape is caught by the
+      // input schema and surfaces as the SDK's "Input validation error"
+      // envelope rather than a custom 400 message.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick bad object id',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: 'not-a-valid-object-id' },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should accept onClick without whereLanguage (it is optional at the schema layer)', async () => {
+      // SearchConditionLanguageSchema is `.optional()` in common-utils,
+      // so omitting whereLanguage is allowed. Pin that behavior so a
+      // future tightening of the schema doesn't quietly change it
+      // without updating the docs that callers rely on.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick no whereLanguage',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'search',
+                target: { mode: 'id', id: sourceId },
+                // whereLanguage intentionally omitted
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toMatchObject({
+        type: 'search',
+        target: { mode: 'id', id: sourceId },
+      });
+    });
+
+    it('should reject an unknown onClick.type', async () => {
+      // The schema is a discriminated union on `type`; a bogus type
+      // must be rejected up front.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick bad type',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'navigate-to-mars',
+                target: { mode: 'id', id: sourceId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should validate onClick on update too', async () => {
+      // Round-trip a tile with no onClick, then update it to add an
+      // onClick pointing at a non-existent dashboard. The PUT path
+      // mirrors POST: missing dashboards are rejected with the same
+      // message.
+      const sourceId = traceSource._id.toString();
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'OnClick update validation',
+        tiles: [
+          {
+            name: 'Top Services',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const ghostDashboardId = new mongoose.Types.ObjectId().toString();
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'OnClick update validation',
+        tiles: [
+          {
+            ...created.tiles[0],
+            config: {
+              ...created.tiles[0].config,
+              onClick: {
+                type: 'dashboard',
+                target: { mode: 'id', id: ghostDashboardId },
+                whereLanguage: 'sql',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(updateResult.isError).toBe(true);
+      const text = getFirstText(updateResult);
+      expect(text).toContain('onClick dashboard');
+      expect(text).toContain(ghostDashboardId);
+    });
+  });
+
   describe('hyperdx_delete_dashboard', () => {
     it('should delete an existing dashboard', async () => {
       const dashboard = await new Dashboard({
@@ -1356,6 +2020,549 @@ describe('MCP Dashboard Tools', () => {
         const body = prompt.slice(idx, next === -1 ? prompt.length : next);
         expect(body.toLowerCase()).toContain('heatmap');
       }
+    });
+
+    it('documents the dashboard filter and per-series numberFormat sections', () => {
+      const prompt = buildQueryGuidePrompt();
+      // Sections must exist AND carry the substantive content. Heading-
+      // only assertions let a future contributor empty out a section
+      // and silently pass review.
+      const sliceSection = (heading: string) => {
+        const idx = prompt.indexOf(heading);
+        if (idx === -1) return '';
+        const next = prompt.indexOf('\n== ', idx + heading.length);
+        return prompt.slice(idx, next === -1 ? prompt.length : next);
+      };
+      const filters = sliceSection('== DASHBOARD FILTERS ==');
+      expect(filters).toContain('QUERY_EXPRESSION');
+      expect(filters).toContain('expression');
+      expect(filters).toContain('sourceId');
+      const numberFormat = sliceSection('== NUMBER FORMAT ==');
+      expect(numberFormat).toContain('factor: 0.000000001');
+      expect(numberFormat).toContain('duration');
+      expect(numberFormat.toLowerCase()).toContain('per-series');
+    });
+
+    it('declares the MCP metric-authoring gap rather than referencing fields that do not exist', () => {
+      // The MCP select-item schema does not carry metricName / metricType,
+      // so any prompt that tells the model to author a metric tile via
+      // the builder path is teaching it to ship JSON that gets silently
+      // stripped. Guard with an explicit assertion so a future diff that
+      // restores metric-tile guidance fails this test loudly.
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).not.toMatch(/metricName \+ metricType/);
+      expect(prompt).not.toMatch(/exactly 1 select item with metricName/);
+      const constraintsIdx = prompt.indexOf('== PER-TILE TYPE CONSTRAINTS ==');
+      const constraintsBody = prompt.slice(constraintsIdx);
+      // The constraints section closes with an explicit note that builder
+      // tiles on a metric source are not reliable today, with a fallback
+      // recipe to raw SQL. Anchor on the phrase so a future diff that
+      // drops the gap-acknowledgement fails loudly.
+      expect(constraintsBody).toMatch(
+        /Authoring builder tiles on a metric source is not reliable/,
+      );
+      expect(constraintsBody).toMatch(/MCP select-item shape does not carry/);
+    });
+
+    it('documents table-tile onClick linking features', () => {
+      // Lock down the documentation for row-click drill-downs so a
+      // future refactor can't quietly drop the section the LLM relies
+      // on to wire up onClick correctly.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== TABLE TILE LINKING (config.onClick) ==');
+      expect(idx).toBeGreaterThan(-1);
+      const next = prompt.indexOf('\n== ', idx + 1);
+      const section = prompt.slice(idx, next === -1 ? prompt.length : next);
+
+      // Both destination types are mentioned.
+      expect(section).toContain('type: "search"');
+      expect(section).toContain('type: "dashboard"');
+      // Both target modes are mentioned.
+      expect(section).toContain('mode: "id"');
+      expect(section).toContain('mode: "template"');
+      // Templating fields are mentioned.
+      expect(section).toContain('whereTemplate');
+      expect(section).toContain('filters');
+      expect(section).toContain('expressionTemplate');
+      // The two server-side validation error messages are quoted so
+      // the LLM can recognize and recover from them.
+      expect(section).toContain('onClick search source IDs');
+      expect(section).toContain('onClick dashboard IDs');
+    });
+
+    it('documents onClick pitfalls under common mistakes', () => {
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== COMMON MISTAKES ==');
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      // Mention the four failure modes we hit during validation.
+      expect(section.toLowerCase()).toContain('onclick on a non-table tile');
+      expect(section.toLowerCase()).toContain('non-log/trace source');
+      expect(section.toLowerCase()).toContain('missing wherelanguage');
+      expect(section.toLowerCase()).toContain("isn't in the table");
+    });
+
+    it('documents the missing-alias mistake explicitly', () => {
+      // Claude built three number tiles without alias on the quantile()
+      // select item, even though rule 2 of the design checklist says
+      // ALIAS EVERY SELECT ITEM. Spelling out the mistake under COMMON
+      // MISTAKES gives the model a second touchpoint to catch it.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== COMMON MISTAKES ==');
+      const section = prompt.slice(idx);
+      expect(section).toMatch(/Missing alias on a select item/);
+      // Must call out that number tiles need the alias too; this is the
+      // exact case Claude got wrong.
+      expect(section).toMatch(/number tiles too/);
+    });
+
+    it('documents the Lucene map-attribute gotcha across all operators including simple equality', () => {
+      // The original rule covered only comparison/wildcard. Claude's
+      // second pass showed simple equality (db.system:mongodb) also
+      // fails to translate to SpanAttributes['db.system']. Broaden the
+      // gotcha to "ALL Lucene operations on map-attribute paths".
+      const prompt = buildQueryGuidePrompt();
+      const luceneIdx = prompt.indexOf('== LUCENE FILTER SYNTAX ==');
+      const luceneBody = prompt.slice(luceneIdx);
+      expect(luceneBody).toMatch(/NOT reliably translated to bracket access/);
+      expect(luceneBody).toMatch(/http\.status_code:>=500/); // operator
+      expect(luceneBody).toMatch(/http\.route:\*/); // wildcard
+      expect(luceneBody).toMatch(/db\.system:mongodb/); // simple equality
+      expect(luceneBody).toMatch(/use SQL with bracket access/);
+
+      // Also a top-level entry in COMMON MISTAKES for discoverability.
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Lucene on a map-attribute path \(any operation\)/,
+      );
+    });
+
+    it('documents the Lucene fuzzy-substring behavior on top-level columns', () => {
+      // Lucene field:value translates to ilike(field, '%value%'), not
+      // equality. Claude's second pass hit this on SpanKind:Server,
+      // which matched broader strings than intended. The note has to
+      // be in the Lucene section so a model reading top-down sees it
+      // before writing a SpanKind filter.
+      const prompt = buildQueryGuidePrompt();
+      const luceneIdx = prompt.indexOf('== LUCENE FILTER SYNTAX ==');
+      const luceneBody = prompt.slice(luceneIdx);
+      expect(luceneBody).toMatch(/FUZZY-MATCH NOTE/);
+      expect(luceneBody).toMatch(/ilike\(field, '%value%'\)/);
+      // The canonical fix is SQL with =.
+      expect(luceneBody).toMatch(/SpanKind = 'Server'/);
+
+      // And a COMMON MISTAKES entry covering enum-like columns.
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Lucene field:value on enum-like top-level columns/,
+      );
+    });
+
+    it('documents the empty-string trap for map-attribute groupBy', () => {
+      // Map columns return '' (not NULL) when a key is unset on a row.
+      // A groupBy on such a key produces an empty-string bucket alongside
+      // the real values, which is visual noise on tables and pies. The
+      // standard fix is where: "<map-attr> != ''" alongside the groupBy.
+      const prompt = buildQueryGuidePrompt();
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const mistakesBody = prompt.slice(mistakesIdx);
+      expect(mistakesBody).toMatch(
+        /Forgetting that map-attribute values are often empty strings/,
+      );
+      expect(mistakesBody).toMatch(/db\.collection\.name'\] != ''/);
+    });
+
+    it('documents the groupBy alias workaround for map-attribute drill-downs', () => {
+      // Builder tiles don't expose a groupBy alias today; map-attribute
+      // groupBys produce result columns named like the raw expression,
+      // which onClick template lookups can't reference. The workaround
+      // (author the tile as raw SQL with AS) needs to be findable.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf(
+        '== GROUPBY ALIASES AND ROW-CLICK TEMPLATES ==',
+      );
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      expect(section).toMatch(/do NOT currently expose a groupBy alias/);
+      expect(section).toMatch(/configType: "sql", displayType: "table"/);
+      expect(section).toMatch(/AS Route/);
+    });
+
+    it('points at ClickStack and ClickHouse docs in REFERENCES', () => {
+      // Without external doc links, the LLM has to guess at Lucene
+      // operators and ClickHouse function names. Anchor the canonical
+      // URLs in the prompt so it can cite them and so a future doc
+      // restructure can be caught here.
+      const prompt = buildQueryGuidePrompt();
+      const idx = prompt.indexOf('== REFERENCES ==');
+      expect(idx).toBeGreaterThan(-1);
+      const section = prompt.slice(idx);
+      expect(section).toContain(
+        'https://clickhouse.com/docs/use-cases/observability/clickstack/search',
+      );
+      expect(section).toContain('https://clickhouse.com/docs/sql-reference');
+      expect(section).toContain(
+        'https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations',
+      );
+    });
+
+    it('strengthens the validate-every-tile rule under common mistakes', () => {
+      // Saving validates input shape, not query semantics. The prompt
+      // has to push for query_tile on every tile, not "at least one".
+      const prompt = buildQueryGuidePrompt();
+      const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
+      const section = prompt.slice(mistakesIdx);
+      expect(section).toMatch(
+        /on EVERY tile after hyperdx_save_dashboard, not just one/,
+      );
+    });
+
+    it('flags the metric source builder gap', () => {
+      // Builder tiles on metric sources currently save but render with
+      // "Both table name and UUID are empty". Claude went 100% raw SQL
+      // across 21 metric tiles for this reason; the prompt has to make
+      // the workaround obvious so the model doesn't try the builder
+      // first and fail silently.
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).toMatch(/Both table name and UUID are empty/);
+      expect(prompt).toMatch(/use a raw SQL tile/);
+      expect(prompt).toMatch(/otel_metrics_gauge/);
+    });
+
+    it('contains no em-dashes or en-dashes used as em-dashes', () => {
+      const prompt = buildQueryGuidePrompt();
+      expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
+      expect(prompt).not.toMatch(/ – /); // [prose-lint: allow]
+    });
+  });
+
+  describe('buildSourceSummary', () => {
+    it('contains no em-dashes or en-dashes used as em-dashes', () => {
+      // buildSourceSummary is the source-list block that gets prepended
+      // to create_dashboard. The first iteration of this PR shipped with
+      // em-dashes here that the content.ts snapshot test missed because
+      // it calls the builders directly. Guard the helper output too.
+      const summary = buildSourceSummary(
+        [
+          {
+            _id: '000000000000000000000001',
+            name: 'Traces',
+            kind: 'trace',
+            connection: '000000000000000000000002',
+          },
+          {
+            _id: '000000000000000000000003',
+            name: 'Logs',
+            kind: 'log',
+            connection: '000000000000000000000002',
+          },
+        ],
+        [{ _id: '000000000000000000000002', name: 'Default' }],
+      );
+      expect(summary).not.toMatch(/—/); // [prose-lint: allow]
+      expect(summary).not.toMatch(/ – /); // [prose-lint: allow]
+      // Sanity: the helper still emits the source list, so the assertion
+      // above isn't trivially passing on an empty string.
+      expect(summary).toContain('Traces');
+      expect(summary).toContain('AVAILABLE SOURCES');
+    });
+  });
+
+  describe('buildCreateDashboardPrompt', () => {
+    it('includes the design checklist and adapt-do-not-copy note', () => {
+      const prompt = buildCreateDashboardPrompt(
+        'sources summary',
+        '000000000000000000000001',
+        '000000000000000000000002',
+      );
+      expect(prompt).toContain('== DESIGN CHECKLIST ==');
+      // Each rule on the checklist exists at the same numbered position
+      // so a future contributor cannot silently drop one. Anchor on
+      // line start (with a trailing space) so digit-and-dot substrings
+      // like "0.000000001" elsewhere in the prompt cannot satisfy the
+      // assertion accidentally.
+      const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
+      const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
+      const checklistBody = prompt.slice(checklistIdx, adaptIdx);
+      // Thirteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
+      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), and NO
+      // TITLE-RECAP MARKDOWN TILE (rule 13). Each came out of a live
+      // verification pass after watching Claude reliably ignore the soft
+      // "should" formulations or hit a schema gap the earlier checklist
+      // did not call out.
+      for (let i = 1; i <= 13; i++) {
+        expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
+      }
+      expect(prompt).toContain('ADAPT, DO NOT COPY');
+      // Rule 9 documents the replace-not-merge semantic on update; an
+      // agent that ignores this can silently drop tiles / filters / containers
+      // on a subsequent save call.
+      expect(checklistBody).toMatch(/UPDATE IS REPLACE, NOT MERGE/);
+      // Rule 2 must cover EVERY select item (including number tiles), not
+      // just aggregations on tables. The phrasing matters: Claude's first
+      // pass at this dropped aliases on number tiles because it read rule 2
+      // as table-specific. The stronger phrasing pulls them in.
+      expect(checklistBody).toMatch(/ALIAS EVERY SELECT ITEM/);
+      // Rule 3 calls out the schema gap on groupBy: the chart config takes
+      // a single expression string with no alias field, so a table grouped
+      // by SpanAttributes['http.route'] renders arrayElement(...) as the
+      // column header. Naming the limit explicitly lets Claude pick a
+      // top-level column (SpanName, ServiceName) instead of grouping on
+      // the raw Map expression.
+      expect(checklistBody).toMatch(/GROUP BY HAS NO ALIAS HOOK/);
+      // Rule 10 must be a hard requirement at 5+ tiles, not a soft hint.
+      // Without the imperative, Claude built five dashboards averaging ten
+      // tiles each with zero containers.
+      expect(checklistBody).toMatch(/REQUIRED at five or more tiles/);
+      // Rule 11 + 12 close the post-save loop and the title-recap markdown
+      // habit Claude landed on every starter dashboard.
+      expect(checklistBody).toMatch(/VALIDATE EVERY TILE AFTER SAVE/);
+      expect(checklistBody).toMatch(/NO TITLE-RECAP MARKDOWN TILE/);
+      // Rule 2 now carries a concrete number-tile example. Claude's
+      // second pass still dropped aliases on every builder number tile,
+      // because the text rule was abstract; a copy-pasteable shape next
+      // to the rule is what makes it stick.
+      expect(checklistBody).toMatch(
+        /Number tile, correct:.*alias: "Server Requests"/,
+      );
+      // Rule 10 now carries a concrete containers shape. Claude's
+      // second pass built five dashboards with 9-10 tiles each and zero
+      // containers despite the REQUIRED phrasing; a copy-pasteable shape
+      // inside the rule itself is the next-level push.
+      expect(checklistBody).toMatch(/Concrete shape \(copy this directly/);
+      expect(checklistBody).toMatch(/id: "kpis"/);
+      expect(checklistBody).toMatch(/id: "trends"/);
+      expect(checklistBody).toMatch(/id: "errors"/);
+    });
+
+    it('walks the workflow through six steps including read-existing and group-into-containers', () => {
+      // The workflow is the first thing a model anchors on. Claude
+      // skipped both "read existing dashboards before designing" and
+      // "group tiles into containers before saving" because neither was
+      // a numbered workflow step; both lived only in the checklist. The
+      // workflow now lists six steps with those two explicitly.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const wfIdx = prompt.indexOf('== WORKFLOW ==');
+      const wfEnd = prompt.indexOf('\n== ', wfIdx + 1);
+      const wf = prompt.slice(wfIdx, wfEnd);
+      for (let i = 1; i <= 6; i++) {
+        expect(wf).toMatch(new RegExp(`^${i}\\. `, 'm'));
+      }
+      // Step 2 must point at hyperdx_get_dashboard with no id.
+      expect(wf).toMatch(/hyperdx_get_dashboard \(no id\)/);
+      // Step 4 must call out grouping tiles into containers before save.
+      expect(wf).toMatch(/group them into 2-4 containers/);
+      // Step 6 must call out EVERY tile, not just one.
+      expect(wf).toMatch(/EVERY tile \(not just one\)/);
+    });
+
+    it('warns explicitly against title-recap markdown tiles in the tile type guide', () => {
+      // The TILE TYPE GUIDE entry for markdown is where a model reading
+      // top-down first decides whether to add an "About this dashboard"
+      // tile. The entry has to actively discourage it, not just describe
+      // the tile type, because every model trained on dashboard examples
+      // reaches for a title tile by default.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const guideIdx = prompt.indexOf('== TILE TYPE GUIDE ==');
+      const guideEnd = prompt.indexOf('\n== ', guideIdx + 1);
+      const guideBody = prompt.slice(guideIdx, guideEnd);
+      // The markdown line must say "skip" / "sparingly" / "do not" /
+      // "no headings", not just "use for notes". Look for the most
+      // load-bearing phrase.
+      expect(guideBody).toMatch(/Skip markdown tiles for starter dashboards/);
+    });
+
+    it('explains the 15-minute default time window UX trap', () => {
+      // Empty tiles on a fresh dashboard are usually a time-window problem,
+      // not a query problem. The prompt has to surface this so Claude
+      // tells the user (rather than silently padding individual tile time
+      // ranges to make a 24-hour view fit a 15-minute dashboard frame).
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      expect(prompt).toMatch(/DEFAULT TIME WINDOW/);
+      expect(prompt).toMatch(/15-minute default window/);
+    });
+
+    it('contains no em-dashes or en-dashes used as em-dashes', () => {
+      const prompt = buildCreateDashboardPrompt('sources summary', '', '');
+      expect(prompt).not.toMatch(/—/); // [prose-lint: allow]
+      // En-dash flanked by spaces reads as an em-dash substitute and is
+      // disallowed by the voice rules. Numeric ranges (e.g. "1-20") are
+      // not in the checklist anyway, but guard against them just in case.
+      expect(prompt).not.toMatch(/ – /); // [prose-lint: allow]
+    });
+
+    it("mentions row-click linking in the table tile's description", () => {
+      // The create prompt is the LLM's primary entry point for new
+      // dashboards. Surface onClick on the TILE TYPE GUIDE so the
+      // model considers wiring it up on overview tables without the
+      // user having to ask.
+      const prompt = buildCreateDashboardPrompt(
+        'summary',
+        'trace_src',
+        'log_src',
+      );
+      const guideIdx = prompt.indexOf('== TILE TYPE GUIDE ==');
+      expect(guideIdx).toBeGreaterThan(-1);
+      const guideEnd = prompt.indexOf('\n== ', guideIdx + 1);
+      const guideBody = prompt.slice(guideIdx, guideEnd);
+      // The table line must hint at onClick and point at the
+      // consolidated TABLE TILE LINKING section in the query guide.
+      expect(guideBody).toContain('onClick');
+      expect(guideBody).toContain('TABLE TILE LINKING');
+    });
+  });
+
+  describe('buildDashboardExamplesPrompt', () => {
+    it('exposes exactly the four verified trace/log examples plus infrastructure_sql', () => {
+      const all = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+      );
+      // Order matters here only to keep the LLM\'s navigation stable
+      // across releases. If the order changes intentionally, update the
+      // snapshot.
+      const patternLineMatch = all.match(/Available patterns: ([^\n]+)/);
+      expect(patternLineMatch).toBeTruthy();
+      const patternList = patternLineMatch?.[1].split(', ');
+      expect(patternList).toEqual([
+        'service_inventory',
+        'service_detail',
+        'log_analytics',
+        'backend_dependencies',
+        'drilldown_links',
+        'infrastructure_sql',
+      ]);
+    });
+
+    it('renders each example with a leading "When to use" header', () => {
+      const all = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+      );
+      for (const heading of [
+        '== SERVICE INVENTORY ==',
+        '== SERVICE DETAIL ==',
+        '== LOG ANALYTICS ==',
+        '== BACKEND DEPENDENCIES ==',
+        '== INFRASTRUCTURE (Raw SQL) ==',
+      ]) {
+        expect(all).toContain(heading);
+      }
+      // Each non-SQL example should explain WHEN to reach for it. The
+      // SQL example does too, but the heading differs slightly.
+      const nonSqlSections = all
+        .split('== ')
+        .filter(s =>
+          [
+            'SERVICE INVENTORY',
+            'SERVICE DETAIL',
+            'LOG ANALYTICS',
+            'BACKEND DEPENDENCIES',
+          ].some(h => s.startsWith(h)),
+        );
+      for (const section of nonSqlSections) {
+        expect(section.toLowerCase()).toContain('when to use');
+      }
+    });
+
+    it('returns a single example when filtered by pattern', () => {
+      const single = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+        'service_inventory',
+      );
+      expect(single).toContain('== SERVICE INVENTORY ==');
+      expect(single).not.toContain('== SERVICE DETAIL ==');
+      expect(single).not.toContain('== LOG ANALYTICS ==');
+    });
+
+    it('wires service_inventory row-click into the service_detail dashboard', () => {
+      // The service_inventory pattern's main RED table should carry an
+      // onClick that drills into the partner "Service Detail" dashboard
+      // by name template, with a ServiceName filter rendered from the
+      // clicked row. Without this wiring, an agent following the canonical
+      // workflow would have to invent the drill-down each time and
+      // sometimes get the field shape wrong.
+      const single = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+        'service_inventory',
+      );
+      // The onClick target points at the partner pattern by name.
+      expect(single).toContain(
+        'target: { mode: "template", template: "Service Detail" }',
+      );
+      // The onClick filter expression matches service_detail's filter expression,
+      // so the destination dashboard's "Service" dropdown auto-populates.
+      expect(single).toContain('expression: "ServiceName"');
+      // The template references the row's groupBy column (ServiceName).
+      expect(single).toContain('template: "{{ServiceName}}"');
+    });
+
+    it('exposes a drilldown_links example pattern with onClick wiring', () => {
+      // Drew's drilldown_links example carries a self-contained
+      // onClick walkthrough (search drill-down + dashboard drill-down).
+      // Keep it discoverable so an agent asked to wire up drill-downs
+      // can opt into this example by pattern name.
+      const all = buildDashboardExamplesPrompt(
+        'trace_src',
+        'log_src',
+        'conn_id',
+      );
+      expect(all).toContain('drilldown_links');
+
+      const filtered = buildDashboardExamplesPrompt(
+        'trace_src',
+        'log_src',
+        'conn_id',
+        'drilldown_links',
+      );
+      expect(filtered).toContain('ROW-CLICK DRILL-DOWN LINKS');
+      expect(filtered).toContain('onClick');
+      expect(filtered).toContain('type: "search"');
+      expect(filtered).toContain('type: "dashboard"');
+      expect(filtered).toContain('expressionTemplate');
+    });
+
+    it('falls back to showing all examples when pattern is unknown', () => {
+      const fallback = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+        'made_up_pattern',
+      );
+      expect(fallback).toContain('No example found for pattern');
+      // Listing every example name in the fallback gives the LLM a way
+      // to recover by re-requesting one of the known patterns.
+      expect(fallback).toContain('service_inventory');
+      expect(fallback).toContain('service_detail');
+    });
+
+    it('contains no em-dashes in any example body', () => {
+      const all = buildDashboardExamplesPrompt(
+        '000000000000000000000001',
+        '000000000000000000000002',
+        '000000000000000000000003',
+      );
+      expect(all).not.toMatch(/—/); // [prose-lint: allow]
     });
   });
 });

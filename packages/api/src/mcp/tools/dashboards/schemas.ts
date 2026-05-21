@@ -7,11 +7,13 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
+  DashboardFilterType,
+  MetricsDataType,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { externalQuantileLevelSchema } from '@/utils/zod';
+import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 const mcpNumberFormatSchema = z
@@ -130,6 +132,182 @@ const mcpTileSelectItemSchema = z
     }
   });
 
+// ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
+const mcpOnClickFilterTemplateSchema = z
+  .object({
+    kind: z
+      .literal('expressionTemplate')
+      .describe('Literal "expressionTemplate"; only kind supported today.'),
+    expression: z
+      .string()
+      .min(1)
+      .max(10000)
+      .describe(
+        'Column or SQL expression the rendered template is matched against. ' +
+          'Example: "ServiceName" or "SpanAttributes[\'http.route\']". Filters that ' +
+          'share an expression are merged into a single IN clause on the destination.',
+      ),
+    template: z
+      .string()
+      .min(1)
+      .max(10000)
+      .describe(
+        "Handlebars-style template rendered with the clicked row's columns. " +
+          'Example: "{{ServiceName}}" pulls the row\'s ServiceName column value. ' +
+          'Columns can be referenced by series alias.',
+      ),
+  })
+  .describe(
+    'One templated equality filter applied on the destination page. ' +
+      'Use filters to pre-populate the destination search/dashboard with a row-driven ' +
+      'IN clause (e.g. "ServiceName IN (\'api\')") rather than dropping the user into ' +
+      'an unscoped view.',
+  );
+
+const mcpOnClickTargetSchema = z
+  .discriminatedUnion('mode', [
+    z
+      .object({
+        mode: z.literal('id'),
+        id: z
+          .string()
+          .min(1)
+          .describe(
+            'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
+              'Get source IDs from hyperdx_list_sources; get dashboard IDs from ' +
+              'hyperdx_get_dashboard (no id arg returns the list). ' +
+              'For type=search the source kind must be "log" or "trace"; the /search ' +
+              'page does not render metric/session sources.',
+          ),
+      })
+      .describe('Link to a specific source or dashboard by its concrete ID.'),
+    z
+      .object({
+        mode: z.literal('template'),
+        template: z
+          .string()
+          .min(1)
+          .max(10000)
+          .describe(
+            'Handlebars-style template rendered against the clicked row, then ' +
+              'resolved by NAME on the destination team. ' +
+              'Example: "ServiceOverview-{{ServiceName}}" assumes a row column ServiceName whose value ' +
+              'is the name of a source/dashboard. Prefer mode="id" when the target is ' +
+              'known up-front; it survives renames.',
+          ),
+      })
+      .describe(
+        'Link to a source/dashboard whose name comes from a column on the clicked row.',
+      ),
+  ])
+  .describe(
+    'Destination resolver. mode="id" pins a specific source/dashboard; ' +
+      'mode="template" picks one at click time from a row column.' +
+      "Linking by ID is preferred, but using a template is valid when the destination dashboard depends on the clicked row's content",
+  );
+
+const mcpOnClickSearchSchema = z
+  .object({
+    type: z
+      .literal('search')
+      .describe('Link to the /search page for a log or trace source.'),
+    target: mcpOnClickTargetSchema,
+    whereTemplate: z
+      .string()
+      .max(10000)
+      .optional()
+      .describe(
+        'Optional Handlebars-style WHERE template rendered against the clicked row ' +
+          "and placed in the destination's `where` query param. " +
+          'Example: "ServiceName = \'{{service.name}}\'" pulls service.name from the row. ' +
+          'Use Lucene or SQL syntax matching `whereLanguage`. Prefer `filters` (below) ' +
+          'for simple equality; filters merge nicely on the destination.',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.describe(
+      'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
+        'Optional, but set it explicitly so the destination knows how to parse rendered ' +
+        'whereTemplate / filter values.',
+    ),
+    filters: z
+      .array(mcpOnClickFilterTemplateSchema)
+      .max(50)
+      .optional()
+      .describe(
+        'Optional list of templated equality filters. Each filter becomes an ' +
+          "`expression IN ('rendered-value')` clause on the destination; filters that " +
+          'share an expression are merged into one IN clause.',
+      ),
+  })
+  .describe(
+    'Row-click handler that opens the /search page. Use this to drill from an ' +
+      'aggregated table row down to the underlying log/trace events for that row.',
+  );
+
+const mcpOnClickDashboardSchema = z
+  .object({
+    type: z.literal('dashboard').describe('Link to another HyperDX dashboard.'),
+    target: mcpOnClickTargetSchema,
+    whereTemplate: z
+      .string()
+      .max(10000)
+      .optional()
+      .describe(
+        'Optional Handlebars-style WHERE template applied to the destination ' +
+          "dashboard's global filter. Useful when the target dashboard exposes a single " +
+          'global scope rather than per-tile filters.',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.describe(
+      'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
+        'Optional, but set it explicitly so the destination knows how to parse rendered ' +
+        'whereTemplate / filter values.',
+    ),
+    filters: z
+      .array(mcpOnClickFilterTemplateSchema)
+      .max(50)
+      .optional()
+      .describe(
+        'Optional list of templated equality filters. The destination dashboard ' +
+          'auto-populates its filter list with these (matched by expression), so prefer ' +
+          'this over whereTemplate when the target dashboard already declares the same ' +
+          'filter expressions. ' +
+          'If the destination dashboard does not declare a top-level filter whose ' +
+          '`expression` matches, that value is dropped at click time and the ' +
+          'destination opens unfiltered for that expression.',
+      ),
+  })
+  .describe(
+    'Row-click handler that opens another dashboard. Use this to drill from a ' +
+      'high-level overview table down to a per-service or per-endpoint dashboard.',
+  );
+
+const mcpOnClickSchema = z
+  .discriminatedUnion('type', [
+    mcpOnClickSearchSchema,
+    mcpOnClickDashboardSchema,
+  ])
+  .describe(
+    'Row-click navigation for tiles that render as tables (Table tiles always; ' +
+      'SQL tiles only when displayType is "table"). ' +
+      'type="search" links to the /search page for a log/trace source; ' +
+      'type="dashboard" links to another dashboard. ' +
+      'Both support Handlebars `{{column}}` templating against the clicked row ' +
+      'for the target, whereTemplate, and filter values.\n\n' +
+      'Examples:\n' +
+      '1. Drill into search for the clicked service: \n' +
+      '   { "type": "search", "target": { "mode": "id", "id": "<trace-source-id>" }, ' +
+      '"whereLanguage": "sql", ' +
+      '"filters": [{ "kind": "expressionTemplate", "expression": "ServiceName", ' +
+      '"template": "{{ServiceName}}" }] }\n' +
+      '2. Drill into a per-service dashboard: \n' +
+      '   { "type": "dashboard", "target": { "mode": "id", "id": "<dashboard-id>" }, ' +
+      '"whereLanguage": "sql", ' +
+      '"filters": [{ "kind": "expressionTemplate", "expression": "ServiceName", ' +
+      '"template": "{{ServiceName}}" }] }\n' +
+      '3. Resolve the destination from the row (rare; prefer mode="id"): \n' +
+      '   { "type": "dashboard", "target": { "mode": "template", "template": ' +
+      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }',
+  );
+
 const mcpTileLayoutSchema = z.object({
   name: z.string().describe('Tile title shown on the dashboard'),
   x: z
@@ -240,6 +418,16 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Group rows by this column. Use PascalCase for top-level columns (e.g. "SpanName"). ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    having: z
+      .string()
+      .max(10000)
+      .optional()
+      .describe(
+        'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
+          'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
+          'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
+          'table chart config in `externalDashboardTableChartConfigSchema`.',
+      ),
     orderBy: z.string().optional().describe('Sort results by this column'),
     asRatio: z.boolean().optional(),
     groupByColumnsOnLeft: z
@@ -249,6 +437,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Render Group By columns on the left side of the table, before the series columns. ' +
           'Default false (Group By columns on the right).',
       ),
+    onClick: mcpOnClickSchema.optional(),
   }),
 });
 
@@ -341,7 +530,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(
-        'Display formatting for bucket values. Example: { output: "time", factor: 0.000000001 } ' +
+        'Display formatting for bucket values. Example: { output: "duration", factor: 0.000000001 } ' +
           'to format nanosecond durations as human-readable time.',
       ),
   }),
@@ -405,6 +594,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
       ),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    onClick: mcpOnClickSchema.optional(),
   }),
 });
 
@@ -440,6 +630,85 @@ export const mcpTilesParam = z
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
+  );
+
+const mcpDashboardFilterSchema = z
+  .object({
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Filter identity. ' +
+          'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
+          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'you are keeping (so saved values bound to it stay attached), and generate ' +
+          'a fresh random hex/ObjectId string for any filter you are adding in this ' +
+          'update. Omitting `id` on an existing filter would orphan its saved values; ' +
+          'reusing an existing id for a new filter would silently overwrite the old ' +
+          'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
+          'be omitted and one will be generated server-side.',
+      ),
+    type: DashboardFilterType.describe(
+      'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
+    ),
+    name: z
+      .string()
+      .min(1)
+      .describe(
+        'Human-readable filter label shown in the dashboard filter bar dropdown.',
+      ),
+    expression: z
+      .string()
+      .min(1)
+      .describe(
+        'Column or SQL expression this filter binds to. Example: "ServiceName" ' +
+          'or "SpanAttributes[\'http.method\']". ' +
+          'IMPORTANT: This is the key that table-tile onClick filters match against ' +
+          'when a row click navigates here. An onClick filter whose `expression` is ' +
+          "not declared in any of this dashboard's filters is silently dropped at click time. " +
+          'Declare an expression here for every column you plan to drive via row-click.',
+      ),
+    sourceId: objectIdSchema.describe(
+      'Source the filter values are pulled from (for the dropdown). ' +
+        'Get IDs from hyperdx_list_sources.',
+    ),
+    sourceMetricType: z
+      .nativeEnum(MetricsDataType)
+      .optional()
+      .describe(
+        'Required only when `sourceId` is a Metric source; picks which metric table the ' +
+          'dropdown values come from.',
+      ),
+    where: z
+      .string()
+      .optional()
+      .describe(
+        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
+      ),
+    whereLanguage: SearchConditionLanguageSchema.describe(
+      'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
+    ),
+  })
+  .describe(
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'Each filter binds a label/name to a column expression on a source. ' +
+      "Filters are also the contract for row-click navigation: a table tile's " +
+      'onClick.filters[i].expression must match a filter declared here for the value to land.',
+  );
+
+export const mcpFiltersParam = z
+  .array(mcpDashboardFilterSchema)
+  .describe(
+    'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
+      'bar AND the expressions that table-tile row-click navigation can populate. ' +
+      'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
+      'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
+      'dropped on arrival and the destination opens unfiltered.\n\n' +
+      'Example:\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']',
   );
 
 export const mcpContainersParam = z

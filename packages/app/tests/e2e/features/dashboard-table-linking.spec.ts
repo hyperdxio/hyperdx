@@ -205,10 +205,10 @@ test.describe(
         const url = new URL(page.url());
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('isLive')).toBe('false');
-        // Default row click encodes the group-by filter as a SQL IN clause in
-        // the JSON-encoded `filters` param.
+        // Default row click encodes the group-by filter as a Lucene condition
+        // in the JSON-encoded `filters` param.
         const filters = url.searchParams.get('filters') ?? '[]';
-        expect(filters).toContain(`ServiceName IN ('${serviceName}')`);
+        expect(filters).toContain(`ServiceName:\\"${serviceName}\\"`);
         const from = Number(url.searchParams.get('from'));
         const to = Number(url.searchParams.get('to'));
         expect(from).toBeGreaterThan(0);
@@ -563,8 +563,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'sql',
-            condition: `ServiceName IN ('${serviceName}')`,
+            type: 'lucene',
+            condition: `ServiceName:"${serviceName}"`,
           },
         ]);
       });
@@ -649,8 +649,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'sql',
-            condition: `ServiceName IN ('${serviceName}')`,
+            type: 'lucene',
+            condition: `ServiceName:"${serviceName}"`,
           },
         ]);
       });

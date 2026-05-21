@@ -19,6 +19,7 @@ import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { UseTextIndex } from '@/types';
 
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
@@ -31,7 +32,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-function decodeSpecialTokens(query: string): string {
+export function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -59,17 +60,21 @@ function normalizeChExpression(expr: string): string {
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
+export function isNodeTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-function isNodeRangedTerm(
+export function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
+export function isBinaryAST(
+  ast: lucene.AST | lucene.Node,
+): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -79,7 +84,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-function isLeftOnlyAST(
+export function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -740,6 +745,13 @@ export type CustomSchemaConfig = {
   implicitColumnExpression?: string;
   tableName: string;
   connectionId: string;
+  /**
+   * Source-level override for whether to use a ClickHouse text index when
+   * rendering implicit-field lucene matches. When `undefined` (or
+   * `UseTextIndex.Auto`), the renderer detects a covering index from table
+   * metadata; otherwise, it forces the chosen behavior.
+   */
+  useTextIndexForImplicitColumn?: UseTextIndex;
 };
 
 function renderArrayFieldExpression({
@@ -907,21 +919,13 @@ function tokenizeExpression(expr: string): string[] | null {
 }
 
 /**
- * Parses a KV items column's default_expression to extract the source map column name
- * and the constant separator string used in the concat.
- * Matches the tuple-cast form:
- *   arrayMap((arr) -> concat(arr.1, '=', arr.2), X::Array(Tuple(String, String)))
- * The middle argument to concat must be a quoted constant string.
- * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ * Helper: parses the common arrayMap lambda prefix and concat body, returning the
+ * lambda variable name, separator, and remaining token position.
+ * Handles both parenthesized `(x) ->` and bare `x ->` lambda parameter forms.
  */
-export function parseKvItemsExpression(
-  defaultExpression: string,
-): { mapColumn: string; separator: string } | undefined {
-  const tokens = tokenizeExpression(defaultExpression);
-  if (!tokens) return undefined;
-
-  // Expected structure (tuple-cast form):
-  // arrayMap ( ( arr ) -> concat ( arr . 1 , '=' , arr . 2 ) , X :: Array ( Tuple ( String , String ) ) )
+function parseArrayMapConcatPrefix(
+  tokens: string[],
+): { lambdaVar: string; separator: string; pos: number } | undefined {
   let pos = 0;
   const expect = (expected: string): boolean => {
     if (pos >= tokens.length || tokens[pos] !== expected) return false;
@@ -930,19 +934,28 @@ export function parseKvItemsExpression(
   };
   const read = (): string | undefined => tokens[pos++];
 
-  if (!expect('arrayMap') || !expect('(') || !expect('(')) return undefined;
-  const lambdaVar = read(); // single lambda param
-  if (!lambdaVar || !expect(')') || !expect('->')) return undefined;
+  if (!expect('arrayMap') || !expect('(')) return undefined;
+
+  // Lambda param: either (x) -> or x ->
+  let lambdaVar: string | undefined;
+  if (tokens[pos] === '(') {
+    pos++; // skip (
+    lambdaVar = read();
+    if (!lambdaVar || !expect(')')) return undefined;
+  } else {
+    lambdaVar = read();
+    if (!lambdaVar) return undefined;
+  }
+  if (!expect('->')) return undefined;
 
   // concat(lambdaVar.1, '<sep>', lambdaVar.2)
   if (!expect('concat') || !expect('(')) return undefined;
   if (!expect(lambdaVar) || !expect('.') || !expect('1') || !expect(','))
     return undefined;
 
-  // The separator must be a quoted string token (normalized to '<content>')
   const sepToken = read();
   if (!sepToken || !sepToken.startsWith("'") || !expect(',')) return undefined;
-  const separator = sepToken.slice(1, -1); // strip quote wrapper
+  const separator = sepToken.slice(1, -1);
 
   if (
     !expect(lambdaVar) ||
@@ -952,6 +965,34 @@ export function parseKvItemsExpression(
     !expect(',')
   )
     return undefined;
+
+  return { lambdaVar, separator, pos };
+}
+
+/**
+ * Parses a KV items column's default_expression to extract the source map column name
+ * and the constant separator string used in the concat.
+ * Matches the inline-cast form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), X::Array(Tuple(String, String)))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
 
   // X::Array(Tuple(String, String))
   const mapColumn = read();
@@ -971,14 +1012,58 @@ export function parseKvItemsExpression(
   )
     return undefined;
 
-  // Must have consumed all tokens
   if (pos !== tokens.length) return undefined;
 
-  return { mapColumn, separator };
+  return { mapColumn, separator: prefix.separator };
+}
+
+/**
+ * Parses a KV items column's default_expression using the CAST function form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(X, 'Array(Tuple(String, String))'))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsCastExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  // CAST(X, 'Array(Tuple(String, String))')
+  if (!expect('CAST') || !expect('(')) return undefined;
+  const mapColumn = read();
+  if (!mapColumn || !expect(',')) return undefined;
+
+  // The type argument is a quoted string like 'Array(Tuple(String, String))'
+  const typeToken = read();
+  if (!typeToken || !typeToken.startsWith("'")) return undefined;
+  const typeStr = typeToken.slice(1, -1); // strip quotes
+  const normalizedType = typeStr.replace(/\s+/g, '');
+  if (normalizedType !== 'Array(Tuple(String,String))') return undefined;
+
+  if (!expect(')') || !expect(')')) return undefined;
+
+  if (pos !== tokens.length) return undefined;
+
+  return { mapColumn, separator: prefix.separator };
 }
 
 // To add another known KV items parsing strategy, simply define another function with the same signature and add the strategy to this array
-const KV_ITEMS_STRATEGIES = [parseKvItemsExpression] as const;
+const KV_ITEMS_STRATEGIES = [
+  parseKvItemsExpression,
+  parseKvItemsCastExpression,
+] as const;
 
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
@@ -986,6 +1071,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private databaseName: string;
   private implicitColumnExpression?: string;
   private connectionId: string;
+  private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
   private kvItemsLookupPromise?: Promise<KvItemsLookup>;
@@ -996,6 +1082,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
     this.metadata = metadata;
@@ -1003,6 +1090,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
+    this.useTextIndexForImplicitColumn =
+      useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
 
     // Pre-fetch skip indices for potential bloom filter optimization
     this.skipIndicesPromise = this.metadata
@@ -1179,43 +1268,54 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
-        // First check for a text index, and use it if possible
-        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
-        const isTextIndexEnabled = await this.enableTextIndexPromise;
-        const textIndex = isTextIndexEnabled
-          ? await this.findTextIndex(column)
-          : undefined;
+        // Source preference for the text index:
+        //   - auto (default): detect a covering text index from skip-index metadata
+        //   - enabled: force hasAllTokens(), even if no text index is detected
+        //   - disabled: skip the text-index branch entirely
+        let useHasAllTokens = false;
+        if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
+          useHasAllTokens = true;
+        } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
+          // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+          const isTextIndexEnabled = await this.enableTextIndexPromise;
+          const textIndex = isTextIndexEnabled
+            ? await this.findTextIndex(column)
+            : undefined;
 
-        if (textIndex) {
-          const tokenizer = parseTokenizerFromTextIndex(textIndex);
-
-          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
-          if (tokenizer?.type === 'splitByNonAlpha') {
-            const tokens = this.tokenizeTerm(term);
-            const hasSeparators = this.termHasSeparators(term);
-
-            // Batch tokens to avoid exceeding hasAllTokens limit (64)
-            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
-            const hasAllTokensExpressions = tokenBatches.map(batch =>
-              SqlString.format(`hasAllTokens(?, ?)`, [
-                SqlString.raw(column),
-                batch.join(' '),
-              ]),
-            );
-
-            if (hasSeparators || tokenBatches.length > 1) {
-              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
-              return `(${isNegatedField ? 'NOT (' : ''}${[
-                ...hasAllTokensExpressions,
-                SqlString.format(`(lower(?) LIKE lower(?))`, [
-                  SqlString.raw(column),
-                  `%${term}%`,
-                ]),
-              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-            } else {
-              // Single token, without token separators: hasAllTokens(..., 'term')
-              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+          if (textIndex) {
+            const tokenizer = parseTokenizerFromTextIndex(textIndex);
+            // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+            if (tokenizer?.type === 'splitByNonAlpha') {
+              useHasAllTokens = true;
             }
+          }
+        }
+
+        if (useHasAllTokens) {
+          const tokens = this.tokenizeTerm(term);
+          const hasSeparators = this.termHasSeparators(term);
+
+          // Batch tokens to avoid exceeding hasAllTokens limit (64)
+          const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
+          const hasAllTokensExpressions = tokenBatches.map(batch =>
+            SqlString.format(`hasAllTokens(?, ?)`, [
+              SqlString.raw(column),
+              batch.join(' '),
+            ]),
+          );
+
+          if (hasSeparators || tokenBatches.length > 1) {
+            // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              ...hasAllTokensExpressions,
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single token, without token separators: hasAllTokens(..., 'term')
+            return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
           }
         }
 

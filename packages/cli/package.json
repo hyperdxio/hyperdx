@@ -3,11 +3,20 @@
   "version": "0.4.1",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyperdxio/hyperdx.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/hyperdxio/hyperdx/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/hyperdxio/hyperdx/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
   "bin": {
-    "hdx": "./dist/cli.js"
+    "hdx": "dist/cli.js"
   },
   "files": [
     "dist/*"

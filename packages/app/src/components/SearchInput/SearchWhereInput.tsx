@@ -104,7 +104,7 @@ export type SearchWhereInputProps = {
    */
   additionalSuggestions?: string[];
   /**
-   * Date range for autocomplete rollup queries
+   * Date range for filter or autocomplete queries
    */
   dateRange?: [Date, Date];
   /**
@@ -112,6 +112,10 @@ export type SearchWhereInputProps = {
    * If not provided, defaults to `${name}Language` (e.g. name="where" → "whereLanguage").
    */
   languageName?: string;
+  /**
+   * Source id used in various queries
+   */
+  sourceId?: string;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -158,6 +162,7 @@ export default function SearchWhereInput({
   additionalSuggestions,
   dateRange,
   languageName = `${name}Language`,
+  sourceId,
 }: SearchWhereInputProps) {
   const { field: languageField } = useController({
     control,
@@ -210,6 +215,8 @@ export default function SearchWhereInput({
             allowMultiline={allowMultiline}
             size={size}
             additionalSuggestions={additionalSuggestions}
+            dateRange={dateRange}
+            sourceId={sourceId}
           />
         ) : (
           <SearchInputV2
@@ -224,6 +231,7 @@ export default function SearchWhereInput({
             data-testid={dataTestId}
             additionalSuggestions={additionalSuggestions}
             dateRange={dateRange}
+            sourceId={sourceId}
           />
         )}
         {enableHotkey && (

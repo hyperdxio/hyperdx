@@ -48,9 +48,15 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
+} from '@/defaults';
+import {
   useAllFields,
+  useAllFieldsAndValues,
   useColumns,
   useGetKeyValues,
   useGetValuesDistribution,
@@ -1119,16 +1125,37 @@ const DBSearchPageFiltersComponent = ({
     'hdx-shared-filters-expanded',
     true,
   );
+  const [showAllValues, setShowAllValues] = useLocalStorage(
+    'hdx-show-all-filter-values',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
-  const { data: jsonColumns } = useJsonColumns({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
-  const { data, isLoading, error } = useAllFields(
+  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+  const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
+
+  const hasMVs = !!sourceTableConnection.metadataMVs;
+  const useExactPipeline = !hasMVs || filterMode === 'exact';
+
+  const { data: me } = api.useMe();
+  const defaultLimit = hasMVs
+    ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
+    : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
+
+  // Special case for live tail
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
+  );
+
+  // Exact pipeline step 1: discover keys from column metadata
+  const {
+    data: allFields,
+    isLoading: isFieldsLoading,
+    error: fieldsError,
+  } = useAllFields(
     {
       databaseName: chartConfig.from.databaseName,
       tableName: chartConfig.from.tableName,
@@ -1136,9 +1163,33 @@ const DBSearchPageFiltersComponent = ({
       metadataMVs: sourceTableConnection.metadataMVs,
     },
     {
-      dateRange: chartConfig.dateRange,
+      dateRange,
+      timestampValueExpression: chartConfig.timestampValueExpression,
+      enabled: useExactPipeline,
     },
   );
+
+  // MV pipeline: combined key+value rollup query
+  const {
+    data: mvFieldsAndValues,
+    isLoading: isMVLoading,
+    isFetching: isMVFetching,
+    error: mvError,
+  } = useAllFieldsAndValues(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+      metadataMVs: sourceTableConnection.metadataMVs,
+      dateRange,
+      maxKeys,
+    },
+    { enabled: !useExactPipeline },
+  );
+
+  const isLoading = useExactPipeline ? isFieldsLoading : isMVLoading;
+  const error = useExactPipeline ? fieldsError : mvError;
+
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -1161,11 +1212,11 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
-    if (!data) {
+    if (!allFields) {
       return [];
     }
 
-    const strings = data
+    const strings = allFields
       .sort((a, b) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
@@ -1199,18 +1250,13 @@ const DBSearchPageFiltersComponent = ({
       );
     return strings;
   }, [
-    data,
+    allFields,
     jsonColumns,
     filterState,
     showMoreFields,
     isFieldPinned,
     isSharedFieldPinned,
   ]);
-
-  // Special case for live tail
-  const [dateRange, setDateRange] = useState<[Date, Date]>(
-    chartConfig.dateRange,
-  );
 
   useEffect(() => {
     if (!isLive) {
@@ -1226,15 +1272,36 @@ const DBSearchPageFiltersComponent = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
+  // In 'all' mode, strip WHERE/filters so we get all values regardless of
+  // the current search query. In 'exact' mode, keep the full chart config
+  // so values are scoped to the current query results.
+  const facetsChartConfig = useMemo(
+    () =>
+      filterMode === 'all'
+        ? { ...chartConfig, dateRange, where: '', filters: [] }
+        : { ...chartConfig, dateRange },
+    [chartConfig, dateRange, filterMode],
+  );
+
+  // Exact pipeline step 2: fetch values for discovered keys
   const {
-    data: facets,
-    isLoading: isFacetsLoading,
-    isFetching: isFacetsFetching,
-  } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
-    limit: INITIAL_LOAD_LIMIT,
-    keys: keysToFetch,
-  });
+    data: exactFacets,
+    isLoading: isExactFacetsLoading,
+    isFetching: isExactFacetsFetching,
+  } = useGetKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: keysToFetch,
+    },
+    { enabled: useExactPipeline },
+  );
+
+  const facets = useExactPipeline ? exactFacets : mvFieldsAndValues;
+  const isFacetsLoading = useExactPipeline ? isExactFacetsLoading : isMVLoading;
+  const isFacetsFetching = useExactPipeline
+    ? isExactFacetsFetching
+    : isMVFetching;
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
@@ -1266,17 +1333,32 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
+        let newValues: string[];
+        if (!useExactPipeline) {
+          const results = await metadata.getAllKeyValues({
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            connectionId: chartConfig.connection,
+            keyExpressions: [key],
+            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+            metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
-          },
-          keys: [key],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
-        });
-        const newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+            timestampValueExpression: chartConfig.timestampValueExpression,
+          });
+          newValues = results[0] ? results[0].value : [];
+        } else {
+          const newKeyVals = await metadata.getKeyValuesWithMVs({
+            chartConfig: {
+              ...chartConfig,
+              dateRange,
+            },
+            keys: [key],
+            limit: LOAD_MORE_LOAD_LIMIT,
+            disableRowLimit: true,
+            source,
+          });
+          newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+        }
         if (newValues.length > 0) {
           setExtraFacets(prev => ({
             ...prev,
@@ -1293,7 +1375,15 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange, metadata, source],
+    [
+      chartConfig,
+      setExtraFacets,
+      dateRange,
+      metadata,
+      source,
+      useExactPipeline,
+      sourceTableConnection.metadataMVs,
+    ],
   );
 
   // Build the set of team-pinned fields for the Shared Filters section,
@@ -1727,6 +1817,8 @@ const DBSearchPageFiltersComponent = ({
                 onResetPersonalPins={resetPersonalPins}
                 hasSharedPins={hasSharedPins}
                 onResetSharedFilters={resetSharedFilters}
+                showAllValues={showAllValues}
+                onShowAllValuesChange={setShowAllValues}
               />
               {onCollapse && (
                 <Tooltip label="Hide filters" position="bottom">

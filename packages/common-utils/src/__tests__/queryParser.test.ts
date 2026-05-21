@@ -4,9 +4,11 @@ import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
   genEnglishExplanation,
+  parseKvItemsCastExpression,
   parseKvItemsExpression,
   SearchQueryBuilder,
 } from '@/queryParser';
+import { UseTextIndex } from '@/types';
 
 // Suppress expected console.error/warn noise from mocked setting fetches
 // and parse failures in edge-case tests
@@ -1174,6 +1176,161 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
     // Should fallback to hasToken (full text index disabled)
     expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
   });
+
+  describe('useTextIndexForImplicitColumn source preference', () => {
+    it('Auto preserves the existing detection behavior when a text index is found', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Auto,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+    });
+
+    it('Auto falls back to hasToken when no text index is found', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Auto,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+    });
+
+    it('Enabled emits hasAllTokens even when no text index is detected', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+    });
+
+    it('Enabled emits hasAllTokens even when enable_full_text_index = 0', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      metadata.getSetting = jest
+        .fn()
+        .mockImplementation(async ({ settingName }) => {
+          if (settingName === 'enable_full_text_index') {
+            return '0';
+          }
+          return undefined;
+        });
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('"foo bar"', serializer).build();
+      expect(sql).toContain("hasAllTokens(Body, 'foo bar')");
+      expect(sql).toContain("(lower(Body) LIKE lower('%foo bar%'))");
+    });
+
+    it('Disabled skips hasAllTokens even when a covering text index exists', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      // Falls all the way through to hasToken (no text index branch)
+      expect(sql).not.toContain('hasAllTokens');
+      expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+    });
+
+    it('Disabled still permits a bloom_filter tokens() index path', async () => {
+      // Source-level disable only suppresses the text-index hasAllTokens branch.
+      // Bloom filter tokens() optimization is still allowed to run.
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_bloom',
+          type: 'bloom_filter',
+          typeFull: 'bloom_filter',
+          expression: 'tokens(lower(Body))',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).not.toContain('hasAllTokens');
+      expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens(lower('foo')))))");
+    });
+
+    it('Enabled with a multi-token term still falls back to LIKE when separators exist', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      // Hyphenated terms are tokenized to ['foo', 'bar'], joined back as 'foo bar'
+      // for hasAllTokens, with a LIKE fallback against the original separator-y term.
+      const sql = await new SearchQueryBuilder('"foo-bar"', serializer).build();
+      expect(sql).toContain("hasAllTokens(Body, 'foo bar')");
+      expect(sql).toContain("(lower(Body) LIKE lower('%foo-bar%'))");
+    });
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - indexCoversColumn', () => {
@@ -1714,6 +1871,64 @@ describe('parseKvItemsExpression', () => {
     expect(
       parseKvItemsExpression(
         "arrayMap((arr) -> concat(arr.1, '=', arr.2), Log@Attributes::Array(Tuple(String, String)))",
+      ),
+    ).toBeUndefined();
+  });
+
+  it('parses bare lambda param (no parens)', () => {
+    expect(
+      parseKvItemsExpression(
+        "arrayMap(x -> concat(x.1, '=', x.2), ResourceAttributes::Array(Tuple(String, String)))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+});
+
+describe('parseKvItemsCastExpression', () => {
+  it('parses CAST form with parenthesized lambda', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((x) -> concat(x.1, '=', x.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
+  it('parses CAST form with bare lambda param', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap(x -> concat(x.1, '=', x.2), CAST(ResourceAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'ResourceAttributes', separator: '=' });
+  });
+
+  it('parses CAST form without spaces in type', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr)->concat(arr.1,'=',arr.2),CAST(LogAttributes,'Array(Tuple(String,String))'))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: '=' });
+  });
+
+  it('parses CAST form with custom separator', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, ':', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))",
+      ),
+    ).toEqual({ mapColumn: 'LogAttributes', separator: ':' });
+  });
+
+  it('returns undefined for non-CAST expressions', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for wrong CAST type', () => {
+    expect(
+      parseKvItemsCastExpression(
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(String)'))",
       ),
     ).toBeUndefined();
   });

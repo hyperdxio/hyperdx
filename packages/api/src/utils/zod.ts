@@ -146,7 +146,7 @@ export type ExternalDashboardFilter = z.infer<
 >;
 
 export const externalDashboardSavedFilterValueSchema = z.object({
-  type: z.literal('sql').optional().default('sql'),
+  type: z.enum(['sql', 'lucene']).optional().default('sql'),
   condition: z.string().max(10000),
 });
 
@@ -366,6 +366,17 @@ const externalDashboardSearchChartConfigSchema = z.object({
   where: z.string().max(10000).optional().default(''),
   whereLanguage: whereLanguageSchema,
 });
+
+// Extended schema for the /api/v2/search endpoint — adds orderBy which is not
+// applicable to dashboard tiles.
+export const externalDashboardSearchRequestSchema =
+  externalDashboardSearchChartConfigSchema.extend({
+    orderBy: z.string().max(1024).optional(),
+  });
+
+export type ExternalDashboardSearchRequestConfig = z.infer<
+  typeof externalDashboardSearchRequestSchema
+>;
 
 const externalDashboardMarkdownChartConfigSchema = z.object({
   displayType: z.literal('markdown'),
