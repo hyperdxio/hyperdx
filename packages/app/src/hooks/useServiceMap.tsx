@@ -24,6 +24,7 @@ async function getServiceMapQuery({
   samplingFactor,
   where,
   whereLanguage,
+  serviceNames,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
@@ -32,6 +33,7 @@ async function getServiceMapQuery({
   samplingFactor: number;
   where?: string;
   whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }) {
   // Don't sample if we're looking for a specific trace
   const effectiveSamplingLevel = traceId ? 1 : samplingFactor;
@@ -60,6 +62,18 @@ async function getServiceMapQuery({
               condition: SqlString.format('?? = ?', [
                 source.traceIdExpression,
                 traceId,
+              ]),
+            },
+          ]
+        : []),
+      // Optionally filter by selected service names
+      ...(serviceNames && serviceNames.length > 0
+        ? [
+            {
+              type: 'sql' as const,
+              condition: SqlString.format('?? IN (?)', [
+                SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
+                serviceNames,
               ]),
             },
           ]
@@ -255,6 +269,7 @@ export default function useServiceMap({
   samplingFactor,
   where,
   whereLanguage,
+  serviceNames,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
@@ -262,6 +277,7 @@ export default function useServiceMap({
   samplingFactor: number;
   where?: string;
   whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }) {
   const client = useClickhouseClient();
   const metadata = useMetadataWithSettings();
@@ -275,6 +291,7 @@ export default function useServiceMap({
       samplingFactor,
       where,
       whereLanguage,
+      serviceNames,
     ],
     queryFn: async ({ signal }) => {
       const query = await getServiceMapQuery({
@@ -285,6 +302,7 @@ export default function useServiceMap({
         samplingFactor,
         where,
         whereLanguage,
+        serviceNames,
       });
 
       const data = await client

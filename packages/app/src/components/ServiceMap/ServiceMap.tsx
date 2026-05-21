@@ -248,6 +248,7 @@ interface ServiceMapProps {
   isSingleTrace?: boolean;
   where?: string;
   whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }
 
 export default function ServiceMap({
@@ -258,6 +259,7 @@ export default function ServiceMap({
   isSingleTrace,
   where,
   whereLanguage,
+  serviceNames,
 }: ServiceMapProps) {
   const {
     isLoading,
@@ -270,6 +272,7 @@ export default function ServiceMap({
     samplingFactor,
     where,
     whereLanguage,
+    serviceNames,
   });
 
   useEffect(() => {
