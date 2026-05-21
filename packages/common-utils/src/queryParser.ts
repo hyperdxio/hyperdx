@@ -1273,20 +1273,24 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         //   - enabled: force hasAllTokens(), even if no text index is detected
         //   - disabled: skip the text-index branch entirely
         let useHasAllTokens = false;
+        let indexHasLower = false;
         if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
           useHasAllTokens = true;
         } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
           // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
           const isTextIndexEnabled = await this.enableTextIndexPromise;
-          const textIndex = isTextIndexEnabled
+          const textIndexResult = isTextIndexEnabled
             ? await this.findTextIndex(column)
             : undefined;
 
-          if (textIndex) {
-            const tokenizer = parseTokenizerFromTextIndex(textIndex);
+          if (textIndexResult) {
+            const tokenizer = parseTokenizerFromTextIndex(
+              textIndexResult.index,
+            );
             // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
             if (tokenizer?.type === 'splitByNonAlpha') {
               useHasAllTokens = true;
+              indexHasLower = textIndexResult.indexHasLower;
             }
           }
         }
@@ -1295,12 +1299,21 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           const tokens = this.tokenizeTerm(term);
           const hasSeparators = this.termHasSeparators(term);
 
+          // When the text index is on lower(column), we must pass lower(column)
+          // as the first argument and lowercase the tokens to match.
+          const hasAllTokensColumn = indexHasLower
+            ? `lower(${column})`
+            : column;
+          const tokenTransform = indexHasLower
+            ? (t: string) => t.toLowerCase()
+            : (t: string) => t;
+
           // Batch tokens to avoid exceeding hasAllTokens limit (64)
           const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
           const hasAllTokensExpressions = tokenBatches.map(batch =>
             SqlString.format(`hasAllTokens(?, ?)`, [
-              SqlString.raw(column),
-              batch.join(' '),
+              SqlString.raw(hasAllTokensColumn),
+              tokenTransform(batch.join(' ')),
             ]),
           );
 
@@ -1533,19 +1546,29 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
   private async findTextIndex(
     columnExpression: string,
-  ): Promise<SkipIndexMetadata | undefined> {
+  ): Promise<{ index: SkipIndexMetadata; indexHasLower: boolean } | undefined> {
     const skipIndices = await this.skipIndicesPromise;
 
     if (!skipIndices || skipIndices.length === 0) {
       return undefined;
     }
 
-    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
-    return skipIndices.find(
+    const idx = skipIndices.find(
       idx =>
         idx.type === 'text' &&
         this.indexCoversColumn(idx.expression, columnExpression),
     );
+
+    if (!idx) {
+      return undefined;
+    }
+
+    const normalizedExpr = normalizeChExpression(idx.expression);
+    const normalizedCol = normalizeChExpression(columnExpression);
+    const indexHasLower =
+      normalizedExpr !== normalizedCol && /\blower\s*\(/.test(idx.expression);
+
+    return { index: idx, indexHasLower };
   }
 
   /**
