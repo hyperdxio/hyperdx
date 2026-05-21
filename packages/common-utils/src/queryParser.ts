@@ -1300,21 +1300,23 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           const hasSeparators = this.termHasSeparators(term);
 
           // When the text index is on lower(column), we must pass lower(column)
-          // as the first argument and lowercase the tokens to match.
+          // as the first argument and wrap the tokens in lower() to match.
           const hasAllTokensColumn = indexHasLower
             ? `lower(${column})`
             : column;
-          const tokenTransform = indexHasLower
-            ? (t: string) => t.toLowerCase()
-            : (t: string) => t;
 
           // Batch tokens to avoid exceeding hasAllTokens limit (64)
           const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
           const hasAllTokensExpressions = tokenBatches.map(batch =>
-            SqlString.format(`hasAllTokens(?, ?)`, [
-              SqlString.raw(hasAllTokensColumn),
-              tokenTransform(batch.join(' ')),
-            ]),
+            indexHasLower
+              ? SqlString.format(`hasAllTokens(?, lower(?))`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ])
+              : SqlString.format(`hasAllTokens(?, ?)`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ]),
           );
 
           if (hasSeparators || tokenBatches.length > 1) {

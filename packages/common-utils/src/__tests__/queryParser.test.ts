@@ -1200,7 +1200,7 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const builder = new SearchQueryBuilder('Foo', serializer);
       const sql = await builder.build();
 
-      expect(sql).toBe("((hasAllTokens(lower(Body), 'foo')))");
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('Foo'))))");
     });
 
     it('should use hasAllTokens(lower(Body), lower(...)) for multi-token terms', async () => {
@@ -1225,7 +1225,7 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const builder = new SearchQueryBuilder('"Foo Bar"', serializer);
       const sql = await builder.build();
 
-      expect(sql).toContain("hasAllTokens(lower(Body), 'foo bar')");
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('Foo Bar'))");
       expect(sql).toContain("(lower(Body) LIKE lower('%Foo Bar%'))");
     });
 
@@ -1251,7 +1251,7 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const builder = new SearchQueryBuilder('-Foo', serializer);
       const sql = await builder.build();
 
-      expect(sql).toBe("((NOT hasAllTokens(lower(Body), 'foo')))");
+      expect(sql).toBe("((NOT hasAllTokens(lower(Body), lower('Foo'))))");
     });
 
     it('should NOT use lower() when index is directly on Body', async () => {
@@ -1301,9 +1301,9 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const builder = new SearchQueryBuilder('FOO NOT BAR BAZ', serializer);
       const sql = await builder.build();
 
-      expect(sql).toContain("hasAllTokens(lower(Body), 'foo')");
-      expect(sql).toContain("NOT (hasAllTokens(lower(Body), 'bar'))");
-      expect(sql).toContain("hasAllTokens(lower(Body), 'baz')");
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('FOO'))");
+      expect(sql).toContain("NOT (hasAllTokens(lower(Body), lower('BAR')))");
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('BAZ'))");
     });
   });
 
