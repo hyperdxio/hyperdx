@@ -132,9 +132,11 @@ export function processRowToWhereClause(
 export default function useRowWhere({
   meta,
   aliasMap,
+  primaryKeyColumns,
 }: {
   meta?: ColumnMetaType[];
   aliasMap?: Record<string, string | undefined>; // map alias -> valueExpr, undefined is not supported
+  primaryKeyColumns?: Set<string>;
 }) {
   const columnMap = useMemo(
     () =>
@@ -172,11 +174,21 @@ export default function useRowWhere({
         [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
         ...dbRow
       } = row;
+
+      // When primaryKeyColumns is provided, only use those columns in the
+      // WHERE clause. This avoids filtering on large columns like Body that
+      // trigger expensive index loading in ClickHouse.
+      const filteredRow = primaryKeyColumns
+        ? Object.fromEntries(
+            Object.entries(dbRow).filter(([col]) => primaryKeyColumns.has(col)),
+          )
+        : dbRow;
+
       return {
-        where: processRowToWhereClause(dbRow, columnMap),
+        where: processRowToWhereClause(filteredRow, columnMap),
         aliasWith,
       };
     },
-    [columnMap, aliasWith],
+    [columnMap, aliasWith, primaryKeyColumns],
   );
 }
