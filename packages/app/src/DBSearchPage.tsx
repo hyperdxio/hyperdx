@@ -1839,6 +1839,7 @@ export function DBSearchPage() {
               size="xs"
               allowMultiline
               dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1851,6 +1852,7 @@ export function DBSearchPage() {
               label="ORDER BY"
               size="xs"
               dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <>
@@ -1915,6 +1917,7 @@ export function DBSearchPage() {
             data-testid="search-input"
             minWidth="min(600px, 100%)"
             dateRange={searchedTimeRange}
+            sourceId={inputSource}
           />
           <Flex
             gap="sm"
