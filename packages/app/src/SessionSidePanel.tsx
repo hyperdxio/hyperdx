@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
@@ -52,6 +52,7 @@ export default function SessionSidePanel({
 }) {
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+  const isSharingSessionRef = useRef(false);
 
   const { size, setSize, startResize } = useResizable(
     getInitialDrawerWidthPercent(),
@@ -62,11 +63,20 @@ export default function SessionSidePanel({
   }, [isFullWidth, setSize]);
 
   const handleShareSession = useCallback(async () => {
-    const copied = await copyTextToClipboard(window.location.href);
-    notifications.show({
-      color: copied ? 'green' : 'red',
-      message: copied ? 'Copied link to clipboard' : CLIPBOARD_ERROR_MESSAGE,
-    });
+    if (isSharingSessionRef.current) {
+      return;
+    }
+
+    isSharingSessionRef.current = true;
+    try {
+      const copied = await copyTextToClipboard(window.location.href);
+      notifications.show({
+        color: copied ? 'green' : 'red',
+        message: copied ? 'Copied link to clipboard' : CLIPBOARD_ERROR_MESSAGE,
+      });
+    } finally {
+      isSharingSessionRef.current = false;
+    }
   }, []);
 
   useHotkeys(

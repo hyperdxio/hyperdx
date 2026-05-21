@@ -109,4 +109,33 @@ describe('SessionSidePanel', () => {
       });
     });
   });
+
+  it('ignores duplicate share clicks while copying is still pending', async () => {
+    let finishCopy: (copied: boolean) => void = (_copied: boolean): void => {
+      throw new Error('copy promise was not created');
+    };
+    copyTextToClipboardMock.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finishCopy = resolve;
+        }),
+    );
+    renderPanel();
+
+    const shareButton = screen.getByRole('button', { name: /share session/i });
+    fireEvent.click(shareButton);
+    fireEvent.click(shareButton);
+
+    expect(copyTextToClipboardMock).toHaveBeenCalledTimes(1);
+
+    finishCopy(true);
+
+    await waitFor(() => {
+      expect(notificationsShowSpy).toHaveBeenCalledTimes(1);
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'green',
+        message: 'Copied link to clipboard',
+      });
+    });
+  });
 });
