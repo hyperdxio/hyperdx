@@ -224,10 +224,16 @@ describe('MCP Trace Tools', () => {
     });
 
     describe('with seeded trace data', () => {
+      // Use unique names to avoid collisions with other test suites —
+      // otel_traces is NOT truncated between tests (see clearClickhouseTables).
       const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
       const ROOT_SPAN_ID = '1111111111111111';
       const CHILD_A_SPAN_ID = '2222222222222222';
       const CHILD_B_SPAN_ID = '3333333333333333';
+      const WF_SVC = 'wf-test-api-gateway';
+      const WF_ROOT_OP = 'GET /wf-test/users';
+      const WF_CHILD_A_OP = 'wf-test-SELECT-users';
+      const WF_CHILD_B_OP = 'wf-test-cache.get';
       const now = new Date();
       const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
@@ -238,9 +244,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID,
             SpanId: ROOT_SPAN_ID,
             ParentSpanId: '',
-            SpanName: 'GET /api/users',
+            SpanName: WF_ROOT_OP,
             SpanKind: 'SPAN_KIND_SERVER',
-            ServiceName: 'api-gateway',
+            ServiceName: WF_SVC,
             Duration: 500_000_000, // 500ms in ns
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -249,9 +255,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID,
             SpanId: CHILD_A_SPAN_ID,
             ParentSpanId: ROOT_SPAN_ID,
-            SpanName: 'SELECT users',
+            SpanName: WF_CHILD_A_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'api-gateway',
+            ServiceName: WF_SVC,
             Duration: 200_000_000, // 200ms in ns
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -260,9 +266,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID,
             SpanId: CHILD_B_SPAN_ID,
             ParentSpanId: ROOT_SPAN_ID,
-            SpanName: 'cache.get',
+            SpanName: WF_CHILD_B_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'cache-service',
+            ServiceName: 'wf-test-cache-service',
             Duration: 50_000_000, // 50ms in ns
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -286,8 +292,8 @@ describe('MCP Trace Tools', () => {
         // Root span should be first (depth 0)
         expect(output.spans[0].depth).toBe(0);
         expect(output.spans[0].spanId).toBe(ROOT_SPAN_ID);
-        expect(output.spans[0].serviceName).toBe('api-gateway');
-        expect(output.spans[0].spanName).toBe('GET /api/users');
+        expect(output.spans[0].serviceName).toBe(WF_SVC);
+        expect(output.spans[0].spanName).toBe(WF_ROOT_OP);
 
         // Children should follow (depth 1)
         const children = output.spans.filter((s: any) => s.depth === 1);
@@ -302,6 +308,7 @@ describe('MCP Trace Tools', () => {
       it('should auto-pick the slowest trace when traceId is omitted', async () => {
         const result = await callTool(client, 'hyperdx_trace_waterfall', {
           sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'slowest',
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -316,6 +323,7 @@ describe('MCP Trace Tools', () => {
       it('should auto-pick the most recent trace', async () => {
         const result = await callTool(client, 'hyperdx_trace_waterfall', {
           sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'most_recent',
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -349,16 +357,16 @@ describe('MCP Trace Tools', () => {
             Timestamp: fiveMinAgo,
             TraceId: TRACE_ID,
             SpanId: ROOT_SPAN_ID,
-            Body: 'Handling GET /api/users request',
-            ServiceName: 'api-gateway',
+            Body: 'Handling request',
+            ServiceName: WF_SVC,
             SeverityText: 'INFO',
           },
           {
             Timestamp: new Date(fiveMinAgo.getTime() + 15),
             TraceId: TRACE_ID,
             SpanId: CHILD_A_SPAN_ID,
-            Body: 'Executing SELECT query',
-            ServiceName: 'api-gateway',
+            Body: 'Executing query',
+            ServiceName: WF_SVC,
             SeverityText: 'DEBUG',
           },
         ]);
@@ -396,7 +404,7 @@ describe('MCP Trace Tools', () => {
       it('should apply pickFilter to narrow which trace is picked', async () => {
         const result = await callTool(client, 'hyperdx_trace_waterfall', {
           sourceId: traceSource._id.toString(),
-          pickFilter: 'ServiceName:api-gateway',
+          pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'slowest',
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -475,8 +483,16 @@ describe('MCP Trace Tools', () => {
     });
 
     describe('with seeded trace data', () => {
+      // Use unique names to avoid collisions with other test suites —
+      // otel_traces is NOT truncated between tests (see clearClickhouseTables).
       const TRACE_ID_1 = 'aaaa1111bbbb2222cccc3333dddd4444';
       const TRACE_ID_2 = 'eeee5555ffff6666aaaa7777bbbb8888';
+      const PARENT_SVC = 'trc-test-api-gateway';
+      const PARENT_OP = 'GET /trc-test/users';
+      const CHILD_DB_SVC = 'trc-test-db-service';
+      const CHILD_DB_OP = 'trc-test-SELECT-users';
+      const CHILD_CACHE_SVC = 'trc-test-cache-service';
+      const CHILD_CACHE_OP = 'trc-test-cache.get';
       const now = new Date();
       const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
@@ -489,9 +505,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_1,
             SpanId: 'root_span_0001',
             ParentSpanId: '',
-            SpanName: 'GET /api/users',
+            SpanName: PARENT_OP,
             SpanKind: 'SPAN_KIND_SERVER',
-            ServiceName: 'api-gateway',
+            ServiceName: PARENT_SVC,
             Duration: 800_000_000, // 800ms in ns
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -501,9 +517,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_1,
             SpanId: 'child_db_0001',
             ParentSpanId: 'root_span_0001',
-            SpanName: 'SELECT users',
+            SpanName: CHILD_DB_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'db-service',
+            ServiceName: CHILD_DB_SVC,
             Duration: 600_000_000, // 600ms
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -513,9 +529,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_1,
             SpanId: 'child_cache_001',
             ParentSpanId: 'root_span_0001',
-            SpanName: 'cache.get',
+            SpanName: CHILD_CACHE_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'cache-service',
+            ServiceName: CHILD_CACHE_SVC,
             Duration: 10_000_000, // 10ms
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -525,9 +541,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_2,
             SpanId: 'root_span_0002',
             ParentSpanId: '',
-            SpanName: 'GET /api/users',
+            SpanName: PARENT_OP,
             SpanKind: 'SPAN_KIND_SERVER',
-            ServiceName: 'api-gateway',
+            ServiceName: PARENT_SVC,
             Duration: 900_000_000, // 900ms
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -536,9 +552,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_2,
             SpanId: 'child_db_0002',
             ParentSpanId: 'root_span_0002',
-            SpanName: 'SELECT users',
+            SpanName: CHILD_DB_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'db-service',
+            ServiceName: CHILD_DB_SVC,
             Duration: 700_000_000, // 700ms
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -547,9 +563,9 @@ describe('MCP Trace Tools', () => {
             TraceId: TRACE_ID_2,
             SpanId: 'child_cache_002',
             ParentSpanId: 'root_span_0002',
-            SpanName: 'cache.get',
+            SpanName: CHILD_CACHE_OP,
             SpanKind: 'SPAN_KIND_CLIENT',
-            ServiceName: 'cache-service',
+            ServiceName: CHILD_CACHE_SVC,
             Duration: 20_000_000, // 20ms
             StatusCode: 'STATUS_CODE_OK',
           },
@@ -562,8 +578,7 @@ describe('MCP Trace Tools', () => {
           'hyperdx_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
-            parentFilter:
-              "ServiceName = 'api-gateway' AND SpanName = 'GET /api/users'",
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
             startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
             endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
           },
@@ -575,10 +590,10 @@ describe('MCP Trace Tools', () => {
 
         // DB operations should be ranked first (higher total time)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === 'SELECT users',
+          (op: any) => op.operation === CHILD_DB_OP,
         );
         const cacheOp = output.operations.find(
-          (op: any) => op.operation === 'cache.get',
+          (op: any) => op.operation === CHILD_CACHE_OP,
         );
         expect(dbOp).toBeDefined();
         expect(cacheOp).toBeDefined();
@@ -600,8 +615,7 @@ describe('MCP Trace Tools', () => {
           'hyperdx_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
-            parentFilter:
-              "ServiceName = 'api-gateway' AND SpanName = 'GET /api/users'",
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
             minParentDurationMs: 850, // 850ms threshold
             startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
             endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -614,7 +628,7 @@ describe('MCP Trace Tools', () => {
 
         // Only trace 2's children should be included (1 call each)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === 'SELECT users',
+          (op: any) => op.operation === CHILD_DB_OP,
         );
         expect(dbOp).toBeDefined();
         expect(dbOp.inParents).toBe(1);
@@ -626,8 +640,7 @@ describe('MCP Trace Tools', () => {
           'hyperdx_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
-            parentFilter:
-              "ServiceName = 'api-gateway' AND SpanName = 'GET /api/users'",
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
             topN: 1,
             startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
             endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -638,7 +651,7 @@ describe('MCP Trace Tools', () => {
         const output = JSON.parse(getFirstText(result));
         expect(output.operations).toHaveLength(1);
         // The top operation should be the DB call (highest total time)
-        expect(output.operations[0].operation).toBe('SELECT users');
+        expect(output.operations[0].operation).toBe(CHILD_DB_OP);
       });
 
       it('should include summary with parentFilter and time range', async () => {
@@ -652,8 +665,7 @@ describe('MCP Trace Tools', () => {
           'hyperdx_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
-            parentFilter:
-              "ServiceName = 'api-gateway' AND SpanName = 'GET /api/users'",
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
             startTime,
             endTime,
           },
@@ -662,7 +674,7 @@ describe('MCP Trace Tools', () => {
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
         expect(output.summary).toBeDefined();
-        expect(output.summary.parentFilter).toContain('api-gateway');
+        expect(output.summary.parentFilter).toContain(PARENT_SVC);
         expect(output.summary.operationsReturned).toBeGreaterThan(0);
         expect(output.summary.grandTotalTimeMs).toBeGreaterThan(0);
       });
