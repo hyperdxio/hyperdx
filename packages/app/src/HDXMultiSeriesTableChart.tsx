@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { HoverCard, Text, UnstyledButton } from '@mantine/core';
+import { Tooltip, UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
@@ -187,6 +187,7 @@ export const Table = ({
                       prefetch={false}
                       className={interactiveClassName}
                       data-testid="dashboard-table-row-action"
+                      data-shape="link"
                     >
                       {formattedValue}
                     </Link>
@@ -197,15 +198,17 @@ export const Table = ({
                 // New Tab" stay disabled (a # anchor would silently open
                 // a meaningless new tab on auxclick before our onClick
                 // handler runs). The button still surfaces the existing
-                // notification toast on left-click; the proper "muted row
-                // + warning icon" preempt state is tracked as AC8.
+                // notification toast on left-click. focusStyles.cellButton
+                // resets the user-agent button defaults (padding, font,
+                // color, text-align, line-height) so the wrapper renders
+                // identically to the success-row <Link>.
                 return (
                   <button
                     type="button"
-                    className={interactiveClassName}
+                    className={cx(interactiveClassName, focusStyles.cellButton)}
                     onClick={action.onClickError}
-                    style={{ background: 'none', border: 'none' }}
                     data-testid="dashboard-table-row-action"
+                    data-shape="button"
                   >
                     {formattedValue}
                   </button>
@@ -221,6 +224,7 @@ export const Table = ({
                       prefetch={false}
                       className={interactiveClassName}
                       data-testid="dashboard-table-row-action"
+                      data-shape="link"
                     >
                       {formattedValue}
                     </Link>
@@ -398,24 +402,24 @@ export const Table = ({
                 })}
               </tr>
             );
-            // Row-level HoverCard so the hint position stays stable as the
-            // cursor moves between cells in the same row. Mantine's
-            // HoverCard.Target clones the <tr> and merges its hover ref
-            // with the virtualizer's measureElement ref.
-            if (rowAction) {
+            // Row-level Tooltip.Floating so the hint follows the cursor
+            // and anchors near the cell the user is over, not at the row's
+            // center-top. Tooltip.Floating tracks the cursor via floating-ui
+            // and stays within the row's bounding box; one tooltip per row
+            // means no flicker as the cursor moves between cells.
+            //
+            // The hint is suppressed when rowAction.url === null because
+            // the click only fires an error toast on those rows, so showing
+            // "Open in search" would mislead the user.
+            if (rowAction && rowAction.url) {
               return (
-                <HoverCard
+                <Tooltip.Floating
                   key={virtualRow.key}
+                  label={rowAction.description}
                   withinPortal
-                  shadow="md"
-                  openDelay={250}
-                  position="top"
                 >
-                  <HoverCard.Target>{tr}</HoverCard.Target>
-                  <HoverCard.Dropdown py="xs" px="sm">
-                    <Text size="xs">{rowAction.description}</Text>
-                  </HoverCard.Dropdown>
-                </HoverCard>
+                  {tr}
+                </Tooltip.Floating>
               );
             }
             return tr;

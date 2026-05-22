@@ -71,8 +71,36 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(links.length).toBeGreaterThan(0);
       links.forEach(link => {
         expect(link.tagName).toBe('A');
+        expect(link.getAttribute('data-shape')).toBe('link');
         expect(link.getAttribute('href')).toContain('/search?source=src_1');
       });
+    });
+
+    it('reveals the hint at the cursor when hovering a success row', async () => {
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/search?source=src_1&where=',
+        description: 'Search HyperDX Logs',
+      });
+
+      renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const row = screen.getByText('web').closest('tr')!;
+      fireEvent.mouseEnter(row);
+
+      await waitFor(
+        () => {
+          expect(screen.getByText('Search HyperDX Logs')).toBeInTheDocument();
+        },
+        { timeout: 1000 },
+      );
     });
   });
 
@@ -99,6 +127,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(buttons.length).toBeGreaterThan(0);
       buttons.forEach(btn => {
         expect(btn.tagName).toBe('BUTTON');
+        expect(btn.getAttribute('data-shape')).toBe('button');
         // No href anywhere, so cmd-click / middle-click / right-click
         // "Open in New Tab" can't silently open the page.
         expect(btn.hasAttribute('href')).toBe(false);
@@ -108,7 +137,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(onClickError).toHaveBeenCalledTimes(1);
     });
 
-    it('reveals the row-level HoverCard hint when the cursor hovers the row', async () => {
+    it('does not reveal a hint when the row action has no url', async () => {
       const getRowAction = jest.fn().mockReturnValue({
         url: null,
         description: 'Search HyperDX Logs',
@@ -128,12 +157,9 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       const row = screen.getByText('web').closest('tr')!;
       fireEvent.mouseEnter(row);
 
-      await waitFor(
-        () => {
-          expect(screen.getByText('Search HyperDX Logs')).toBeInTheDocument();
-        },
-        { timeout: 1000 },
-      );
+      // Give the tooltip a chance to mount; assert it never does.
+      await new Promise(resolve => setTimeout(resolve, 250));
+      expect(screen.queryByText('Search HyperDX Logs')).not.toBeInTheDocument();
     });
   });
 
@@ -156,6 +182,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       const links = screen.getAllByTestId('dashboard-table-row-action');
       links.forEach(link => {
         expect(link.tagName).toBe('A');
+        expect(link.getAttribute('data-shape')).toBe('link');
         expect(link.getAttribute('href')).toContain('/search?source=legacy');
       });
     });
