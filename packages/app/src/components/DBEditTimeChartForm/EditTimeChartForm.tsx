@@ -702,7 +702,11 @@ export default function EditTimeChartForm({
             </Box>
           </div>
         ) : isPromqlInput ? (
-          <PromqlChartEditor control={control} onSubmit={onSubmit} />
+          <PromqlChartEditor
+            control={control}
+            onSubmit={onSubmit}
+            onOpenDisplaySettings={openDisplaySettings}
+          />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}

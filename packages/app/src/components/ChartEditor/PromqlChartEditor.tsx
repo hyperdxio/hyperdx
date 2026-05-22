@@ -1,6 +1,6 @@
 import { Control, useController, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Box, Stack, Text } from '@mantine/core';
+import { Box, Button, Flex, Stack, Text } from '@mantine/core';
 
 import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -12,9 +12,11 @@ import { ChartEditorFormState } from './types';
 export default function PromqlChartEditor({
   control,
   onSubmit,
+  onOpenDisplaySettings,
 }: {
   control: Control<ChartEditorFormState>;
   onSubmit: (suppressErrorNotification?: boolean) => void;
+  onOpenDisplaySettings: () => void;
 }) {
   const { field: expressionField } = useController({
     control,
@@ -55,6 +57,15 @@ export default function PromqlChartEditor({
           metricNames={metricNames}
         />
       </Box>
+      <Flex justify="end">
+        <Button
+          onClick={onOpenDisplaySettings}
+          size="compact-sm"
+          variant="secondary"
+        >
+          Display Settings
+        </Button>
+      </Flex>
     </Stack>
   );
 }

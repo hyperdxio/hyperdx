@@ -100,7 +100,7 @@ services:
       hdx.dev.service: clickhouse
       hdx.dev.port: '${HDX_DEV_CH_HTTP_PORT:-8123}'
       hdx.dev.url: 'http://localhost:${HDX_DEV_CH_HTTP_PORT:-8123}'
-    image: clickhouse/clickhouse-server:26.2-alpine
+    image: clickhouse/clickhouse-server:26.4-alpine
     ports:
       - '${HDX_DEV_CH_HTTP_PORT:-8123}:8123' # http api
       - '${HDX_DEV_CH_NATIVE_PORT:-9000}:9000' # native
@@ -149,6 +149,24 @@ services:
   #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH:-/}
   #   network_mode: host
   #   restart: always
+
+  prometheus:
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: prometheus
+      hdx.dev.port: '${HDX_DEV_PROMETHEUS_PORT:-9090}'
+      hdx.dev.url: 'http://localhost:${HDX_DEV_PROMETHEUS_PORT:-9090}'
+    profiles:
+      - prometheus
+    image: prom/prometheus:latest
+    ports:
+      - '${HDX_DEV_PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - .volumes/prometheus_data_dev_${HDX_DEV_SLOT:-0}:/prometheus
+    networks:
+      - internal
+    restart: on-failure
 
 networks:
   internal:

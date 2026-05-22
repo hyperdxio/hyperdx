@@ -573,6 +573,30 @@ export type PrometheusLabelValuesResponse = {
   error?: string;
 };
 
+async function prometheusFetch<T>(
+  path: string,
+  searchParams: Record<string, string>,
+): Promise<T> {
+  try {
+    return await server.post(path, { searchParams }).json();
+  } catch (e: any) {
+    // ky throws HTTPError on non-2xx — read the response body for the real error
+    if (e?.response) {
+      try {
+        const body = await e.response.json();
+        if (body?.error) {
+          throw new Error(body.error);
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message !== e.message) {
+          throw parseErr;
+        }
+      }
+    }
+    throw e;
+  }
+}
+
 export const prometheusApi = {
   queryRange: (params: {
     query: string;
@@ -583,19 +607,15 @@ export const prometheusApi = {
     database: string;
     table: string;
   }): Promise<PrometheusQueryRangeResponse> =>
-    server
-      .post('v1/prometheus/query_range', {
-        searchParams: {
-          query: params.query,
-          start: String(params.start),
-          end: String(params.end),
-          step: params.step,
-          connectionId: params.connectionId,
-          database: params.database,
-          table: params.table,
-        },
-      })
-      .json(),
+    prometheusFetch('v1/prometheus/query_range', {
+      query: params.query,
+      start: String(params.start),
+      end: String(params.end),
+      step: params.step,
+      connectionId: params.connectionId,
+      database: params.database,
+      table: params.table,
+    }),
 
   labelValues: (params: {
     label: string;
