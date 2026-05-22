@@ -1,8 +1,9 @@
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
-import { Group, MultiSelect, Stack, Text, Tooltip } from '@mantine/core';
+import { Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconHelp, IconRefresh } from '@tabler/icons-react';
 
+import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
 
 interface DashboardFilterSelectProps {
@@ -26,11 +27,7 @@ const DashboardFilterSelect = ({
   values,
   isLoading,
 }: DashboardFilterSelectProps) => {
-  const selectValues = values?.toSorted().map(value => ({
-    value,
-    label: value,
-  }));
-
+  const sortedValues = values?.toSorted() || [];
   const tooltipText = getAppliesToTooltip(filter);
 
   return (
@@ -47,21 +44,16 @@ const DashboardFilterSelect = ({
           />
         </Tooltip>
       </Group>
-      <MultiSelect
-        placeholder={value.length === 0 ? filter.name : undefined}
-        value={value}
-        data={selectValues || []}
-        searchable
-        clearable
-        size="xs"
-        maxDropdownHeight={280}
-        disabled={isLoading}
-        variant="filled"
-        w={250}
-        limit={20}
-        onChange={onChange}
-        data-testid={`dashboard-filter-select-${filter.name}`}
-      />
+      <div style={{ width: 250 }}>
+        <VirtualMultiSelect
+          placeholder={value.length === 0 ? filter.name : undefined}
+          values={value}
+          data={sortedValues}
+          disabled={isLoading}
+          onChange={onChange}
+          data-testid={`dashboard-filter-select-${filter.name}`}
+        />
+      </div>
     </Stack>
   );
 };
