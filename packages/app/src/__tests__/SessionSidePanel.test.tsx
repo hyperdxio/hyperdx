@@ -175,4 +175,26 @@ describe('SessionSidePanel', () => {
       expect(notificationsShowSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('does not show a share notification after the panel unmounts', async () => {
+    let finishCopy: (copied: boolean) => void = (_copied: boolean): void => {
+      throw new Error('copy promise was not created');
+    };
+    copyTextToClipboardMock.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finishCopy = resolve;
+        }),
+    );
+    const { unmount } = renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /share session/i }));
+
+    expect(copyTextToClipboardMock).toHaveBeenCalledTimes(1);
+
+    unmount();
+    finishCopy(true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(notificationsShowSpy).not.toHaveBeenCalled();
+  });
 });

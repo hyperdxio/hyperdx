@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
@@ -53,6 +53,13 @@ export default function SessionSidePanel({
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
   const isSharingSessionRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const { size, setSize, startResize } = useResizable(
     getInitialDrawerWidthPercent(),
@@ -75,6 +82,9 @@ export default function SessionSidePanel({
       copied = false;
     } finally {
       isSharingSessionRef.current = false;
+    }
+    if (!isMountedRef.current) {
+      return;
     }
     notifications.show({
       color: copied ? 'green' : 'red',
