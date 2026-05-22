@@ -1305,6 +1305,31 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       expect(sql).toContain("NOT (hasAllTokens(lower(Body), lower('BAR')))");
       expect(sql).toContain("hasAllTokens(lower(Body), lower('BAZ'))");
     });
+
+    it('should detect LOWER(Body) case-insensitively', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'LOWER(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
+    });
   });
 
   describe('useTextIndexForImplicitColumn source preference', () => {
@@ -1440,6 +1465,30 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const sql = await new SearchQueryBuilder('foo', serializer).build();
       expect(sql).not.toContain('hasAllTokens');
       expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens(lower('foo')))))");
+    });
+
+    it('Enabled uses lower() wrapping when a lower(Body) text index exists', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
     });
 
     it('Enabled with a multi-token term still falls back to LIKE when separators exist', async () => {

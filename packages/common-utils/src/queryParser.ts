@@ -1276,6 +1276,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         let textIndexHasLower = false;
         if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
           useHasAllTokens = true;
+          const textIndexResult = await this.findTextIndex(column);
+          if (textIndexResult) {
+            textIndexHasLower = textIndexResult.indexHasLower;
+          }
         } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
           // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
           const isTextIndexEnabled = await this.enableTextIndexPromise;
@@ -1568,7 +1572,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     const normalizedExpr = normalizeChExpression(idx.expression);
     const normalizedCol = normalizeChExpression(columnExpression);
     const indexHasLower =
-      normalizedExpr !== normalizedCol && /\blower\s*\(/.test(idx.expression);
+      normalizedExpr !== normalizedCol && /\blower\s*\(/i.test(idx.expression);
 
     return { index: idx, indexHasLower };
   }
