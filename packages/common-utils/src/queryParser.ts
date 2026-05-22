@@ -1343,7 +1343,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         const bloomIndex = await this.findBloomFilterTokensIndex(column);
 
         if (bloomIndex.found) {
-          const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
+          const indexHasLower = this.isLowerExpression(
+            bloomIndex.indexExpression,
+          );
           const termTokensExpression = indexHasLower
             ? SqlString.format('tokens(lower(?))', [term])
             : SqlString.format('tokens(?)', [term]);
@@ -1550,6 +1552,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // throw new Error(`Column not found: ${field}`);
   }
 
+  private isLowerExpression(expr: string): boolean {
+    return /\blower\s*\(/i.test(expr);
+  }
+
   private async findTextIndex(
     columnExpression: string,
   ): Promise<{ index: SkipIndexMetadata; indexHasLower: boolean } | undefined> {
@@ -1572,7 +1578,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     const normalizedExpr = normalizeChExpression(idx.expression);
     const normalizedCol = normalizeChExpression(columnExpression);
     const indexHasLower =
-      normalizedExpr !== normalizedCol && /\blower\s*\(/i.test(idx.expression);
+      normalizedExpr !== normalizedCol &&
+      this.isLowerExpression(idx.expression);
 
     return { index: idx, indexHasLower };
   }
