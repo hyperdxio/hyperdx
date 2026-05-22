@@ -28,6 +28,10 @@ export {
   stripTypeWrappers,
 } from '@hyperdx/common-utils/dist/core/eventDeltas';
 
+// Local binding for use in filter key helpers below (the re-export above
+// only makes it available to consumers, not to this file's own functions).
+import { stripTypeWrappers } from '@hyperdx/common-utils/dist/core/eventDeltas';
+
 // ---------------------------------------------------------------------------
 // UI-only helpers
 // ---------------------------------------------------------------------------
@@ -119,8 +123,6 @@ export function applyTopNAggregation(
 // Filter key conversion helpers (UI-specific — produce ClickHouse SQL
 // expressions / filter keys for the search bar).
 // ---------------------------------------------------------------------------
-
-import { stripTypeWrappers } from '@hyperdx/common-utils/dist/core/eventDeltas';
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

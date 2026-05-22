@@ -107,8 +107,11 @@ describe('MCP Event Deltas Tool', () => {
   });
 
   describe('algorithm against ClickHouse', () => {
+    // Capture once so insert timestamps and query windows are consistent.
+    let now: number;
+
     beforeEach(async () => {
-      const now = Date.now();
+      now = Date.now();
       const events: Array<{
         Body: string;
         ServiceName: string;
@@ -144,7 +147,6 @@ describe('MCP Event Deltas Tool', () => {
     });
 
     it('ranks SeverityText and ServiceName as top differentiating properties', async () => {
-      const now = Date.now();
       const result = await callTool(client, 'hyperdx_event_deltas', {
         sourceId: logSource._id.toString(),
         target: {
@@ -206,7 +208,6 @@ describe('MCP Event Deltas Tool', () => {
     });
 
     it('returns includeHidden:true with a hidden array containing high-cardinality / id fields', async () => {
-      const now = Date.now();
       const result = await callTool(client, 'hyperdx_event_deltas', {
         sourceId: logSource._id.toString(),
         target: {
@@ -224,8 +225,13 @@ describe('MCP Event Deltas Tool', () => {
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
       // The Body column has unique strings per row → high cardinality → hidden.
-      // (Or empty if drain-ish dedup pushed cardinality below the threshold.)
       expect(output).toHaveProperty('hidden');
+      expect(output.hidden.length).toBeGreaterThan(0);
+      const bodyEntry = output.hidden.find(
+        (p: { key: string }) => p.key === 'Body',
+      );
+      expect(bodyEntry).toBeDefined();
+      expect(bodyEntry.hiddenReason).toBe('high_cardinality');
     });
   });
 });

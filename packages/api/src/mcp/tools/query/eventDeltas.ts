@@ -1,9 +1,8 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
-  computeEffectiveSampleSize,
   getStableSampleExpression,
+  MIN_SAMPLE_SIZE,
   rankProperties,
-  SAMPLE_SIZE,
 } from '@hyperdx/common-utils/dist/core/eventDeltas';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -63,9 +62,8 @@ const deltasSchema = z.object({
     .max(5000)
     .optional()
     .describe(
-      'Rows to sample from each group. Default: adaptive 500–5000 based on ' +
-        'group sizes. Larger samples give more stable rankings at the cost ' +
-        'of latency.',
+      'Rows to sample from each group. Default: 500. Larger samples give ' +
+        'more stable rankings at the cost of latency.',
     ),
   topN: z
     .number()
@@ -117,7 +115,6 @@ function parseGroupTimeRange(group: {
 }
 
 function topDeltasForProperty(
-  key: string,
   targetValues: Map<string, number>,
   baselineValues: Map<string, number>,
   targetTotal: number,
@@ -147,7 +144,6 @@ function topDeltasForProperty(
       baselinePct: bPct,
       diffPct: tPct - bPct,
     });
-    void key;
   }
   out.sort((a, b) => Math.abs(b.diffPct) - Math.abs(a.diffPct));
   return out.slice(0, n);
@@ -338,11 +334,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             ? getStableSampleExpression(source.spanIdExpression)
             : 'rand()';
 
-        // Adaptive sample size — prefer caller's value, otherwise fall back to
-        // the algorithm's default. The sampling target rows should be similar
-        // in count to the baseline so neither group dominates the percentages.
-        const sampleSize =
-          input.sampleSize ?? computeEffectiveSampleSize(SAMPLE_SIZE * 10);
+        const sampleSize = input.sampleSize ?? MIN_SAMPLE_SIZE;
 
         const buildSampleConfig = (
           group: { where: string; whereLanguage: 'lucene' | 'sql' },
@@ -358,7 +350,10 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
           whereLanguage: group.where ? group.whereLanguage : 'sql',
           connection: source.connection.toString(),
           timestampValueExpression: source.timestampValueExpression,
-          implicitColumnExpression: source.implicitColumnExpression,
+          implicitColumnExpression:
+            'implicitColumnExpression' in source
+              ? source.implicitColumnExpression
+              : undefined,
           orderBy: stableSampleExpr,
           limit: { limit: sampleSize },
           dateRange: [startDate, endDate],
@@ -375,12 +370,36 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
           baselineRange.endDate,
         );
 
+        // Run renderChartConfig for both groups and getColumns in parallel —
+        // they're independent and each hits ClickHouse metadata.
         let targetSql, baselineSql;
+        let columnMeta: { name: string; type: string }[] = [];
+        let columnMetaUnavailable = false;
         try {
-          [targetSql, baselineSql] = await Promise.all([
+          const [targetResult, baselineResult, colsResult] = await Promise.all([
             renderChartConfig(targetConfig, metadata, source.querySettings),
             renderChartConfig(baselineConfig, metadata, source.querySettings),
+            metadata
+              .getColumns({
+                databaseName: source.from.databaseName,
+                tableName: source.from.tableName,
+                connectionId: source.connection.toString(),
+              })
+              .catch(() => null),
           ]);
+          targetSql = targetResult;
+          baselineSql = baselineResult;
+          if (colsResult) {
+            columnMeta = colsResult.map(c => ({
+              name: c.name,
+              type: c.type,
+            }));
+          } else {
+            // Without column meta the algorithm just won't denylist anything —
+            // not fatal, but signal it in the response so the agent knows
+            // high-cardinality / ID fields may appear in the ranking.
+            columnMetaUnavailable = true;
+          }
         } catch (e) {
           return {
             isError: true as const,
@@ -393,20 +412,6 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
           };
         }
 
-        // ClickHouse columns metadata for denylist + cardinality classification.
-        let columnMeta: { name: string; type: string }[] = [];
-        try {
-          const cols = await metadata.getColumns({
-            databaseName: source.from.databaseName,
-            tableName: source.from.tableName,
-            connectionId: source.connection.toString(),
-          });
-          columnMeta = cols.map(c => ({ name: c.name, type: c.type }));
-        } catch {
-          // Without column meta the algorithm just won't denylist anything —
-          // not fatal.
-        }
-
         let targetRows: Record<string, any>[];
         let baselineRows: Record<string, any>[];
         try {
@@ -416,12 +421,14 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
               query_params: targetSql.params,
               format: 'JSON',
               connectionId: source.connection.toString(),
+              clickhouse_settings: { max_execution_time: 30 },
             }),
             clickhouseClient.query({
               query: baselineSql.sql,
               query_params: baselineSql.params,
               format: 'JSON',
               connectionId: source.connection.toString(),
+              clickhouse_settings: { max_execution_time: 30 },
             }),
           ]);
           const targetJson = (await (
@@ -480,7 +487,6 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             baselineCount: bTotal,
             ...(p.hidden ? { hiddenReason: p.hiddenReason } : {}),
             topDeltas: topDeltasForProperty(
-              p.key,
               tValues,
               bValues,
               tTotal,
@@ -505,6 +511,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             propertiesScored: ranked.ranked.length,
             propertiesVisible: visible.length,
             propertiesHidden: hidden.length,
+            ...(columnMetaUnavailable ? { columnMetaUnavailable: true } : {}),
           },
           properties,
           ...(hiddenEntries ? { hidden: hiddenEntries } : {}),
