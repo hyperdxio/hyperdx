@@ -299,7 +299,7 @@ LIMIT {topN:UInt32}
             connectionId: source.connection.toString(),
             clickhouse_settings: {
               // Prevent DDL/DML injection via parentFilter — only SELECTs allowed.
-              readonly: 1,
+              readonly: '1',
               ...(source.querySettings
                 ? Object.fromEntries(
                     source.querySettings.map(s => [s.setting, s.value]),

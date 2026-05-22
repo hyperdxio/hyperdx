@@ -429,7 +429,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
             format: 'JSONEachRow',
             connectionId: source.connection.toString(),
             clickhouse_settings: {
-              readonly: 1,
+              readonly: '1',
               // Per-query timeout matches the rest of the MCP for consistency.
               ...(source.querySettings
                 ? Object.fromEntries(
@@ -552,7 +552,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
                   format: 'JSONEachRow',
                   connectionId: logSource.connection.toString(),
                   clickhouse_settings: {
-                    readonly: 1,
+                    readonly: '1',
                     ...(logSource.querySettings
                       ? Object.fromEntries(
                           logSource.querySettings.map(s => [
