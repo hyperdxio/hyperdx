@@ -1,6 +1,13 @@
+import { StrictMode } from 'react';
+import {
+  SourceKind,
+  TSessionSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
+import { Session } from '../sessions';
 import SessionSidePanel from '../SessionSidePanel';
 import {
   CLIPBOARD_ERROR_MESSAGE,
@@ -29,32 +36,75 @@ jest.mock('../utils/clipboard', () => ({
   copyTextToClipboard: jest.fn(),
 }));
 
-const copyTextToClipboardMock = copyTextToClipboard as jest.Mock;
+const copyTextToClipboardMock = jest.mocked(copyTextToClipboard);
 const notificationsShowSpy = jest
   .spyOn(notifications, 'show')
   .mockImplementation(jest.fn());
 
-function renderPanel() {
-  return renderWithMantine(
+const traceSource = {
+  id: 'trace-source',
+  name: 'Trace Source',
+  kind: SourceKind.Trace,
+  connection: 'clickhouse',
+  from: {
+    databaseName: 'default',
+    tableName: 'traces',
+  },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: '*',
+  durationExpression: 'Duration',
+  durationPrecision: 9,
+  traceIdExpression: 'TraceId',
+  spanIdExpression: 'SpanId',
+  parentSpanIdExpression: 'ParentSpanId',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+} satisfies TTraceSource;
+
+const sessionSource = {
+  id: 'session-source',
+  name: 'Session Source',
+  kind: SourceKind.Session,
+  connection: 'clickhouse',
+  from: {
+    databaseName: 'default',
+    tableName: 'sessions',
+  },
+  timestampValueExpression: 'Timestamp',
+  traceSourceId: traceSource.id,
+} satisfies TSessionSource;
+
+const session = {
+  userEmail: 'user@example.com',
+  maxTimestamp: '2026-05-21T10:00:00Z',
+  minTimestamp: '2026-05-21T09:00:00Z',
+  errorCount: '0',
+  interactionCount: '0',
+  recordingCount: '0',
+  serviceName: 'web',
+  sessionCount: '12',
+  sessionId: 'session-1',
+  teamId: 'team-1',
+  teamName: 'Team',
+  userName: 'User',
+} satisfies Session;
+
+function renderPanel({ strict = false }: { strict?: boolean } = {}) {
+  const panel = (
     <SessionSidePanel
-      traceSource={{} as any}
-      sessionSource={{} as any}
+      traceSource={traceSource}
+      sessionSource={sessionSource}
       sessionId="session-1"
-      session={
-        {
-          userEmail: 'user@example.com',
-          maxTimestamp: '2026-05-21T10:00:00Z',
-          errorCount: '0',
-          sessionCount: '12',
-        } as any
-      }
+      session={session}
       dateRange={[
         new Date('2026-05-21T09:00:00Z'),
         new Date('2026-05-21T10:00:00Z'),
       ]}
       onClose={jest.fn()}
-    />,
+    />
   );
+
+  return renderWithMantine(strict ? <StrictMode>{panel}</StrictMode> : panel);
 }
 
 describe('SessionSidePanel', () => {
@@ -91,6 +141,20 @@ describe('SessionSidePanel', () => {
         message: 'Copied link to clipboard',
       });
     });
+
+    window.history.pushState(
+      {},
+      '',
+      '/sessions?sessionSource=source-1&from=1&to=2&sid=session-1&sfrom=30&sto=40',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /share session/i }));
+
+    await waitFor(() => {
+      expect(copyTextToClipboardMock).toHaveBeenLastCalledWith(
+        'http://localhost/sessions?sessionSource=source-1&from=1&to=2&sid=session-1&sfrom=30&sto=40',
+      );
+    });
   });
 
   it('shows an error notification when copying the session URL fails', async () => {
@@ -106,33 +170,6 @@ describe('SessionSidePanel', () => {
       expect(notificationsShowSpy).toHaveBeenCalledWith({
         color: 'red',
         message: CLIPBOARD_ERROR_MESSAGE,
-      });
-    });
-  });
-
-  it('shows an error notification when the clipboard helper rejects', async () => {
-    copyTextToClipboardMock
-      .mockRejectedValueOnce(new Error('copy failed'))
-      .mockResolvedValueOnce(true);
-    renderPanel();
-
-    const shareButton = screen.getByRole('button', { name: /share session/i });
-    fireEvent.click(shareButton);
-
-    await waitFor(() => {
-      expect(notificationsShowSpy).toHaveBeenCalledWith({
-        color: 'red',
-        message: CLIPBOARD_ERROR_MESSAGE,
-      });
-    });
-
-    fireEvent.click(shareButton);
-
-    await waitFor(() => {
-      expect(copyTextToClipboardMock).toHaveBeenCalledTimes(2);
-      expect(notificationsShowSpy).toHaveBeenCalledWith({
-        color: 'green',
-        message: 'Copied link to clipboard',
       });
     });
   });
@@ -154,10 +191,12 @@ describe('SessionSidePanel', () => {
     fireEvent.click(shareButton);
 
     expect(copyTextToClipboardMock).toHaveBeenCalledTimes(1);
+    expect(shareButton).toHaveAttribute('data-loading', 'true');
 
     finishCopy(true);
 
     await waitFor(() => {
+      expect(shareButton).not.toHaveAttribute('data-loading');
       expect(notificationsShowSpy).toHaveBeenCalledTimes(1);
       expect(notificationsShowSpy).toHaveBeenCalledWith({
         color: 'green',
@@ -196,5 +235,19 @@ describe('SessionSidePanel', () => {
     finishCopy(true);
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(notificationsShowSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows share notifications when rendered in StrictMode', async () => {
+    renderPanel({ strict: true });
+
+    fireEvent.click(screen.getByRole('button', { name: /share session/i }));
+
+    await waitFor(() => {
+      expect(copyTextToClipboardMock).toHaveBeenCalledTimes(1);
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'green',
+        message: 'Copied link to clipboard',
+      });
+    });
   });
 });

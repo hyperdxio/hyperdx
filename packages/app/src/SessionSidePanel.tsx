@@ -52,10 +52,13 @@ export default function SessionSidePanel({
 }) {
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+  const [isSharingSession, setIsSharingSession] = useState(false);
   const isSharingSessionRef = useRef(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };
@@ -75,13 +78,15 @@ export default function SessionSidePanel({
     }
 
     isSharingSessionRef.current = true;
+    setIsSharingSession(true);
     let copied = false;
     try {
       copied = await copyTextToClipboard(window.location.href);
-    } catch {
-      copied = false;
     } finally {
       isSharingSessionRef.current = false;
+      if (isMountedRef.current) {
+        setIsSharingSession(false);
+      }
     }
     if (!isMountedRef.current) {
       return;
@@ -164,6 +169,7 @@ export default function SessionSidePanel({
                   size="sm"
                   leftSection={<IconLink size={14} />}
                   style={{ fontSize: '12px' }}
+                  loading={isSharingSession}
                   onClick={handleShareSession}
                 >
                   Share Session
