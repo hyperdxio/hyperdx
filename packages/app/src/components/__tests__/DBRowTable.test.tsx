@@ -143,6 +143,60 @@ describe('RawLogTable', () => {
       ]);
     });
   });
+
+  describe('Column width persistence', () => {
+    const baseProps = {
+      displayedColumns: ['col1', 'col2'],
+      rows: [{ col1: 'value1', col2: 'value2' }],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: false,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+      showExpandButton: false,
+    };
+
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('applies stored column width when tableId is provided', () => {
+      // useLocalStorage stringifies under the same key the component reads.
+      window.localStorage.setItem(
+        't1-column-sizes',
+        JSON.stringify({ col1: 250 }),
+      );
+
+      const { container } = renderWithMantine(
+        <RawLogTable {...baseProps} tableId="t1" />,
+      );
+
+      // Two <th> rendered: col1 (non-last, takes stored width) and col2 (last,
+      // takes remaining viewport width). Only col1 has a stored size to check.
+      const headers = container.querySelectorAll('th');
+      expect(headers).toHaveLength(2);
+      expect((headers[0] as HTMLElement).style.width).toBe('250px');
+    });
+
+    it('isolates stored widths per tableId', () => {
+      // A different table's stored widths must not leak into a different
+      // scope — this is what guarantees per-saved-search / per-source
+      // isolation when widths are persisted across the app.
+      window.localStorage.setItem(
+        't1-column-sizes',
+        JSON.stringify({ col1: 250 }),
+      );
+
+      const { container } = renderWithMantine(
+        <RawLogTable {...baseProps} tableId="t2" />,
+      );
+
+      const headers = container.querySelectorAll('th');
+      expect(headers).toHaveLength(2);
+      expect((headers[0] as HTMLElement).style.width).not.toBe('250px');
+    });
+  });
 });
 
 describe('appendSelectWithAdditionalKeys', () => {
