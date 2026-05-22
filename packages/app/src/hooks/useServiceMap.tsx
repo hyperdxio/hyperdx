@@ -66,18 +66,6 @@ async function getServiceMapQuery({
             },
           ]
         : []),
-      // Optionally filter by selected service names
-      ...(serviceNames && serviceNames.length > 0
-        ? [
-            {
-              type: 'sql' as const,
-              condition: SqlString.format('? IN (?)', [
-                SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
-                serviceNames,
-              ]),
-            },
-          ]
-        : []),
     ],
     select: [
       {
@@ -134,6 +122,16 @@ async function getServiceMapQuery({
     ),
   ]);
 
+  const serviceNameInList = serviceNames?.length
+    ? { UNSAFE_RAW_SQL: serviceNames.map(s => SqlString.escape(s)).join(', ') }
+    : null;
+  const serviceNameFilter = serviceNameInList
+    ? chSql`AND (
+        ServerSpans.serviceName IN (${serviceNameInList})
+        OR ClientSpans.serviceName IN (${serviceNameInList})
+      )`
+    : chSql``;
+
   // Left join to support services which receive requests from clients that are not instrumented.
   // Ordering helps ensure stable graph layout.
   return chSql`
@@ -150,6 +148,7 @@ async function getServiceMapQuery({
         ON ServerSpans.traceId = ClientSpans.traceId
         AND ServerSpans.parentSpanId = ClientSpans.spanId
     WHERE (ClientSpans.serviceName IS NULL OR ServerSpans.serviceName != ClientSpans.serviceName)
+      ${serviceNameFilter}
     GROUP BY serverServiceName, serverStatusCode, clientServiceName
     ORDER BY serverServiceName, serverStatusCode, clientServiceName
   `;
