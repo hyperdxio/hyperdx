@@ -1,6 +1,10 @@
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
-import { getFilterStateEntry, groupFacetsByBaseName } from './utils';
+import {
+  getFilterStateEntry,
+  groupFacetsByBaseName,
+  toClickHouseKeyExpression,
+} from './utils';
 
 describe('groupFacetsByBaseName — dot/bracket de-duplication', () => {
   it('collapses bracket-form and dot-form entries for the same logical key', () => {
@@ -94,5 +98,47 @@ describe('getFilterStateEntry', () => {
   it('returns undefined for non-map keys with no direct match', () => {
     const filterState: FilterState = {};
     expect(getFilterStateEntry(filterState, 'Timestamp')).toBeUndefined();
+  });
+});
+
+describe('toClickHouseKeyExpression', () => {
+  it('rewrites dot-form map sub-keys to bracket form', () => {
+    expect(toClickHouseKeyExpression('LogAttributes.time')).toBe(
+      "LogAttributes['time']",
+    );
+  });
+
+  it('preserves the full property path when it contains dots', () => {
+    expect(toClickHouseKeyExpression('ResourceAttributes.host.name')).toBe(
+      "ResourceAttributes['host.name']",
+    );
+  });
+
+  it('leaves bracket-form keys unchanged', () => {
+    expect(toClickHouseKeyExpression("LogAttributes['time']")).toBe(
+      "LogAttributes['time']",
+    );
+  });
+
+  it('leaves double-quoted bracket-form keys unchanged', () => {
+    expect(toClickHouseKeyExpression('LogAttributes["time"]')).toBe(
+      'LogAttributes["time"]',
+    );
+  });
+
+  it('leaves backtick-form JSON paths unchanged', () => {
+    expect(toClickHouseKeyExpression('Body.`json`.`field`')).toBe(
+      'Body.`json`.`field`',
+    );
+  });
+
+  it('leaves toString() wrappers unchanged', () => {
+    expect(
+      toClickHouseKeyExpression("toString(LogAttributes['service.name'])"),
+    ).toBe("toString(LogAttributes['service.name'])");
+  });
+
+  it('leaves plain column names unchanged', () => {
+    expect(toClickHouseKeyExpression('Timestamp')).toBe('Timestamp');
   });
 });

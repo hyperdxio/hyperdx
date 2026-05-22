@@ -87,6 +87,7 @@ import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import {
   getFilterStateEntry,
   groupFacetsByBaseName,
+  toClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -1339,13 +1340,20 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
+        // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
+        // (LogAttributes['foo']) before handing them to ClickHouse. Bracket
+        // form is the canonical SQL key produced by mergePath; dot form ends
+        // up in filterState after setFilterValue's parseKeyPath().join('.')
+        // normalization or after a Lucene URL round-trip, and ClickHouse
+        // cannot resolve it as map access.
+        const sqlKey = toClickHouseKeyExpression(key);
         let newValues: string[];
         if (!useExactPipeline) {
           const results = await metadata.getAllKeyValues({
             databaseName: chartConfig.from.databaseName,
             tableName: chartConfig.from.tableName,
             connectionId: chartConfig.connection,
-            keyExpressions: [key],
+            keyExpressions: [sqlKey],
             maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
             metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
@@ -1358,15 +1366,18 @@ const DBSearchPageFiltersComponent = ({
           // to the user's current selection (exact filter mode, with selections
           // on this key). Other dimensions' filters and the free-text where
           // stay applied so counts remain search-aware for unrelated fields.
+          // Strip under both bracket and dot forms since filterState may carry
+          // either depending on how the filter was authored.
           const strippedFilterState: FilterState = { ...filterState };
           delete strippedFilterState[key];
+          if (sqlKey !== key) delete strippedFilterState[sqlKey];
           const newKeyVals = await metadata.getKeyValuesWithMVs({
             chartConfig: {
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(strippedFilterState),
             },
-            keys: [key],
+            keys: [sqlKey],
             limit: LOAD_MORE_LOAD_LIMIT,
             disableRowLimit: true,
             source,
