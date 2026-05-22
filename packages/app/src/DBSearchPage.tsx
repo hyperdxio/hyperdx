@@ -1314,6 +1314,14 @@ export function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
+  // Stable key for persisting column widths in localStorage. Scoped per saved
+  // search when one is loaded, else per source for ad-hoc searches.
+  const columnSizeTableId = savedSearchId
+    ? `db-search-saved-${savedSearchId}`
+    : searchedConfig.source
+      ? `db-search-source-${searchedConfig.source}`
+      : undefined;
+
   const displayedColumns = useMemo(() => {
     // `select` is typed as `string | DerivedColumn[]` upstream, but in the
     // search page we always supply a string. Guard for type safety.
@@ -2284,6 +2292,7 @@ export function DBSearchPage() {
                             context={rowTableContext}
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
+                            tableId={columnSizeTableId}
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}
