@@ -1,7 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getStableSampleExpression,
-  MIN_SAMPLE_SIZE,
   rankProperties,
 } from '@hyperdx/common-utils/dist/core/eventDeltas';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
@@ -61,6 +60,7 @@ const deltasSchema = z.object({
     .min(100)
     .max(5000)
     .optional()
+    .default(500)
     .describe(
       'Rows to sample from each group. Default: 500. Larger samples give ' +
         'more stable rankings at the cost of latency.',
@@ -214,9 +214,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
     withToolTracing(
       'hyperdx_event_deltas',
       context,
-      async (rawInput: DeltasInput) => {
-        const input = deltasSchema.parse(rawInput);
-
+      async (input: DeltasInput) => {
         const targetRange = parseGroupTimeRange(input.target);
         if ('error' in targetRange) {
           return {
@@ -330,11 +328,11 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
         // Build a stable per-source ORDER BY for sampling (matches what the
         // app does — uses spanIdExpression on traces, falls back to rand()).
         const stableSampleExpr =
-          'spanIdExpression' in source
+          source.kind === SourceKind.Trace
             ? getStableSampleExpression(source.spanIdExpression)
             : 'rand()';
 
-        const sampleSize = input.sampleSize ?? MIN_SAMPLE_SIZE;
+        const sampleSize = input.sampleSize;
 
         const buildSampleConfig = (
           group: { where: string; whereLanguage: 'lucene' | 'sql' },
@@ -414,6 +412,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
 
         let targetRows: Record<string, any>[];
         let baselineRows: Record<string, any>[];
+        const abortController = new AbortController();
         try {
           const [targetRes, baselineRes] = await Promise.all([
             clickhouseClient.query({
@@ -422,6 +421,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
               format: 'JSON',
               connectionId: source.connection.toString(),
               clickhouse_settings: { max_execution_time: 30 },
+              abort_signal: abortController.signal,
             }),
             clickhouseClient.query({
               query: baselineSql.sql,
@@ -429,6 +429,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
               format: 'JSON',
               connectionId: source.connection.toString(),
               clickhouse_settings: { max_execution_time: 30 },
+              abort_signal: abortController.signal,
             }),
           ]);
           const targetJson = (await (
@@ -440,6 +441,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
           targetRows = targetJson.data ?? [];
           baselineRows = baselineJson.data ?? [];
         } catch (e) {
+          abortController.abort();
           return {
             isError: true as const,
             content: [
@@ -500,7 +502,9 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
           .slice(0, input.topN)
           .map((p, i) => renderEntry(i + 1, p));
         const hiddenEntries = input.includeHidden
-          ? hidden.slice(0, input.topN).map((p, i) => renderEntry(i + 1, p))
+          ? hidden
+              .slice(0, input.topN)
+              .map((p, i) => renderEntry(properties.length + i + 1, p))
           : undefined;
 
         const output = {
@@ -512,6 +516,13 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             propertiesVisible: visible.length,
             propertiesHidden: hidden.length,
             ...(columnMetaUnavailable ? { columnMetaUnavailable: true } : {}),
+            ...(targetRows.length === 0 || baselineRows.length === 0
+              ? {
+                  warning:
+                    'One or both groups returned 0 rows — verify the time ' +
+                    'window and where filter via hyperdx_search.',
+                }
+              : {}),
           },
           properties,
           ...(hiddenEntries ? { hidden: hiddenEntries } : {}),
@@ -525,9 +536,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
         };
 
         return {
-          content: [
-            { type: 'text' as const, text: JSON.stringify(output, null, 2) },
-          ],
+          content: [{ type: 'text' as const, text: JSON.stringify(output) }],
         };
       },
     ),
