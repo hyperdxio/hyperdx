@@ -2530,12 +2530,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconFilterEdit size={18} />
           </ActionIcon>
         </Tooltip>
-        <DashboardViewOptions
-          onCollapseAll={collapseAll}
-          onExpandAll={expandAll}
-          tocVisible={tocVisible}
-          onToggleToc={toggleToc}
-        />
+        {containers.length > 0 && (
+          <DashboardViewOptions
+            onCollapseAll={collapseAll}
+            onExpandAll={expandAll}
+            tocVisible={tocVisible}
+            onToggleToc={toggleToc}
+          />
+        )}
         <Button
           data-testid="search-submit-button"
           variant="primary"
