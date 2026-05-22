@@ -12,6 +12,8 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /** Show the sticky table-of-contents rail on dashboard pages. Off by default. */
+  tocVisible?: boolean;
 };
 
 // Legacy type for migration

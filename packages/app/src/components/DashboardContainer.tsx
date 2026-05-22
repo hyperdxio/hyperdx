@@ -18,6 +18,7 @@ import {
   IconChevronRight,
   IconDotsVertical,
   IconGripVertical,
+  IconLink,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
@@ -44,6 +45,9 @@ type DashboardContainerProps = {
   onRenameTab: (tabId: string, newTitle: string) => void;
   onDeleteTab: (tabId: string, action: TabDeleteAction) => void;
   onRename: (newTitle: string) => void;
+  /** When provided, renders a hover-revealed "copy link" icon that copies a
+   *  shareable deep link (`#container-<id>`) for this section. */
+  onCopyLink?: () => void;
   children: (activeTabId: string | undefined) => React.ReactNode;
   dragHandleProps: DragHandleProps;
   /** Tab IDs that contain tiles with active alerts, if any */
@@ -67,6 +71,7 @@ export default function DashboardContainer({
   onRenameTab,
   onDeleteTab,
   onRename,
+  onCopyLink,
   children,
   dragHandleProps,
   alertingTabIds,
@@ -147,6 +152,25 @@ export default function DashboardContainer({
       </ActionIcon>
     </Tooltip>
   );
+
+  // Hover-revealed deep-link copy button. Available in both expanded and
+  // collapsed states because deep-linking to a collapsed section is useful for
+  // sharing "look at this part of the dashboard" without forcing a re-layout.
+  const copyLinkButton = onCopyLink ? (
+    <Tooltip label="Copy link to section" position="top" withArrow>
+      <ActionIcon
+        variant="subtle"
+        size="sm"
+        tabIndex={showControls ? 0 : -1}
+        style={hoverControlStyle}
+        onClick={onCopyLink}
+        data-testid={`group-copy-link-${container.id}`}
+        aria-label="Copy link to section"
+      >
+        <IconLink size={14} />
+      </ActionIcon>
+    </Tooltip>
+  ) : null;
 
   const overflowMenu = (
     <Menu width={200} position="bottom-end" onChange={setMenuOpen}>
@@ -236,6 +260,7 @@ export default function DashboardContainer({
 
   return (
     <Box
+      id={`container-${container.id}`}
       data-testid={`group-container-${container.id}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -271,6 +296,7 @@ export default function DashboardContainer({
               hoverControlStyle={hoverControlStyle}
             />
             {addTileButton}
+            {copyLinkButton}
             {overflowMenu}
           </Flex>
         </Tabs>
@@ -354,6 +380,7 @@ export default function DashboardContainer({
             </Flex>
           )}
           {addTileButton}
+          {copyLinkButton}
           {overflowMenu}
         </Flex>
       )}

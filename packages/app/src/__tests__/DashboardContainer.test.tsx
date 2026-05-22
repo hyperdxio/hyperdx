@@ -451,4 +451,57 @@ describe('DashboardContainer', () => {
       ).toBeNull();
     });
   });
+
+  describe('section deep linking', () => {
+    it('renders the container root with a stable id usable as a scroll target', () => {
+      renderDashboardContainer();
+      const container = screen.getByTestId('group-container-g1');
+      expect(container.id).toBe('container-g1');
+    });
+
+    it('renders the copy-link button when onCopyLink is provided (plain header)', () => {
+      renderDashboardContainer({ onCopyLink: jest.fn() });
+      expect(screen.getByTestId('group-copy-link-g1')).toBeInTheDocument();
+    });
+
+    it('omits the copy-link button when onCopyLink is not provided', () => {
+      renderDashboardContainer();
+      expect(
+        screen.queryByTestId('group-copy-link-g1'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onCopyLink when the button is clicked', () => {
+      const onCopyLink = jest.fn();
+      renderDashboardContainer({ onCopyLink });
+      fireEvent.click(screen.getByTestId('group-copy-link-g1'));
+      expect(onCopyLink).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders the copy-link button in the multi-tab header', () => {
+      renderDashboardContainer({
+        onCopyLink: jest.fn(),
+        container: {
+          id: 'g1',
+          title: 'Group',
+          collapsed: false,
+          tabs: [
+            { id: 'tab-1', title: 'First' },
+            { id: 'tab-2', title: 'Second' },
+          ],
+        },
+        activeTabId: 'tab-1',
+        onTabChange: jest.fn(),
+      });
+      expect(screen.getByTestId('group-copy-link-g1')).toBeInTheDocument();
+    });
+
+    it('still renders the copy-link button when the container is collapsed', () => {
+      // Sharing a link to a collapsed section is intentional — it lets users
+      // point at "this part of the dashboard" without forcing a re-layout for
+      // the recipient.
+      renderDashboardContainer({ onCopyLink: jest.fn(), collapsed: true });
+      expect(screen.getByTestId('group-copy-link-g1')).toBeInTheDocument();
+    });
+  });
 });
